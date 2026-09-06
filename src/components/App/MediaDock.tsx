@@ -14,6 +14,7 @@ import {
   IconMinimize,
   IconPlus,
   IconScreenShare,
+  IconSearch,
   IconX,
 } from "@tabler/icons-react";
 import { Menu } from "@mantine/core";
@@ -181,7 +182,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         </Menu.Dropdown>
       </Menu>
 
-      {/* Quick Add Button */}
+      {/* Search Button */}
       <button
         type="button"
         className={styles.dockBtn}
@@ -189,12 +190,13 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         disabled={!haveLock}
         title={
           haveLock
-            ? `Quick Add media (${isMac ? "⌘K" : "Ctrl+K"})`
+            ? `Search media (${isMac ? "⌘K" : "Ctrl+K"})`
             : "Controls locked by host"
         }
       >
+        <IconSearch size={15} />
+        <span>Search</span>
         <span className={styles.kbdBadge}>{isMac ? "⌘" : "Ctrl"} K</span>
-        <span>Quick add</span>
       </button>
 
       {/* Playlist Button & Dropdown */}
