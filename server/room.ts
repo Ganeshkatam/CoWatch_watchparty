@@ -425,6 +425,28 @@ export class Room {
         if (decoded?.uid) {
           // This socket is now confirmed to be this UID
           socket.uid = decoded?.uid;
+          if (postgres) {
+            try {
+              const profileRes = await postgres.query(
+                "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
+                [decoded.uid]
+              );
+              if (profileRes.rows && profileRes.rows.length > 0) {
+                const profile = profileRes.rows[0];
+                const resolvedName = profile.display_name?.trim() || profile.username?.trim();
+                if (resolvedName && (!this.nameMap[socket.clientId] || this.nameMap[socket.clientId].startsWith("Guest") || this.nameMap[socket.clientId] === socket.clientId)) {
+                  this.nameMap[socket.clientId] = resolvedName;
+                  this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
+                }
+                if (profile.avatar_url && !this.pictureMap[socket.clientId]) {
+                  this.pictureMap[socket.clientId] = profile.avatar_url;
+                  this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
+                }
+              }
+            } catch (err) {
+              console.warn("Failed to fetch profile in CMD:uid", err);
+            }
+          }
         }
       });
       socket.on("CMD:host", (data: unknown) => {
@@ -549,6 +571,36 @@ export class Room {
       );
 
 socket.on("disconnect", () => this.onDisconnect(socket));
+
+      // Attempt to resolve profile from auth token if passed in handshake
+      const authUid = socket.handshake.auth?.uid;
+      const authToken = socket.handshake.auth?.token;
+      if (authUid && authToken) {
+        try {
+          const decoded = await validateUserToken(authUid, authToken);
+          if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
+            socket.uid = decoded.uid;
+            if (postgres) {
+              const profileRes = await postgres.query(
+                "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
+                [decoded.uid]
+              );
+              if (profileRes.rows && profileRes.rows.length > 0) {
+                const profile = profileRes.rows[0];
+                const resolvedName = profile.display_name?.trim() || profile.username?.trim();
+                if (resolvedName && (!this.nameMap[clientId] || this.nameMap[clientId].startsWith("Guest") || this.nameMap[clientId] === clientId)) {
+                  this.nameMap[clientId] = resolvedName;
+                }
+                if (profile.avatar_url && !this.pictureMap[clientId]) {
+                  this.pictureMap[clientId] = profile.avatar_url;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Failed resolving auth on connection", e);
+        }
+      }
 
       // Async initialization (must happen after registering synchronous listeners to avoid dropping immediate client emits)
       socket.emit("REC:host", this.getHostState());

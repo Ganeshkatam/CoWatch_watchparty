@@ -5,6 +5,7 @@ import {
   Button,
   HoverCard,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 // import data from '@emoji-mart/data';
 import Picker from "@emoji-mart/react";
@@ -13,6 +14,7 @@ import { init } from "emoji-mart";
 //@ts-expect-error
 import Linkify from "react-linkify";
 import { SecureLink } from "react-secure-link";
+import { IconTrash } from "@tabler/icons-react";
 import styles from "./Chat.module.css";
 import { useEffect, useState, useCallback } from 'react';
 import { createUuid } from "../../utils/utils";
@@ -143,6 +145,7 @@ interface ChatProps {
   isChatDisabled?: boolean;
   owner: string | undefined;
   onEdit?: (messageId: string, newMessage: string) => void;
+  clearChat?: () => void;
 }
 
 export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: () => void, hasMore?: boolean, isLoading?: boolean }> {
@@ -155,6 +158,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
       | undefined,
     isNearBottom: true,
     isPickerOpen: false,
+    confirmClear: false,
     reactionMenu: {
       isOpen: false,
       selectedMsgId: "",
@@ -340,6 +344,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
   };
 
   render() {
+    const isOwner = Boolean(this.context?.user && this.props.owner && this.props.owner === this.context.user.id);
     return (
       <div
         className={this.props.className}
@@ -354,6 +359,56 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
           backgroundColor: "var(--bg-elevated)",
         }}
       >
+        {isOwner && this.props.clearChat && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              padding: "4px 0",
+              marginBottom: "4px",
+              borderBottom: "1px solid var(--border-subtle)",
+              minHeight: "32px",
+            }}
+          >
+            {this.state.confirmClear ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                  Clear all messages?
+                </span>
+                <Button
+                  size="compact-xs"
+                  color="red"
+                  variant="filled"
+                  onClick={() => {
+                    this.props.clearChat?.();
+                    this.setState({ confirmClear: false });
+                  }}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  onClick={() => this.setState({ confirmClear: false })}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Tooltip label="Clear all chat messages" position="left">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={() => this.setState({ confirmClear: true })}
+                >
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </div>
+        )}
         <div
           className={styles.chatContainer}
           ref={this.messagesRef}
@@ -554,7 +609,7 @@ const ChatMessage = ({
   onEdit?: (messageId: string, newMessage: string) => void;
   className: string;
 }) => {
-  const { user } = useContext(MetadataContext);
+  const { user, avatarUrl } = useContext(MetadataContext);
   const { id, timestamp, cmd, msg, system, isSub, reactions, videoTS, name, picture, userId, updatedAt } =
     message;
   const [isEditing, setIsEditing] = useState(false);
@@ -576,7 +631,8 @@ const ChatMessage = ({
       {id ? (
         <Avatar
           src={
-            pictureMap[id] || picture ||
+            (id === clientId ? (pictureMap[id] || avatarUrl) : pictureMap[id]) ||
+            picture ||
             getDefaultPicture(nameMap[id] || name || 'Unknown', getColorForStringHex(id))
           }
         />

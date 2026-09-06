@@ -142,7 +142,9 @@ export const debounce = (callback: Function, wait = 500) => {
 };
 
 export const getDefaultPicture = (name: string, background = "a0a0a0") => {
-  return `https://ui-avatars.com/api/?name=${name}&background=${background}&size=256&color=ffffff`;
+  const safeName = encodeURIComponent((name || "User").trim());
+  const cleanBg = (background || "a0a0a0").replace("#", "");
+  return `https://ui-avatars.com/api/?name=${safeName}&background=${cleanBg}&size=256&color=ffffff`;
 };
 
 export const isMobile = () => {

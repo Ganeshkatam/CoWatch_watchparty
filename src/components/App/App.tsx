@@ -49,6 +49,7 @@ import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
+import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
@@ -213,7 +214,7 @@ export class App extends React.Component<AppProps, AppState> {
     isVBrowserLarge: false,
     nonPlayableMedia: false,
     currentTab:
-      new URLSearchParams(window.location.search).get("tab") ?? "chat",
+      new URLSearchParams(window.location.search).get("tab") ?? "people",
     isSubscribeModalOpen: false,
     isVBrowserModalOpen: false,
     isScreenShareModalOpen: false,
@@ -231,17 +232,17 @@ export class App extends React.Component<AppProps, AppState> {
     showChatColumn: isMobile()
       ? true
       : Boolean(
-          Number(
-            window.localStorage.getItem("cowatch-showchatcolumn") ?? "1",
-          ),
+        Number(
+          window.localStorage.getItem("cowatch-showchatcolumn") ?? "1",
         ),
+      ),
     showPeopleColumn: isMobile()
       ? false
       : Boolean(
-          Number(
-            window.localStorage.getItem("cowatch-showpeoplecolumn") ?? "0",
-          ),
+        Number(
+          window.localStorage.getItem("cowatch-showpeoplecolumn") ?? "0",
         ),
+      ),
     owner: undefined,
 
     passcode: undefined,
@@ -280,8 +281,9 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.context.displayName && this.context.displayName !== this.state.myName) {
       this.updateName(this.context.displayName);
     }
-    if (this.context.avatarUrl !== undefined && this.context.avatarUrl !== this.state.myPicture) {
-      this.updatePicture(this.context.avatarUrl || "");
+    const mountPicture = this.context.avatarUrl || this.state.myPicture;
+    if (mountPicture) {
+      this.updatePicture(mountPicture);
     }
     document.onfullscreenchange = this.onFullScreenChange;
     document.onkeydown = this.onKeydown;
@@ -329,7 +331,7 @@ export class App extends React.Component<AppProps, AppState> {
 
     const isOwner = Boolean(user && data.owner_id === user.id);
     const requiresPasscode = Boolean(data.passcode);
-    
+
     return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
   };
 
@@ -383,9 +385,11 @@ export class App extends React.Component<AppProps, AppState> {
         warningMessage: "",
       });
       // Use the name in our state, generate one if empty
-      this.updateName(this.state.myName || (await generateName()));
-      if (this.state.myPicture) {
-        this.updatePicture(this.state.myPicture);
+      const currentName = this.context.displayName || this.state.myName || (await generateName());
+      this.updateName(currentName);
+      const currentPicture = this.context.avatarUrl || this.state.myPicture;
+      if (currentPicture) {
+        this.updatePicture(currentPicture);
       }
       this.loadSignInData(this.context.user);
       // Re-join video chat if we were in it before the reconnection
@@ -1907,12 +1911,24 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   updateName = (name: string) => {
-    this.setState({ myName: name });
+    this.setState((prev) => ({
+      myName: name,
+      nameMap: {
+        ...prev.nameMap,
+        [clientId]: name,
+      },
+    }));
     this.socket?.emit("CMD:name", name);
   };
 
   updatePicture = (url: string) => {
-    this.setState({ myPicture: url });
+    this.setState((prev) => ({
+      myPicture: url,
+      pictureMap: {
+        ...prev.pictureMap,
+        [clientId]: url,
+      },
+    }));
     this.socket?.emit("CMD:picture", url);
   };
 
@@ -2497,22 +2513,11 @@ export class App extends React.Component<AppProps, AppState> {
                             </div>
                           )}
                           {!this.state.loading && !this.state.roomMedia && (
-                            <Alert
-                              color="yellow"
-                              title="You're not watching anything!"
-                            >
-                              Pick something to watch above.
-                            </Alert>
+                            <EmptyWatchState haveLock={this.haveLock()} />
                           )}
                           {!this.state.loading &&
                             this.state.nonPlayableMedia && (
-                              <Alert
-                                color="red"
-                                title="It doesn't look like this is a media file!"
-                              >
-                                Maybe you meant to launch a VBrowser if you're
-                                trying to visit a web page?
-                              </Alert>
+                              <NonPlayableMediaState />
                             )}
                         </div>
                       )}
@@ -2532,8 +2537,8 @@ export class App extends React.Component<AppProps, AppState> {
                       src="https://www.youtube.com/embed/?enablejsapi=1&controls=0&rel=0"
                     />
                     {this.playingVBrowser() &&
-                    this.getVBrowserPass() &&
-                    this.getVBrowserHost() ? (
+                      this.getVBrowserPass() &&
+                      this.getVBrowserHost() ? (
                       <VBrowser
                         username={clientId}
                         password={this.getVBrowserPass()}
@@ -2555,7 +2560,7 @@ export class App extends React.Component<AppProps, AppState> {
                         style={{
                           display:
                             (this.usingNative() && !this.state.loading) ||
-                            this.state.fullScreen
+                              this.state.fullScreen
                               ? "block"
                               : "none",
                           width: "100%",
@@ -2628,16 +2633,16 @@ export class App extends React.Component<AppProps, AppState> {
                 overflow: "hidden",
                 gap: "4px",
               }}
-              className={`${
-                (this.state.fullScreen
-                  ? styles.fullHeightColumnFullscreen
-                  : styles.fullHeightColumn) +
+              className={`${(this.state.fullScreen
+                ? styles.fullHeightColumnFullscreen
+                : styles.fullHeightColumn) +
                 " " +
                 styles.rightColumn
-              }`}
+                }`}
             >
               <Tabs
-                defaultValue="chat"
+                value={this.state.currentTab}
+                onChange={(val) => this.setState({ currentTab: val ?? "people" })}
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -2649,21 +2654,47 @@ export class App extends React.Component<AppProps, AppState> {
               >
                 <Tabs.List style={{ display: "flex", width: "100%" }}>
                   <Tabs.Tab
-                    value="chat"
-                    leftSection={<IconMessage size={16} />}
-                    style={{ flexGrow: 1 }}
-                  >
-                    Messages
-                  </Tabs.Tab>
-                  <Tabs.Tab
                     value="people"
                     leftSection={<IconUsersGroup size={16} />}
                     style={{ flexGrow: 1 }}
                   >
                     People ({this.state.participants.length})
                   </Tabs.Tab>
+                  <Tabs.Tab
+                    value="chat"
+                    leftSection={<IconMessage size={16} />}
+                    style={{ flexGrow: 1 }}
+                  >
+                    Messages
+                  </Tabs.Tab>
                 </Tabs.List>
 
+                <Tabs.Panel
+                  value="people"
+                  style={{
+                    flexGrow: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                    overflowY: "auto",
+                    marginTop: "8px",
+                    padding: "8px",
+                    backgroundColor: "var(--bg-elevated)",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-subtle)",
+                  }}
+                >
+                  <VideoChat
+                    socket={this.socket}
+                    participants={this.state.participants}
+                    nameMap={this.state.nameMap}
+                    pictureMap={this.state.pictureMap}
+                    tsMap={this.state.tsMap}
+                    rosterUpdateTS={this.state.rosterUpdateTS}
+                    owner={this.state.owner}
+                    getLeaderTime={this.getLeaderTime}
+                  />
+                </Tabs.Panel>
                 <Tabs.Panel
                   value="chat"
                   style={{
@@ -2672,6 +2703,9 @@ export class App extends React.Component<AppProps, AppState> {
                     flexDirection: "column",
                     minHeight: 0,
                     marginTop: "8px",
+                    borderRadius: "8px",
+                    overflow: "hidden",
+                    border: "1px solid var(--border-subtle)",
                   }}
                 >
                   <Chat
@@ -2685,29 +2719,10 @@ export class App extends React.Component<AppProps, AppState> {
                     owner={this.state.owner}
                     ref={this.chatRef}
                     hide={!this.state.showChatColumn}
+                    clearChat={this.clearChat}
                     onEdit={(messageId, newMessage) => {
                       this.socket.emit("CMD:editMessage", { messageId, newMessage });
                     }}
-                  />
-                </Tabs.Panel>
-
-                <Tabs.Panel
-                  value="people"
-                  style={{
-                    flexGrow: 1,
-                    overflowY: "auto",
-                    marginTop: "8px",
-                  }}
-                >
-                  <VideoChat
-                    socket={this.socket}
-                    participants={this.state.participants}
-                    nameMap={this.state.nameMap}
-                    pictureMap={this.state.pictureMap}
-                    tsMap={this.state.tsMap}
-                    rosterUpdateTS={this.state.rosterUpdateTS}
-                    owner={this.state.owner}
-                    getLeaderTime={this.getLeaderTime}
                   />
                 </Tabs.Panel>
               </Tabs>

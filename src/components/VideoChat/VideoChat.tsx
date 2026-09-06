@@ -13,9 +13,11 @@ import {
 import { UserMenu } from "../UserMenu/UserMenu";
 import { MetadataContext } from "../../MetadataContext";
 import {
+  IconCheck,
   IconDotsVertical,
   IconMicrophone,
   IconScreenShare,
+  IconUserPlus,
   IconVideo,
   IconX,
 } from "@tabler/icons-react";
@@ -37,6 +39,16 @@ export class VideoChat extends React.Component<VideoChatProps> {
   declare context: React.ContextType<typeof MetadataContext>;
 
   socket = this.props.socket;
+
+  state = {
+    copied: false,
+  };
+
+  private handleCopyInvite = () => {
+    navigator.clipboard.writeText(window.location.href);
+    this.setState({ copied: true });
+    setTimeout(() => this.setState({ copied: false }), 2000);
+  };
 
   private lastPrefCameraOn: boolean = false;
   private lastPrefMicOn: boolean = false;
@@ -314,7 +326,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       this.props;
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
-    const videoChatSize = participants.length > 2 ? 180 : 250;
+    const videoChatSize = participants.length > 2 ? 140 : 180;
     const videoChatContentStyle: React.CSSProperties = {
       height: videoChatSize,
       width: videoChatSize,
@@ -333,16 +345,36 @@ export class VideoChat extends React.Component<VideoChatProps> {
         }}
       >
         {participants.map((p) => {
+          const isSelf = p.id === selfId;
+          const displayName =
+            (isSelf ? this.context.displayName : null) ||
+            nameMap[p.id] ||
+            p.id;
+          const rawPhoto = isSelf
+            ? pictureMap[p.id] || this.context.avatarUrl
+            : pictureMap[p.id];
+          const fallbackPhoto = getDefaultPicture(
+            displayName,
+            getColorForStringHex(p.id),
+          );
+          const userPhoto = rawPhoto || fallbackPhoto;
+
           return (
             <div key={p.id}>
               <div
                 style={{
                   position: "relative",
+                  width: videoChatSize,
+                  height: videoChatSize,
+                  backgroundColor: "var(--bg-elevated)",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-subtle)",
+                  overflow: "hidden",
                 }}
               >
                 <div>
                   <UserMenu
-                    displayName={nameMap[p.id] || p.id}
+                    displayName={displayName}
                     disabled={
                       !Boolean(owner && owner === this.context.user?.id)
                     }
@@ -440,7 +472,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                     }}
                   >
                     <div
-                      title={nameMap[p.id] || p.id}
+                      title={displayName}
                       style={{
                         backdropFilter: "brightness(80%)",
                         padding: "4px",
@@ -450,7 +482,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                         display: "inline-block",
                       }}
                     >
-                      {nameMap[p.id] || p.id}
+                      {displayName}
                     </div>
                     <div
                       style={{
@@ -489,13 +521,14 @@ export class VideoChat extends React.Component<VideoChatProps> {
                   ) : (
                     <img
                       style={videoChatContentStyle}
-                      src={
-                        pictureMap[p.id] ||
-                        getDefaultPicture(
-                          nameMap[p.id],
-                          getColorForStringHex(p.id),
-                        )
-                      }
+                      src={userPhoto}
+                      alt={displayName}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (target.src !== fallbackPhoto) {
+                          target.src = fallbackPhoto;
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -503,6 +536,78 @@ export class VideoChat extends React.Component<VideoChatProps> {
             </div>
           );
         })}
+        <div
+          onClick={this.handleCopyInvite}
+          style={{
+            position: "relative",
+            width: videoChatSize,
+            height: videoChatSize,
+            backgroundColor: "rgba(255, 255, 255, 0.02)",
+            borderRadius: "8px",
+            border: "2px dashed var(--border-subtle)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px",
+            cursor: "pointer",
+            textAlign: "center",
+            transition: "all 0.2s ease",
+            boxSizing: "border-box",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--color-violet, #8b5cf6)";
+            e.currentTarget.style.backgroundColor = "rgba(139, 92, 246, 0.05)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--border-subtle)";
+            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.02)";
+          }}
+        >
+          <div
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "50%",
+              backgroundColor: this.state.copied
+                ? "rgba(16, 185, 129, 0.15)"
+                : "var(--bg-surface)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {this.state.copied ? (
+              <IconCheck size={22} color="var(--color-green, #10b981)" />
+            ) : (
+              <IconUserPlus size={22} color="var(--text-secondary)" />
+            )}
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: this.state.copied
+                  ? "var(--color-green, #10b981)"
+                  : "var(--text-primary)",
+              }}
+            >
+              {this.state.copied ? "Link Copied!" : "Invite Friend"}
+            </div>
+            <div
+              style={{
+                fontSize: "10px",
+                color: "var(--text-muted)",
+                marginTop: "2px",
+              }}
+            >
+              {this.state.copied ? "Share with friends" : "Click to copy link"}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
