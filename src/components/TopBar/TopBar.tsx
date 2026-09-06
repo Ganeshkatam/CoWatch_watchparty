@@ -1,0 +1,375 @@
+import React, { useCallback, useContext } from "react";
+import { Link } from "react-router-dom";
+import { serverPath } from "../../utils/utils";
+import { getAccessToken, supabase } from "../../utils/supabaseClient";
+import { Avatar, Button, Menu, Text } from "@mantine/core";
+import type { User } from "@supabase/supabase-js";
+import Announce from "../Announce/Announce";
+import appStyles from "../App/App.module.css";
+import { MetadataContext } from "../../MetadataContext";
+import {
+  IconCirclePlusFilled,
+  IconDatabase,
+  IconLogin,
+  IconLogout,
+  IconX,
+  IconSettings,
+  IconCheck,
+} from "@tabler/icons-react";
+import { useAppearance } from "../../theme/ThemeProvider";
+
+export const ThemeMenuItems = () => {
+  const { appearance, setAppearance } = useAppearance();
+
+  return (
+    <>
+      <Menu.Label>Theme</Menu.Label>
+      <Menu.Item
+        onClick={() => setAppearance("system")}
+        leftSection={appearance === "system" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+      >
+        System
+      </Menu.Item>
+      <Menu.Item
+        onClick={() => setAppearance("light")}
+        leftSection={appearance === "light" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+      >
+        Light
+      </Menu.Item>
+      <Menu.Item
+        onClick={() => setAppearance("mantine")}
+        leftSection={appearance === "mantine" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+      >
+        Dark
+      </Menu.Item>
+    </>
+  );
+};
+
+
+export async function createRoom(
+  user: User | null | undefined,
+  openNewTab: boolean | undefined,
+  video: string = "",
+  options: {
+    roomTitle: string;
+    roomDescription?: string;
+    passcode?: string;
+
+    isChatDisabled?: boolean;
+    lock?: boolean;
+    noRedirect?: boolean;
+  }
+) {
+  const uid = user?.id;
+  const token = await getAccessToken();
+  const response = await fetch(serverPath + "/createRoom", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uid,
+      token,
+      video,
+      ...options,
+    }),
+  });
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  const { name } = data;
+  
+  if (options?.noRedirect) {
+    return name;
+  }
+  
+  const safeName = name.startsWith("/") ? name.substring(1) : name;
+  if (openNewTab) {
+    window.open(`/watch/${safeName}`);
+  } else {
+    window.location.assign(`/watch/${safeName}`);
+  }
+}
+
+import { useHistory } from "react-router-dom";
+
+export const NewRoomButton = (props: {
+  size?: string;
+  openNewTab?: boolean;
+}) => {
+  const context = useContext(MetadataContext);
+  const history = useHistory();
+  const onClick = useCallback(async () => {
+    history.push("/create");
+  }, [history]);
+  return (
+    <Button
+      size={props.size}
+      variant="gradient"
+      onClick={onClick}
+      leftSection={<IconCirclePlusFilled />}
+    >
+      New Room
+    </Button>
+  );
+};
+
+type SignInButtonProps = {};
+
+export class SignInButton extends React.Component<SignInButtonProps> {
+  static contextType = MetadataContext;
+  declare context: React.ContextType<typeof MetadataContext>;
+  public state = { isLoginOpen: false };
+
+  render() {
+    if (this.context.user) {
+      return (
+        <Menu shadow="md" width={200} position="bottom-end">
+          <Menu.Target>
+            <div
+              style={{
+                margin: "4px",
+                minWidth: "40px",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <Avatar src={this.context.avatarUrl} />
+            </div>
+          </Menu.Target>
+
+          <Menu.Dropdown>
+            <Menu.Label>Account</Menu.Label>
+            <Menu.Item
+              component={Link}
+              to="/profile"
+              leftSection={<IconSettings size={14} />}
+            >
+              Settings
+            </Menu.Item>
+            <Menu.Item
+              component={Link}
+              to="/rooms"
+              leftSection={<IconDatabase size={14} />}
+            >
+              My rooms
+            </Menu.Item>
+
+            <Menu.Divider />
+
+            <ThemeMenuItems />
+
+            <Menu.Divider />
+
+            <Menu.Item
+              color="red"
+              leftSection={<IconLogout size={14} />}
+              onClick={async () => {
+                await supabase.auth.signOut();
+              }}
+            >
+              Sign out
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      );
+    }
+    return (
+      <React.Fragment>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <Button
+            component={Link}
+            to="/login"
+            variant="light"
+            color="violet"
+            leftSection={<IconLogin size={16} />}
+          >
+            Sign in
+          </Button>
+          <Menu shadow="md" width={200}>
+            <Menu.Target>
+              <Button variant="subtle" px={8}>
+                <IconSettings size={20} />
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <ThemeMenuItems />
+            </Menu.Dropdown>
+          </Menu>
+        </div>
+      </React.Fragment>
+    );
+  }
+}
+
+export const ListRoomsButton = () => {
+  const context = useContext(MetadataContext);
+  if (!context.user) return null;
+  return (
+    <Button
+      component={Link}
+      to="/rooms"
+      variant="light"
+      color="violet"
+      leftSection={<IconDatabase size={16} />}
+    >
+      My rooms
+    </Button>
+  );
+};
+
+export const TopBar = (props: {
+  hideNewRoom?: boolean;
+  hideSignin?: boolean;
+  hideMyRooms?: boolean;
+  showExit?: boolean;
+  onOpenSettings?: () => void;
+  roomTitle?: string;
+  roomDescription?: string;
+}) => {
+  const context = useContext(MetadataContext);
+  return (
+    <React.Fragment>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          padding: "4px 8px",
+          rowGap: "8px",
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          backgroundColor: "var(--bg-app)",
+          borderBottom: "1px solid var(--border-subtle)",
+        }}
+      >
+        <a href="/" style={{ display: "flex" }}>
+          <img style={{ width: "56px", height: "56px" }} src="/logo192.png" />
+          {/* <div
+              style={{
+                height: '48px',
+                width: '48px',
+                marginRight: '10px',
+                borderRadius: '50%',
+                position: 'relative',
+                backgroundColor: '#' + colorMappings.blue,
+              }}
+            >
+              <Icon
+                inverted
+                name="film"
+                size="large"
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  width: '100%',
+                  margin: '0 auto',
+                }}
+              />
+              <Icon
+                inverted
+                name="group"
+                size="large"
+                color="green"
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  width: '100%',
+                  margin: '0 auto',
+                }}
+              />
+            </div> */}
+        </a>
+        {props.roomTitle || props.roomDescription ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              marginRight: 10,
+              marginLeft: 10,
+            }}
+          >
+            <div
+              style={{
+                fontSize: "30px",
+                lineHeight: "30px",
+                fontWeight: 700,
+                letterSpacing: 1,
+              }}
+            >
+              {props.roomTitle?.toUpperCase()}
+            </div>
+            <Text size="sm" style={{}}>
+              {props.roomDescription}
+            </Text>
+          </div>
+        ) : (
+          <React.Fragment>
+            <a href="/" style={{ display: "flex", textDecoration: "none" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                    fontSize: "30px",
+                    lineHeight: "30px",
+                    background: "linear-gradient(135deg, #14B8A6, #3B82F6)",
+                    WebkitBackgroundClip: "text",
+                    backgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  CoWatch
+                </div>
+              </div>
+            </a>
+          </React.Fragment>
+        )}
+        <Announce />
+        <div
+          className={appStyles.mobileStack}
+          style={{
+            display: "flex",
+            marginLeft: "auto",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          {!props.hideMyRooms && context.user && <ListRoomsButton />}
+          {props.showExit && (
+            <Button
+              color="red"
+              variant="light"
+              onClick={() => {
+                window.location.assign("/");
+              }}
+              leftSection={<IconX size={16} />}
+            >
+              Exit
+            </Button>
+          )}
+          {props.onOpenSettings && (
+            <Button
+              color="violet"
+              variant="light"
+              onClick={props.onOpenSettings}
+              leftSection={<IconSettings size={16} />}
+            >
+              Settings
+            </Button>
+          )}
+          {!props.hideSignin && <SignInButton />}
+        </div>
+      </div>
+    </React.Fragment>
+  );
+};

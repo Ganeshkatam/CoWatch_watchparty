@@ -1,0 +1,98 @@
+.authPage {
+  min-height: calc(100vh - 72px);
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  background-color: var(--bg-app);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient glow effects matching the Midnight Violet design system */
+.authPage::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 50vw;
+  height: 50vh;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.authPage::after {
+  content: "";
+  position: absolute;
+  bottom: -10%;
+  right: -10%;
+  width: 50vw;
+  height: 50vh;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.05) 0%, transparent 70%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.authLayout {
+  width: min(1100px, 100%);
+  display: grid;
+  grid-template-columns: 1fr 440px;
+  gap: 72px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.brandPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.brandTitle {
+  font-size: clamp(32px, 4vw, 42px);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.brandDescription {
+  font-size: 18px;
+  color: var(--text-secondary);
+  max-width: 480px;
+}
+
+.brandFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.featureCheck {
+  color: var(--color-teal);
+  font-weight: bold;
+}
+
+.formPanel {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .authLayout {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+  }
+
+  .brandPanel {
+    display: none;
+  }
+}

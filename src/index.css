@@ -1,0 +1,104 @@
+:root, html[data-color-scheme="dark"] {
+  --bg-app: #0A0D14;
+  --bg-surface: #111522;
+  --bg-elevated: #171B2A;
+
+  --text-primary: #F5F3FF;
+  --text-secondary: #B8B3C7;
+  --text-muted: #858095;
+
+  --border-subtle: rgba(139, 92, 246, 0.22);
+  --border-strong: rgba(139, 92, 246, 0.40);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-hero: 0 20px 40px rgba(0, 0, 0, 0.40);
+
+  --overlay-scrim: rgba(0, 0, 0, 0.55);
+  --overlay-soft: rgba(0, 0, 0, 0.25);
+
+  --color-violet: #8B5CF6;
+  --color-pink: #EC4899;
+  --color-teal: #14B8A6;
+  --color-blue: #3B82F6;
+
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+
+  --surface-hover: rgba(139, 92, 246, 0.10);
+  --surface-active: rgba(139, 92, 246, 0.16);
+  --focus-ring: rgba(139, 92, 246, 0.45);
+
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+}
+
+html[data-color-scheme="light"] {
+  --bg-app: #f6f7fb;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+
+  --text-primary: #171923;
+  --text-secondary: #4b5565;
+  --text-muted: #6b7280;
+
+  --border-subtle: #e5e7eb;
+  --border-strong: #d1d5db;
+
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --shadow-hero: 0 20px 40px rgba(15, 23, 42, 0.15);
+
+  --overlay-scrim: rgba(15, 23, 42, 0.42);
+  --overlay-soft: rgba(15, 23, 42, 0.16);
+
+  --color-violet: #7048E8;
+  --color-pink: #E64980;
+  --color-teal: #0CA678;
+  --color-blue: #1C7ED6;
+
+  --color-success: #2F9E44;
+  --color-warning: #E67700;
+  --color-danger: #E03131;
+  --color-info: #1C7ED6;
+
+  --surface-hover: rgba(112, 72, 232, 0.06);
+  --surface-active: rgba(112, 72, 232, 0.12);
+  --focus-ring: rgba(112, 72, 232, 0.35);
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(112, 72, 232, 0.12);
+  --glass-shadow: rgba(0, 0, 0, 0.08);
+}
+
+html body {
+  margin: 0;
+  /* fix for scrollbar popping in and out at certain widths, but adds a permanent scrollbar */
+  overflow-y: scroll;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Mantine input focus styles */
+.mantine-TextInput-input:focus,
+.mantine-PasswordInput-input:focus-within {
+  border-color: var(--color-violet) !important;
+}

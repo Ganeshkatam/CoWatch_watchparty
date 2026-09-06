@@ -1,0 +1,215 @@
+.chatContainer {
+  flex-grow: 1;
+  overflow: auto;
+}
+
+.hoverEffect:hover {
+  filter: brightness(0.8);
+}
+
+.light {
+  color: gainsboro;
+  font-size: 14px;
+}
+
+.light.emoji {
+  font-size: 24px;
+}
+
+.dark {
+  color: gray;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.system {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.comment .commentMenu {
+  display: none;
+  justify-content: center;
+  position: absolute;
+  right: 5px;
+  top: -13px;
+  padding: 4px !important;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.comment .commentMenu:hover,
+.comment.selected .commentMenu {
+  background: rgb(46, 137, 212);
+  transition: background 0.2s ease-in-out;
+}
+
+.comment:hover,
+.comment.selected {
+  border-radius: 5px;
+  background: radial-gradient(at top right,
+      #7eaee02a,
+      transparent 70%) !important;
+}
+
+.comment:hover .commentMenu,
+.comment.selected .commentMenu {
+  display: flex;
+}
+
+.replyMessage {
+  background: radial-gradient(at top right,
+      rgba(255, 176, 96, 0.22),
+      transparent 70%);
+}
+
+.replyInfo {
+  color: rgba(180, 200, 220, 0.95);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.replyTooltip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-width: 360px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.reactionMenuContainer {
+  display: flex;
+  flex-wrap: nowrap;
+  border-radius: 5px;
+  position: fixed;
+  font-size: 24px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.reactionMenuContainer div {
+  line-height: 30px;
+  padding: 5px;
+}
+
+.reactionMenuContainer div:hover {
+  background-color: var(--surface-hover);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.reactionContainer {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  margin-right: 3px;
+  margin-top: 1px;
+  min-width: 39px;
+  cursor: pointer;
+}
+
+.reactionContainer.highlighted {
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+}
+
+.reactionContainer:hover {
+  background-color: var(--surface-hover);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.reaction-enter {
+  transform: scale(0);
+}
+
+.reaction-enter-active {
+  transform: scale(1);
+  transition: all 200ms ease-in !important;
+}
+
+.reaction-exit {
+  transform: scale(1);
+}
+
+.reaction-exit-active {
+  transform: scale(0);
+  transition: all 200ms ease-in !important;
+}
+
+.reactionCounter-enter {
+  transform: scale(0);
+  color: rgb(255, 136, 0) !important;
+}
+
+.reactionCounter-enter-active {
+  transform: scale(1);
+  transition: all 200ms ease-in !important;
+}
+
+.reactionCounter-exit {
+  transform: scale(1);
+  color: rgb(255, 136, 0) !important;
+}
+
+.reactionCounter-exit-active {
+  transform: scale(0);
+  transition: all 200ms ease-in !important;
+}
+
+.reactionMenu-enter {
+  transform: scale(0);
+}
+
+.reactionMenu-enter-active {
+  transform: scale(1);
+  transition: all 100ms ease-out !important;
+}
+
+.reactionMenu-exit {
+  transform: scale(1);
+}
+
+.reactionMenu-exit-active {
+  transform: scale(0);
+  transition: all 100ms ease-out !important;
+}
+
+@keyframes replyComposerIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.replyComposer {
+  animation: replyComposerIn 220ms cubic-bezier(0.22, 0.8, 0.25, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replyComposer {
+    animation: none;
+  }
+}
