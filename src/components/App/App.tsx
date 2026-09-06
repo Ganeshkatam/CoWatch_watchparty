@@ -50,6 +50,9 @@ import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
 import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
+import { RoomHeader } from "../TopBar/RoomHeader";
+import { MediaDock } from "./MediaDock";
+import { QuickAdd } from "./QuickAdd";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
@@ -57,10 +60,13 @@ import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
 import {
   IconAntennaBars5,
   IconBrowser,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
+  IconCopy,
   IconFile,
   IconKeyboardFilled,
+  IconLink,
   IconList,
   IconMessage,
   IconScreenShare,
@@ -152,6 +158,8 @@ interface AppState {
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
+  isQuickAddOpen: boolean;
+  copiedRoomLink: boolean;
   roomLock: string;
   controller?: string;
   savedPasscodes: StringDict;
@@ -221,6 +229,8 @@ export class App extends React.Component<AppProps, AppState> {
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
+    isQuickAddOpen: false,
+    copiedRoomLink: false,
     roomLock: "",
     controller: "",
     roomId: "",
@@ -1053,6 +1063,16 @@ export class App extends React.Component<AppProps, AppState> {
     }
     const isOwner = Boolean(this.state.owner && this.context.user?.id === this.state.owner);
     return this.context.user?.id === this.state.roomLock || isOwner;
+  };
+
+  toggleLock = () => {
+    this.setRoomLock(!Boolean(this.state.roomLock));
+  };
+
+  handleCopyRoomLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    this.setState({ copiedRoomLink: true });
+    setTimeout(() => this.setState({ copiedRoomLink: false }), 2000);
   };
 
   setIsChatDisabled = (val: boolean) => this.setState({ isChatDisabled: val });
@@ -2189,13 +2209,20 @@ export class App extends React.Component<AppProps, AppState> {
           </Alert>
         )}
         {!this.state.fullScreen && (
-          <TopBar
+          <RoomHeader
             roomTitle={this.state.roomTitle}
-            roomDescription={this.state.roomDescription}
-            hideNewRoom={true}
-            hideMyRooms={true}
-            showExit={true}
+            participantCount={this.state.participants.length}
+            currentTab={this.state.currentTab as "people" | "chat"}
+            onSelectTab={(tab) =>
+              this.setState({ currentTab: tab, showChatColumn: true })
+            }
             onOpenSettings={() => this.setSettingsModalOpen(true)}
+            onExit={() => {
+              window.location.href = "/";
+            }}
+            isLocked={Boolean(this.state.roomLock)}
+            onToggleLock={this.toggleLock}
+            haveLock={this.haveLock()}
           />
         )}
         {
@@ -2221,77 +2248,47 @@ export class App extends React.Component<AppProps, AppState> {
                   gap: "4px",
                 }}
               >
-                {!this.state.fullScreen && (
-                  <React.Fragment>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%", maxWidth: "640px" }}>
-                      <div style={{ flexGrow: 1, minWidth: 0 }}>
-                        <ComboBox
-                          roomSetMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          roomMedia={this.state.roomMedia}
-                          getMediaDisplayName={this.getMediaDisplayName}
-                          mediaPath={this.state.mediaPath}
-                          disabled={!this.haveLock()}
-                        />
-                      </div>
-                      <InviteButton roomId={this.state.roomId} />
-                    </div>
-                    <div className={styles.mobileStack}>
+                {!this.state.fullScreen &&
+                  (this.playingVBrowser() ||
+                    this.state.uploadController ||
+                    this.localStreamToPublish) && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "var(--radius-md)",
+                        marginBottom: "4px",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       {this.localStreamToPublish && (
                         <Button
+                          size="xs"
                           color="red"
                           onClick={this.stopPublishingLocalStream}
-                          leftSection={<IconX />}
+                          leftSection={<IconX size={14} />}
                         >
                           Stop Share
                         </Button>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="blue"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isScreenShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconScreenShare />}
-                          >
-                            Screenshare
-                          </Button>
-                        )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            disabled={!this.haveLock()}
-                            color="green"
-                            onClick={() => {
-                              this.setState({
-                                isVBrowserModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconBrowser />}
-                          >
-                            VBrowser
-                          </Button>
-                        )}
                       {this.playingVBrowser() && (
                         <>
                           <Button
+                            size="xs"
                             color="red"
                             disabled={!this.haveLock()}
                             onClick={this.stopVBrowser}
-                            leftSection={<IconX />}
+                            leftSection={<IconX size={14} />}
                           >
                             Stop VBrowser
                           </Button>
                           <Select
-                            leftSection={<IconKeyboardFilled />}
+                            size="xs"
+                            leftSection={<IconKeyboardFilled size={14} />}
                             value={this.state.controller}
                             placeholder="No controller"
                             clearable
@@ -2301,9 +2298,10 @@ export class App extends React.Component<AppProps, AppState> {
                               label: this.state.nameMap[p.id] || p.id,
                               value: p.id,
                             }))}
-                          ></Select>
+                          />
                           <Select
-                            leftSection={<IconUserScreen />}
+                            size="xs"
+                            leftSection={<IconUserScreen size={14} />}
                             disabled={!this.haveLock()}
                             value={this.state.vBrowserResolution}
                             onChange={(value) =>
@@ -2334,9 +2332,10 @@ export class App extends React.Component<AppProps, AppState> {
                                 value: "640x360@60",
                               },
                             ]}
-                          ></Select>
+                          />
                           <Select
-                            leftSection={<IconAntennaBars5 />}
+                            size="xs"
+                            leftSection={<IconAntennaBars5 size={14} />}
                             disabled={!this.haveLock()}
                             value={this.state.vBrowserQuality}
                             onChange={(value) => {
@@ -2345,133 +2344,29 @@ export class App extends React.Component<AppProps, AppState> {
                               });
                             }}
                             data={[
-                              {
-                                label: "Eco (0.25x)",
-                                value: "0.25",
-                              },
-                              {
-                                label: "Low (0.5x)",
-                                value: "0.5",
-                              },
-                              {
-                                label: "Standard (1x)",
-                                value: "1",
-                              },
-                              {
-                                label: "High (1.5x)",
-                                value: "1.5",
-                              },
-                              {
-                                label: "Ultra (2x)",
-                                value: "2",
-                              },
+                              { label: "Eco (0.25x)", value: "0.25" },
+                              { label: "Low (0.5x)", value: "0.5" },
+                              { label: "Standard (1x)", value: "1" },
+                              { label: "High (1.5x)", value: "1.5" },
+                              { label: "Ultra (2x)", value: "2" },
                             ]}
-                          ></Select>
+                          />
                         </>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="violet"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isFileShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconFile />}
-                          >
-                            File
-                          </Button>
-                        )}
                       {this.state.uploadController && (
                         <Button
+                          size="xs"
                           color="red"
                           onClick={() => {
                             this.state.uploadController?.abort();
                           }}
-                          leftSection={<IconX />}
+                          leftSection={<IconX size={14} />}
                         >
                           Stop Convert
                         </Button>
                       )}
-                      {false && (
-                        <SearchComponent
-                          setMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          type={"youtube"}
-                          setShowMultiSelect={this.setMultiSelectModal}
-                          setFileSelection={this.setFileSelection}
-                          disabled={!this.haveLock()}
-                        />
-                      )}
-                      {Boolean(this.context.streamPath) && (
-                        <SearchComponent
-                          setMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          type={"stream"}
-                          setShowMultiSelect={this.setMultiSelectModal}
-                          setFileSelection={this.setFileSelection}
-                          disabled={!this.haveLock()}
-                        />
-                      )}
-                      <Menu>
-                        <Menu.Target>
-                          <Button
-                            color="grey"
-                            leftSection={<IconList />}
-                            rightSection={
-                              <Badge circle>{playlist.length}</Badge>
-                            }
-                            className={styles.shareButton}
-                          >
-                            Playlist
-                          </Button>
-                        </Menu.Target>
-                        <Menu.Dropdown
-                          style={{
-                            overflowY:
-                              playlist.length > 0 ? "scroll" : undefined,
-                            maxHeight: 400,
-                            maxWidth: isMobile() ? 400 : 600,
-                          }}
-                        >
-                          {playlist.length === 0 && (
-                            <Menu.Item disabled>
-                              There are no items in the playlist.
-                            </Menu.Item>
-                          )}
-                          {playlist.map(
-                            (item: PlaylistVideo, index: number) => {
-                              if (Boolean(item.img)) {
-                                item.type = "youtube";
-                              }
-                              return (
-                                <Menu.Item key={index}>
-                                  <ChatVideoCard
-                                    video={item}
-                                    index={index}
-                                    controls
-                                    onPlay={this.roomPlaylistPlay}
-                                    onPlayNext={(index) => {
-                                      this.roomPlaylistMove(index, 0);
-                                    }}
-                                    onRemove={(index) => {
-                                      this.roomPlaylistDelete(index);
-                                    }}
-                                    disabled={!this.haveLock()}
-                                  />
-                                </Menu.Item>
-                              );
-                            },
-                          )}
-                        </Menu.Dropdown>
-                      </Menu>
                     </div>
-                  </React.Fragment>
-                )}
+                  )}
                 <div style={{ flexGrow: 1, position: "relative" }}>
                   <div className={styles.playerContainer}>
                     {!this.state.isAutoPlayable && this.state.roomMedia && (
@@ -2513,7 +2408,12 @@ export class App extends React.Component<AppProps, AppState> {
                             </div>
                           )}
                           {!this.state.loading && !this.state.roomMedia && (
-                            <EmptyWatchState haveLock={this.haveLock()} />
+                            <EmptyWatchState
+                              haveLock={this.haveLock()}
+                              onOpenAddMedia={() =>
+                                this.setState({ isQuickAddOpen: true })
+                              }
+                            />
                           )}
                           {!this.state.loading &&
                             this.state.nonPlayableMedia && (
@@ -2596,6 +2496,51 @@ export class App extends React.Component<AppProps, AppState> {
                           " connections"}
                       </div>
                     )}
+
+                    <MediaDock
+                      haveLock={this.haveLock()}
+                      onOpenScreenShare={() =>
+                        this.setState({ isScreenShareModalOpen: true })
+                      }
+                      onOpenVBrowser={() =>
+                        this.setState({ isVBrowserModalOpen: true })
+                      }
+                      onOpenFileShare={() =>
+                        this.setState({ isFileShareModalOpen: true })
+                      }
+                      onOpenQuickAdd={() =>
+                        this.setState({ isQuickAddOpen: true })
+                      }
+                      playlist={playlist}
+                      onPlayPlaylistItem={this.roomPlaylistPlay}
+                      onDeletePlaylistItem={this.roomPlaylistDelete}
+                      onMovePlaylistItem={(from, to) =>
+                        this.roomPlaylistMove(from, to)
+                      }
+                      isScreenSharing={Boolean(this.localStreamToPublish)}
+                      onStopScreenShare={this.stopPublishingLocalStream}
+                      isPlayingVBrowser={this.playingVBrowser()}
+                      onStopVBrowser={this.stopVBrowser}
+                      isLocked={Boolean(this.state.roomLock)}
+                      onToggleLock={this.toggleLock}
+                      isFullScreen={this.state.fullScreen}
+                      onToggleFullScreen={() =>
+                        this.localFullScreen(!this.state.fullScreen)
+                      }
+                    />
+
+                    <QuickAdd
+                      roomSetMedia={this.roomSetMedia}
+                      playlistAdd={this.roomPlaylistAdd}
+                      roomMedia={this.state.roomMedia}
+                      getMediaDisplayName={this.getMediaDisplayName}
+                      mediaPath={this.state.mediaPath}
+                      disabled={!this.haveLock()}
+                      isOpen={this.state.isQuickAddOpen}
+                      onOpenChange={(open) =>
+                        this.setState({ isQuickAddOpen: open })
+                      }
+                    />
                   </div>
                 </div>
                 {this.state.roomMedia && controls}
@@ -2726,6 +2671,48 @@ export class App extends React.Component<AppProps, AppState> {
                   />
                 </Tabs.Panel>
               </Tabs>
+              <div
+                style={{
+                  marginTop: "8px",
+                  padding: "10px 14px",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-lg)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+                onClick={this.handleCopyRoomLink}
+                title="Click to copy room link"
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <IconLink size={16} color="var(--color-violet)" />
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    {this.state.copiedRoomLink
+                      ? "Room link copied!"
+                      : "Copy room link"}
+                  </span>
+                </div>
+                {this.state.copiedRoomLink ? (
+                  <IconCheck size={16} color="var(--color-live)" />
+                ) : (
+                  <IconCopy size={16} color="var(--text-muted)" />
+                )}
+              </div>
             </div>
           </div>
         }

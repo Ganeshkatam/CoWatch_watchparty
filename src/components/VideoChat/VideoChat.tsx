@@ -14,13 +14,14 @@ import { UserMenu } from "../UserMenu/UserMenu";
 import { MetadataContext } from "../../MetadataContext";
 import {
   IconCheck,
+  IconChevronRight,
   IconDotsVertical,
   IconMicrophone,
-  IconScreenShare,
   IconUserPlus,
   IconVideo,
   IconX,
 } from "@tabler/icons-react";
+import styles from "./VideoChat.module.css";
 
 interface VideoChatProps {
   socket: Socket;
@@ -192,7 +193,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     if (!ourStream) return;
     const videoTrack = ourStream.getVideoTracks()[0];
-    
+
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
     } else {
@@ -217,7 +218,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     if (!ourStream) return;
     const audioTrack = ourStream.getAudioTracks()[0];
-    
+
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
     } else {
@@ -326,24 +327,10 @@ export class VideoChat extends React.Component<VideoChatProps> {
       this.props;
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
-    const videoChatSize = participants.length > 2 ? 140 : 180;
-    const videoChatContentStyle: React.CSSProperties = {
-      height: videoChatSize,
-      width: videoChatSize,
-      objectFit: "cover",
-      position: "relative",
-    };
     const selfId = getOrCreateClientId();
+
     return (
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          gap: "4px",
-          padding: "4px",
-        }}
-      >
+      <div className={styles.container}>
         {participants.map((p) => {
           const isSelf = p.id === selfId;
           const displayName =
@@ -360,253 +347,154 @@ export class VideoChat extends React.Component<VideoChatProps> {
           const userPhoto = rawPhoto || fallbackPhoto;
 
           return (
-            <div key={p.id}>
-              <div
-                style={{
-                  position: "relative",
-                  width: videoChatSize,
-                  height: videoChatSize,
-                  backgroundColor: "var(--bg-elevated)",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-subtle)",
-                  overflow: "hidden",
-                }}
-              >
-                <div>
-                  <UserMenu
-                    displayName={displayName}
-                    disabled={
-                      !Boolean(owner && owner === this.context.user?.id)
-                    }
-                    socket={socket}
-                    userToManage={p.id}
-                    trigger={
-                      <IconDotsVertical
-                        style={{
-                          position: "absolute",
-                          right: 0,
-                          top: 0,
-                          cursor: "pointer",
-                          zIndex: 1,
-                          visibility: Boolean(
-                            owner && owner === this.context.user?.id,
-                          )
-                            ? "visible"
-                            : "hidden",
-                        }}
-                      />
-                    }
+            <div key={p.id} className={styles.participantCard}>
+              <div className={styles.avatarContainer}>
+                {ourStream && p.isVideoChat ? (
+                  <video
+                    ref={(el) => {
+                      if (el) {
+                        videoRefs[p.id] = el;
+                      }
+                    }}
+                    className={styles.avatarVideo}
+                    style={{
+                      transform: `scaleX(${p.id === selfId ? "-1" : "1"})`,
+                    }}
+                    autoPlay
+                    muted={p.id === selfId}
+                    data-id={p.id}
                   />
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      gap: "4px",
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      zIndex: 1,
+                ) : (
+                  <img
+                    className={styles.avatarImg}
+                    src={userPhoto}
+                    alt={displayName}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (target.src !== fallbackPhoto) {
+                        target.src = fallbackPhoto;
+                      }
                     }}
-                  >
-                    {!ourStream && p.id === selfId && (
-                      <Button
-                        size="xs"
-                        color={"purple"}
-                        onClick={this.setupWebRTC}
-                        leftSection={<IconVideo />}
-                      >
-                        Join
-                      </Button>
-                    )}
-                    {ourStream && p.id === selfId && (
-                      <Button
-                        size="xs"
-                        color={"red"}
-                        onClick={this.stopWebRTC}
-                        leftSection={<IconX />}
-                      >
-                        Leave
-                      </Button>
-                    )}
-                    {ourStream && p.id === selfId && (
-                      <>
-                        <ActionIcon
-                          color={this.getVideoWebRTC() ? "green" : "red"}
-                          onClick={this.toggleVideoWebRTC}
-                        >
-                          <IconVideo />
-                        </ActionIcon>
-                        <ActionIcon
-                          color={this.getAudioWebRTC() ? "green" : "red"}
-                          onClick={this.toggleAudioWebRTC}
-                        >
-                          <IconMicrophone />
-                        </ActionIcon>
-                      </>
-                    )}
-                    {p.id !== selfId && (
-                      <>
-                        {p.isVideoChat && <IconVideo color={softWhite} />}
-                        {p.isVideoChat && (
-                          <IconMicrophone
-                            color={p.isMuted ? "red" : softWhite}
-                          />
-                        )}
-                      </>
-                    )}
-                    {p.isScreenShare && <IconScreenShare color={softWhite} />}
-                  </div>
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: "4px",
-                      left: "0px",
-                      width: "100%",
-                      backgroundColor: "rgba(0,0,0,0)",
-                      color: softWhite,
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      display: "flex",
-                      zIndex: 1,
-                    }}
-                  >
-                    <div
-                      title={displayName}
-                      style={{
-                        backdropFilter: "brightness(80%)",
-                        padding: "4px",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        display: "inline-block",
-                      }}
-                    >
-                      {displayName}
-                    </div>
-                    <div
-                      style={{
-                        backdropFilter: "brightness(60%)",
-                        padding: "4px",
-                        flexGrow: 1,
-                        display: "flex",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {formatTimestamp(tsMap[p.id] || 0)}{" "}
-                      {/* {this.context.beta &&
-                          `(${(
-                            (tsMap[p.id] - this.props.getLeaderTime()) *
-                            1000
-                          ).toFixed(0)}ms)`} */}
-                    </div>
-                  </div>
-                  {ourStream && p.isVideoChat ? (
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          videoRefs[p.id] = el;
-                        }
-                      }}
-                      style={{
-                        ...videoChatContentStyle,
-                        // mirror the video if it's our stream. this style mimics Zoom where your
-                        // video is mirrored only for you)
-                        transform: `scaleX(${p.id === selfId ? "-1" : "1"})`,
-                      }}
-                      autoPlay
-                      muted={p.id === selfId}
-                      data-id={p.id}
-                    />
-                  ) : (
-                    <img
-                      style={videoChatContentStyle}
-                      src={userPhoto}
-                      alt={displayName}
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        if (target.src !== fallbackPhoto) {
-                          target.src = fallbackPhoto;
-                        }
-                      }}
-                    />
-                  )}
+                  />
+                )}
+              </div>
+
+              <div className={styles.meta}>
+                <div className={styles.nameRow}>
+                  <span className={styles.nameText} title={displayName}>
+                    {displayName}
+                  </span>
+                  {isSelf && <span className={styles.youBadge}>You</span>}
                 </div>
+                <div className={styles.statusRow}>
+                  <div className={styles.statusDot} />
+                  <span className={styles.statusText}>
+                    Watching {tsMap[p.id] ? `(${formatTimestamp(tsMap[p.id])})` : ""}
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.actions}>
+                {isSelf && !ourStream && (
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="violet"
+                    onClick={this.setupWebRTC}
+                    leftSection={<IconVideo size={13} />}
+                  >
+                    Join
+                  </Button>
+                )}
+                {isSelf && ourStream && (
+                  <>
+                    <ActionIcon
+                      size="sm"
+                      color={this.getVideoWebRTC() ? "green" : "red"}
+                      variant="light"
+                      onClick={this.toggleVideoWebRTC}
+                      title="Toggle camera"
+                    >
+                      <IconVideo size={14} />
+                    </ActionIcon>
+                    <ActionIcon
+                      size="sm"
+                      color={this.getAudioWebRTC() ? "green" : "red"}
+                      variant="light"
+                      onClick={this.toggleAudioWebRTC}
+                      title="Toggle mic"
+                    >
+                      <IconMicrophone size={14} />
+                    </ActionIcon>
+                    <ActionIcon
+                      size="sm"
+                      color="red"
+                      variant="subtle"
+                      onClick={this.stopWebRTC}
+                      title="Leave call"
+                    >
+                      <IconX size={14} />
+                    </ActionIcon>
+                  </>
+                )}
+                <UserMenu
+                  displayName={displayName}
+                  disabled={!Boolean(owner && owner === this.context.user?.id)}
+                  socket={socket}
+                  userToManage={p.id}
+                  trigger={
+                    <button
+                      type="button"
+                      className={styles.menuTrigger}
+                      title="User options"
+                    >
+                      <IconDotsVertical size={16} />
+                    </button>
+                  }
+                />
               </div>
             </div>
           );
         })}
+
         <div
+          className={styles.inviteCard}
           onClick={this.handleCopyInvite}
-          style={{
-            position: "relative",
-            width: videoChatSize,
-            height: videoChatSize,
-            backgroundColor: "rgba(255, 255, 255, 0.02)",
-            borderRadius: "8px",
-            border: "2px dashed var(--border-subtle)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            padding: "12px",
-            cursor: "pointer",
-            textAlign: "center",
-            transition: "all 0.2s ease",
-            boxSizing: "border-box",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-violet, #8b5cf6)";
-            e.currentTarget.style.backgroundColor = "rgba(139, 92, 246, 0.05)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--border-subtle)";
-            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.02)";
-          }}
+          role="button"
+          tabIndex={0}
+          title="Click to copy invite link"
         >
           <div
+            className={styles.inviteIconBadge}
             style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "50%",
               backgroundColor: this.state.copied
                 ? "rgba(16, 185, 129, 0.15)"
                 : "var(--bg-surface)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.2s ease",
+              color: this.state.copied ? "var(--color-live)" : "var(--text-secondary)",
             }}
           >
             {this.state.copied ? (
-              <IconCheck size={22} color="var(--color-green, #10b981)" />
+              <IconCheck size={18} />
             ) : (
-              <IconUserPlus size={22} color="var(--text-secondary)" />
+              <IconUserPlus size={18} />
             )}
           </div>
-          <div>
-            <div
+          <div className={styles.inviteMeta}>
+            <span
+              className={styles.inviteTitle}
               style={{
-                fontSize: "12px",
-                fontWeight: 600,
-                color: this.state.copied
-                  ? "var(--color-green, #10b981)"
-                  : "var(--text-primary)",
+                color: this.state.copied ? "var(--color-live)" : "var(--text-primary)",
               }}
             >
-              {this.state.copied ? "Link Copied!" : "Invite Friend"}
-            </div>
-            <div
-              style={{
-                fontSize: "10px",
-                color: "var(--text-muted)",
-                marginTop: "2px",
-              }}
-            >
-              {this.state.copied ? "Share with friends" : "Click to copy link"}
-            </div>
+              {this.state.copied ? "Link Copied!" : "Invite people"}
+            </span>
+            <span className={styles.inviteSubtitle}>
+              {this.state.copied
+                ? "Share with your friends to join"
+                : "Share a link to bring friends into the room"}
+            </span>
           </div>
+          <IconChevronRight size={16} color="var(--text-muted)" />
         </div>
       </div>
     );
