@@ -1047,7 +1047,8 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.roomLock) {
       return true;
     }
-    return this.context.user?.id === this.state.roomLock;
+    const isOwner = Boolean(this.state.owner && this.context.user?.id === this.state.owner);
+    return this.context.user?.id === this.state.roomLock || isOwner;
   };
 
   setIsChatDisabled = (val: boolean) => this.setState({ isChatDisabled: val });

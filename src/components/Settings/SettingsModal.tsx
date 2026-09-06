@@ -46,6 +46,7 @@ export const SettingsModal = ({
   modalOpen,
   setModalOpen,
   roomLock,
+  setRoomLock,
   socket,
   owner,
   roomId,
@@ -214,8 +215,7 @@ export const SettingsModal = ({
         else if (passwordAction === "change") setPasscode("true");
 
         if (draftLock !== Boolean(roomLock)) {
-          // Send lock command
-          if (draftLock) socket.emit("CMD:lock", "1");
+          setRoomLock(draftLock);
         }
       }
 

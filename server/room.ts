@@ -200,6 +200,9 @@ export class Room {
         const passcode = (socket.handshake.query?.passcode as string) || "";
         const roomPasscode = result.rows[0]?.passcode;
         const owner_id = result.rows[0]?.owner_id;
+        if (owner_id) {
+          this.owner_id = owner_id;
+        }
 
         const uid = socket.handshake.auth?.uid;
         const token = socket.handshake.auth?.token;
@@ -357,9 +360,10 @@ export class Room {
         return;
       }
 
-      // Check if this socket matches this.lock UID
+      // Check if this socket matches this.lock UID or is the room owner
       const validateLock = () => {
-        return !this.lock || socket.uid === this.lock;
+        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
+        return !this.lock || socket.uid === this.lock || isOwner;
       };
 
       // Check if this room is expired
@@ -499,7 +503,14 @@ export class Room {
         validateLock() && validateNotExpired() && this.addSubtitles(String(data));
       });
       socket.on("CMD:lock", async (data: unknown) => {
-        socket.emit("errorMessage", "Room settings cannot be changed while the room is active");
+        if (!validateNotExpired()) return;
+        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
+        const isCurrentLockHolder = Boolean(this.lock && socket.uid === this.lock);
+        if (!this.lock || isOwner || isCurrentLockHolder) {
+          await this.lockRoom(socket, data);
+        } else {
+          socket.emit("errorMessage", "Only the room owner can change the lock");
+        }
       });
       socket.on("CMD:askHost", () => {
         validateNotExpired() && socket.emit("REC:host", this.getHostState());
