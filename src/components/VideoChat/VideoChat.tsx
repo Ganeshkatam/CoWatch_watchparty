@@ -17,8 +17,11 @@ import {
   IconChevronRight,
   IconDotsVertical,
   IconMicrophone,
+  IconMicrophoneOff,
+  IconScreenShare,
   IconUserPlus,
   IconVideo,
+  IconVideoOff,
   IconX,
 } from "@tabler/icons-react";
 import styles from "./VideoChat.module.css";
@@ -132,8 +135,8 @@ export class VideoChat extends React.Component<VideoChatProps> {
   setupWebRTC = async () => {
     let stream = new MediaStream([]);
 
-    const prefCameraOn = this.context.profile.pref_camera_on;
-    const prefMicOn = this.context.profile.pref_mic_on;
+    const prefCameraOn = this.context.profile?.pref_camera_on ?? true;
+    const prefMicOn = this.context.profile?.pref_mic_on ?? true;
 
     if (prefCameraOn || prefMicOn) {
       try {
@@ -161,6 +164,8 @@ export class VideoChat extends React.Component<VideoChatProps> {
     // alert server we've joined video chat
     this.socket.emit("CMD:joinVideo");
     this.emitUserMute();
+    this.updateWebRTC();
+    this.forceUpdate();
   };
 
   stopWebRTC = () => {
@@ -176,6 +181,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       delete videoPCs[key];
     });
     this.socket.emit("CMD:leaveVideo");
+    this.forceUpdate();
   };
   addTrackToAllPCs = (track: MediaStreamTrack) => {
     const ourStream = window.cowatch.ourStream;
@@ -346,27 +352,36 @@ export class VideoChat extends React.Component<VideoChatProps> {
           );
           const userPhoto = rawPhoto || fallbackPhoto;
 
+          const isSelfInCall = Boolean(isSelf && ourStream);
+          const isSelfVideoActive = Boolean(isSelfInCall && this.getVideoWebRTC());
+          const isPeerInCall = Boolean(!isSelf && p.isVideoChat);
+          const showVideoFeed = isSelf ? isSelfVideoActive : isPeerInCall;
+
           return (
-            <div key={p.id} className={styles.participantCard}>
-              <div className={styles.avatarContainer}>
-                {ourStream && p.isVideoChat ? (
-                  <video
-                    ref={(el) => {
-                      if (el) {
-                        videoRefs[p.id] = el;
+            <div key={p.id} className={styles.videoTile}>
+              {showVideoFeed ? (
+                <video
+                  ref={(el) => {
+                    if (el) {
+                      videoRefs[p.id] = el;
+                      if (isSelf && ourStream && el.srcObject !== ourStream) {
+                        el.srcObject = ourStream;
                       }
-                    }}
-                    className={styles.avatarVideo}
-                    style={{
-                      transform: `scaleX(${p.id === selfId ? "-1" : "1"})`,
-                    }}
-                    autoPlay
-                    muted={p.id === selfId}
-                    data-id={p.id}
-                  />
-                ) : (
+                    }
+                  }}
+                  className={styles.videoElement}
+                  style={{
+                    transform: `scaleX(${isSelf ? "-1" : "1"})`,
+                  }}
+                  autoPlay
+                  playsInline
+                  muted={isSelf}
+                  data-id={p.id}
+                />
+              ) : (
+                <div className={styles.avatarPlaceholder}>
                   <img
-                    className={styles.avatarImg}
+                    className={styles.largeAvatar}
                     src={userPhoto}
                     alt={displayName}
                     onError={(e) => {
@@ -376,67 +391,38 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       }
                     }}
                   />
-                )}
-              </div>
+                  {isSelf && !ourStream && (
+                    <Button
+                      size="xs"
+                      variant="gradient"
+                      gradient={{ from: "violet", to: "indigo", deg: 45 }}
+                      radius="md"
+                      onClick={this.setupWebRTC}
+                      leftSection={<IconVideo size={14} />}
+                      style={{ marginTop: "4px" }}
+                    >
+                      Join Video Call
+                    </Button>
+                  )}
+                  {isSelf && ourStream && !isSelfVideoActive && (
+                    <span className={styles.cameraOffNotice}>Camera is turned off</span>
+                  )}
+                  {!isSelf && (
+                    <span className={styles.peerStatusNotice}>
+                      {p.isVideoChat ? "Camera is turned off" : "Watching"}
+                    </span>
+                  )}
+                </div>
+              )}
 
-              <div className={styles.meta}>
-                <div className={styles.nameRow}>
-                  <span className={styles.nameText} title={displayName}>
-                    {displayName}
-                  </span>
+              {/* Top Bar: Participant Name and Options Menu */}
+              <div className={styles.tileTopBar}>
+                <div className={styles.nameBadge} title={displayName}>
+                  <div className={styles.statusDot} />
+                  <span className={styles.nameText}>{displayName}</span>
                   {isSelf && <span className={styles.youBadge}>You</span>}
                 </div>
-                <div className={styles.statusRow}>
-                  <div className={styles.statusDot} />
-                  <span className={styles.statusText}>
-                    Watching {tsMap[p.id] ? `(${formatTimestamp(tsMap[p.id])})` : ""}
-                  </span>
-                </div>
-              </div>
 
-              <div className={styles.actions}>
-                {isSelf && !ourStream && (
-                  <Button
-                    size="compact-xs"
-                    variant="light"
-                    color="violet"
-                    onClick={this.setupWebRTC}
-                    leftSection={<IconVideo size={13} />}
-                  >
-                    Join
-                  </Button>
-                )}
-                {isSelf && ourStream && (
-                  <>
-                    <ActionIcon
-                      size="sm"
-                      color={this.getVideoWebRTC() ? "green" : "red"}
-                      variant="light"
-                      onClick={this.toggleVideoWebRTC}
-                      title="Toggle camera"
-                    >
-                      <IconVideo size={14} />
-                    </ActionIcon>
-                    <ActionIcon
-                      size="sm"
-                      color={this.getAudioWebRTC() ? "green" : "red"}
-                      variant="light"
-                      onClick={this.toggleAudioWebRTC}
-                      title="Toggle mic"
-                    >
-                      <IconMicrophone size={14} />
-                    </ActionIcon>
-                    <ActionIcon
-                      size="sm"
-                      color="red"
-                      variant="subtle"
-                      onClick={this.stopWebRTC}
-                      title="Leave call"
-                    >
-                      <IconX size={14} />
-                    </ActionIcon>
-                  </>
-                )}
                 <UserMenu
                   displayName={displayName}
                   disabled={!Boolean(owner && owner === this.context.user?.id)}
@@ -447,11 +433,105 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       type="button"
                       className={styles.menuTrigger}
                       title="User options"
+                      style={{
+                        visibility: Boolean(owner && owner === this.context.user?.id)
+                          ? "visible"
+                          : "hidden",
+                      }}
                     >
-                      <IconDotsVertical size={16} />
+                      <IconDotsVertical size={15} />
                     </button>
                   }
                 />
+              </div>
+
+              {/* Bottom Bar: Timestamp and Video/Audio Controls */}
+              <div className={styles.tileBottomBar}>
+                <div className={styles.timeBadge}>
+                  Watching {tsMap[p.id] ? formatTimestamp(tsMap[p.id]) : "0:00"}
+                </div>
+
+                <div className={styles.controlsBadge}>
+                  {isSelf && ourStream && (
+                    <div className={styles.controlPill}>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color={this.getVideoWebRTC() ? "green" : "red"}
+                        variant="filled"
+                        onClick={this.toggleVideoWebRTC}
+                        title={this.getVideoWebRTC() ? "Turn camera off" : "Turn camera on"}
+                      >
+                        {this.getVideoWebRTC() ? (
+                          <IconVideo size={13} />
+                        ) : (
+                          <IconVideoOff size={13} />
+                        )}
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color={this.getAudioWebRTC() ? "green" : "red"}
+                        variant="filled"
+                        onClick={this.toggleAudioWebRTC}
+                        title={this.getAudioWebRTC() ? "Mute mic" : "Unmute mic"}
+                      >
+                        {this.getAudioWebRTC() ? (
+                          <IconMicrophone size={13} />
+                        ) : (
+                          <IconMicrophoneOff size={13} />
+                        )}
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color="red"
+                        variant="subtle"
+                        onClick={this.stopWebRTC}
+                        title="Leave video call"
+                      >
+                        <IconX size={13} />
+                      </ActionIcon>
+                    </div>
+                  )}
+
+                  {isSelf && !ourStream && (
+                    <ActionIcon
+                      size="sm"
+                      radius="sm"
+                      color="violet"
+                      variant="light"
+                      onClick={this.setupWebRTC}
+                      title="Join video call"
+                    >
+                      <IconVideo size={13} />
+                    </ActionIcon>
+                  )}
+
+                  {!isSelf && (
+                    <div className={styles.peerIndicators}>
+                      {p.isVideoChat && (
+                        <div className={styles.indicatorItem} title="Camera connected">
+                          <IconVideo size={13} color="var(--color-live)" />
+                        </div>
+                      )}
+                      {p.isMuted ? (
+                        <div className={styles.indicatorItem} title="Microphone muted">
+                          <IconMicrophoneOff size={13} color="var(--color-danger, #EF4444)" />
+                        </div>
+                      ) : p.isVideoChat ? (
+                        <div className={styles.indicatorItem} title="Microphone on">
+                          <IconMicrophone size={13} color="var(--color-live)" />
+                        </div>
+                      ) : null}
+                      {p.isScreenShare && (
+                        <div className={styles.indicatorItem} title="Sharing screen">
+                          <IconScreenShare size={13} color="#60A5FA" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           );

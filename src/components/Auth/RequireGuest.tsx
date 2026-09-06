@@ -1,12 +1,22 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Redirect } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
 import { Loader, Center } from "@mantine/core";
 
 export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
   const { user } = useContext(MetadataContext);
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (user === undefined) {
+  useEffect(() => {
+    if (user === undefined) {
+      const timer = setTimeout(() => {
+        setTimedOut(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
+
+  if (user === undefined && !timedOut) {
     return (
       <Center style={{ minHeight: "100vh", width: "100%" }}>
         <Loader color="violet" size="lg" />
@@ -14,7 +24,7 @@ export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  if (user === null) {
+  if (user === null || timedOut) {
     return <>{children}</>;
   }
 

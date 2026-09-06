@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Alert, Loader, Menu, Overlay, Select, Title, Tabs } from "@mantine/core";
+import { Alert, Loader, Menu, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -275,6 +275,7 @@ export class App extends React.Component<AppProps, AppState> {
   consumerConn?: RTCPeerConnection;
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
+  startingTimer: any = null;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
   Player = () => {
@@ -317,6 +318,10 @@ export class App extends React.Component<AppProps, AppState> {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
     window.clearInterval(this.heartbeat);
+    if (this.startingTimer) {
+      window.clearTimeout(this.startingTimer);
+      this.startingTimer = null;
+    }
   }
 
   init = async () => {
@@ -357,109 +362,128 @@ export class App extends React.Component<AppProps, AppState> {
 
   join = async (roomId: string) => {
     const cleanRoomId = (roomId || "").trim();
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
-    if (urlPass) {
-      addAndSavePasscode(cleanRoomId, urlPass);
-    }
-    let passcode = getSavedPasscodes()[cleanRoomId] ?? "";
-
-    try {
-      const access = await this.checkRoomAccess(cleanRoomId);
-
-      if (access.requiresPasscode && !passcode && !access.isOwner) {
-        // Double-check: wait for auth to settle in case session was still loading
-        const retrySession = await safeGetSession(1000);
-        const retryUser = retrySession?.data?.session?.user;
-        const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
-        if (!retryIsOwner) {
-          this.setState({ isErrorAuth: true, state: "connected" });
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Room access verification error:", e);
+    if (!cleanRoomId) {
+      this.setState({ state: "connected", overlayMsg: "Invalid room identifier." });
+      return;
     }
 
-    let shard = "";
-    try {
-      const response = await fetch(serverPath + "/resolveShard/" + encodeURIComponent(cleanRoomId), {
-        signal: AbortSignal.timeout(1500),
-      });
-      shard = (await response.text()) || "";
-    } catch (e) {
-      console.warn("Shard resolution error, defaulting to shard 0:", e);
+    if (this.startingTimer) {
+      window.clearTimeout(this.startingTimer);
     }
-
-    let token: string | undefined;
-    let uid: string | undefined;
-    try {
-      const sessionData = await safeGetSession(1000);
-      token = sessionData?.data?.session?.access_token;
-      uid = sessionData?.data?.session?.user?.id;
-    } catch (e) {
-      console.warn("Session retrieval error:", e);
-    }
-
-    // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
-    const safeNamespace = encodeURIComponent(cleanRoomId);
-    const socket = io(serverPath + "/" + safeNamespace, {
-      transports: ["websocket", "polling"],
-      query: {
-        clientId,
-        passcode,
-        shard,
-        roomId: cleanRoomId,
-      },
-      auth: {
-        sessionId: getOrCreateSessionId(),
-        uid,
-        token,
-      },
-    });
-    this.socket = socket;
-
-    // Failsafe timer: transition away from starting within 2.5s so room UI never hangs
-    const startingTimer = setTimeout(() => {
+    this.startingTimer = window.setTimeout(() => {
       if (this.state.state === "starting") {
+        console.warn("Room connection starting state timed out (2500ms); forcing connected state.");
         this.setState({ state: "connected" });
       }
     }, 2500);
 
-    socket.on("connect", async () => {
-      clearTimeout(startingTimer);
-      this.setState({
-        state: "connected",
-        overlayMsg: "",
-        errorMessage: "",
-        successMessage: "",
-        warningMessage: "",
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
+      if (urlPass) {
+        addAndSavePasscode(cleanRoomId, urlPass);
+      }
+      let passcode = getSavedPasscodes()[cleanRoomId] ?? "";
+
+      try {
+        const access = await this.checkRoomAccess(cleanRoomId);
+
+        if (access.requiresPasscode && !passcode && !access.isOwner) {
+          // Double-check: wait for auth to settle in case session was still loading
+          const retrySession = await safeGetSession(1000);
+          const retryUser = retrySession?.data?.session?.user;
+          const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
+          if (!retryIsOwner) {
+            if (this.startingTimer) {
+              window.clearTimeout(this.startingTimer);
+              this.startingTimer = null;
+            }
+            this.setState({ isErrorAuth: true, state: "connected" });
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Room access verification error:", e);
+      }
+
+      let shard = "";
+      try {
+        const response = await fetch(serverPath + "/resolveShard/" + encodeURIComponent(cleanRoomId), {
+          signal: AbortSignal.timeout(1500),
+        });
+        shard = (await response.text()) || "";
+      } catch (e) {
+        console.warn("Shard resolution error, defaulting to shard 0:", e);
+      }
+
+      let token: string | undefined;
+      let uid: string | undefined;
+      try {
+        const sessionData = await safeGetSession(1000);
+        token = sessionData?.data?.session?.access_token;
+        uid = sessionData?.data?.session?.user?.id;
+      } catch (e) {
+        console.warn("Session retrieval error:", e);
+      }
+
+      // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
+      const safeNamespace = encodeURIComponent(cleanRoomId);
+      const socket = io(serverPath + "/" + safeNamespace, {
+        transports: ["websocket", "polling"],
+        query: {
+          clientId,
+          passcode,
+          shard,
+          roomId: cleanRoomId,
+        },
+        auth: {
+          sessionId: getOrCreateSessionId(),
+          uid,
+          token,
+        },
       });
-      // Use the name in our state, generate one if empty
-      const currentName = this.context.displayName || this.state.myName || (await generateName());
-      this.updateName(currentName);
-      const currentPicture = this.context.avatarUrl || this.state.myPicture;
-      if (currentPicture) {
-        this.updatePicture(currentPicture);
-      }
-      this.loadSignInData(this.context.user);
-      // Re-join video chat if we were in it before the reconnection
-      if (window.cowatch.ourStream) {
-        socket.emit("CMD:joinVideo");
-      }
-    });
-    socket.on("connect_error", (err: any) => {
-      console.error("Socket connect_error:", err);
-      clearTimeout(startingTimer);
-      this.setState({ state: "connected" });
-      if (err.message === "Invalid namespace") {
-        this.setState({ overlayMsg: "Couldn't load this room." });
-      } else if (err.message === "passcode" || err.message === "password") {
-        this.setState({ isErrorAuth: true });
-      } else {
-        this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
-      }
-    });
+      this.socket = socket;
+
+      socket.on("connect", async () => {
+        if (this.startingTimer) {
+          window.clearTimeout(this.startingTimer);
+          this.startingTimer = null;
+        }
+        this.setState({
+          state: "connected",
+          overlayMsg: "",
+          errorMessage: "",
+          successMessage: "",
+          warningMessage: "",
+        });
+        // Use the name in our state, generate one if empty
+        const currentName = this.context.displayName || this.state.myName || (await generateName());
+        this.updateName(currentName);
+        const currentPicture = this.context.avatarUrl || this.state.myPicture;
+        if (currentPicture) {
+          this.updatePicture(currentPicture);
+        }
+        this.loadSignInData(this.context.user);
+        // Re-join video chat if we were in it before the reconnection
+        if (window.cowatch.ourStream) {
+          socket.emit("CMD:joinVideo");
+        }
+      });
+      socket.on("connect_error", (err: any) => {
+        console.error("Socket connect_error:", err);
+        if (this.startingTimer) {
+          window.clearTimeout(this.startingTimer);
+          this.startingTimer = null;
+        }
+        this.setState({ state: "connected" });
+        if (err.message === "Invalid namespace") {
+          this.setState({ overlayMsg: "Couldn't load this room." });
+        } else if (err.message === "passcode" || err.message === "password") {
+          this.setState({ isErrorAuth: true });
+        } else {
+          this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
+        }
+      });
     socket.on("disconnect", (reason) => {
       if (reason === "io server disconnect") {
         // the disconnection was initiated by the server, you need to reconnect manually
@@ -966,6 +990,14 @@ export class App extends React.Component<AppProps, AppState> {
         this.socket.emit("CMD:ts", toSend);
       }
     }, 1000);
+    } catch (criticalErr) {
+      console.error("Critical error in join:", criticalErr);
+      if (this.startingTimer) {
+        window.clearTimeout(this.startingTimer);
+        this.startingTimer = null;
+      }
+      this.setState({ state: "connected", overlayMsg: "Failed to connect to room." });
+    }
   };
 
   setFileSelection = (
@@ -1009,6 +1041,10 @@ export class App extends React.Component<AppProps, AppState> {
     // This code loads the IFrame Player API code asynchronously.
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
+    tag.onerror = () => {
+      console.warn("YouTube iframe API failed to load");
+      this.setState({ loading: false });
+    };
     document.body.append(tag);
     window.onYouTubeIframeAPIReady = () => {
       // Note: this fails silently if the element is not available
@@ -1021,7 +1057,7 @@ export class App extends React.Component<AppProps, AppState> {
             // We might have failed to play YT originally, ask for the current video again
             if (this.usingYoutube()) {
               console.log("requesting host data again after ytReady");
-              this.socket.emit("CMD:askHost");
+              this.socket?.emit("CMD:askHost");
             }
           },
           onStateChange: (e) => {
@@ -2179,6 +2215,39 @@ export class App extends React.Component<AppProps, AppState> {
           />
         )}
 
+        {this.state.state === "starting" && (
+          <Overlay
+            fixed
+            zIndex={2000}
+            backgroundOpacity={0.96}
+            color="var(--bg-app, #08090D)"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "18px",
+            }}
+          >
+            <Loader color="violet" size="lg" />
+            <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Title
+                order={3}
+                style={{
+                  color: "var(--text-main, #ffffff)",
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                Connecting to room...
+              </Title>
+              <Text c="dimmed" size="sm">
+                Synchronizing media stage and participants
+              </Text>
+            </div>
+          </Overlay>
+        )}
+
         {this.state.overlayMsg && <ErrorModal error={this.state.overlayMsg} />}
         <SettingsModal
           modalOpen={this.state.settingsModalOpen}
@@ -2431,7 +2500,7 @@ export class App extends React.Component<AppProps, AppState> {
                           id="loader"
                           className={`${styles.videoContent} ${styles.flexCenter}`}
                         >
-                          {this.state.loading && (
+                          {this.state.loading && (Boolean(this.state.roomMedia) || this.playingVBrowser()) && (
                             <div
                               className={styles.flexCenter}
                               style={{
@@ -2446,7 +2515,7 @@ export class App extends React.Component<AppProps, AppState> {
                               </div>
                             </div>
                           )}
-                          {!this.state.loading && !this.state.roomMedia && (
+                          {!this.state.roomMedia && (
                             <EmptyWatchState
                               haveLock={this.haveLock()}
                               onOpenAddMedia={() =>

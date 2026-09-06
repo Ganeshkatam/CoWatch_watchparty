@@ -84,7 +84,15 @@ export const VerifyEmail = () => {
     await supabase.auth.signOut();
   };
 
-  if (user === undefined) {
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    if (user === undefined) {
+      const timer = setTimeout(() => setTimedOut(true), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
+
+  if (user === undefined && !timedOut) {
     return (
       <Center style={{ minHeight: "100vh", width: "100%" }}>
         <Loader color="violet" size="lg" />
