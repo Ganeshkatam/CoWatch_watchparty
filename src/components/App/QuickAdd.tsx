@@ -58,23 +58,8 @@ export const QuickAdd: React.FC<QuickAddProps> = ({
   };
 
   return (
-    <>
-      <button
-        type="button"
-        className={styles.triggerBtn}
-        onClick={() => setOpen(true)}
-        disabled={disabled}
-        title="Open Quick Add (Cmd/Ctrl + K)"
-      >
-        <span className={styles.kbdBadge}>{isMac ? "⌘" : "Ctrl"} K</span>
-        <div className={styles.triggerText}>
-          <span className={styles.triggerTitle}>Quick add</span>
-          <span className={styles.triggerSub}>Paste a link or search</span>
-        </div>
-      </button>
-
-      <Modal
-        opened={isModalOpen}
+    <Modal
+      opened={isModalOpen}
         onClose={() => setOpen(false)}
         title={
           <div className={styles.modalHeader}>
@@ -114,6 +99,5 @@ export const QuickAdd: React.FC<QuickAddProps> = ({
           onClose={() => setOpen(false)}
         />
       </Modal>
-    </>
   );
 };

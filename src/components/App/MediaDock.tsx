@@ -65,6 +65,10 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 }) => {
   const [copied, setCopied] = React.useState(false);
 
+  const isMac =
+    typeof window !== "undefined" &&
+    navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
@@ -176,6 +180,22 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
+
+      {/* Quick Add Button */}
+      <button
+        type="button"
+        className={styles.dockBtn}
+        onClick={onOpenQuickAdd}
+        disabled={!haveLock}
+        title={
+          haveLock
+            ? `Quick Add media (${isMac ? "⌘K" : "Ctrl+K"})`
+            : "Controls locked by host"
+        }
+      >
+        <span className={styles.kbdBadge}>{isMac ? "⌘" : "Ctrl"} K</span>
+        <span>Quick add</span>
+      </button>
 
       {/* Playlist Button & Dropdown */}
       <Menu shadow="xl" width={340} position="top" offset={10}>
