@@ -12,7 +12,7 @@ import {
   IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
-import { Menu } from "@mantine/core";
+import { Menu, Tooltip } from "@mantine/core";
 import { SignInButton } from "./TopBar";
 import styles from "./RoomHeader.module.css";
 
@@ -26,6 +26,9 @@ interface RoomHeaderProps {
   isLocked?: boolean;
   onToggleLock?: () => void;
   haveLock?: boolean;
+  currentMedia?: string;
+  mediaDisplayName?: string;
+  onOpenQuickAdd?: () => void;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
@@ -38,6 +41,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   isLocked,
   onToggleLock,
   haveLock,
+  currentMedia,
+  mediaDisplayName,
+  onOpenQuickAdd,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -110,10 +116,43 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
         <div className={styles.divider} />
 
-        <div className={styles.liveBadge} title="Connected to room">
-          <div className={styles.liveDot} />
-          <span>Live Room</span>
-        </div>
+        <Tooltip
+          label={
+            currentMedia
+              ? `Now Playing: ${mediaDisplayName || currentMedia} (Click to change)`
+              : "Nothing playing (Click to add media)"
+          }
+          position="bottom"
+          openDelay={300}
+        >
+          <button
+            type="button"
+            className={`${styles.nowPlayingBadge} ${
+              currentMedia ? styles.nowPlayingActive : styles.nowPlayingIdle
+            }`}
+            onClick={onOpenQuickAdd}
+            title={
+              currentMedia
+                ? `Playing: ${mediaDisplayName || currentMedia}`
+                : "Add something to play"
+            }
+          >
+            {currentMedia ? (
+              <>
+                <div className={styles.playingDot} />
+                <span className={styles.nowPlayingLabel}>Playing:</span>
+                <span className={styles.nowPlayingTitle}>
+                  {mediaDisplayName || currentMedia}
+                </span>
+              </>
+            ) : (
+              <>
+                <div className={styles.idleDot} />
+                <span className={styles.idleText}>Nothing playing</span>
+              </>
+            )}
+          </button>
+        </Tooltip>
       </div>
 
       <div className={styles.rightSection}>

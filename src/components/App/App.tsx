@@ -26,7 +26,9 @@ import {
   getSavedPasscodes,
   addAndSavePasscode,
   getRoomUrl,
+  decodeEntities,
 } from "../../utils/utils";
+import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
 import { Chat, ChatComponent } from "../Chat/Chat";
 import { TopBar } from "../TopBar/TopBar";
@@ -2042,9 +2044,15 @@ export class App extends React.Component<AppProps, AppState> {
     if (!input) {
       return "";
     }
-    // Show the whole URL for youtube
-    if (this.usingYoutube()) {
-      return input;
+    // Check if in playlist
+    const playlistItem = this.state.playlist?.find((p) => p.url === input);
+    if (playlistItem?.name && playlistItem.name !== input) {
+      return decodeEntities(playlistItem.name);
+    }
+    // Check if in examples
+    const exampleItem = examples.find((e) => e.url === input);
+    if (exampleItem?.name && exampleItem.name !== input) {
+      return decodeEntities(exampleItem.name);
     }
     if (input.startsWith("screenshare://")) {
       const sharer = this.state.participants.find((user) => user.isScreenShare);
@@ -2080,6 +2088,19 @@ export class App extends React.Component<AppProps, AppState> {
         return displayName;
       }
     }
+    // Extract friendly filename from URL if possible
+    try {
+      if (isHttp(input)) {
+        const parsedUrl = new URL(input);
+        const segments = parsedUrl.pathname.split("/").filter(Boolean);
+        if (segments.length > 0) {
+          const lastSeg = segments[segments.length - 1];
+          if (lastSeg.includes(".")) {
+            return decodeURIComponent(lastSeg);
+          }
+        }
+      }
+    } catch {}
     return input;
   };
 
@@ -2331,6 +2352,9 @@ export class App extends React.Component<AppProps, AppState> {
             isLocked={Boolean(this.state.roomLock)}
             onToggleLock={this.toggleLock}
             haveLock={this.haveLock()}
+            currentMedia={this.state.roomMedia}
+            mediaDisplayName={this.getMediaDisplayName(this.state.roomMedia)}
+            onOpenQuickAdd={() => this.setState({ isQuickAddOpen: true })}
           />
         )}
         {

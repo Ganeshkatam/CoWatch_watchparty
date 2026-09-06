@@ -74,28 +74,83 @@
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-.liveBadge {
+.nowPlayingBadge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background-color: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #34D399;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 260px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+  background: transparent;
+  outline: none;
 }
 
-.liveDot {
+.nowPlayingActive {
+  background-color: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.28);
+  color: #C4B5FD;
+}
+
+.nowPlayingActive:hover {
+  background-color: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: #DDD6FE;
+}
+
+.nowPlayingIdle {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.nowPlayingIdle:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+}
+
+.playingDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #10B981;
-  box-shadow: 0 0 8px #10B981;
+  background-color: #A78BFA;
+  box-shadow: 0 0 8px #8B5CF6;
   animation: livePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
+}
+
+.idleDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.nowPlayingLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.nowPlayingTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: #EDE9FE;
+}
+
+.idleText {
+  white-space: nowrap;
+  font-size: 11.5px;
 }
 
 @keyframes livePulse {
