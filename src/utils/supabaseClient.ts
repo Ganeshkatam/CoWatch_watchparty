@@ -18,6 +18,11 @@ export const supabase: SupabaseClient =
 globalForSupabase.__supabase = supabase;
 
 export async function getAccessToken() {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token;
+  } catch (err) {
+    console.warn("Failed to get access token:", err);
+    return undefined;
+  }
 }
