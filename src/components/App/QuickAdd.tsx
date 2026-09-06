@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "@mantine/core";
+import { IconSparkles } from "@tabler/icons-react";
 import { ComboBox } from "../ComboBox/ComboBox";
 import styles from "./QuickAdd.module.css";
 
@@ -75,35 +76,43 @@ export const QuickAdd: React.FC<QuickAddProps> = ({
       <Modal
         opened={isModalOpen}
         onClose={() => setOpen(false)}
-        title="Add to Watch Party"
+        title={
+          <div className={styles.modalHeader}>
+            <div className={styles.modalTitleRow}>
+              <IconSparkles size={18} color="#A78BFA" />
+              <span>Add Media to Room</span>
+            </div>
+            <span className={styles.modalBadge}>
+              {isMac ? "⌘K" : "Ctrl+K"}
+            </span>
+          </div>
+        }
         centered
         radius="lg"
         size="lg"
         overlayProps={{
-          backgroundOpacity: 0.65,
-          blur: 8,
+          backgroundOpacity: 0.72,
+          blur: 10,
+        }}
+        classNames={{
+          content: styles.modalContent,
+          header: styles.modalHeaderWrapper,
+          body: styles.modalBody,
+          close: styles.modalCloseBtn,
         }}
       >
-        <div style={{ padding: "8px 0 16px 0" }}>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "var(--text-secondary)",
-              margin: "0 0 12px 0",
-            }}
-          >
-            Paste a direct video file URL (MP4, WebM, HLS), magnet link, YouTube
-            link, or type a search query:
-          </p>
-          <ComboBox
-            roomSetMedia={handleSetMedia}
-            playlistAdd={playlistAdd}
-            roomMedia={roomMedia}
-            getMediaDisplayName={getMediaDisplayName}
-            mediaPath={mediaPath}
-            disabled={disabled}
-          />
-        </div>
+        <p className={styles.modalSub}>
+          Paste a direct video stream (MP4, WebM, HLS), YouTube link, or WebTorrent magnet, or search YouTube.
+        </p>
+        <ComboBox
+          roomSetMedia={handleSetMedia}
+          playlistAdd={playlistAdd}
+          roomMedia={roomMedia}
+          getMediaDisplayName={getMediaDisplayName}
+          mediaPath={mediaPath}
+          disabled={disabled}
+          onClose={() => setOpen(false)}
+        />
       </Modal>
     </>
   );

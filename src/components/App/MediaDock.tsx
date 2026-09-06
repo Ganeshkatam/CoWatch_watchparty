@@ -30,6 +30,8 @@ interface MediaDockProps {
   onPlayPlaylistItem: (index: number) => void;
   onDeletePlaylistItem: (index: number) => void;
   onMovePlaylistItem: (from: number, to: number) => void;
+  roomMedia?: string;
+  onStopMedia?: () => void;
   isScreenSharing?: boolean;
   onStopScreenShare?: () => void;
   isPlayingVBrowser?: boolean;
@@ -50,6 +52,8 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   onPlayPlaylistItem,
   onDeletePlaylistItem,
   onMovePlaylistItem,
+  roomMedia,
+  onStopMedia,
   isScreenSharing,
   onStopScreenShare,
   isPlayingVBrowser,
@@ -69,6 +73,24 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 
   return (
     <div className={styles.dockContainer}>
+      {/* If Media is currently playing, provide a stop playback button */}
+      {Boolean(roomMedia) && onStopMedia && (
+        <button
+          type="button"
+          className={styles.stopBtn}
+          onClick={onStopMedia}
+          disabled={!haveLock}
+          title={
+            haveLock
+              ? "Stop playback and remove media"
+              : "Controls locked by host"
+          }
+        >
+          <IconX size={15} />
+          <span>Stop playback</span>
+        </button>
+      )}
+
       {/* If VBrowser is active, provide a stop button */}
       {isPlayingVBrowser && onStopVBrowser && (
         <button

@@ -18,7 +18,16 @@ export const YouTubeSearchResult = (
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <img style={{ height: "50px" }} src={result.img} alt={result.name} />
+        {result.img && (
+          <img
+            style={{ height: "50px", borderRadius: "4px" }}
+            src={result.img}
+            alt={result.name}
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = "none";
+            }}
+          />
+        )}
         <IconBrandYoutubeFilled color="red" />
         <div>{decodeEntities(result.name)}</div>
         <div style={{ marginLeft: "auto" }}>
