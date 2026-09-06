@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { Menu, Tooltip } from "@mantine/core";
 import { SignInButton } from "./TopBar";
+import { HeaderSearchBar } from "./HeaderSearchBar";
 import styles from "./RoomHeader.module.css";
 
 interface RoomHeaderProps {
@@ -29,6 +30,9 @@ interface RoomHeaderProps {
   currentMedia?: string;
   mediaDisplayName?: string;
   onOpenQuickAdd?: () => void;
+  roomSetMedia?: (value: string) => void;
+  playlistAdd?: (value: string) => void;
+  mediaPath?: string;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
@@ -44,6 +48,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   currentMedia,
   mediaDisplayName,
   onOpenQuickAdd,
+  roomSetMedia,
+  playlistAdd,
+  mediaPath,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -154,6 +161,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           </button>
         </Tooltip>
       </div>
+
+      {/* Center Inline Search Bar (Option 2) */}
+      {roomSetMedia && playlistAdd && (
+        <div className={styles.centerSection}>
+          <HeaderSearchBar
+            roomSetMedia={roomSetMedia}
+            playlistAdd={playlistAdd}
+            mediaPath={mediaPath}
+            disabled={!haveLock}
+          />
+        </div>
+      )}
 
       <div className={styles.rightSection}>
         <button

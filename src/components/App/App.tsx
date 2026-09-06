@@ -2355,6 +2355,9 @@ export class App extends React.Component<AppProps, AppState> {
             currentMedia={this.state.roomMedia}
             mediaDisplayName={this.getMediaDisplayName(this.state.roomMedia)}
             onOpenQuickAdd={() => this.setState({ isQuickAddOpen: true })}
+            roomSetMedia={this.roomSetMedia}
+            playlistAdd={this.roomPlaylistAdd}
+            mediaPath={this.state.mediaPath}
           />
         )}
         {
