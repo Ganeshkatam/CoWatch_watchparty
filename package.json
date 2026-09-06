@@ -51,7 +51,7 @@
     "@types/react-router-dom": "^5.3.3",
     "@types/react-transition-group": "^4.4.12",
     "@types/webtorrent": "^0.110.1",
-    "@types/youtube": "^0.1.2",
+    "@types/youtube": "^0.3.0",
     "can-autoplay": "^3.0.2",
     "dashjs": "^5.1.0",
     "eventemitter3": "^4.0.7",
