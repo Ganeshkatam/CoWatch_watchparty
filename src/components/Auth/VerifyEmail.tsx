@@ -12,7 +12,8 @@ import {
   Group,
   Stack,
   Alert,
-  Loader
+  Loader,
+  Center
 } from "@mantine/core";
 import { IconMail, IconCheck, IconAlertCircle } from "@tabler/icons-react";
 
@@ -85,9 +86,9 @@ export const VerifyEmail = () => {
 
   if (user === undefined) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Loader color="violet" />
-      </div>
+      <Center style={{ minHeight: "100vh", width: "100%" }}>
+        <Loader color="violet" size="lg" />
+      </Center>
     );
   }
 

@@ -1,16 +1,16 @@
 import React, { useContext } from "react";
 import { Redirect } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
-import { Loader } from "@mantine/core";
+import { Loader, Center } from "@mantine/core";
 
 export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
   const { user } = useContext(MetadataContext);
 
   if (user === undefined) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Loader color="violet" />
-      </div>
+      <Center style={{ minHeight: "100vh", width: "100%" }}>
+        <Loader color="violet" size="lg" />
+      </Center>
     );
   }
 
