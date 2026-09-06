@@ -8,7 +8,6 @@ import {
   IconLockOpen,
   IconMessage,
   IconSettings,
-  IconSparkles,
   IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
@@ -64,9 +63,11 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     <header className={styles.header}>
       <div className={styles.leftSection}>
         <Link to="/" className={styles.logoLink} title="Go to home">
-          <div className={styles.logoIcon}>
-            <IconSparkles size={22} stroke={2} />
-          </div>
+          <img
+            src="/logo192.png"
+            alt="CoWatch"
+            className={styles.logoImg}
+          />
           <span className={styles.logoText}>CoWatch</span>
         </Link>
 

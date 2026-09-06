@@ -27,13 +27,22 @@
   gap: 8px;
   text-decoration: none;
   flex-shrink: 0;
+  transition: opacity 0.15s ease;
 }
 
-.logoIcon {
-  color: var(--color-violet);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.logoLink:hover {
+  opacity: 0.85;
+}
+
+.logoImg {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+}
+
+:global(html[data-color-scheme="light"]) .logoImg {
+  filter: brightness(0);
 }
 
 .logoText {
