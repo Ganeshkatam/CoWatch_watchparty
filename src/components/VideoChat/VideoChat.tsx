@@ -38,6 +38,42 @@ interface VideoChatProps {
   getLeaderTime: () => number;
 }
 
+export class VideoChatErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string | null }
+> {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error: error?.message || "Video chat error" };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("VideoChat error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>
+          <p style={{ color: "var(--text-primary)", fontWeight: 600, marginBottom: "8px" }}>
+            Video chat encountered an issue
+          </p>
+          <Button
+            size="xs"
+            variant="light"
+            color="violet"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Retry Video Chat
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export class VideoChat extends React.Component<VideoChatProps> {
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
@@ -133,55 +169,62 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   setupWebRTC = async () => {
-    let stream = new MediaStream([]);
+    try {
+      let stream = new MediaStream([]);
 
-    const prefCameraOn = this.context.profile?.pref_camera_on ?? true;
-    const prefMicOn = this.context.profile?.pref_mic_on ?? true;
+      const prefCameraOn = this.context.profile?.pref_camera_on ?? true;
+      const prefMicOn = this.context.profile?.pref_mic_on ?? true;
 
-    if (prefCameraOn || prefMicOn) {
-      try {
-        stream = await navigator?.mediaDevices.getUserMedia({
-          audio: prefMicOn,
-          video: prefCameraOn,
-        });
-      } catch (e) {
-        console.warn("Failed initial getUserMedia", e);
-        if (prefCameraOn && prefMicOn) {
+      if (prefCameraOn || prefMicOn) {
+        try {
+          stream = await navigator?.mediaDevices?.getUserMedia({
+            audio: prefMicOn,
+            video: prefCameraOn,
+          });
+        } catch (e) {
+          console.warn("Failed initial getUserMedia with audio+video, falling back:", e);
           try {
-            console.log("attempt audio only stream");
             stream = await navigator?.mediaDevices?.getUserMedia({
               audio: true,
               video: false,
             });
           } catch (fallbackErr) {
-            console.warn(fallbackErr);
+            console.warn("Audio-only fallback also failed or was denied:", fallbackErr);
           }
         }
       }
-    }
 
-    window.cowatch.ourStream = stream;
-    // alert server we've joined video chat
-    this.socket.emit("CMD:joinVideo");
-    this.emitUserMute();
-    this.updateWebRTC();
-    this.forceUpdate();
+      window.cowatch.ourStream = stream;
+      // alert server we've joined video chat
+      this.socket?.emit("CMD:joinVideo");
+      this.emitUserMute();
+      this.forceUpdate();
+    } catch (err) {
+      console.error("Critical error in setupWebRTC:", err);
+    }
   };
 
   stopWebRTC = () => {
-    const ourStream = window.cowatch.ourStream;
-    const videoPCs = window.cowatch.videoPCs;
-    ourStream &&
-      ourStream.getTracks().forEach((track) => {
-        track.stop();
+    try {
+      const ourStream = window.cowatch.ourStream;
+      const videoPCs = window.cowatch.videoPCs;
+      if (ourStream) {
+        ourStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      window.cowatch.ourStream = undefined;
+      Object.keys(videoPCs).forEach((key) => {
+        try {
+          videoPCs[key]?.close();
+        } catch (e) {}
+        delete videoPCs[key];
       });
-    window.cowatch.ourStream = undefined;
-    Object.keys(videoPCs).forEach((key) => {
-      videoPCs[key].close();
-      delete videoPCs[key];
-    });
-    this.socket.emit("CMD:leaveVideo");
-    this.forceUpdate();
+      this.socket?.emit("CMD:leaveVideo");
+      this.forceUpdate();
+    } catch (err) {
+      console.error("Critical error in stopWebRTC:", err);
+    }
   };
   addTrackToAllPCs = (track: MediaStreamTrack) => {
     const ourStream = window.cowatch.ourStream;
@@ -251,76 +294,102 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   updateWebRTC = () => {
-    const ourStream = window.cowatch.ourStream;
-    const videoPCs = window.cowatch.videoPCs;
-    const videoRefs = window.cowatch.videoRefs;
-    if (!ourStream) {
-      // We haven't started video chat, exit
-      return;
-    }
-    const selfId = getOrCreateClientId();
-
-    // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
-    // This allows them to rejoin later
-    const clientIds = new Set(
-      this.props.participants.filter((p) => p.isVideoChat).map((p) => p.id),
-    );
-    Object.entries(videoPCs).forEach(([key, value]) => {
-      if (!clientIds.has(key)) {
-        value.close();
-        delete videoPCs[key];
-      }
-    });
-
-    this.props.participants.forEach((user) => {
-      const id = user.id;
-      if (!user.isVideoChat || videoPCs[id]) {
-        // User isn't in video chat, or we already have a connection to them
+    try {
+      const ourStream = window.cowatch.ourStream;
+      const videoPCs = window.cowatch.videoPCs;
+      const videoRefs = window.cowatch.videoRefs;
+      if (!ourStream) {
+        // We haven't started video chat, exit
         return;
       }
-      if (id === selfId) {
-        videoPCs[id] = new RTCPeerConnection();
-        videoRefs[id].srcObject = ourStream;
-      } else {
-        const pc = new RTCPeerConnection({ iceServers: iceServers() });
-        videoPCs[id] = pc;
-        // Add our own video as outgoing stream
-        ourStream?.getTracks().forEach((track) => {
-          if (ourStream) {
-            pc.addTrack(track, ourStream);
-          }
-        });
-        pc.onicecandidate = (event) => {
-          // We generated an ICE candidate, send it to peer
-          if (event.candidate) {
-            this.sendSignal(id, { ice: event.candidate });
-          }
-        };
-        pc.ontrack = (event: RTCTrackEvent) => {
-          // Mount the stream from peer
-          // console.log(stream);
-          videoRefs[id].srcObject = event.streams[0];
-        };
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === "failed") {
-            // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
-            pc.close();
-            delete videoPCs[id];
-            this.updateWebRTC();
-          }
-        };
-        // For each pair, have the lexicographically smaller ID be the offerer
-        const isOfferer = selfId < id;
-        if (isOfferer) {
-          pc.onnegotiationneeded = async () => {
-            // Start connection for peer's video
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            this.sendSignal(id, { sdp: pc.localDescription });
-          };
+      const selfId = getOrCreateClientId();
+
+      // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
+      // This allows them to rejoin later
+      const clientIds = new Set(
+        this.props.participants.filter((p) => p.isVideoChat).map((p) => p.id),
+      );
+      Object.entries(videoPCs).forEach(([key, value]) => {
+        if (!clientIds.has(key)) {
+          try {
+            value.close();
+          } catch (e) {}
+          delete videoPCs[key];
         }
-      }
-    });
+      });
+
+      this.props.participants.forEach((user) => {
+        const id = user.id;
+        if (!user.isVideoChat || videoPCs[id]) {
+          // User isn't in video chat, or we already have a connection to them
+          return;
+        }
+        if (id === selfId) {
+          videoPCs[id] = new RTCPeerConnection();
+          if (videoRefs && videoRefs[id] && ourStream) {
+            try {
+              videoRefs[id].srcObject = ourStream;
+            } catch (e) {
+              console.warn("Could not set local stream on video element:", e);
+            }
+          }
+        } else {
+          const pc = new RTCPeerConnection({ iceServers: iceServers() });
+          videoPCs[id] = pc;
+          // Add our own video as outgoing stream
+          ourStream?.getTracks().forEach((track) => {
+            if (ourStream) {
+              try {
+                pc.addTrack(track, ourStream);
+              } catch (e) {
+                console.warn("Could not add track to pc:", e);
+              }
+            }
+          });
+          pc.onicecandidate = (event) => {
+            // We generated an ICE candidate, send it to peer
+            if (event.candidate) {
+              this.sendSignal(id, { ice: event.candidate });
+            }
+          };
+          pc.ontrack = (event: RTCTrackEvent) => {
+            if (videoRefs && videoRefs[id] && event.streams && event.streams[0]) {
+              try {
+                videoRefs[id].srcObject = event.streams[0];
+              } catch (e) {
+                console.warn("Could not set remote stream on video element:", e);
+              }
+            }
+          };
+          pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === "failed") {
+              // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
+              try {
+                pc.close();
+              } catch (e) {}
+              delete videoPCs[id];
+              this.updateWebRTC();
+            }
+          };
+          // For each pair, have the lexicographically smaller ID be the offerer
+          const isOfferer = selfId < id;
+          if (isOfferer) {
+            pc.onnegotiationneeded = async () => {
+              try {
+                // Start connection for peer's video
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                this.sendSignal(id, { sdp: pc.localDescription });
+              } catch (e) {
+                console.warn("Negotiation error:", e);
+              }
+            };
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Critical error in updateWebRTC:", err);
+    }
   };
 
   sendSignal = async (to: string, data: any) => {
@@ -359,18 +428,25 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
           return (
             <div key={p.id} className={styles.videoTile}>
-              {showVideoFeed ? (
+              {(isSelfInCall || p.isVideoChat) && (
                 <video
                   ref={(el) => {
                     if (el) {
                       videoRefs[p.id] = el;
                       if (isSelf && ourStream && el.srcObject !== ourStream) {
-                        el.srcObject = ourStream;
+                        try {
+                          el.srcObject = ourStream;
+                        } catch (e) {
+                          console.warn("Error assigning srcObject to local video:", e);
+                        }
                       }
+                    } else {
+                      delete videoRefs[p.id];
                     }
                   }}
                   className={styles.videoElement}
                   style={{
+                    display: showVideoFeed ? "block" : "none",
                     transform: `scaleX(${isSelf ? "-1" : "1"})`,
                   }}
                   autoPlay
@@ -378,7 +454,9 @@ export class VideoChat extends React.Component<VideoChatProps> {
                   muted={isSelf}
                   data-id={p.id}
                 />
-              ) : (
+              )}
+
+              {!showVideoFeed && (
                 <div className={styles.avatarPlaceholder}>
                   <img
                     className={styles.largeAvatar}

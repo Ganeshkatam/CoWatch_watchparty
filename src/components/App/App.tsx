@@ -31,7 +31,7 @@ import { generateName } from "../../utils/generateName";
 import { Chat, ChatComponent } from "../Chat/Chat";
 import { TopBar } from "../TopBar/TopBar";
 import { VBrowser } from "../VBrowser/VBrowser";
-import { VideoChat } from "../VideoChat/VideoChat";
+import { VideoChat, VideoChatErrorBoundary } from "../VideoChat/VideoChat";
 import { getCurrentSettings } from "../Settings/LocalSettings";
 import { MultiStreamModal } from "../Modal/MultiStreamModal";
 import { ComboBox } from "../ComboBox/ComboBox";
@@ -2737,16 +2737,18 @@ export class App extends React.Component<AppProps, AppState> {
                     border: "1px solid var(--border-subtle)",
                   }}
                 >
-                  <VideoChat
-                    socket={this.socket}
-                    participants={this.state.participants}
-                    nameMap={this.state.nameMap}
-                    pictureMap={this.state.pictureMap}
-                    tsMap={this.state.tsMap}
-                    rosterUpdateTS={this.state.rosterUpdateTS}
-                    owner={this.state.owner}
-                    getLeaderTime={this.getLeaderTime}
-                  />
+                  <VideoChatErrorBoundary>
+                    <VideoChat
+                      socket={this.socket}
+                      participants={this.state.participants}
+                      nameMap={this.state.nameMap}
+                      pictureMap={this.state.pictureMap}
+                      tsMap={this.state.tsMap}
+                      rosterUpdateTS={this.state.rosterUpdateTS}
+                      owner={this.state.owner}
+                      getLeaderTime={this.getLeaderTime}
+                    />
+                  </VideoChatErrorBoundary>
                 </Tabs.Panel>
                 <Tabs.Panel
                   value="chat"
