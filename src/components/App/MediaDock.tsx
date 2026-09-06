@@ -14,7 +14,6 @@ import {
   IconMinimize,
   IconPlus,
   IconScreenShare,
-  IconSearch,
   IconX,
 } from "@tabler/icons-react";
 import { Menu } from "@mantine/core";
@@ -65,10 +64,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   onToggleFullScreen,
 }) => {
   const [copied, setCopied] = React.useState(false);
-
-  const isMac =
-    typeof window !== "undefined" &&
-    navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -175,29 +170,12 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             onClick={onOpenQuickAdd}
           >
             <div className={styles.menuItemWithDesc}>
-              <span className={styles.menuItemTitle}>Video URL</span>
-              <span className={styles.menuItemDesc}>Paste a link (YouTube, etc.)</span>
+              <span className={styles.menuItemTitle}>Video URL / Search</span>
+              <span className={styles.menuItemDesc}>Paste link or search media</span>
             </div>
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
-
-      {/* Search Button */}
-      <button
-        type="button"
-        className={styles.dockBtn}
-        onClick={onOpenQuickAdd}
-        disabled={!haveLock}
-        title={
-          haveLock
-            ? `Search media (${isMac ? "⌘K" : "Ctrl+K"})`
-            : "Controls locked by host"
-        }
-      >
-        <IconSearch size={15} />
-        <span>Search</span>
-        <span className={styles.kbdBadge}>{isMac ? "⌘" : "Ctrl"} K</span>
-      </button>
 
       {/* Playlist Button & Dropdown */}
       <Menu shadow="xl" width={340} position="top" offset={10}>

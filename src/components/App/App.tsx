@@ -54,7 +54,6 @@ import styles from "./App.module.css";
 import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
 import { RoomHeader } from "../TopBar/RoomHeader";
 import { MediaDock } from "./MediaDock";
-import { QuickAdd } from "./QuickAdd";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
@@ -160,7 +159,6 @@ interface AppState {
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
-  isQuickAddOpen: boolean;
   copiedRoomLink: boolean;
   roomLock: string;
   controller?: string;
@@ -231,7 +229,6 @@ export class App extends React.Component<AppProps, AppState> {
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
-    isQuickAddOpen: false,
     copiedRoomLink: false,
     roomLock: "",
     controller: "",
@@ -1148,6 +1145,12 @@ export class App extends React.Component<AppProps, AppState> {
 
   toggleLock = () => {
     this.setRoomLock(!Boolean(this.state.roomLock));
+  };
+
+  focusHeaderSearch = () => {
+    window.dispatchEvent(new CustomEvent("cowatch:focus-search"));
+    const el = document.getElementById("cowatch-header-search");
+    el?.focus();
   };
 
   handleCopyRoomLink = () => {
@@ -2354,7 +2357,7 @@ export class App extends React.Component<AppProps, AppState> {
             haveLock={this.haveLock()}
             currentMedia={this.state.roomMedia}
             mediaDisplayName={this.getMediaDisplayName(this.state.roomMedia)}
-            onOpenQuickAdd={() => this.setState({ isQuickAddOpen: true })}
+            onOpenQuickAdd={this.focusHeaderSearch}
             roomSetMedia={this.roomSetMedia}
             playlistAdd={this.roomPlaylistAdd}
             mediaPath={this.state.mediaPath}
@@ -2545,9 +2548,7 @@ export class App extends React.Component<AppProps, AppState> {
                           {!this.state.roomMedia && (
                             <EmptyWatchState
                               haveLock={this.haveLock()}
-                              onOpenAddMedia={() =>
-                                this.setState({ isQuickAddOpen: true })
-                              }
+                              onOpenAddMedia={this.focusHeaderSearch}
                             />
                           )}
                           {!this.state.loading &&
@@ -2643,9 +2644,7 @@ export class App extends React.Component<AppProps, AppState> {
                       onOpenFileShare={() =>
                         this.setState({ isFileShareModalOpen: true })
                       }
-                      onOpenQuickAdd={() =>
-                        this.setState({ isQuickAddOpen: true })
-                      }
+                      onOpenQuickAdd={this.focusHeaderSearch}
                       playlist={playlist}
                       onPlayPlaylistItem={this.roomPlaylistPlay}
                       onDeletePlaylistItem={this.roomPlaylistDelete}
@@ -2663,19 +2662,6 @@ export class App extends React.Component<AppProps, AppState> {
                       isFullScreen={this.state.fullScreen}
                       onToggleFullScreen={() =>
                         this.localFullScreen(!this.state.fullScreen)
-                      }
-                    />
-
-                    <QuickAdd
-                      roomSetMedia={this.roomSetMedia}
-                      playlistAdd={this.roomPlaylistAdd}
-                      roomMedia={this.state.roomMedia}
-                      getMediaDisplayName={this.getMediaDisplayName}
-                      mediaPath={this.state.mediaPath}
-                      disabled={!this.haveLock()}
-                      isOpen={this.state.isQuickAddOpen}
-                      onOpenChange={(open) =>
-                        this.setState({ isQuickAddOpen: open })
                       }
                     />
                   </div>

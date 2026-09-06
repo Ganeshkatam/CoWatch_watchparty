@@ -56,6 +56,35 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isMac =
+    typeof window !== "undefined" &&
+    navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
+  // Global Ctrl+K / Cmd+K listener and custom focus listener
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        setIsOpen(true);
+      }
+    };
+
+    const handleFocusSearch = () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      setIsOpen(true);
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    window.addEventListener("cowatch:focus-search", handleFocusSearch);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+      window.removeEventListener("cowatch:focus-search", handleFocusSearch);
+    };
+  }, []);
+
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -216,6 +245,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
         </span>
         <input
           ref={inputRef}
+          id="cowatch-header-search"
           type="text"
           className={styles.searchInput}
           placeholder="Paste URL, magnet, or search YouTube..."
@@ -236,7 +266,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
               <IconX size={12} />
             </button>
           ) : (
-            <span className={styles.kbdHint}>↵</span>
+            <span className={styles.kbdHint}>{isMac ? "⌘K" : "Ctrl+K"}</span>
           )}
         </div>
       </div>
