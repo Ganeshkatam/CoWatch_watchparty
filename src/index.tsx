@@ -133,6 +133,16 @@ class CoWatch extends React.Component {
     }
   };
 
+  private authSubscription: { unsubscribe: () => void } | null = null;
+  private authTimeout: any = null;
+
+  componentWillUnmount() {
+    if (this.authTimeout) {
+      clearTimeout(this.authTimeout);
+    }
+    this.authSubscription?.unsubscribe();
+  }
+
   async componentDidMount() {
     // Purge legacy profile keys from users' browsers
     window.localStorage.removeItem("cowatch-username");
@@ -140,98 +150,143 @@ class CoWatch extends React.Component {
 
     if (supabaseUrl && config.VITE_SUPABASE_PUBLISHABLE_KEY) {
       const handleSession = async (session: any) => {
-        const user = session?.user;
-        if (user) {
-          this.setState({ user });
-          const token = session.access_token;
-          const fetchPromise = window.fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`)
-            .then(res => res.json())
-            .catch(err => {
-              console.warn("Backend server unreachable, skipping metadata:", err);
-              return {};
-            });
+        if (this.authTimeout) {
+          clearTimeout(this.authTimeout);
+          this.authTimeout = null;
+        }
 
-          const profilePromise = supabase
-            .from("profiles")
-            .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
-            .eq("id", user.id)
-            .single();
+        try {
+          const user = session?.user;
+          if (user) {
+            // Eagerly set user so auth guards immediately know user is authenticated
+            this.setState({ user });
 
-          const [data, { data: profileData }] = await Promise.all([fetchPromise, profilePromise]);
-          let profile = profileData;
-
-          // Self-heal: if profile does not exist in DB, create one
-          if (!profile && user) {
-            const defaultName =
-              user.user_metadata?.display_name?.trim() ||
-              user.user_metadata?.username?.trim() ||
-              user.user_metadata?.full_name?.trim() ||
-              user.user_metadata?.name?.trim() ||
-              user.email?.split("@")[0] ||
-              "User";
-            const defaultAvatar =
-              user.user_metadata?.avatar_url ||
-              user.user_metadata?.picture ||
-              null;
-
-            const { data: newProfile } = await supabase
-              .from("profiles")
-              .upsert(
-                {
-                  id: user.id,
-                  display_name: defaultName,
-                  username: defaultName,
-                  avatar_url: defaultAvatar,
-                },
-                { onConflict: "id" }
-              )
-              .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
-              .single();
-
-            if (newProfile) {
-              profile = newProfile;
-            }
-          }
-
-          const resolved = resolveProfile(profile, user);
-          const displayName = resolved.displayName;
-          const avatarUrl = resolved.avatarUrl;
-          if (profile) {
-            window.localStorage.setItem("cowatch-showchatcolumn", profile.pref_show_chat_column ? "1" : "0");
-            window.localStorage.setItem("cowatch-showpeoplecolumn", profile.pref_show_people_column ? "1" : "0");
-
-            const settingsStr = window.localStorage.getItem("cowatch-setting") || "{}";
+            const token = session.access_token;
+            let metadata: any = {};
             try {
-              const settings = JSON.parse(settingsStr);
-              settings.disableChatSound = profile.pref_disable_chat_sound;
-              window.localStorage.setItem("cowatch-setting", JSON.stringify(settings));
-            } catch (e) { }
-          }
+              const res = await window.fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`);
+              if (res.ok) {
+                metadata = await res.json();
+              }
+            } catch (err) {
+              console.warn("Backend server unreachable, skipping metadata:", err);
+            }
 
-          this.setState({
-            user,
-            profile,
-            displayName,
-            avatarUrl,
-            streamPath: data.streamPath,
-            convertPath: data.convertPath,
-            beta: data.beta,
-            userAppearance: profile?.pref_appearance_mode || "system",
-          });
-        } else {
+            let profile: any = null;
+            try {
+              const { data: profileData, error: profileErr } = await supabase
+                .from("profiles")
+                .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
+                .eq("id", user.id)
+                .maybeSingle();
+
+              if (!profileErr && profileData) {
+                profile = profileData;
+              }
+            } catch (err) {
+              console.warn("Profile fetch error:", err);
+            }
+
+            // Self-heal: if profile does not exist in DB, create one
+            if (!profile && user) {
+              const defaultName =
+                user.user_metadata?.display_name?.trim() ||
+                user.user_metadata?.username?.trim() ||
+                user.user_metadata?.full_name?.trim() ||
+                user.user_metadata?.name?.trim() ||
+                user.email?.split("@")[0] ||
+                "User";
+              const defaultAvatar =
+                user.user_metadata?.avatar_url ||
+                user.user_metadata?.picture ||
+                null;
+
+              try {
+                const { data: newProfile } = await supabase
+                  .from("profiles")
+                  .upsert(
+                    {
+                      id: user.id,
+                      display_name: defaultName,
+                      username: defaultName,
+                      avatar_url: defaultAvatar,
+                    },
+                    { onConflict: "id" }
+                  )
+                  .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
+                  .maybeSingle();
+
+                if (newProfile) {
+                  profile = newProfile;
+                }
+              } catch (upsertErr) {
+                console.warn("Profile auto-creation failed:", upsertErr);
+              }
+            }
+
+            const resolved = resolveProfile(profile, user);
+            const displayName = resolved.displayName;
+            const avatarUrl = resolved.avatarUrl;
+            if (profile) {
+              window.localStorage.setItem("cowatch-showchatcolumn", profile.pref_show_chat_column ? "1" : "0");
+              window.localStorage.setItem("cowatch-showpeoplecolumn", profile.pref_show_people_column ? "1" : "0");
+
+              const settingsStr = window.localStorage.getItem("cowatch-setting") || "{}";
+              try {
+                const settings = JSON.parse(settingsStr);
+                settings.disableChatSound = profile.pref_disable_chat_sound;
+                window.localStorage.setItem("cowatch-setting", JSON.stringify(settings));
+              } catch (e) { }
+            }
+
+            this.setState({
+              user,
+              profile,
+              displayName,
+              avatarUrl,
+              streamPath: metadata?.streamPath,
+              convertPath: metadata?.convertPath,
+              beta: metadata?.beta,
+              userAppearance: profile?.pref_appearance_mode || "system",
+            });
+          } else {
+            this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+          }
+        } catch (fatalErr) {
+          console.error("Critical error in handleSession:", fatalErr);
           this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
         }
       };
 
-      // Fetch initial session
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        handleSession(session);
-      });
+      // Failsafe timeout: if auth takes longer than 2.5s, fall back to guest so the page NEVER hangs
+      this.authTimeout = setTimeout(() => {
+        if (this.state.user === undefined) {
+          console.warn("Auth initialization timed out, falling back to unauthenticated guest mode.");
+          this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+        }
+      }, 2500);
 
-      // Listen for changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        handleSession(session);
+      // Listen for changes. Defer handleSession via setTimeout(0) to prevent GoTrue mutex deadlock.
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        setTimeout(() => {
+          handleSession(session);
+        }, 0);
       });
+      this.authSubscription = subscription;
+
+      // Fetch initial session with fallback
+      supabase.auth.getSession()
+        .then(({ data: { session } }) => {
+          setTimeout(() => {
+            handleSession(session);
+          }, 0);
+        })
+        .catch(err => {
+          console.warn("Failed to get initial session:", err);
+          if (this.state.user === undefined) {
+            this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+          }
+        });
     } else {
       // Authentication is optional; allow the app to render guest routes without it.
       this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
