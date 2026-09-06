@@ -102,3 +102,109 @@ html body {
 .mantine-PasswordInput-input:focus-within {
   border-color: var(--color-violet) !important;
 }
+
+/* ==========================================
+   Modern Mantine Menu & Dropdown Styling
+   ========================================== */
+.mantine-Menu-dropdown {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 14px !important;
+  padding: 6px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  animation: menuDropdownEntrance 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+html[data-color-scheme="light"] .mantine-Menu-dropdown {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+}
+
+@keyframes menuDropdownEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.mantine-Menu-label {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: var(--text-muted) !important;
+  padding: 8px 12px 4px 12px !important;
+}
+
+.mantine-Menu-divider {
+  border-top: 1px solid var(--border-subtle) !important;
+  margin: 6px 4px !important;
+  opacity: 0.7;
+}
+
+.mantine-Menu-item {
+  border-radius: 9px !important;
+  padding: 8px 12px !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.15s ease !important;
+}
+
+.mantine-Menu-item:hover,
+.mantine-Menu-item[data-hovered] {
+  background-color: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.mantine-Menu-item:hover .mantine-Menu-itemSection[data-position="left"] {
+  color: var(--color-violet) !important;
+}
+
+.mantine-Menu-item[data-color="red"],
+.mantine-Menu-item[color="red"] {
+  color: var(--color-danger) !important;
+}
+
+.mantine-Menu-item[data-color="red"]:hover,
+.mantine-Menu-item[color="red"]:hover {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  color: var(--color-danger) !important;
+}
+
+.mantine-Menu-item[data-color="red"]:hover .mantine-Menu-itemSection[data-position="left"],
+.mantine-Menu-item[color="red"]:hover .mantine-Menu-itemSection[data-position="left"] {
+  color: var(--color-danger) !important;
+}
+
+.mantine-Menu-itemSection {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.topbar-avatar-btn {
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.topbar-avatar-btn:hover {
+  transform: scale(1.06);
+}
+
+.topbar-avatar-btn:hover .mantine-Avatar-root {
+  border-color: var(--color-violet) !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+}
+

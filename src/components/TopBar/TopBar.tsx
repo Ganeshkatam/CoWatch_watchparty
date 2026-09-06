@@ -15,6 +15,9 @@ import {
   IconX,
   IconSettings,
   IconCheck,
+  IconDeviceDesktop,
+  IconSun,
+  IconMoon,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 
@@ -26,19 +29,22 @@ export const ThemeMenuItems = () => {
       <Menu.Label>Theme</Menu.Label>
       <Menu.Item
         onClick={() => setAppearance("system")}
-        leftSection={appearance === "system" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+        leftSection={<IconDeviceDesktop size={16} stroke={1.5} />}
+        rightSection={appearance === "system" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
       >
         System
       </Menu.Item>
       <Menu.Item
         onClick={() => setAppearance("light")}
-        leftSection={appearance === "light" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+        leftSection={<IconSun size={16} stroke={1.5} />}
+        rightSection={appearance === "light" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
       >
         Light
       </Menu.Item>
       <Menu.Item
         onClick={() => setAppearance("mantine")}
-        leftSection={appearance === "mantine" ? <IconCheck size={14} /> : <div style={{ width: 14 }} />}
+        leftSection={<IconMoon size={16} stroke={1.5} />}
+        rightSection={appearance === "mantine" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
       >
         Dark
       </Menu.Item>
@@ -126,34 +132,80 @@ export class SignInButton extends React.Component<SignInButtonProps> {
   render() {
     if (this.context.user) {
       return (
-        <Menu shadow="md" width={200} position="bottom-end">
+        <Menu shadow="xl" width={240} position="bottom-end" offset={8}>
           <Menu.Target>
             <div
+              className="topbar-avatar-btn"
               style={{
                 margin: "4px",
                 minWidth: "40px",
                 alignItems: "center",
                 justifyContent: "center",
-                cursor: "pointer",
               }}
             >
-              <Avatar src={this.context.avatarUrl} />
+              <Avatar
+                src={this.context.avatarUrl}
+                size={36}
+                radius="xl"
+                style={{
+                  border: "2px solid var(--border-subtle)",
+                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                }}
+              />
             </div>
           </Menu.Target>
 
           <Menu.Dropdown>
+            <div
+              style={{
+                padding: "8px 10px 10px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <Avatar size={36} radius="xl" src={this.context.avatarUrl} />
+              <div style={{ overflow: "hidden", flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "13.5px",
+                    color: "var(--text-primary)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {this.context.displayName}
+                </div>
+                <div
+                  style={{
+                    fontSize: "11.5px",
+                    color: "var(--text-muted)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {this.context.user?.email}
+                </div>
+              </div>
+            </div>
+
+            <Menu.Divider />
+
             <Menu.Label>Account</Menu.Label>
             <Menu.Item
               component={Link}
               to="/profile"
-              leftSection={<IconSettings size={14} />}
+              leftSection={<IconSettings size={16} stroke={1.5} />}
             >
               Settings
             </Menu.Item>
             <Menu.Item
               component={Link}
               to="/rooms"
-              leftSection={<IconDatabase size={14} />}
+              leftSection={<IconDatabase size={16} stroke={1.5} />}
             >
               My rooms
             </Menu.Item>
@@ -166,7 +218,7 @@ export class SignInButton extends React.Component<SignInButtonProps> {
 
             <Menu.Item
               color="red"
-              leftSection={<IconLogout size={14} />}
+              leftSection={<IconLogout size={16} stroke={1.5} />}
               onClick={async () => {
                 await supabase.auth.signOut();
               }}
