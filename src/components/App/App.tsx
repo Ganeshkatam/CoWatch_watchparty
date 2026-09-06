@@ -2762,6 +2762,7 @@ export class App extends React.Component<AppProps, AppState> {
                       rosterUpdateTS={this.state.rosterUpdateTS}
                       owner={this.state.owner}
                       getLeaderTime={this.getLeaderTime}
+                      roomId={this.state.roomId}
                     />
                   </VideoChatErrorBoundary>
                 </Tabs.Panel>

@@ -25,6 +25,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import styles from "./VideoChat.module.css";
+import { InviteModal } from "../Modal/InviteModal";
 
 interface VideoChatProps {
   socket: Socket;
@@ -36,6 +37,8 @@ interface VideoChatProps {
   hide?: boolean;
   owner: string | undefined;
   getLeaderTime: () => number;
+  roomId?: string;
+  onOpenInviteModal?: () => void;
 }
 
 export class VideoChatErrorBoundary extends React.Component<
@@ -82,6 +85,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   state = {
     copied: false,
+    isInviteModalOpen: false,
+  };
+
+  private handleOpenInvite = () => {
+    if (this.props.onOpenInviteModal) {
+      this.props.onOpenInviteModal();
+    } else {
+      this.setState({ isInviteModalOpen: true });
+    }
   };
 
   private handleCopyInvite = () => {
@@ -617,43 +629,37 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
         <div
           className={styles.inviteCard}
-          onClick={this.handleCopyInvite}
+          onClick={this.handleOpenInvite}
           role="button"
           tabIndex={0}
-          title="Click to copy invite link"
+          title="Click to invite friends"
         >
           <div
             className={styles.inviteIconBadge}
             style={{
-              backgroundColor: this.state.copied
-                ? "rgba(16, 185, 129, 0.15)"
-                : "var(--bg-surface)",
-              color: this.state.copied ? "var(--color-live)" : "var(--text-secondary)",
+              backgroundColor: "var(--bg-surface)",
+              color: "var(--color-violet)",
             }}
           >
-            {this.state.copied ? (
-              <IconCheck size={18} />
-            ) : (
-              <IconUserPlus size={18} />
-            )}
+            <IconUserPlus size={18} />
           </div>
           <div className={styles.inviteMeta}>
-            <span
-              className={styles.inviteTitle}
-              style={{
-                color: this.state.copied ? "var(--color-live)" : "var(--text-primary)",
-              }}
-            >
-              {this.state.copied ? "Link Copied!" : "Invite people"}
+            <span className={styles.inviteTitle}>
+              Invite people
             </span>
             <span className={styles.inviteSubtitle}>
-              {this.state.copied
-                ? "Share with your friends to join"
-                : "Share a link to bring friends into the room"}
+              Share a link to bring friends into the room
             </span>
           </div>
           <IconChevronRight size={16} color="var(--text-muted)" />
         </div>
+
+        {this.state.isInviteModalOpen && (
+          <InviteModal
+            roomId={this.props.roomId || ""}
+            closeInviteModal={() => this.setState({ isInviteModalOpen: false })}
+          />
+        )}
       </div>
     );
   }
