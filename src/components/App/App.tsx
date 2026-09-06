@@ -44,7 +44,7 @@ import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
 import type { User } from "@supabase/supabase-js";
-import { supabase } from "../../utils/supabaseClient";
+import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -328,56 +328,88 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   checkRoomAccess = async (roomId: string) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
+    try {
+      const sessionData = await safeGetSession(1200);
+      const user = sessionData?.data?.session?.user;
 
-    const { data } = await supabase
-      .from("rooms")
-      .select("passcode, owner_id")
-      .eq("roomId", roomId)
-      .maybeSingle();
+      const roomPromise = supabase
+        .from("rooms")
+        .select("passcode, owner_id")
+        .eq("roomId", roomId)
+        .maybeSingle();
 
-    if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+      const timeoutPromise = new Promise<{ data: null }>((resolve) =>
+        setTimeout(() => resolve({ data: null }), 1200)
+      );
 
-    const isOwner = Boolean(user && data.owner_id === user.id);
-    const requiresPasscode = Boolean(data.passcode);
+      const { data } = await Promise.race([roomPromise, timeoutPromise]);
+      if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
 
-    return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
+      const isOwner = Boolean(user && data.owner_id === user.id);
+      const requiresPasscode = Boolean(data.passcode);
+
+      return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
+    } catch (e) {
+      console.warn("checkRoomAccess error:", e);
+      return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+    }
   };
 
   join = async (roomId: string) => {
+    const cleanRoomId = (roomId || "").trim();
     const urlParams = new URLSearchParams(window.location.search);
     const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
     if (urlPass) {
-      addAndSavePasscode(roomId, urlPass);
+      addAndSavePasscode(cleanRoomId, urlPass);
     }
-    let passcode = getSavedPasscodes()[roomId] ?? "";
+    let passcode = getSavedPasscodes()[cleanRoomId] ?? "";
 
-    const access = await this.checkRoomAccess(roomId);
+    try {
+      const access = await this.checkRoomAccess(cleanRoomId);
 
-    if (access.requiresPasscode && !passcode && !access.isOwner) {
-      // Double-check: wait for auth to settle in case session was still loading
-      const { data: retrySession } = await supabase.auth.getSession();
-      const retryUser = retrySession?.session?.user;
-      const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
-      if (!retryIsOwner) {
-        this.setState({ isErrorAuth: true });
-        return;
+      if (access.requiresPasscode && !passcode && !access.isOwner) {
+        // Double-check: wait for auth to settle in case session was still loading
+        const retrySession = await safeGetSession(1000);
+        const retryUser = retrySession?.data?.session?.user;
+        const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
+        if (!retryIsOwner) {
+          this.setState({ isErrorAuth: true, state: "connected" });
+          return;
+        }
       }
+    } catch (e) {
+      console.warn("Room access verification error:", e);
     }
-    const response = await fetch(serverPath + "/resolveShard/" + roomId);
-    const shard = Number(await response.text()) || "";
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-    const uid = sessionData?.session?.user?.id;
 
-    const socket = io(serverPath + "/" + roomId, {
-      transports: ["websocket"],
+    let shard = "";
+    try {
+      const response = await fetch(serverPath + "/resolveShard/" + encodeURIComponent(cleanRoomId), {
+        signal: AbortSignal.timeout(1500),
+      });
+      shard = (await response.text()) || "";
+    } catch (e) {
+      console.warn("Shard resolution error, defaulting to shard 0:", e);
+    }
+
+    let token: string | undefined;
+    let uid: string | undefined;
+    try {
+      const sessionData = await safeGetSession(1000);
+      token = sessionData?.data?.session?.access_token;
+      uid = sessionData?.data?.session?.user?.id;
+    } catch (e) {
+      console.warn("Session retrieval error:", e);
+    }
+
+    // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
+    const safeNamespace = encodeURIComponent(cleanRoomId);
+    const socket = io(serverPath + "/" + safeNamespace, {
+      transports: ["websocket", "polling"],
       query: {
         clientId,
         passcode,
         shard,
-        roomId: roomId,
+        roomId: cleanRoomId,
       },
       auth: {
         sessionId: getOrCreateSessionId(),
@@ -386,7 +418,16 @@ export class App extends React.Component<AppProps, AppState> {
       },
     });
     this.socket = socket;
+
+    // Failsafe timer: transition away from starting within 2.5s so room UI never hangs
+    const startingTimer = setTimeout(() => {
+      if (this.state.state === "starting") {
+        this.setState({ state: "connected" });
+      }
+    }, 2500);
+
     socket.on("connect", async () => {
+      clearTimeout(startingTimer);
       this.setState({
         state: "connected",
         overlayMsg: "",
@@ -408,13 +449,15 @@ export class App extends React.Component<AppProps, AppState> {
       }
     });
     socket.on("connect_error", (err: any) => {
-      console.error(err);
+      console.error("Socket connect_error:", err);
+      clearTimeout(startingTimer);
+      this.setState({ state: "connected" });
       if (err.message === "Invalid namespace") {
         this.setState({ overlayMsg: "Couldn't load this room." });
       } else if (err.message === "passcode" || err.message === "password") {
         this.setState({ isErrorAuth: true });
       } else {
-        this.setState({ overlayMsg: err?.message ?? "An error occurred" });
+        this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
       }
     });
     socket.on("disconnect", (reason) => {
@@ -2135,11 +2178,7 @@ export class App extends React.Component<AppProps, AppState> {
             getSubtitleMode={this.Player().getSubtitleMode}
           />
         )}
-        {this.state.state === "starting" && (
-          <Overlay className={styles.flexCenter}>
-            <Title order={2}>Loading...</Title>
-          </Overlay>
-        )}
+
         {this.state.overlayMsg && <ErrorModal error={this.state.overlayMsg} />}
         <SettingsModal
           modalOpen={this.state.settingsModalOpen}

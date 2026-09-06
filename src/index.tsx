@@ -5,7 +5,8 @@ import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route } from "react-router-dom";
 
-import { supabase } from "./utils/supabaseClient";
+import type { User } from "@supabase/supabase-js";
+import { supabase, hasCachedSupabaseToken, safeGetSession } from "./utils/supabaseClient";
 import { serverPath, resolveProfile } from "./utils/utils";
 import { Home } from "./components/Home/Home";
 import { App } from "./components/App/App";
@@ -63,6 +64,9 @@ const theme = createTheme({
   },
   components: {
     Button: {
+      defaultProps: {
+        radius: "md",
+      },
       styles: (theme: any, params: any) => {
         if (params.variant === "default") {
           return {
@@ -77,6 +81,9 @@ const theme = createTheme({
       },
     },
     TextInput: {
+      defaultProps: {
+        radius: "md",
+      },
       styles: {
         input: {
           backgroundColor: "var(--bg-surface)",
@@ -86,6 +93,9 @@ const theme = createTheme({
       },
     },
     PasswordInput: {
+      defaultProps: {
+        radius: "md",
+      },
       styles: {
         input: {
           backgroundColor: "var(--bg-surface)",
@@ -117,6 +127,7 @@ const ThemeConsumer = ({ children }: { children: (resolvedColorScheme: "light" |
 class CoWatch extends React.Component {
   public state = {
     ...DEFAULT_STATE,
+    user: (hasCachedSupabaseToken() ? undefined : null) as User | null | undefined,
     setMetadata: (data: any) => {
       this.setState(data);
     }
@@ -135,6 +146,7 @@ class CoWatch extends React.Component {
 
   private authSubscription: { unsubscribe: () => void } | null = null;
   private authTimeout: any = null;
+  private lastSessionToken: string | null | undefined = undefined;
 
   componentWillUnmount() {
     if (this.authTimeout) {
@@ -150,37 +162,50 @@ class CoWatch extends React.Component {
 
     if (supabaseUrl && config.VITE_SUPABASE_PUBLISHABLE_KEY) {
       const handleSession = async (session: any) => {
+        const user = session?.user;
+        const token = session?.access_token;
+
+        if (this.lastSessionToken === token && user && this.state.user) {
+          return;
+        }
+        this.lastSessionToken = token;
+
         if (this.authTimeout) {
           clearTimeout(this.authTimeout);
           this.authTimeout = null;
         }
 
         try {
-          const user = session?.user;
           if (user) {
-            // Eagerly set user so auth guards immediately know user is authenticated
+            // Eagerly set user so auth guards immediately resolve
             this.setState({ user });
 
-            const token = session.access_token;
             let metadata: any = {};
             try {
-              const res = await window.fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`);
+              const res = await window.fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`, {
+                signal: AbortSignal.timeout(1500),
+              });
               if (res.ok) {
                 metadata = await res.json();
               }
             } catch (err) {
-              console.warn("Backend server unreachable, skipping metadata:", err);
+              console.warn("Backend server unreachable or timed out, skipping metadata:", err);
             }
 
             let profile: any = null;
             try {
-              const { data: profileData, error: profileErr } = await supabase
+              const profilePromise = supabase
                 .from("profiles")
                 .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
                 .eq("id", user.id)
                 .maybeSingle();
 
-              if (!profileErr && profileData) {
+              const timeoutPromise = new Promise<{ data: null; error: null }>((resolve) =>
+                setTimeout(() => resolve({ data: null, error: null }), 1500)
+              );
+
+              const { data: profileData } = await Promise.race([profilePromise, timeoutPromise]);
+              if (profileData) {
                 profile = profileData;
               }
             } catch (err) {
@@ -202,7 +227,7 @@ class CoWatch extends React.Component {
                 null;
 
               try {
-                const { data: newProfile } = await supabase
+                const upsertPromise = supabase
                   .from("profiles")
                   .upsert(
                     {
@@ -216,6 +241,11 @@ class CoWatch extends React.Component {
                   .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
                   .maybeSingle();
 
+                const timeoutPromise = new Promise<{ data: null }>((resolve) =>
+                  setTimeout(() => resolve({ data: null }), 1500)
+                );
+
+                const { data: newProfile } = await Promise.race([upsertPromise, timeoutPromise]);
                 if (newProfile) {
                   profile = newProfile;
                 }
@@ -258,13 +288,13 @@ class CoWatch extends React.Component {
         }
       };
 
-      // Failsafe timeout: if auth takes longer than 2.5s, fall back to guest so the page NEVER hangs
+      // Failsafe timeout: if auth takes longer than 1.2s, immediately fall back to guest so the page NEVER hangs
       this.authTimeout = setTimeout(() => {
         if (this.state.user === undefined) {
           console.warn("Auth initialization timed out, falling back to unauthenticated guest mode.");
           this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
         }
-      }, 2500);
+      }, 1200);
 
       // Listen for changes. Defer handleSession via setTimeout(0) to prevent GoTrue mutex deadlock.
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -275,7 +305,7 @@ class CoWatch extends React.Component {
       this.authSubscription = subscription;
 
       // Fetch initial session with fallback
-      supabase.auth.getSession()
+      safeGetSession(1200)
         .then(({ data: { session } }) => {
           setTimeout(() => {
             handleSession(session);
