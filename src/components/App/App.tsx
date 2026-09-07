@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Alert, Loader, Menu, Overlay, Select, Title, Tabs } from "@mantine/core";
+import { Alert, Loader, Menu, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -26,12 +26,14 @@ import {
   getSavedPasscodes,
   addAndSavePasscode,
   getRoomUrl,
+  decodeEntities,
 } from "../../utils/utils";
+import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
 import { Chat, ChatComponent } from "../Chat/Chat";
 import { TopBar } from "../TopBar/TopBar";
 import { VBrowser } from "../VBrowser/VBrowser";
-import { VideoChat } from "../VideoChat/VideoChat";
+import { VideoChat, VideoChatErrorBoundary } from "../VideoChat/VideoChat";
 import { getCurrentSettings } from "../Settings/LocalSettings";
 import { MultiStreamModal } from "../Modal/MultiStreamModal";
 import { ComboBox } from "../ComboBox/ComboBox";
@@ -44,12 +46,14 @@ import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
 import type { User } from "@supabase/supabase-js";
-import { supabase } from "../../utils/supabaseClient";
+import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
 import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
+import { RoomHeader } from "../TopBar/RoomHeader";
+import { MediaDock } from "./MediaDock";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
@@ -57,10 +61,13 @@ import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
 import {
   IconAntennaBars5,
   IconBrowser,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
+  IconCopy,
   IconFile,
   IconKeyboardFilled,
+  IconLink,
   IconList,
   IconMessage,
   IconScreenShare,
@@ -152,6 +159,7 @@ interface AppState {
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
+  copiedRoomLink: boolean;
   roomLock: string;
   controller?: string;
   savedPasscodes: StringDict;
@@ -221,6 +229,7 @@ export class App extends React.Component<AppProps, AppState> {
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
+    copiedRoomLink: false,
     roomLock: "",
     controller: "",
     roomId: "",
@@ -265,6 +274,7 @@ export class App extends React.Component<AppProps, AppState> {
   consumerConn?: RTCPeerConnection;
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
+  startingTimer: any = null;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
   Player = () => {
@@ -307,6 +317,10 @@ export class App extends React.Component<AppProps, AppState> {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
     window.clearInterval(this.heartbeat);
+    if (this.startingTimer) {
+      window.clearTimeout(this.startingTimer);
+      this.startingTimer = null;
+    }
   }
 
   init = async () => {
@@ -318,95 +332,157 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   checkRoomAccess = async (roomId: string) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
+    try {
+      const sessionData = await safeGetSession(1200);
+      const user = sessionData?.data?.session?.user;
 
-    const { data } = await supabase
-      .from("rooms")
-      .select("passcode, owner_id")
-      .eq("roomId", roomId)
-      .maybeSingle();
+      const roomPromise = supabase
+        .from("rooms")
+        .select("passcode, owner_id")
+        .eq("roomId", roomId)
+        .maybeSingle();
 
-    if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+      const timeoutPromise = new Promise<{ data: null }>((resolve) =>
+        setTimeout(() => resolve({ data: null }), 1200)
+      );
 
-    const isOwner = Boolean(user && data.owner_id === user.id);
-    const requiresPasscode = Boolean(data.passcode);
+      const { data } = await Promise.race([roomPromise, timeoutPromise]);
+      if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
 
-    return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
+      const isOwner = Boolean(user && data.owner_id === user.id);
+      const requiresPasscode = Boolean(data.passcode);
+
+      return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
+    } catch (e) {
+      console.warn("checkRoomAccess error:", e);
+      return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+    }
   };
 
   join = async (roomId: string) => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
-    if (urlPass) {
-      addAndSavePasscode(roomId, urlPass);
+    const cleanRoomId = (roomId || "").trim();
+    if (!cleanRoomId) {
+      this.setState({ state: "connected", overlayMsg: "Invalid room identifier." });
+      return;
     }
-    let passcode = getSavedPasscodes()[roomId] ?? "";
 
-    const access = await this.checkRoomAccess(roomId);
-
-    if (access.requiresPasscode && !passcode && !access.isOwner) {
-      // Double-check: wait for auth to settle in case session was still loading
-      const { data: retrySession } = await supabase.auth.getSession();
-      const retryUser = retrySession?.session?.user;
-      const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
-      if (!retryIsOwner) {
-        this.setState({ isErrorAuth: true });
-        return;
+    if (this.startingTimer) {
+      window.clearTimeout(this.startingTimer);
+    }
+    this.startingTimer = window.setTimeout(() => {
+      if (this.state.state === "starting") {
+        console.warn("Room connection starting state timed out (2500ms); forcing connected state.");
+        this.setState({ state: "connected" });
       }
-    }
-    const response = await fetch(serverPath + "/resolveShard/" + roomId);
-    const shard = Number(await response.text()) || "";
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-    const uid = sessionData?.session?.user?.id;
+    }, 2500);
 
-    const socket = io(serverPath + "/" + roomId, {
-      transports: ["websocket"],
-      query: {
-        clientId,
-        passcode,
-        shard,
-        roomId: roomId,
-      },
-      auth: {
-        sessionId: getOrCreateSessionId(),
-        uid,
-        token,
-      },
-    });
-    this.socket = socket;
-    socket.on("connect", async () => {
-      this.setState({
-        state: "connected",
-        overlayMsg: "",
-        errorMessage: "",
-        successMessage: "",
-        warningMessage: "",
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
+      if (urlPass) {
+        addAndSavePasscode(cleanRoomId, urlPass);
+      }
+      let passcode = getSavedPasscodes()[cleanRoomId] ?? "";
+
+      try {
+        const access = await this.checkRoomAccess(cleanRoomId);
+
+        if (access.requiresPasscode && !passcode && !access.isOwner) {
+          // Double-check: wait for auth to settle in case session was still loading
+          const retrySession = await safeGetSession(1000);
+          const retryUser = retrySession?.data?.session?.user;
+          const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
+          if (!retryIsOwner) {
+            if (this.startingTimer) {
+              window.clearTimeout(this.startingTimer);
+              this.startingTimer = null;
+            }
+            this.setState({ isErrorAuth: true, state: "connected" });
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Room access verification error:", e);
+      }
+
+      let shard = "";
+      try {
+        const response = await fetch(serverPath + "/resolveShard/" + encodeURIComponent(cleanRoomId), {
+          signal: AbortSignal.timeout(1500),
+        });
+        shard = (await response.text()) || "";
+      } catch (e) {
+        console.warn("Shard resolution error, defaulting to shard 0:", e);
+      }
+
+      let token: string | undefined;
+      let uid: string | undefined;
+      try {
+        const sessionData = await safeGetSession(1000);
+        token = sessionData?.data?.session?.access_token;
+        uid = sessionData?.data?.session?.user?.id;
+      } catch (e) {
+        console.warn("Session retrieval error:", e);
+      }
+
+      // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
+      const safeNamespace = encodeURIComponent(cleanRoomId);
+      const socket = io(serverPath + "/" + safeNamespace, {
+        transports: ["websocket", "polling"],
+        query: {
+          clientId,
+          passcode,
+          shard,
+          roomId: cleanRoomId,
+        },
+        auth: {
+          sessionId: getOrCreateSessionId(),
+          uid,
+          token,
+        },
       });
-      // Use the name in our state, generate one if empty
-      const currentName = this.context.displayName || this.state.myName || (await generateName());
-      this.updateName(currentName);
-      const currentPicture = this.context.avatarUrl || this.state.myPicture;
-      if (currentPicture) {
-        this.updatePicture(currentPicture);
-      }
-      this.loadSignInData(this.context.user);
-      // Re-join video chat if we were in it before the reconnection
-      if (window.cowatch.ourStream) {
-        socket.emit("CMD:joinVideo");
-      }
-    });
-    socket.on("connect_error", (err: any) => {
-      console.error(err);
-      if (err.message === "Invalid namespace") {
-        this.setState({ overlayMsg: "Couldn't load this room." });
-      } else if (err.message === "passcode" || err.message === "password") {
-        this.setState({ isErrorAuth: true });
-      } else {
-        this.setState({ overlayMsg: err?.message ?? "An error occurred" });
-      }
-    });
+      this.socket = socket;
+
+      socket.on("connect", async () => {
+        if (this.startingTimer) {
+          window.clearTimeout(this.startingTimer);
+          this.startingTimer = null;
+        }
+        this.setState({
+          state: "connected",
+          overlayMsg: "",
+          errorMessage: "",
+          successMessage: "",
+          warningMessage: "",
+        });
+        // Use the name in our state, generate one if empty
+        const currentName = this.context.displayName || this.state.myName || (await generateName());
+        this.updateName(currentName);
+        const currentPicture = this.context.avatarUrl || this.state.myPicture;
+        if (currentPicture) {
+          this.updatePicture(currentPicture);
+        }
+        this.loadSignInData(this.context.user);
+        // Re-join video chat if we were in it before the reconnection
+        if (window.cowatch.ourStream) {
+          socket.emit("CMD:joinVideo");
+        }
+      });
+      socket.on("connect_error", (err: any) => {
+        console.error("Socket connect_error:", err);
+        if (this.startingTimer) {
+          window.clearTimeout(this.startingTimer);
+          this.startingTimer = null;
+        }
+        this.setState({ state: "connected" });
+        if (err.message === "Invalid namespace") {
+          this.setState({ overlayMsg: "Couldn't load this room." });
+        } else if (err.message === "passcode" || err.message === "password") {
+          this.setState({ isErrorAuth: true });
+        } else {
+          this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
+        }
+      });
     socket.on("disconnect", (reason) => {
       if (reason === "io server disconnect") {
         // the disconnection was initiated by the server, you need to reconnect manually
@@ -913,6 +989,14 @@ export class App extends React.Component<AppProps, AppState> {
         this.socket.emit("CMD:ts", toSend);
       }
     }, 1000);
+    } catch (criticalErr) {
+      console.error("Critical error in join:", criticalErr);
+      if (this.startingTimer) {
+        window.clearTimeout(this.startingTimer);
+        this.startingTimer = null;
+      }
+      this.setState({ state: "connected", overlayMsg: "Failed to connect to room." });
+    }
   };
 
   setFileSelection = (
@@ -956,6 +1040,10 @@ export class App extends React.Component<AppProps, AppState> {
     // This code loads the IFrame Player API code asynchronously.
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
+    tag.onerror = () => {
+      console.warn("YouTube iframe API failed to load");
+      this.setState({ loading: false });
+    };
     document.body.append(tag);
     window.onYouTubeIframeAPIReady = () => {
       // Note: this fails silently if the element is not available
@@ -968,7 +1056,7 @@ export class App extends React.Component<AppProps, AppState> {
             // We might have failed to play YT originally, ask for the current video again
             if (this.usingYoutube()) {
               console.log("requesting host data again after ytReady");
-              this.socket.emit("CMD:askHost");
+              this.socket?.emit("CMD:askHost");
             }
           },
           onStateChange: (e) => {
@@ -1053,6 +1141,22 @@ export class App extends React.Component<AppProps, AppState> {
     }
     const isOwner = Boolean(this.state.owner && this.context.user?.id === this.state.owner);
     return this.context.user?.id === this.state.roomLock || isOwner;
+  };
+
+  toggleLock = () => {
+    this.setRoomLock(!Boolean(this.state.roomLock));
+  };
+
+  focusHeaderSearch = () => {
+    window.dispatchEvent(new CustomEvent("cowatch:focus-search"));
+    const el = document.getElementById("cowatch-header-search");
+    el?.focus();
+  };
+
+  handleCopyRoomLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    this.setState({ copiedRoomLink: true });
+    setTimeout(() => this.setState({ copiedRoomLink: false }), 2000);
   };
 
   setIsChatDisabled = (val: boolean) => this.setState({ isChatDisabled: val });
@@ -1943,9 +2047,15 @@ export class App extends React.Component<AppProps, AppState> {
     if (!input) {
       return "";
     }
-    // Show the whole URL for youtube
-    if (this.usingYoutube()) {
-      return input;
+    // Check if in playlist
+    const playlistItem = this.state.playlist?.find((p) => p.url === input);
+    if (playlistItem?.name && playlistItem.name !== input) {
+      return decodeEntities(playlistItem.name);
+    }
+    // Check if in examples
+    const exampleItem = examples.find((e) => e.url === input);
+    if (exampleItem?.name && exampleItem.name !== input) {
+      return decodeEntities(exampleItem.name);
     }
     if (input.startsWith("screenshare://")) {
       const sharer = this.state.participants.find((user) => user.isScreenShare);
@@ -1981,6 +2091,19 @@ export class App extends React.Component<AppProps, AppState> {
         return displayName;
       }
     }
+    // Extract friendly filename from URL if possible
+    try {
+      if (isHttp(input)) {
+        const parsedUrl = new URL(input);
+        const segments = parsedUrl.pathname.split("/").filter(Boolean);
+        if (segments.length > 0) {
+          const lastSeg = segments[segments.length - 1];
+          if (lastSeg.includes(".")) {
+            return decodeURIComponent(lastSeg);
+          }
+        }
+      }
+    } catch {}
     return input;
   };
 
@@ -2115,11 +2238,40 @@ export class App extends React.Component<AppProps, AppState> {
             getSubtitleMode={this.Player().getSubtitleMode}
           />
         )}
+
         {this.state.state === "starting" && (
-          <Overlay className={styles.flexCenter}>
-            <Title order={2}>Loading...</Title>
+          <Overlay
+            fixed
+            zIndex={2000}
+            backgroundOpacity={0.96}
+            color="var(--bg-app, #08090D)"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "18px",
+            }}
+          >
+            <Loader color="violet" size="lg" />
+            <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Title
+                order={3}
+                style={{
+                  color: "var(--text-main, #ffffff)",
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                Connecting to room...
+              </Title>
+              <Text c="dimmed" size="sm">
+                Synchronizing media stage and participants
+              </Text>
+            </div>
           </Overlay>
         )}
+
         {this.state.overlayMsg && <ErrorModal error={this.state.overlayMsg} />}
         <SettingsModal
           modalOpen={this.state.settingsModalOpen}
@@ -2189,20 +2341,35 @@ export class App extends React.Component<AppProps, AppState> {
           </Alert>
         )}
         {!this.state.fullScreen && (
-          <TopBar
+          <RoomHeader
             roomTitle={this.state.roomTitle}
-            roomDescription={this.state.roomDescription}
-            hideNewRoom={true}
-            hideMyRooms={true}
-            showExit={true}
+            participantCount={this.state.participants.length}
+            currentTab={this.state.currentTab as "people" | "chat"}
+            onSelectTab={(tab) => {
+              if (this.state.currentTab === tab && this.state.showChatColumn) {
+                const newVal = !this.state.showChatColumn;
+                this.setState({ showChatColumn: newVal });
+              } else {
+                this.setState({ currentTab: tab, showChatColumn: true });
+              }
+            }}
             onOpenSettings={() => this.setSettingsModalOpen(true)}
+            onExit={() => {
+              window.location.href = "/";
+            }}
+            isLocked={Boolean(this.state.roomLock)}
+            onToggleLock={this.toggleLock}
+            haveLock={this.haveLock()}
+            currentMedia={this.state.roomMedia}
+            mediaDisplayName={this.getMediaDisplayName(this.state.roomMedia)}
+            onOpenQuickAdd={this.focusHeaderSearch}
+            roomSetMedia={this.roomSetMedia}
+            playlistAdd={this.roomPlaylistAdd}
+            mediaPath={this.state.mediaPath}
           />
         )}
         {
-          <div
-            className={styles.mobileStack}
-            style={{ margin: "0 8px", display: "flex", columnGap: "32px" }}
-          >
+          <div className={styles.mobileStack}>
             <div
               className={
                 (this.state.fullScreen
@@ -2221,77 +2388,47 @@ export class App extends React.Component<AppProps, AppState> {
                   gap: "4px",
                 }}
               >
-                {!this.state.fullScreen && (
-                  <React.Fragment>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%", maxWidth: "640px" }}>
-                      <div style={{ flexGrow: 1, minWidth: 0 }}>
-                        <ComboBox
-                          roomSetMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          roomMedia={this.state.roomMedia}
-                          getMediaDisplayName={this.getMediaDisplayName}
-                          mediaPath={this.state.mediaPath}
-                          disabled={!this.haveLock()}
-                        />
-                      </div>
-                      <InviteButton roomId={this.state.roomId} />
-                    </div>
-                    <div className={styles.mobileStack}>
+                {!this.state.fullScreen &&
+                  (this.playingVBrowser() ||
+                    this.state.uploadController ||
+                    this.localStreamToPublish) && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "var(--radius-md)",
+                        marginBottom: "4px",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       {this.localStreamToPublish && (
                         <Button
+                          size="xs"
                           color="red"
                           onClick={this.stopPublishingLocalStream}
-                          leftSection={<IconX />}
+                          leftSection={<IconX size={14} />}
                         >
                           Stop Share
                         </Button>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="blue"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isScreenShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconScreenShare />}
-                          >
-                            Screenshare
-                          </Button>
-                        )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            disabled={!this.haveLock()}
-                            color="green"
-                            onClick={() => {
-                              this.setState({
-                                isVBrowserModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconBrowser />}
-                          >
-                            VBrowser
-                          </Button>
-                        )}
                       {this.playingVBrowser() && (
                         <>
                           <Button
+                            size="xs"
                             color="red"
                             disabled={!this.haveLock()}
                             onClick={this.stopVBrowser}
-                            leftSection={<IconX />}
+                            leftSection={<IconX size={14} />}
                           >
                             Stop VBrowser
                           </Button>
                           <Select
-                            leftSection={<IconKeyboardFilled />}
+                            size="xs"
+                            leftSection={<IconKeyboardFilled size={14} />}
                             value={this.state.controller}
                             placeholder="No controller"
                             clearable
@@ -2301,9 +2438,10 @@ export class App extends React.Component<AppProps, AppState> {
                               label: this.state.nameMap[p.id] || p.id,
                               value: p.id,
                             }))}
-                          ></Select>
+                          />
                           <Select
-                            leftSection={<IconUserScreen />}
+                            size="xs"
+                            leftSection={<IconUserScreen size={14} />}
                             disabled={!this.haveLock()}
                             value={this.state.vBrowserResolution}
                             onChange={(value) =>
@@ -2334,9 +2472,10 @@ export class App extends React.Component<AppProps, AppState> {
                                 value: "640x360@60",
                               },
                             ]}
-                          ></Select>
+                          />
                           <Select
-                            leftSection={<IconAntennaBars5 />}
+                            size="xs"
+                            leftSection={<IconAntennaBars5 size={14} />}
                             disabled={!this.haveLock()}
                             value={this.state.vBrowserQuality}
                             onChange={(value) => {
@@ -2345,133 +2484,29 @@ export class App extends React.Component<AppProps, AppState> {
                               });
                             }}
                             data={[
-                              {
-                                label: "Eco (0.25x)",
-                                value: "0.25",
-                              },
-                              {
-                                label: "Low (0.5x)",
-                                value: "0.5",
-                              },
-                              {
-                                label: "Standard (1x)",
-                                value: "1",
-                              },
-                              {
-                                label: "High (1.5x)",
-                                value: "1.5",
-                              },
-                              {
-                                label: "Ultra (2x)",
-                                value: "2",
-                              },
+                              { label: "Eco (0.25x)", value: "0.25" },
+                              { label: "Low (0.5x)", value: "0.5" },
+                              { label: "Standard (1x)", value: "1" },
+                              { label: "High (1.5x)", value: "1.5" },
+                              { label: "Ultra (2x)", value: "2" },
                             ]}
-                          ></Select>
+                          />
                         </>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="violet"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isFileShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconFile />}
-                          >
-                            File
-                          </Button>
-                        )}
                       {this.state.uploadController && (
                         <Button
+                          size="xs"
                           color="red"
                           onClick={() => {
                             this.state.uploadController?.abort();
                           }}
-                          leftSection={<IconX />}
+                          leftSection={<IconX size={14} />}
                         >
                           Stop Convert
                         </Button>
                       )}
-                      {false && (
-                        <SearchComponent
-                          setMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          type={"youtube"}
-                          setShowMultiSelect={this.setMultiSelectModal}
-                          setFileSelection={this.setFileSelection}
-                          disabled={!this.haveLock()}
-                        />
-                      )}
-                      {Boolean(this.context.streamPath) && (
-                        <SearchComponent
-                          setMedia={this.roomSetMedia}
-                          playlistAdd={this.roomPlaylistAdd}
-                          type={"stream"}
-                          setShowMultiSelect={this.setMultiSelectModal}
-                          setFileSelection={this.setFileSelection}
-                          disabled={!this.haveLock()}
-                        />
-                      )}
-                      <Menu>
-                        <Menu.Target>
-                          <Button
-                            color="grey"
-                            leftSection={<IconList />}
-                            rightSection={
-                              <Badge circle>{playlist.length}</Badge>
-                            }
-                            className={styles.shareButton}
-                          >
-                            Playlist
-                          </Button>
-                        </Menu.Target>
-                        <Menu.Dropdown
-                          style={{
-                            overflowY:
-                              playlist.length > 0 ? "scroll" : undefined,
-                            maxHeight: 400,
-                            maxWidth: isMobile() ? 400 : 600,
-                          }}
-                        >
-                          {playlist.length === 0 && (
-                            <Menu.Item disabled>
-                              There are no items in the playlist.
-                            </Menu.Item>
-                          )}
-                          {playlist.map(
-                            (item: PlaylistVideo, index: number) => {
-                              if (Boolean(item.img)) {
-                                item.type = "youtube";
-                              }
-                              return (
-                                <Menu.Item key={index}>
-                                  <ChatVideoCard
-                                    video={item}
-                                    index={index}
-                                    controls
-                                    onPlay={this.roomPlaylistPlay}
-                                    onPlayNext={(index) => {
-                                      this.roomPlaylistMove(index, 0);
-                                    }}
-                                    onRemove={(index) => {
-                                      this.roomPlaylistDelete(index);
-                                    }}
-                                    disabled={!this.haveLock()}
-                                  />
-                                </Menu.Item>
-                              );
-                            },
-                          )}
-                        </Menu.Dropdown>
-                      </Menu>
                     </div>
-                  </React.Fragment>
-                )}
+                  )}
                 <div style={{ flexGrow: 1, position: "relative" }}>
                   <div className={styles.playerContainer}>
                     {!this.state.isAutoPlayable && this.state.roomMedia && (
@@ -2497,7 +2532,7 @@ export class App extends React.Component<AppProps, AppState> {
                           id="loader"
                           className={`${styles.videoContent} ${styles.flexCenter}`}
                         >
-                          {this.state.loading && (
+                          {this.state.loading && (Boolean(this.state.roomMedia) || this.playingVBrowser()) && (
                             <div
                               className={styles.flexCenter}
                               style={{
@@ -2512,8 +2547,11 @@ export class App extends React.Component<AppProps, AppState> {
                               </div>
                             </div>
                           )}
-                          {!this.state.loading && !this.state.roomMedia && (
-                            <EmptyWatchState haveLock={this.haveLock()} />
+                          {!this.state.roomMedia && (
+                            <EmptyWatchState
+                              haveLock={this.haveLock()}
+                              onOpenAddMedia={this.focusHeaderSearch}
+                            />
                           )}
                           {!this.state.loading &&
                             this.state.nonPlayableMedia && (
@@ -2596,6 +2634,38 @@ export class App extends React.Component<AppProps, AppState> {
                           " connections"}
                       </div>
                     )}
+
+                    <MediaDock
+                      haveLock={this.haveLock()}
+                      onOpenScreenShare={() =>
+                        this.setState({ isScreenShareModalOpen: true })
+                      }
+                      onOpenVBrowser={() =>
+                        this.setState({ isVBrowserModalOpen: true })
+                      }
+                      onOpenFileShare={() =>
+                        this.setState({ isFileShareModalOpen: true })
+                      }
+                      onOpenQuickAdd={this.focusHeaderSearch}
+                      playlist={playlist}
+                      onPlayPlaylistItem={this.roomPlaylistPlay}
+                      onDeletePlaylistItem={this.roomPlaylistDelete}
+                      onMovePlaylistItem={(from, to) =>
+                        this.roomPlaylistMove(from, to)
+                      }
+                      roomMedia={this.state.roomMedia}
+                      onStopMedia={() => this.roomSetMedia("")}
+                      isScreenSharing={Boolean(this.localStreamToPublish)}
+                      onStopScreenShare={this.stopPublishingLocalStream}
+                      isPlayingVBrowser={this.playingVBrowser()}
+                      onStopVBrowser={this.stopVBrowser}
+                      isLocked={Boolean(this.state.roomLock)}
+                      onToggleLock={this.toggleLock}
+                      isFullScreen={this.state.fullScreen}
+                      onToggleFullScreen={() =>
+                        this.localFullScreen(!this.state.fullScreen)
+                      }
+                    />
                   </div>
                 </div>
                 {this.state.roomMedia && controls}
@@ -2624,20 +2694,14 @@ export class App extends React.Component<AppProps, AppState> {
               </div>
             </div>
             <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                position: "relative",
-                width: this.state.showChatColumn ? 400 : 0,
-                maxWidth: 400,
-                overflow: "hidden",
-                gap: "4px",
-              }}
               className={`${(this.state.fullScreen
                 ? styles.fullHeightColumnFullscreen
                 : styles.fullHeightColumn) +
                 " " +
-                styles.rightColumn
+                styles.rightColumn +
+                (!this.state.showChatColumn
+                  ? " " + styles.rightColumnCollapsed
+                  : "")
                 }`}
             >
               <Tabs
@@ -2684,16 +2748,19 @@ export class App extends React.Component<AppProps, AppState> {
                     border: "1px solid var(--border-subtle)",
                   }}
                 >
-                  <VideoChat
-                    socket={this.socket}
-                    participants={this.state.participants}
-                    nameMap={this.state.nameMap}
-                    pictureMap={this.state.pictureMap}
-                    tsMap={this.state.tsMap}
-                    rosterUpdateTS={this.state.rosterUpdateTS}
-                    owner={this.state.owner}
-                    getLeaderTime={this.getLeaderTime}
-                  />
+                  <VideoChatErrorBoundary>
+                    <VideoChat
+                      socket={this.socket}
+                      participants={this.state.participants}
+                      nameMap={this.state.nameMap}
+                      pictureMap={this.state.pictureMap}
+                      tsMap={this.state.tsMap}
+                      rosterUpdateTS={this.state.rosterUpdateTS}
+                      owner={this.state.owner}
+                      getLeaderTime={this.getLeaderTime}
+                      roomId={this.state.roomId}
+                    />
+                  </VideoChatErrorBoundary>
                 </Tabs.Panel>
                 <Tabs.Panel
                   value="chat"
@@ -2726,6 +2793,48 @@ export class App extends React.Component<AppProps, AppState> {
                   />
                 </Tabs.Panel>
               </Tabs>
+              <div
+                style={{
+                  marginTop: "8px",
+                  padding: "10px 14px",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-lg)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+                onClick={this.handleCopyRoomLink}
+                title="Click to copy room link"
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <IconLink size={16} color="var(--color-violet)" />
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    {this.state.copiedRoomLink
+                      ? "Room link copied!"
+                      : "Copy room link"}
+                  </span>
+                </div>
+                {this.state.copiedRoomLink ? (
+                  <IconCheck size={16} color="var(--color-live)" />
+                ) : (
+                  <IconCopy size={16} color="var(--text-muted)" />
+                )}
+              </div>
             </div>
           </div>
         }

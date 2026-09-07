@@ -36,6 +36,8 @@ const ChatVideoCard: React.FC<{
     onPlaylistAdd,
   } = props;
 
+  const [imgError, setImgError] = React.useState(false);
+
   const handlePlayClick = React.useCallback(
     (e: any) => {
       if (onPlay) {
@@ -86,11 +88,12 @@ const ChatVideoCard: React.FC<{
               {formatTimestamp(video.duration)}
             </div>
           )}
-          {!!video.img && (
+          {Boolean(video.img) && !imgError && (
             <img
               className={classes.Thumbnail}
               src={video.img}
               alt={video.name}
+              onError={() => setImgError(true)}
             />
           )}
         </div>

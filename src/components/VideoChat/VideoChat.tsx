@@ -14,13 +14,18 @@ import { UserMenu } from "../UserMenu/UserMenu";
 import { MetadataContext } from "../../MetadataContext";
 import {
   IconCheck,
+  IconChevronRight,
   IconDotsVertical,
   IconMicrophone,
+  IconMicrophoneOff,
   IconScreenShare,
   IconUserPlus,
   IconVideo,
+  IconVideoOff,
   IconX,
 } from "@tabler/icons-react";
+import styles from "./VideoChat.module.css";
+import { InviteModal } from "../Modal/InviteModal";
 
 interface VideoChatProps {
   socket: Socket;
@@ -32,6 +37,44 @@ interface VideoChatProps {
   hide?: boolean;
   owner: string | undefined;
   getLeaderTime: () => number;
+  roomId?: string;
+  onOpenInviteModal?: () => void;
+}
+
+export class VideoChatErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string | null }
+> {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error: error?.message || "Video chat error" };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("VideoChat error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>
+          <p style={{ color: "var(--text-primary)", fontWeight: 600, marginBottom: "8px" }}>
+            Video chat encountered an issue
+          </p>
+          <Button
+            size="xs"
+            variant="light"
+            color="violet"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Retry Video Chat
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 export class VideoChat extends React.Component<VideoChatProps> {
@@ -42,6 +85,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   state = {
     copied: false,
+    isInviteModalOpen: false,
+  };
+
+  private handleOpenInvite = () => {
+    if (this.props.onOpenInviteModal) {
+      this.props.onOpenInviteModal();
+    } else {
+      this.setState({ isInviteModalOpen: true });
+    }
   };
 
   private handleCopyInvite = () => {
@@ -129,52 +181,62 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   setupWebRTC = async () => {
-    let stream = new MediaStream([]);
+    try {
+      let stream = new MediaStream([]);
 
-    const prefCameraOn = this.context.profile.pref_camera_on;
-    const prefMicOn = this.context.profile.pref_mic_on;
+      const prefCameraOn = this.context.profile?.pref_camera_on ?? true;
+      const prefMicOn = this.context.profile?.pref_mic_on ?? true;
 
-    if (prefCameraOn || prefMicOn) {
-      try {
-        stream = await navigator?.mediaDevices.getUserMedia({
-          audio: prefMicOn,
-          video: prefCameraOn,
-        });
-      } catch (e) {
-        console.warn("Failed initial getUserMedia", e);
-        if (prefCameraOn && prefMicOn) {
+      if (prefCameraOn || prefMicOn) {
+        try {
+          stream = await navigator?.mediaDevices?.getUserMedia({
+            audio: prefMicOn,
+            video: prefCameraOn,
+          });
+        } catch (e) {
+          console.warn("Failed initial getUserMedia with audio+video, falling back:", e);
           try {
-            console.log("attempt audio only stream");
             stream = await navigator?.mediaDevices?.getUserMedia({
               audio: true,
               video: false,
             });
           } catch (fallbackErr) {
-            console.warn(fallbackErr);
+            console.warn("Audio-only fallback also failed or was denied:", fallbackErr);
           }
         }
       }
-    }
 
-    window.cowatch.ourStream = stream;
-    // alert server we've joined video chat
-    this.socket.emit("CMD:joinVideo");
-    this.emitUserMute();
+      window.cowatch.ourStream = stream;
+      // alert server we've joined video chat
+      this.socket?.emit("CMD:joinVideo");
+      this.emitUserMute();
+      this.forceUpdate();
+    } catch (err) {
+      console.error("Critical error in setupWebRTC:", err);
+    }
   };
 
   stopWebRTC = () => {
-    const ourStream = window.cowatch.ourStream;
-    const videoPCs = window.cowatch.videoPCs;
-    ourStream &&
-      ourStream.getTracks().forEach((track) => {
-        track.stop();
+    try {
+      const ourStream = window.cowatch.ourStream;
+      const videoPCs = window.cowatch.videoPCs;
+      if (ourStream) {
+        ourStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      window.cowatch.ourStream = undefined;
+      Object.keys(videoPCs).forEach((key) => {
+        try {
+          videoPCs[key]?.close();
+        } catch (e) {}
+        delete videoPCs[key];
       });
-    window.cowatch.ourStream = undefined;
-    Object.keys(videoPCs).forEach((key) => {
-      videoPCs[key].close();
-      delete videoPCs[key];
-    });
-    this.socket.emit("CMD:leaveVideo");
+      this.socket?.emit("CMD:leaveVideo");
+      this.forceUpdate();
+    } catch (err) {
+      console.error("Critical error in stopWebRTC:", err);
+    }
   };
   addTrackToAllPCs = (track: MediaStreamTrack) => {
     const ourStream = window.cowatch.ourStream;
@@ -192,7 +254,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     if (!ourStream) return;
     const videoTrack = ourStream.getVideoTracks()[0];
-    
+
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
     } else {
@@ -217,7 +279,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     if (!ourStream) return;
     const audioTrack = ourStream.getAudioTracks()[0];
-    
+
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
     } else {
@@ -244,76 +306,102 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   updateWebRTC = () => {
-    const ourStream = window.cowatch.ourStream;
-    const videoPCs = window.cowatch.videoPCs;
-    const videoRefs = window.cowatch.videoRefs;
-    if (!ourStream) {
-      // We haven't started video chat, exit
-      return;
-    }
-    const selfId = getOrCreateClientId();
-
-    // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
-    // This allows them to rejoin later
-    const clientIds = new Set(
-      this.props.participants.filter((p) => p.isVideoChat).map((p) => p.id),
-    );
-    Object.entries(videoPCs).forEach(([key, value]) => {
-      if (!clientIds.has(key)) {
-        value.close();
-        delete videoPCs[key];
-      }
-    });
-
-    this.props.participants.forEach((user) => {
-      const id = user.id;
-      if (!user.isVideoChat || videoPCs[id]) {
-        // User isn't in video chat, or we already have a connection to them
+    try {
+      const ourStream = window.cowatch.ourStream;
+      const videoPCs = window.cowatch.videoPCs;
+      const videoRefs = window.cowatch.videoRefs;
+      if (!ourStream) {
+        // We haven't started video chat, exit
         return;
       }
-      if (id === selfId) {
-        videoPCs[id] = new RTCPeerConnection();
-        videoRefs[id].srcObject = ourStream;
-      } else {
-        const pc = new RTCPeerConnection({ iceServers: iceServers() });
-        videoPCs[id] = pc;
-        // Add our own video as outgoing stream
-        ourStream?.getTracks().forEach((track) => {
-          if (ourStream) {
-            pc.addTrack(track, ourStream);
-          }
-        });
-        pc.onicecandidate = (event) => {
-          // We generated an ICE candidate, send it to peer
-          if (event.candidate) {
-            this.sendSignal(id, { ice: event.candidate });
-          }
-        };
-        pc.ontrack = (event: RTCTrackEvent) => {
-          // Mount the stream from peer
-          // console.log(stream);
-          videoRefs[id].srcObject = event.streams[0];
-        };
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === "failed") {
-            // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
-            pc.close();
-            delete videoPCs[id];
-            this.updateWebRTC();
-          }
-        };
-        // For each pair, have the lexicographically smaller ID be the offerer
-        const isOfferer = selfId < id;
-        if (isOfferer) {
-          pc.onnegotiationneeded = async () => {
-            // Start connection for peer's video
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            this.sendSignal(id, { sdp: pc.localDescription });
-          };
+      const selfId = getOrCreateClientId();
+
+      // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
+      // This allows them to rejoin later
+      const clientIds = new Set(
+        this.props.participants.filter((p) => p.isVideoChat).map((p) => p.id),
+      );
+      Object.entries(videoPCs).forEach(([key, value]) => {
+        if (!clientIds.has(key)) {
+          try {
+            value.close();
+          } catch (e) {}
+          delete videoPCs[key];
         }
-      }
-    });
+      });
+
+      this.props.participants.forEach((user) => {
+        const id = user.id;
+        if (!user.isVideoChat || videoPCs[id]) {
+          // User isn't in video chat, or we already have a connection to them
+          return;
+        }
+        if (id === selfId) {
+          videoPCs[id] = new RTCPeerConnection();
+          if (videoRefs && videoRefs[id] && ourStream) {
+            try {
+              videoRefs[id].srcObject = ourStream;
+            } catch (e) {
+              console.warn("Could not set local stream on video element:", e);
+            }
+          }
+        } else {
+          const pc = new RTCPeerConnection({ iceServers: iceServers() });
+          videoPCs[id] = pc;
+          // Add our own video as outgoing stream
+          ourStream?.getTracks().forEach((track) => {
+            if (ourStream) {
+              try {
+                pc.addTrack(track, ourStream);
+              } catch (e) {
+                console.warn("Could not add track to pc:", e);
+              }
+            }
+          });
+          pc.onicecandidate = (event) => {
+            // We generated an ICE candidate, send it to peer
+            if (event.candidate) {
+              this.sendSignal(id, { ice: event.candidate });
+            }
+          };
+          pc.ontrack = (event: RTCTrackEvent) => {
+            if (videoRefs && videoRefs[id] && event.streams && event.streams[0]) {
+              try {
+                videoRefs[id].srcObject = event.streams[0];
+              } catch (e) {
+                console.warn("Could not set remote stream on video element:", e);
+              }
+            }
+          };
+          pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === "failed") {
+              // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
+              try {
+                pc.close();
+              } catch (e) {}
+              delete videoPCs[id];
+              this.updateWebRTC();
+            }
+          };
+          // For each pair, have the lexicographically smaller ID be the offerer
+          const isOfferer = selfId < id;
+          if (isOfferer) {
+            pc.onnegotiationneeded = async () => {
+              try {
+                // Start connection for peer's video
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                this.sendSignal(id, { sdp: pc.localDescription });
+              } catch (e) {
+                console.warn("Negotiation error:", e);
+              }
+            };
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Critical error in updateWebRTC:", err);
+    }
   };
 
   sendSignal = async (to: string, data: any) => {
@@ -326,24 +414,10 @@ export class VideoChat extends React.Component<VideoChatProps> {
       this.props;
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
-    const videoChatSize = participants.length > 2 ? 140 : 180;
-    const videoChatContentStyle: React.CSSProperties = {
-      height: videoChatSize,
-      width: videoChatSize,
-      objectFit: "cover",
-      position: "relative",
-    };
     const selfId = getOrCreateClientId();
+
     return (
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          gap: "4px",
-          padding: "4px",
-        }}
-      >
+      <div className={styles.container}>
         {participants.map((p) => {
           const isSelf = p.id === selfId;
           const displayName =
@@ -359,255 +433,233 @@ export class VideoChat extends React.Component<VideoChatProps> {
           );
           const userPhoto = rawPhoto || fallbackPhoto;
 
+          const isSelfInCall = Boolean(isSelf && ourStream);
+          const isSelfVideoActive = Boolean(isSelfInCall && this.getVideoWebRTC());
+          const isPeerInCall = Boolean(!isSelf && p.isVideoChat);
+          const showVideoFeed = isSelf ? isSelfVideoActive : isPeerInCall;
+
           return (
-            <div key={p.id}>
-              <div
-                style={{
-                  position: "relative",
-                  width: videoChatSize,
-                  height: videoChatSize,
-                  backgroundColor: "var(--bg-elevated)",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-subtle)",
-                  overflow: "hidden",
-                }}
-              >
-                <div>
-                  <UserMenu
-                    displayName={displayName}
-                    disabled={
-                      !Boolean(owner && owner === this.context.user?.id)
+            <div key={p.id} className={styles.videoTile}>
+              {(isSelfInCall || p.isVideoChat) && (
+                <video
+                  ref={(el) => {
+                    if (el) {
+                      videoRefs[p.id] = el;
+                      if (isSelf && ourStream && el.srcObject !== ourStream) {
+                        try {
+                          el.srcObject = ourStream;
+                        } catch (e) {
+                          console.warn("Error assigning srcObject to local video:", e);
+                        }
+                      }
+                    } else {
+                      delete videoRefs[p.id];
                     }
-                    socket={socket}
-                    userToManage={p.id}
-                    trigger={
-                      <IconDotsVertical
-                        style={{
-                          position: "absolute",
-                          right: 0,
-                          top: 0,
-                          cursor: "pointer",
-                          zIndex: 1,
-                          visibility: Boolean(
-                            owner && owner === this.context.user?.id,
-                          )
-                            ? "visible"
-                            : "hidden",
-                        }}
-                      />
-                    }
+                  }}
+                  className={styles.videoElement}
+                  style={{
+                    display: showVideoFeed ? "block" : "none",
+                    transform: `scaleX(${isSelf ? "-1" : "1"})`,
+                  }}
+                  autoPlay
+                  playsInline
+                  muted={isSelf}
+                  data-id={p.id}
+                />
+              )}
+
+              {!showVideoFeed && (
+                <div className={styles.avatarPlaceholder}>
+                  <img
+                    className={styles.largeAvatar}
+                    src={userPhoto}
+                    alt={displayName}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (target.src !== fallbackPhoto) {
+                        target.src = fallbackPhoto;
+                      }
+                    }}
                   />
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      gap: "4px",
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      zIndex: 1,
-                    }}
-                  >
-                    {!ourStream && p.id === selfId && (
-                      <Button
-                        size="xs"
-                        color={"purple"}
-                        onClick={this.setupWebRTC}
-                        leftSection={<IconVideo />}
+                  {isSelf && !ourStream && (
+                    <Button
+                      size="xs"
+                      variant="gradient"
+                      gradient={{ from: "violet", to: "indigo", deg: 45 }}
+                      radius="md"
+                      onClick={this.setupWebRTC}
+                      leftSection={<IconVideo size={14} />}
+                      style={{ marginTop: "4px" }}
+                    >
+                      Join Video Call
+                    </Button>
+                  )}
+                  {isSelf && ourStream && !isSelfVideoActive && (
+                    <span className={styles.cameraOffNotice}>Camera is turned off</span>
+                  )}
+                  {!isSelf && (
+                    <span className={styles.peerStatusNotice}>
+                      {p.isVideoChat ? "Camera is turned off" : "Watching"}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Top Bar: Participant Name and Options Menu */}
+              <div className={styles.tileTopBar}>
+                <div className={styles.nameBadge} title={displayName}>
+                  <div className={styles.statusDot} />
+                  <span className={styles.nameText}>{displayName}</span>
+                  {isSelf && <span className={styles.youBadge}>You</span>}
+                </div>
+
+                <UserMenu
+                  displayName={displayName}
+                  disabled={!Boolean(owner && owner === this.context.user?.id)}
+                  socket={socket}
+                  userToManage={p.id}
+                  trigger={
+                    <button
+                      type="button"
+                      className={styles.menuTrigger}
+                      title="User options"
+                      style={{
+                        visibility: Boolean(owner && owner === this.context.user?.id)
+                          ? "visible"
+                          : "hidden",
+                      }}
+                    >
+                      <IconDotsVertical size={15} />
+                    </button>
+                  }
+                />
+              </div>
+
+              {/* Bottom Bar: Timestamp and Video/Audio Controls */}
+              <div className={styles.tileBottomBar}>
+                <div className={styles.timeBadge}>
+                  Watching {tsMap[p.id] ? formatTimestamp(tsMap[p.id]) : "0:00"}
+                </div>
+
+                <div className={styles.controlsBadge}>
+                  {isSelf && ourStream && (
+                    <div className={styles.controlPill}>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color={this.getVideoWebRTC() ? "green" : "red"}
+                        variant="filled"
+                        onClick={this.toggleVideoWebRTC}
+                        title={this.getVideoWebRTC() ? "Turn camera off" : "Turn camera on"}
                       >
-                        Join
-                      </Button>
-                    )}
-                    {ourStream && p.id === selfId && (
-                      <Button
-                        size="xs"
-                        color={"red"}
-                        onClick={this.stopWebRTC}
-                        leftSection={<IconX />}
-                      >
-                        Leave
-                      </Button>
-                    )}
-                    {ourStream && p.id === selfId && (
-                      <>
-                        <ActionIcon
-                          color={this.getVideoWebRTC() ? "green" : "red"}
-                          onClick={this.toggleVideoWebRTC}
-                        >
-                          <IconVideo />
-                        </ActionIcon>
-                        <ActionIcon
-                          color={this.getAudioWebRTC() ? "green" : "red"}
-                          onClick={this.toggleAudioWebRTC}
-                        >
-                          <IconMicrophone />
-                        </ActionIcon>
-                      </>
-                    )}
-                    {p.id !== selfId && (
-                      <>
-                        {p.isVideoChat && <IconVideo color={softWhite} />}
-                        {p.isVideoChat && (
-                          <IconMicrophone
-                            color={p.isMuted ? "red" : softWhite}
-                          />
+                        {this.getVideoWebRTC() ? (
+                          <IconVideo size={13} />
+                        ) : (
+                          <IconVideoOff size={13} />
                         )}
-                      </>
-                    )}
-                    {p.isScreenShare && <IconScreenShare color={softWhite} />}
-                  </div>
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: "4px",
-                      left: "0px",
-                      width: "100%",
-                      backgroundColor: "rgba(0,0,0,0)",
-                      color: softWhite,
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      display: "flex",
-                      zIndex: 1,
-                    }}
-                  >
-                    <div
-                      title={displayName}
-                      style={{
-                        backdropFilter: "brightness(80%)",
-                        padding: "4px",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        display: "inline-block",
-                      }}
-                    >
-                      {displayName}
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color={this.getAudioWebRTC() ? "green" : "red"}
+                        variant="filled"
+                        onClick={this.toggleAudioWebRTC}
+                        title={this.getAudioWebRTC() ? "Mute mic" : "Unmute mic"}
+                      >
+                        {this.getAudioWebRTC() ? (
+                          <IconMicrophone size={13} />
+                        ) : (
+                          <IconMicrophoneOff size={13} />
+                        )}
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        radius="sm"
+                        color="red"
+                        variant="subtle"
+                        onClick={this.stopWebRTC}
+                        title="Leave video call"
+                      >
+                        <IconX size={13} />
+                      </ActionIcon>
                     </div>
-                    <div
-                      style={{
-                        backdropFilter: "brightness(60%)",
-                        padding: "4px",
-                        flexGrow: 1,
-                        display: "flex",
-                        justifyContent: "center",
-                      }}
+                  )}
+
+                  {isSelf && !ourStream && (
+                    <ActionIcon
+                      size="sm"
+                      radius="sm"
+                      color="violet"
+                      variant="light"
+                      onClick={this.setupWebRTC}
+                      title="Join video call"
                     >
-                      {formatTimestamp(tsMap[p.id] || 0)}{" "}
-                      {/* {this.context.beta &&
-                          `(${(
-                            (tsMap[p.id] - this.props.getLeaderTime()) *
-                            1000
-                          ).toFixed(0)}ms)`} */}
+                      <IconVideo size={13} />
+                    </ActionIcon>
+                  )}
+
+                  {!isSelf && (
+                    <div className={styles.peerIndicators}>
+                      {p.isVideoChat && (
+                        <div className={styles.indicatorItem} title="Camera connected">
+                          <IconVideo size={13} color="var(--color-live)" />
+                        </div>
+                      )}
+                      {p.isMuted ? (
+                        <div className={styles.indicatorItem} title="Microphone muted">
+                          <IconMicrophoneOff size={13} color="var(--color-danger, #EF4444)" />
+                        </div>
+                      ) : p.isVideoChat ? (
+                        <div className={styles.indicatorItem} title="Microphone on">
+                          <IconMicrophone size={13} color="var(--color-live)" />
+                        </div>
+                      ) : null}
+                      {p.isScreenShare && (
+                        <div className={styles.indicatorItem} title="Sharing screen">
+                          <IconScreenShare size={13} color="#60A5FA" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  {ourStream && p.isVideoChat ? (
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          videoRefs[p.id] = el;
-                        }
-                      }}
-                      style={{
-                        ...videoChatContentStyle,
-                        // mirror the video if it's our stream. this style mimics Zoom where your
-                        // video is mirrored only for you)
-                        transform: `scaleX(${p.id === selfId ? "-1" : "1"})`,
-                      }}
-                      autoPlay
-                      muted={p.id === selfId}
-                      data-id={p.id}
-                    />
-                  ) : (
-                    <img
-                      style={videoChatContentStyle}
-                      src={userPhoto}
-                      alt={displayName}
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        if (target.src !== fallbackPhoto) {
-                          target.src = fallbackPhoto;
-                        }
-                      }}
-                    />
                   )}
                 </div>
               </div>
             </div>
           );
         })}
+
         <div
-          onClick={this.handleCopyInvite}
-          style={{
-            position: "relative",
-            width: videoChatSize,
-            height: videoChatSize,
-            backgroundColor: "rgba(255, 255, 255, 0.02)",
-            borderRadius: "8px",
-            border: "2px dashed var(--border-subtle)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            padding: "12px",
-            cursor: "pointer",
-            textAlign: "center",
-            transition: "all 0.2s ease",
-            boxSizing: "border-box",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-violet, #8b5cf6)";
-            e.currentTarget.style.backgroundColor = "rgba(139, 92, 246, 0.05)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--border-subtle)";
-            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.02)";
-          }}
+          className={styles.inviteCard}
+          onClick={this.handleOpenInvite}
+          role="button"
+          tabIndex={0}
+          title="Click to invite friends"
         >
           <div
+            className={styles.inviteIconBadge}
             style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "50%",
-              backgroundColor: this.state.copied
-                ? "rgba(16, 185, 129, 0.15)"
-                : "var(--bg-surface)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.2s ease",
+              backgroundColor: "var(--bg-surface)",
+              color: "var(--color-violet)",
             }}
           >
-            {this.state.copied ? (
-              <IconCheck size={22} color="var(--color-green, #10b981)" />
-            ) : (
-              <IconUserPlus size={22} color="var(--text-secondary)" />
-            )}
+            <IconUserPlus size={18} />
           </div>
-          <div>
-            <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 600,
-                color: this.state.copied
-                  ? "var(--color-green, #10b981)"
-                  : "var(--text-primary)",
-              }}
-            >
-              {this.state.copied ? "Link Copied!" : "Invite Friend"}
-            </div>
-            <div
-              style={{
-                fontSize: "10px",
-                color: "var(--text-muted)",
-                marginTop: "2px",
-              }}
-            >
-              {this.state.copied ? "Share with friends" : "Click to copy link"}
-            </div>
+          <div className={styles.inviteMeta}>
+            <span className={styles.inviteTitle}>
+              Invite people
+            </span>
+            <span className={styles.inviteSubtitle}>
+              Share a link to bring friends into the room
+            </span>
           </div>
+          <IconChevronRight size={16} color="var(--text-muted)" />
         </div>
+
+        {this.state.isInviteModalOpen && (
+          <InviteModal
+            roomId={this.props.roomId || ""}
+            closeInviteModal={() => this.setState({ isInviteModalOpen: false })}
+          />
+        )}
       </div>
     );
   }

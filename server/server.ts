@@ -20,7 +20,18 @@ import { gzipSync } from "node:zlib";
 import { resolveShard } from "./utils/resolveShard.ts";
 import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { getStats } from "./utils/getStats.ts";
-import { hashRoomPasscode } from "./utils/roomPasscode.ts";
+import {
+  hashRoomPasscode,
+  encryptPasscodeForOwner,
+  decryptPasscodeForOwner,
+} from "./utils/roomPasscode.ts";
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception in server process:", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled promise rejection at:", promise, "reason:", reason);
+});
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
@@ -395,11 +406,13 @@ app.post("/createRoom", async (req, res) => {
   newRoom.isPermanent = false;
 
   if (postgres) {
+    const rawPasscode = req.body?.passcode;
     const roomObj = {
       roomId: newRoom.roomId,
       lastUpdateTime: now,
       creationTime: now,
-      passcode: await hashRoomPasscode(req.body?.passcode),
+      passcode: await hashRoomPasscode(rawPasscode),
+      owner_passcode: encryptPasscodeForOwner(rawPasscode),
 
       isChatDisabled: Boolean(req.body?.isChatDisabled),
       roomTitle: roomTitle,
@@ -478,7 +491,7 @@ app.post("/updateRoomSettings", async (req, res) => {
     return;
   }
 
-  const { roomId, roomTitle, roomDescription, isPermanent, isChatDisabled, password } = req.body;
+  const { roomId, roomTitle, roomDescription, isPermanent, isChatDisabled, password, removePassword } = req.body;
 
   if (!roomId || typeof roomTitle !== 'string' || typeof isPermanent !== 'boolean' || typeof isChatDisabled !== 'boolean') {
     res.status(400).json({ error: "Invalid payload" });
@@ -497,12 +510,16 @@ app.post("/updateRoomSettings", async (req, res) => {
   }
 
   let passcodeHash: string | null = null;
-  if (typeof password === 'string' && password.length > 0) {
+  let ownerPasscodeEncrypted: string | null = null;
+  const isClearingPassword = removePassword === true || password === "";
+
+  if (!isClearingPassword && typeof password === 'string' && password.length > 0) {
     if (Buffer.byteLength(password, 'utf8') > 72) {
       res.status(400).json({ error: "Password too long" });
       return;
     }
     passcodeHash = await hashRoomPasscode(password);
+    ownerPasscodeEncrypted = encryptPasscodeForOwner(password);
   }
 
   if (!postgres) {
@@ -510,13 +527,14 @@ app.post("/updateRoomSettings", async (req, res) => {
     return;
   }
 
+  const client = await postgres.connect();
   try {
-    await postgres.query('BEGIN');
+    await client.query('BEGIN');
 
-    const existingRoom = await postgres.query(`SELECT "expiresAt", "isSubRoom" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
+    const existingRoom = await client.query(`SELECT "expiresAt", "isSubRoom" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
 
     if (existingRoom.rowCount === 0) {
-      await postgres.query('ROLLBACK');
+      await client.query('ROLLBACK');
       res.status(404).json({ error: "Room not found or unauthorized" });
       return;
     }
@@ -541,30 +559,38 @@ app.post("/updateRoomSettings", async (req, res) => {
     }
 
     let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "expiresAt" = $3, "isSubRoom" = $4, "isChatDisabled" = $5`;
-    const updateValues: any[] = [titleTrimmed, roomDescription || null, newExpiresAt, newIsSubRoom, isChatDisabled, roomId, decoded.uid];
+    const updateValues: any[] = [titleTrimmed, roomDescription || null, newExpiresAt, newIsSubRoom, isChatDisabled];
 
-    if (passcodeHash) {
-      updateQuery += `, passcode = $8`;
-      updateValues.push(passcodeHash);
+    if (isClearingPassword) {
+      updateQuery += `, passcode = NULL, owner_passcode = NULL`;
+    } else if (passcodeHash && ownerPasscodeEncrypted) {
+      updateValues.push(passcodeHash, ownerPasscodeEncrypted);
+      updateQuery += `, passcode = $${updateValues.length - 1}, owner_passcode = $${updateValues.length}`;
     }
-    updateQuery += ` WHERE "roomId" = $6 AND owner_id = $7`;
 
-    await postgres.query(updateQuery, updateValues);
+    updateValues.push(roomId, decoded.uid);
+    updateQuery += ` WHERE "roomId" = $${updateValues.length - 1} AND owner_id = $${updateValues.length}`;
+
+    await client.query(updateQuery, updateValues);
 
     if (permanenceChanged) {
-      await postgres.query(
+      await client.query(
         `INSERT INTO room_lifecycle_events (room_id, actor_id, event_type, previous_status, new_status, previous_expires_at, new_expires_at, reason)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [roomId, decoded.uid, 'room.permanence_changed', null, null, room.expiresAt, newExpiresAt, isPermanent ? "Room converted from temporary to permanent" : "Room converted from permanent to temporary"]
       );
     }
 
-    await postgres.query('COMMIT');
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err: any) {
-    await postgres.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error("updateRoomSettings error:", err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -665,7 +691,7 @@ app.get("/listRooms", async (req, res) => {
   const result = await postgres?.query(
     `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
               "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-              status, "startedAt", "expiresAt", "endedAt", "isPermanent"
+              status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
        FROM rooms WHERE owner_id = $1 ORDER BY "creationTime" DESC`,
     [decoded.uid],
   );
@@ -682,7 +708,13 @@ app.get("/listRooms", async (req, res) => {
         derivedStatus = 'expiring';
       }
     }
-    return { ...r, status: derivedStatus };
+    const currentPasscode = r.owner_passcode ? decryptPasscodeForOwner(r.owner_passcode) : null;
+    return {
+      ...r,
+      owner_passcode: undefined,
+      currentPasscode,
+      status: derivedStatus,
+    };
   });
 
   res.json(rows);
@@ -712,7 +744,7 @@ app.get("/roomDetails", async (req, res) => {
     const roomResult = await postgres?.query(
       `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
               "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-              status, "startedAt", "expiresAt", "endedAt", "isPermanent"
+              status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
        FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
       [roomId, decoded.uid],
     );
@@ -737,6 +769,8 @@ app.get("/roomDetails", async (req, res) => {
     }
     room.status = derivedStatus;
 
+    const currentPasscode = room.owner_passcode ? decryptPasscodeForOwner(room.owner_passcode) : null;
+
     // Fetch lifecycle events
     const lifecycleResult = await postgres?.query(
       `SELECT id, actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp
@@ -755,6 +789,8 @@ app.get("/roomDetails", async (req, res) => {
 
     res.json({
       ...room,
+      owner_passcode: undefined,
+      currentPasscode,
       lifecycleEvents: lifecycleResult?.rows ?? [],
       chatSummary: {
         messagesCount: chatSummary.messagesCount || 0,

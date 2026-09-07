@@ -10,6 +10,7 @@ import {
   Alert,
 } from "@mantine/core";
 import { supabase } from "../../utils/supabaseClient";
+import styles from "./AuthShell.module.css";
 
 export const Signup = () => {
   const [email, setEmail] = useState("");
@@ -114,13 +115,11 @@ export const Signup = () => {
       </Text>
 
       <Paper 
+        withBorder
         p={30} 
         mt={30} 
         radius="lg" 
-        style={{ 
-          background: "var(--surface-hover)", 
-          border: "2px dashed var(--border-subtle)" 
-        }}
+        className={styles.authCard}
       >
         {error && (
           <Alert color="red" mb="md" title="Error">

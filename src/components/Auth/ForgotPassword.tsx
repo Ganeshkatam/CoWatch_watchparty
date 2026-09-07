@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { IconLock } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
+import styles from "./AuthShell.module.css";
 
 export const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -53,10 +54,11 @@ export const ForgotPassword = () => {
       </Text>
 
       <Paper 
+        withBorder
         p={30} 
         mt={30} 
-        radius="md" 
-        style={{ background: "transparent" }}
+        radius="lg" 
+        className={styles.authCard}
       >
         {error && (
           <Alert color="red" mb="md" title="Error">

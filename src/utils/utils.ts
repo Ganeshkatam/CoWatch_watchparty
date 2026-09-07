@@ -148,7 +148,14 @@ export const getDefaultPicture = (name: string, background = "a0a0a0") => {
 };
 
 export const isMobile = () => {
-  return window.screen.width <= 600;
+  if (typeof window === "undefined") return false;
+  return (
+    window.innerWidth <= 768 ||
+    window.screen.width <= 768 ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent,
+    )
+  );
 };
 
 export function shuffle(array: any[]) {
@@ -194,12 +201,21 @@ export const iceServers = () => [
   // },
 ];
 
-export const serverPath =
-  config.VITE_SERVER_HOST ||
-  `${window.location.protocol}//${config.NODE_ENV === "development"
-    ? `${window.location.hostname}:8080`
-    : window.location.host
-  }`;
+export const serverPath = (() => {
+  if (config.VITE_SERVER_HOST) {
+    return config.VITE_SERVER_HOST;
+  }
+  if (typeof window === "undefined") {
+    return "http://localhost:8080";
+  }
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  if (config.NODE_ENV === "development" && isLocalhost) {
+    return `${window.location.protocol}//${window.location.hostname}:8080`;
+  }
+  return window.location.origin;
+})();
 
 export function getRoomUrl(roomId: string): string {
   return `${window.location.origin}/watch/${roomId.replace(/^\//, '')}`;
@@ -314,13 +330,29 @@ export function getOrCreateSessionId() {
 }
 
 export function addAndSavePasscode(roomId: string, passcode: string) {
+  if (!roomId || !passcode) return;
+  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
   const newPasscodes = {
     ...getSavedPasscodes(),
     [roomId]: passcode,
+    [cleanId]: passcode,
   };
   window.localStorage.setItem(
     "cowatch-passcodes",
     JSON.stringify(newPasscodes),
+  );
+}
+
+export function removeSavedPasscode(roomId: string) {
+  if (!roomId) return;
+  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+  const current = getSavedPasscodes();
+  delete current[roomId];
+  delete current[cleanId];
+  delete current[`/${cleanId}`];
+  window.localStorage.setItem(
+    "cowatch-passcodes",
+    JSON.stringify(current),
   );
 }
 
@@ -373,11 +405,11 @@ export const resolveProfile = (
 ): ResolvedProfile => ({
   displayName:
     profile?.display_name?.trim() ||
-    profile?.username?.trim() ||
     user.user_metadata?.display_name?.trim() ||
-    user.user_metadata?.username?.trim() ||
     user.user_metadata?.full_name?.trim() ||
     user.user_metadata?.name?.trim() ||
+    profile?.username?.trim() ||
+    user.user_metadata?.username?.trim() ||
     user.email?.split("@")[0] ||
     "Guest",
 

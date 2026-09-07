@@ -3,7 +3,7 @@ import axios from "axios";
 import { redis, redisCount } from "../utils/redis.ts";
 import { postgres as pg } from "../utils/postgres.ts";
 import type { PoolConfig, PoolRegion } from "./utils.ts";
-import type { Client } from "pg";
+import type { Pool } from "pg";
 
 const incrInterval = 5 * 1000;
 const decrInterval = 15 * 1000;
@@ -11,7 +11,7 @@ const cleanupInterval = 5 * 60 * 1000;
 
 // If postgres isn't configured we can still run in stateless mode
 // Only start/get/terminate can be used, otherwise exception will be thrown
-const postgres = !pg ? (null as unknown as Client) : pg;
+const postgres = !pg ? (null as unknown as Pool) : pg;
 
 export abstract class VMManager {
   protected isLarge = false;

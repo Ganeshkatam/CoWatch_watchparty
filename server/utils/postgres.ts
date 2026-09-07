@@ -1,40 +1,44 @@
-import { Client, type QueryResult } from "pg";
+import { Pool, type PoolClient, type QueryResult } from "pg";
 import config from "../config.ts";
 
-export let postgres: Client | undefined = undefined;
+export type PostgresClient = Pool | PoolClient;
+
+export let postgres: Pool | undefined = undefined;
 if (config.DATABASE_URL) {
-  const client = new Client({
-    connectionString: config.DATABASE_URL,
+  postgres = createPool(config.DATABASE_URL);
+}
+
+function createPool(connectionString: string): Pool {
+  const pool = new Pool({
+    connectionString,
     ssl: { rejectUnauthorized: false },
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
   });
-  postgres = client;
-  client.connect().catch((e) => {
-    console.error("Postgres connection failed:", e);
-    postgres = undefined;
+
+  // Handle errors on idle clients in the pool to prevent unhandled ECONNRESET crashes
+  pool.on("error", (err) => {
+    console.error("PostgreSQL pool idle client error:", err.message);
   });
+
+  return pool;
 }
 
 /**
- * Use this if we need a new connection instead of sharing.
- * Guarantees we'll return a client because we throw if we don't have it configured
+ * Use this if we need a new connection pool instead of sharing.
+ * Guarantees we'll return a pool because we throw if we don't have it configured
  * @returns
  */
-export function newPostgres() {
+export function newPostgres(): Pool {
   if (!config.DATABASE_URL) {
     throw new Error("postgres not configured");
   }
-  const postgres = new Client({
-    connectionString: config.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-  postgres.connect().catch((e) => {
-    console.error("Postgres connection failed:", e);
-  });
-  return postgres;
+  return postgres || createPool(config.DATABASE_URL);
 }
 
 export async function updateObject(
-  postgres: Client,
+  postgres: PostgresClient,
   table: string,
   object: AnyDict,
   condition: AnyDict,
@@ -56,7 +60,7 @@ export async function updateObject(
 }
 
 export async function insertObject(
-  postgres: Client,
+  postgres: PostgresClient,
   table: string,
   object: AnyDict,
 ): Promise<QueryResult<any>> {
@@ -71,7 +75,7 @@ export async function insertObject(
 }
 
 export async function upsertObject(
-  postgres: Client,
+  postgres: PostgresClient,
   table: string,
   object: AnyDict,
   conflict: BooleanDict,
@@ -91,3 +95,4 @@ export async function upsertObject(
   const result = await postgres.query(query, values);
   return result;
 }
+

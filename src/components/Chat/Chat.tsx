@@ -14,7 +14,7 @@ import { init } from "emoji-mart";
 //@ts-expect-error
 import Linkify from "react-linkify";
 import { SecureLink } from "react-secure-link";
-import { IconTrash } from "@tabler/icons-react";
+import { IconMoodSmile, IconSend, IconTrash } from "@tabler/icons-react";
 import styles from "./Chat.module.css";
 import { useEffect, useState, useCallback } from 'react';
 import { createUuid } from "../../utils/utils";
@@ -555,19 +555,41 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
               : "Enter a message..."
           }
           rightSection={
-            <ActionIcon
-              onClick={() => {
-                // Add a delay to prevent the click from triggering onClickOutside
-                const curr = this.state.isPickerOpen;
-                setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "2px",
+                marginRight: "4px",
               }}
-              disabled={this.props.isChatDisabled}
             >
-              <span role="img" aria-label="Emoji">
-                😀
-              </span>
-            </ActionIcon>
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={() => {
+                  const curr = this.state.isPickerOpen;
+                  setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
+                }}
+                disabled={this.props.isChatDisabled}
+                title="Select emoji"
+              >
+                <IconMoodSmile size={18} />
+              </ActionIcon>
+              {Boolean(this.state.chatMsg.trim()) && (
+                <ActionIcon
+                  variant="filled"
+                  color="violet"
+                  size="sm"
+                  onClick={this.sendChatMsg}
+                  disabled={this.props.isChatDisabled || this.chatTooLong()}
+                  title="Send message"
+                >
+                  <IconSend size={14} />
+                </ActionIcon>
+              )}
+            </div>
           }
+          rightSectionWidth={this.state.chatMsg.trim() ? 64 : 36}
         >
           {/* <Icon onClick={this.sendChatMsg} name="send" inverted circular link /> */}
         </TextInput>
@@ -807,13 +829,7 @@ const ChatMessage = ({
               margin: 0,
             }}
           >
-            <span
-              role="img"
-              aria-label="React"
-              style={{ margin: 0, fontSize: 18 }}
-            >
-              😀
-            </span>
+            <IconMoodSmile size={18} />
           </ActionIcon>
         </div>
         <TransitionGroup>

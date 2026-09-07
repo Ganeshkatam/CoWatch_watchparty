@@ -1,13 +1,47 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useHistory } from "react-router-dom";
-import { Badge, Button, ActionIcon, Menu, Modal, TextInput, Textarea, Switch, PasswordInput, Divider, Group, Stack, Text, Box, FileButton } from "@mantine/core";
 import {
-  IconTrash, IconCopy, IconPlayerPlayFilled, IconSettings,
-  IconLock, IconLockOpen, IconMessage,
-  IconPhotoPlus, IconDots, IconPlayerStop, IconHourglassHigh
+  Badge,
+  Button,
+  ActionIcon,
+  Menu,
+  Modal,
+  TextInput,
+  Textarea,
+  Switch,
+  PasswordInput,
+  Divider,
+  Group,
+  Stack,
+  Text,
+  Box,
+  FileButton,
+  Tooltip,
+} from "@mantine/core";
+import {
+  IconTrash,
+  IconCopy,
+  IconPlayerPlayFilled,
+  IconSettings,
+  IconLock,
+  IconLockOpen,
+  IconMessage,
+  IconPhotoPlus,
+  IconDots,
+  IconPlayerStop,
+  IconHourglassHigh,
+  IconEye,
+  IconEyeOff,
+  IconCheck,
 } from "@tabler/icons-react";
 import { type RoomSummary } from "./MyRooms";
-import { getRoomUrl, serverPath } from "../../utils/utils";
+import {
+  getRoomUrl,
+  serverPath,
+  addAndSavePasscode,
+  getSavedPasscodes,
+  removeSavedPasscode,
+} from "../../utils/utils";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
 import styles from "./MyRooms.module.css";
 
@@ -38,15 +72,19 @@ const formatTimeLeft = (expiresAt: string | null, status: string, isPermanent: b
   if (status !== "active" && status !== "expiring") return <div className={styles.lifecycleText}>Reactivates when someone joins</div>;
 
   if (!expiresAt) return null;
-  const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return <div className={styles.lifecycleText}>Room is no longer active</div>;
+
+  const now = Date.now();
+  const diff = new Date(expiresAt).getTime() - now;
+
+  if (diff <= 0) return <div className={styles.lifecycleText}>Expired</div>;
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
   if (status === "expiring") {
     return (
-      <div className={styles.lifecycleExpiring}>
+      <div className={styles.expiringText}>
+        <IconHourglassHigh size={14} />
         {minutes}m remaining
       </div>
     );
@@ -71,10 +109,25 @@ export const EditRoomModal = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
+  const cleanId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
+  const initialPasscode =
+    room.currentPasscode ||
+    getSavedPasscodes()[room.roomId] ||
+    getSavedPasscodes()[cleanId] ||
+    getSavedPasscodes()[`/${cleanId}`] ||
+    "";
+
   const [title, setTitle] = useState(room.roomTitle || "");
   const [description, setDescription] = useState(room.roomDescription || "");
   const [isPermanent, setIsPermanent] = useState(room.isSubRoom || !room.expiresAt);
   const [isChatDisabled, setIsChatDisabled] = useState(room.isChatDisabled || false);
+
+  // Password management
+  const [currentPassword, setCurrentPassword] = useState(initialPasscode);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [copiedCurrentPassword, setCopiedCurrentPassword] = useState(false);
+  const [removeProtection, setRemoveProtection] = useState(false);
+
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -82,6 +135,37 @@ export const EditRoomModal = ({
 
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(room.coverPhoto || null);
+
+  useEffect(() => {
+    if (opened) {
+      const saved =
+        room.currentPasscode ||
+        getSavedPasscodes()[room.roomId] ||
+        getSavedPasscodes()[cleanId] ||
+        getSavedPasscodes()[`/${cleanId}`] ||
+        "";
+      setCurrentPassword(saved);
+      setShowCurrentPassword(false);
+      setCopiedCurrentPassword(false);
+      setRemoveProtection(false);
+      setPassword("");
+      setPasswordConfirm("");
+      setError("");
+      setTitle(room.roomTitle || "");
+      setDescription(room.roomDescription || "");
+      setIsPermanent(room.isSubRoom || !room.expiresAt);
+      setIsChatDisabled(room.isChatDisabled || false);
+      setCoverPreview(room.coverPhoto || null);
+      setCoverFile(null);
+    }
+  }, [opened, room, cleanId]);
+
+  const handleCopyCurrentPassword = () => {
+    if (!currentPassword) return;
+    navigator.clipboard.writeText(currentPassword);
+    setCopiedCurrentPassword(true);
+    setTimeout(() => setCopiedCurrentPassword(false), 2000);
+  };
 
   const handleFileChange = (payload: File | null) => {
     if (payload) {
@@ -109,7 +193,7 @@ export const EditRoomModal = ({
       setError("Description must be under 500 characters.");
       return;
     }
-    if (password && password !== passwordConfirm) {
+    if (!removeProtection && password && password !== passwordConfirm) {
       setError("Passwords do not match.");
       return;
     }
@@ -139,6 +223,8 @@ export const EditRoomModal = ({
         finalCoverUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
       }
 
+      const payloadPassword = removeProtection ? "" : (password ? password.trim() : undefined);
+
       const response = await fetch(`${serverPath}/updateRoomSettings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,12 +236,21 @@ export const EditRoomModal = ({
           roomDescription: description,
           isPermanent,
           isChatDisabled,
-          password: password || undefined,
+          removePassword: removeProtection,
+          password: payloadPassword,
         }),
       });
 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to save room settings");
+
+      if (removeProtection) {
+        removeSavedPasscode(room.roomId);
+        setCurrentPassword("");
+      } else if (password) {
+        addAndSavePasscode(room.roomId, password.trim());
+        setCurrentPassword(password.trim());
+      }
 
       if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
          await fetch(`${serverPath}/updateRoomCover`, {
@@ -229,14 +324,149 @@ export const EditRoomModal = ({
         <Divider />
 
         <Box>
-          <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={1} mb="md">Password Protection</Text>
+          <Group justify="space-between" align="center" mb="md">
+            <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={1}>Password Protection</Text>
+            {room.isPasscodeProtected && !removeProtection ? (
+              <Badge color="violet" variant="light" leftSection={<IconLock size={12} />}>
+                Protected
+              </Badge>
+            ) : removeProtection ? (
+              <Badge color="red" variant="light" leftSection={<IconLockOpen size={12} />}>
+                Will Be Removed
+              </Badge>
+            ) : (
+              <Badge color="gray" variant="light" leftSection={<IconLockOpen size={12} />}>
+                Unprotected
+              </Badge>
+            )}
+          </Group>
+
           <Stack gap="md">
-            <Box>
-              <Text fw={500}>{room.isPasscodeProtected ? "🔒 Protected" : "🔓 Unprotected"}</Text>
-              <Text size="sm" c="dimmed">Enter a new password to change or set protection. Leave blank to keep current settings.</Text>
-            </Box>
-            <PasswordInput label="New password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
-            <PasswordInput label="Confirm password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.currentTarget.value)} />
+            {room.isPasscodeProtected && (
+              <Box
+                style={{
+                  padding: "14px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-subtle)",
+                  backgroundColor: "var(--bg-surface)",
+                }}
+              >
+                {currentPassword ? (
+                  <Stack gap="xs">
+                    <Group justify="space-between" align="center">
+                      <Text size="xs" fw={600} c="dimmed" tt="uppercase">Current Password</Text>
+                      <Button
+                        variant="subtle"
+                        color={removeProtection ? "violet" : "red"}
+                        size="xs"
+                        onClick={() => {
+                          setRemoveProtection(!removeProtection);
+                          if (!removeProtection) {
+                            setPassword("");
+                            setPasswordConfirm("");
+                          }
+                        }}
+                      >
+                        {removeProtection ? "Keep Password Protection" : "Remove Password"}
+                      </Button>
+                    </Group>
+                    <TextInput
+                      readOnly
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      rightSection={
+                        <Group gap={4} pr={6}>
+                          <Tooltip label={showCurrentPassword ? "Hide password" : "Show password"} withArrow>
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              size="sm"
+                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                              aria-label="Toggle password visibility"
+                            >
+                              {showCurrentPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy password"} withArrow>
+                            <ActionIcon
+                              variant="subtle"
+                              color={copiedCurrentPassword ? "green" : "gray"}
+                              size="sm"
+                              onClick={handleCopyCurrentPassword}
+                              aria-label="Copy current password"
+                            >
+                              {copiedCurrentPassword ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      }
+                      styles={{
+                        input: {
+                          fontFamily: showCurrentPassword ? "inherit" : "monospace",
+                          letterSpacing: showCurrentPassword ? "normal" : "2px",
+                        },
+                      }}
+                    />
+                  </Stack>
+                ) : (
+                  <Stack gap="xs">
+                    <Group justify="space-between" align="center">
+                      <Group gap={6}>
+                        <IconLock size={16} color="var(--mantine-color-violet-6)" />
+                        <Text size="sm" fw={500}>Room is password-protected</Text>
+                      </Group>
+                      <Button
+                        variant="subtle"
+                        color={removeProtection ? "violet" : "red"}
+                        size="xs"
+                        onClick={() => {
+                          setRemoveProtection(!removeProtection);
+                          if (!removeProtection) {
+                            setPassword("");
+                            setPasswordConfirm("");
+                          }
+                        }}
+                      >
+                        {removeProtection ? "Keep Protection" : "Remove Password"}
+                      </Button>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      {removeProtection
+                        ? "Password protection will be removed when you save changes."
+                        : "Passcode is securely encrypted. Enter a new password below to update and view it, or click Remove Password to disable protection."}
+                    </Text>
+                  </Stack>
+                )}
+              </Box>
+            )}
+
+            {removeProtection ? (
+              <Text size="sm" c="red" fw={500}>
+                Password protection will be removed when you click Save Changes.
+              </Text>
+            ) : (
+              <Stack gap="sm">
+                <Text size="xs" c="dimmed">
+                  {room.isPasscodeProtected
+                    ? "Enter a new password to change or update protection. Leave blank to keep current settings."
+                    : "Enter a password to require guests to enter a passcode before joining. Leave blank for an open room."}
+                </Text>
+                <PasswordInput
+                  label={room.isPasscodeProtected ? "New password" : "Set password"}
+                  placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter password (optional)"}
+                  value={password}
+                  onChange={(e) => setPassword(e.currentTarget.value)}
+                />
+                {password.length > 0 && (
+                  <PasswordInput
+                    label="Confirm password"
+                    placeholder="Confirm new password"
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.currentTarget.value)}
+                  />
+                )}
+              </Stack>
+            )}
           </Stack>
         </Box>
         
@@ -420,8 +650,17 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
 
         <div className={styles.roomMetadata}>
           <div className={styles.metaItemValue}>
-            {room.isPasscodeProtected ? <IconLock size={16} /> : <IconLockOpen size={16} />}
-            Protected
+            {room.isPasscodeProtected ? (
+              <>
+                <IconLock size={16} />
+                Protected
+              </>
+            ) : (
+              <>
+                <IconLockOpen size={16} />
+                Public
+              </>
+            )}
           </div>
           <div className={styles.metaItemValue}>
             <IconMessage size={16} />
@@ -510,7 +749,15 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         <div className={styles.stackCardBottom}>
           <div className={styles.roomMetadata} style={{ marginBottom: 0 }}>
             <div className={styles.metaItemValue}>
-              {room.isPasscodeProtected ? <IconLock size={14} /> : <IconLockOpen size={14} />} Protected
+              {room.isPasscodeProtected ? (
+                <>
+                  <IconLock size={14} /> Protected
+                </>
+              ) : (
+                <>
+                  <IconLockOpen size={14} /> Public
+                </>
+              )}
             </div>
             <div className={styles.metaItemValue}>
               <IconMessage size={14} /> {room.isChatDisabled ? 'Chat disabled' : 'Chat enabled'}

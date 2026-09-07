@@ -14,6 +14,7 @@ import {
 import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
+import styles from "./AuthShell.module.css";
 
 export const Login = () => {
   const [email, setEmail] = useState("");
@@ -71,12 +72,8 @@ export const Login = () => {
         withBorder 
         p={30} 
         mt={30} 
-        radius="md" 
-        style={{ 
-          background: "var(--bg-elevated)", 
-          borderColor: "var(--border-strong)",
-          boxShadow: "0 0 20px var(--surface-active)" 
-        }}
+        radius="lg" 
+        className={styles.authCard}
       >
         {error && (
           <Alert color="red" mb="md" title="Error">
@@ -117,7 +114,7 @@ export const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
               />
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <Link to="/forgot-password" style={{ color: "inherit", fontSize: "14px", textDecoration: "underline" }}>
+                <Link to="/forgot-password" style={{ color: "var(--color-violet)", fontSize: "14px", textDecoration: "underline", fontWeight: 500 }}>
                   Forgot password?
                 </Link>
               </div>

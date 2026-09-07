@@ -1,0 +1,329 @@
+.header {
+  height: 56px;
+  background-color: rgba(8, 9, 13, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.logoLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.logoLink:hover {
+  opacity: 0.85;
+}
+
+.logoImg {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+}
+
+:global(html[data-color-scheme="light"]) .logoImg {
+  filter: brightness(0);
+}
+
+.logoText {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.roomDropdownBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.roomDropdownBtn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.nowPlayingBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 260px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+  background: transparent;
+  outline: none;
+}
+
+.nowPlayingActive {
+  background-color: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.28);
+  color: #C4B5FD;
+}
+
+.nowPlayingActive:hover {
+  background-color: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: #DDD6FE;
+}
+
+.nowPlayingIdle {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.nowPlayingIdle:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+}
+
+.playingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #A78BFA;
+  box-shadow: 0 0 8px #8B5CF6;
+  animation: livePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
+}
+
+.idleDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.nowPlayingLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.nowPlayingTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: #EDE9FE;
+}
+
+.idleText {
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+@keyframes livePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.centerSection {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 16px;
+  min-width: 0;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.actionBtn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.actionBtnActive {
+  background-color: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: var(--text-primary);
+}
+
+.iconOnlyBtn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.iconOnlyBtn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.exitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  color: #FCA5A5;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.exitBtn:hover {
+  background-color: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #FFFFFF;
+}
+
+@media only screen and (max-width: 768px) {
+  .header {
+    padding: 0 8px;
+  }
+
+  .leftSection {
+    gap: 6px;
+  }
+
+  .rightSection {
+    gap: 4px;
+  }
+
+  .centerSection {
+    margin: 0;
+    flex: 0 0 auto;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .roomDropdownBtn {
+    max-width: 110px;
+    font-size: 12.5px;
+    padding: 4px 6px;
+  }
+
+  .nowPlayingIdle {
+    display: none;
+  }
+
+  .nowPlayingActive {
+    max-width: 90px;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+
+  .exitText {
+    display: none;
+  }
+
+  .exitBtn {
+    padding: 0;
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+  }
+
+  .actionBtn {
+    padding: 0 8px;
+    gap: 4px;
+    font-size: 12px;
+  }
+}
+
+@media only screen and (max-width: 480px) {
+  .logoText {
+    display: none;
+  }
+
+  .roomDropdownBtn {
+    max-width: 90px;
+  }
+}

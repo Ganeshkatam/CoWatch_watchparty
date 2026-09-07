@@ -16,8 +16,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Making this larger causes issues on mobile */
   min-height: 48vh;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+}
+
+@media only screen and (max-width: 768px) {
+  .playerContainer {
+    width: 100%;
+    min-height: 200px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    max-height: 40vh;
+    border-radius: var(--radius-md);
+  }
 }
 
 .flexCenter {
@@ -28,10 +41,19 @@
 
 .mobileStack {
   display: flex;
-  gap: 4px;
-  @media only screen and (max-width: 600px) {
+  column-gap: 32px;
+  margin: 0 8px;
+}
+
+@media only screen and (max-width: 768px) {
+  .mobileStack {
     flex-direction: column;
-    width: calc(100% - 8px);
+    margin: 0;
+    padding: 0 4px;
+    width: 100%;
+    column-gap: 0;
+    gap: 8px;
+    box-sizing: border-box;
   }
 }
 
@@ -43,10 +65,52 @@
 
 .leftColumn {
   flex-grow: 1;
+  min-width: 0;
+}
+
+@media only screen and (max-width: 768px) {
+  .leftColumn {
+    width: 100%;
+    flex-grow: 0;
+    height: auto !important;
+  }
 }
 
 .rightColumn {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  gap: 4px;
+  width: 400px;
+  max-width: 400px;
   flex-shrink: 0;
+  transition: width ease-out 0.3s, max-width ease-out 0.3s;
+  box-sizing: border-box;
+}
+
+.rightColumnCollapsed {
+  width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media only screen and (max-width: 768px) {
+  .rightColumn {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-shrink: 1;
+    min-height: 50vh;
+    flex: 1;
+    height: auto !important;
+  }
+
+  .rightColumnCollapsed {
+    display: none !important;
+  }
 }
 
 .expandButton {
@@ -58,20 +122,26 @@
   right: -30px;
 }
 
+@media only screen and (max-width: 768px) {
+  .expandButton {
+    display: none !important;
+  }
+}
+
 .fullHeightColumn {
   height: calc(100vh - 72px);
-  transition: width ease-out 0.5s;
-  &.leftColumn {
-    @media only screen and (max-width: 600px) {
-      /* video height doesn't matter on mobile since things are stacked */
-      height: initial;
-    }
+  transition: width ease-out 0.3s;
+}
+
+@media only screen and (max-width: 768px) {
+  .fullHeightColumn {
+    height: auto !important;
   }
 }
 
 .fullHeightColumnFullscreen {
   height: calc(100vh);
-  transition: width ease-out 0.5s;
+  transition: width ease-out 0.3s;
 }
 
 .shareButton {

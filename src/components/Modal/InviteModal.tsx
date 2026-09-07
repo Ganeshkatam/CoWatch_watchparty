@@ -8,6 +8,7 @@ import {
   IconMail,
   IconHash,
   IconQrcode,
+  IconShare,
 } from "@tabler/icons-react";
 import { getSavedPasscodes } from "../../utils/utils";
 
@@ -15,21 +16,22 @@ export const InviteModal = ({
   roomId,
   closeInviteModal,
 }: {
-  roomId: string;
+  roomId?: string;
   closeInviteModal: () => void;
 }) => {
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [roomIdCopied, setRoomIdCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  const passcode = getSavedPasscodes()[roomId];
+  const pathParts = window.location.pathname.split("/");
+  const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
+  const passcode =
+    (roomId && getSavedPasscodes()[roomId]) ||
+    getSavedPasscodes()[roomIdOrVanity];
   const baseUrl = window.location.origin + window.location.pathname;
   const fullUrl = passcode
     ? `${baseUrl}?passcode=${encodeURIComponent(passcode)}`
     : window.location.href;
-
-  const pathParts = window.location.pathname.split("/");
-  const roomIdOrVanity = pathParts[pathParts.length - 1] || "";
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -151,6 +153,25 @@ export const InviteModal = ({
             >
               Email
             </Button>
+            {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
+              <Button
+                onClick={() => {
+                  navigator
+                    .share({
+                      title: "Join my CoWatch Party",
+                      text: "Join my watch party and let's watch together!",
+                      url: fullUrl,
+                    })
+                    .catch(() => {});
+                }}
+                color="violet"
+                variant="light"
+                leftSection={<IconShare size={16} />}
+                style={{ flexGrow: 1 }}
+              >
+                Share
+              </Button>
+            )}
           </Group>
         </div>
 

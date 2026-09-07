@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext } from "react";
 import { useHistory } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
-import { serverPath } from "../../utils/utils";
+import { serverPath, addAndSavePasscode } from "../../utils/utils";
 import { getAccessToken } from "../../utils/supabaseClient";
 import { MetadataContext } from "../../MetadataContext";
 import styles from "./MyRooms.module.css";
@@ -14,6 +14,7 @@ import { RoomPagination } from "./RoomPagination";
 export interface RoomSummary {
   roomId: string;
   isPasscodeProtected: boolean;
+  currentPasscode?: string | null;
   creationTime: string;
   roomTitle: string | null;
   roomDescription: string | null;
@@ -24,6 +25,7 @@ export interface RoomSummary {
   startedAt: string | null;
   expiresAt: string | null;
   endedAt: string | null;
+  isPermanent?: boolean;
 }
 
 const useRooms = (user: any) => {
@@ -42,6 +44,13 @@ const useRooms = (user: any) => {
       const response = await fetch(`${serverPath}/listRooms?uid=${user.id}&token=${token}`);
       if (!response.ok) throw new Error("Failed to fetch rooms");
       const data = await response.json();
+      if (Array.isArray(data)) {
+        data.forEach((r: RoomSummary) => {
+          if (r.currentPasscode) {
+            addAndSavePasscode(r.roomId, r.currentPasscode);
+          }
+        });
+      }
       setRooms(data);
       setError(null);
     } catch (err: any) {
