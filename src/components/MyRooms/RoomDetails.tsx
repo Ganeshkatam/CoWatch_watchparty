@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useHistory, Link } from "react-router-dom";
+import { useParams, useHistory } from "react-router-dom";
 import {
   Title,
   Text,
@@ -9,7 +9,6 @@ import {
   Modal,
   Loader,
   Paper,
-  Stack,
   ActionIcon,
   Tooltip,
 } from "@mantine/core";
@@ -82,7 +81,7 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: "Active",
         color: "green",
         dotClass: styles.active,
-        description: "Room is live and open for watch parties",
+        description: "People are watching right now.",
         badgeColor: "green",
       };
     case "inactive":
@@ -90,15 +89,15 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: "Inactive",
         color: "yellow",
         dotClass: styles.inactive,
-        description: "Room is dormant. Reactivates automatically on join.",
+        description: "Empty right now. Starts when someone joins.",
         badgeColor: "yellow",
       };
     case "expiring":
       return {
-        label: "Expiring Soon",
+        label: "Closing Soon",
         color: "orange",
         dotClass: styles.expiring,
-        description: "Room session will expire shortly.",
+        description: "This room will close soon unless extended.",
         badgeColor: "orange",
       };
     case "scheduled":
@@ -106,7 +105,7 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: "Scheduled",
         color: "blue",
         dotClass: styles.scheduled,
-        description: "Scheduled for an upcoming party.",
+        description: "Set up for an upcoming watch party.",
         badgeColor: "blue",
       };
     case "ended":
@@ -114,7 +113,7 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: "Ended",
         color: "gray",
         dotClass: styles.ended,
-        description: "This watch party session has concluded.",
+        description: "This watch party has finished.",
         badgeColor: "gray",
       };
     default:
@@ -122,7 +121,7 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: status || "Unknown",
         color: "gray",
         dotClass: styles.inactive,
-        description: "Room status updated.",
+        description: "Room status.",
         badgeColor: "gray",
       };
   }
@@ -261,8 +260,8 @@ export const RoomDetails = () => {
           Back to My Rooms
         </Button>
         <Paper withBorder p="xl" radius="md" style={{ textAlign: "center" }}>
-          <Title order={3} c="red" mb="sm">Error</Title>
-          <Text>{error || "Could not load room details."}</Text>
+          <Title order={3} c="red" mb="sm">Something went wrong</Title>
+          <Text>{error || "Could not load this room."}</Text>
         </Paper>
       </div>
     );
@@ -279,8 +278,8 @@ export const RoomDetails = () => {
     if (diff <= 0) return null;
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 0) return `Expires in ${hours}h ${mins}m`;
-    return `Expires in ${mins}m`;
+    if (hours > 0) return `${hours}h ${mins}m left`;
+    return `${mins}m left`;
   };
 
   const expiresInText = getExpiresIn();
@@ -343,7 +342,7 @@ export const RoomDetails = () => {
                 </p>
               )}
 
-              <Tooltip label={copiedUrl ? "Link copied to clipboard!" : "Click to copy room link"} withArrow>
+              <Tooltip label={copiedUrl ? "Copied to clipboard!" : "Click to copy invite link"} withArrow>
                 <div className={styles.heroUrlBadge} onClick={handleCopyUrl}>
                   {copiedUrl ? <IconCheck size={14} color="#10B981" /> : <IconCopy size={14} />}
                   <span>/watch/{room.roomId.replace(/^\//, "")}</span>
@@ -359,7 +358,7 @@ export const RoomDetails = () => {
                   onClick={() => history.push(urlPath)}
                   leftSection={<IconPlayerPlayFilled size={16} />}
                 >
-                  Open Room
+                  Join Room
                 </Button>
               )}
               <Button
@@ -368,7 +367,7 @@ export const RoomDetails = () => {
                 onClick={() => setEditModalOpened(true)}
                 leftSection={<IconSettings size={16} />}
               >
-                Edit Room
+                Edit
               </Button>
               <Button
                 size="md"
@@ -376,14 +375,14 @@ export const RoomDetails = () => {
                 onClick={handleCopyUrl}
                 leftSection={copiedUrl ? <IconCheck size={16} color="#10B981" /> : <IconCopy size={16} />}
               >
-                {copiedUrl ? "Copied Link" : "Copy Link"}
+                {copiedUrl ? "Copied!" : "Copy Link"}
               </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* QUICK METRICS ROW */}
+      {/* QUICK STATS ROW */}
       <div className={styles.statsRow}>
         <div className={styles.statCard}>
           <div className={styles.statIconWrap} style={{ backgroundColor: "rgba(16, 185, 129, 0.12)" }}>
@@ -401,9 +400,11 @@ export const RoomDetails = () => {
             <IconUsers size={22} color="#8B5CF6" />
           </div>
           <div className={styles.statInfo}>
-            <span className={styles.statLabel}>Active Viewers</span>
-            <span className={styles.statValue}>{room.status === "active" ? "Live" : "0"}</span>
-            <span className={styles.statSubtitle}>{room.status === "active" ? "Users currently in room" : "No active participants"}</span>
+            <span className={styles.statLabel}>Viewers</span>
+            <span className={styles.statValue}>{room.status === "active" ? "Watching Now" : "0"}</span>
+            <span className={styles.statSubtitle}>
+              {room.status === "active" ? "People in the room" : "No one watching yet"}
+            </span>
           </div>
         </div>
 
@@ -417,12 +418,12 @@ export const RoomDetails = () => {
             {room.isPermanent ? <IconInfinity size={22} color="#14B8A6" /> : <IconClock size={22} color="#F59E0B" />}
           </div>
           <div className={styles.statInfo}>
-            <span className={styles.statLabel}>Duration</span>
+            <span className={styles.statLabel}>Room Expiry</span>
             <span className={styles.statValue}>
-              {room.isPermanent ? "Permanent" : (expiresInText ? expiresInText.replace("Expires in ", "") : "Temporary")}
+              {room.isPermanent ? "Never Expires" : (expiresInText || "Temporary")}
             </span>
             <span className={styles.statSubtitle}>
-              {room.isPermanent ? "No expiration scheduled" : "Reactivates on join"}
+              {room.isPermanent ? "Saved forever" : "Renews when used"}
             </span>
           </div>
         </div>
@@ -432,12 +433,12 @@ export const RoomDetails = () => {
             <IconMessage size={22} color="#EC4899" />
           </div>
           <div className={styles.statInfo}>
-            <span className={styles.statLabel}>Chat Activity</span>
+            <span className={styles.statLabel}>Chat</span>
             <span className={styles.statValue}>{room.chatSummary ? room.chatSummary.messagesCount : 0} Messages</span>
             <span className={styles.statSubtitle}>
               {room.chatSummary?.lastMessageAt
-                ? `Last: ${new Date(room.chatSummary.lastMessageAt).toLocaleDateString()}`
-                : "No messages sent yet"}
+                ? `Last message: ${new Date(room.chatSummary.lastMessageAt).toLocaleDateString()}`
+                : "No messages yet"}
             </span>
           </div>
         </div>
@@ -445,14 +446,14 @@ export const RoomDetails = () => {
 
       {/* BENTO CONTENT GRID */}
       <div className={styles.bentoGrid}>
-        {/* LEFT COLUMN: SPECIFICATIONS & SETTINGS */}
+        {/* LEFT COLUMN: DETAILS & SETTINGS */}
         <div>
-          {/* Card 1: Room Specifications */}
+          {/* Card 1: Room Details */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
                 <IconInfoCircle size={18} color="var(--color-violet)" />
-                <span>Room Specifications</span>
+                <span>Room Details</span>
               </div>
             </div>
 
@@ -461,7 +462,7 @@ export const RoomDetails = () => {
                 <span className={styles.tileLabel}>Room ID</span>
                 <div className={styles.tileValue}>
                   <span className={styles.codeBadge}>{room.roomId}</span>
-                  <Tooltip label={copiedRoomId ? "Copied!" : "Copy Room ID"} withArrow>
+                  <Tooltip label={copiedRoomId ? "Copied!" : "Copy room ID"} withArrow>
                     <ActionIcon
                       size="xs"
                       variant="subtle"
@@ -478,7 +479,7 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>
                   <IconCalendar size={13} />
-                  Created On
+                  Created
                 </span>
                 <span className={styles.tileValue}>
                   {new Date(room.creationTime).toLocaleString(undefined, {
@@ -494,7 +495,7 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>
                   <IconLock size={13} />
-                  Access & Security
+                  Password
                 </span>
                 <div className={styles.tileValue}>
                   {room.isPasscodeProtected ? (
@@ -532,27 +533,27 @@ export const RoomDetails = () => {
                           </ActionIcon>
                         </Tooltip>
                         <Badge color="violet" variant="light" size="sm">
-                          Protected
+                          Password Protected
                         </Badge>
                       </Group>
                     ) : (
                       <Badge color="violet" variant="light" size="sm" leftSection={<IconLock size={12} />}>
-                        Passcode Protected
+                        Password Protected
                       </Badge>
                     )
                   ) : (
                     <Badge color="gray" variant="light" size="sm" leftSection={<IconLockOpen size={12} />}>
-                      Open / No Passcode
+                      No Password Needed
                     </Badge>
                   )}
                 </div>
               </div>
 
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Room Classification</span>
+                <span className={styles.tileLabel}>Room Type</span>
                 <div className={styles.tileValue}>
                   <Badge color={room.isPermanent ? "teal" : "blue"} variant="light" size="sm">
-                    {room.isPermanent ? "Permanent Room" : "Temporary Session"}
+                    {room.isPermanent ? "Permanent Room" : "Temporary Room"}
                   </Badge>
                   {room.isSubRoom && (
                     <Badge color="gray" variant="outline" size="sm">
@@ -563,7 +564,7 @@ export const RoomDetails = () => {
               </div>
 
               <div className={styles.tile} style={{ gridColumn: "1 / -1" }}>
-                <span className={styles.tileLabel}>Watch Room URL</span>
+                <span className={styles.tileLabel}>Invite Link</span>
                 <div className={styles.tileValue}>
                   <a
                     href={urlPath}
@@ -588,12 +589,12 @@ export const RoomDetails = () => {
             </div>
           </div>
 
-          {/* Card 2: Settings & Preferences */}
+          {/* Card 2: Settings */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
                 <IconSettings size={18} color="var(--color-violet)" />
-                <span>Room Configuration</span>
+                <span>Room Settings</span>
               </div>
               <Button
                 variant="subtle"
@@ -602,22 +603,22 @@ export const RoomDetails = () => {
                 onClick={() => setEditModalOpened(true)}
                 leftSection={<IconSettings size={14} />}
               >
-                Edit Settings
+                Edit
               </Button>
             </div>
 
             <div className={styles.tileGrid}>
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Live Chat Functionality</span>
+                <span className={styles.tileLabel}>Live Chat</span>
                 <div className={styles.tileValue}>
                   <Badge color={room.isChatDisabled ? "gray" : "green"} variant="light" size="sm">
-                    {room.isChatDisabled ? "Chat Disabled" : "Chat Enabled"}
+                    {room.isChatDisabled ? "Turned Off" : "Turned On"}
                   </Badge>
                 </div>
               </div>
 
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Playback & Room Controls</span>
+                <span className={styles.tileLabel}>Video Controls</span>
                 <div className={styles.tileValue}>
                   <Badge color="violet" variant="light" size="sm" leftSection={<IconShieldCheck size={12} />}>
                     Host Only
@@ -634,7 +635,7 @@ export const RoomDetails = () => {
                     </Text>
                   ) : (
                     <Text size="sm" c="dimmed">
-                      No description provided. Click "Edit Room" to add one.
+                      No description added yet. Click "Edit" to add one.
                     </Text>
                   )}
                 </div>
@@ -650,7 +651,7 @@ export const RoomDetails = () => {
                 <span>Danger Zone</span>
               </div>
               <div className={styles.dangerDesc}>
-                Permanently delete this room, its settings, and associated history. This action cannot be undone.
+                Delete this room forever. All messages and room settings will be lost. You cannot undo this.
               </div>
             </div>
             <Button
@@ -664,14 +665,14 @@ export const RoomDetails = () => {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: LIFECYCLE & AUDIT LOG */}
+        {/* RIGHT COLUMN: STATUS & RECENT ACTIVITY */}
         <div>
-          {/* Card 4: Lifecycle & Health */}
+          {/* Card 4: Status & Timing */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
                 <IconClock size={18} color="var(--color-violet)" />
-                <span>Lifecycle & Session</span>
+                <span>Status & Timing</span>
               </div>
               <Badge color={statusConfig.badgeColor} variant="light" size="sm">
                 {statusConfig.label}
@@ -688,15 +689,15 @@ export const RoomDetails = () => {
                   {room.isPermanent
                     ? "Permanent Room"
                     : room.status === "active"
-                    ? "Active Watch Session"
-                    : "Dormant Session"}
+                    ? "Party in Progress"
+                    : "Room is Paused"}
                 </Text>
                 <Text size="xs" c="var(--text-secondary)" mt={4} style={{ lineHeight: 1.5 }}>
                   {room.isPermanent
-                    ? "This room is saved permanently and will never expire automatically. All configurations and chat history stay accessible 24/7."
+                    ? "This room is saved forever. You and your friends can come back and watch together anytime."
                     : room.status === "active"
-                    ? "A watch party is currently active in this room. Playback and participants are synchronized."
-                    : "The room is currently inactive. It will automatically reactivate as soon as any participant joins."}
+                    ? "People are currently in this room watching together."
+                    : "Nobody is in the room right now. It automatically wakes up as soon as someone joins."}
                 </Text>
               </div>
             </div>
@@ -704,9 +705,9 @@ export const RoomDetails = () => {
             {room.status === "active" && !room.isPermanent && room.expiresAt && (
               <div style={{ marginBottom: "20px" }}>
                 <div className={styles.countdownBig}>
-                  {expiresInText?.replace("Expires in ", "") || "—"}
+                  {expiresInText || "—"}
                 </div>
-                <div className={styles.countdownLabel}>Time remaining until expiration</div>
+                <div className={styles.countdownLabel}>Time left until room closes</div>
                 {isOpenable && (
                   <Button
                     variant="light"
@@ -717,7 +718,7 @@ export const RoomDetails = () => {
                     onClick={handleExtend}
                     loading={isExtending}
                   >
-                    Extend Room (+1 Hour)
+                    Add 1 More Hour
                   </Button>
                 )}
               </div>
@@ -725,7 +726,7 @@ export const RoomDetails = () => {
 
             <div className={styles.tileGrid} style={{ gridTemplateColumns: "1fr" }}>
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Last Activity</span>
+                <span className={styles.tileLabel}>Last Used</span>
                 <span className={styles.tileValue}>
                   {room.lifecycleEvents && room.lifecycleEvents.length > 0
                     ? new Date(room.lifecycleEvents[0].timestamp).toLocaleString(undefined, {
@@ -734,23 +735,23 @@ export const RoomDetails = () => {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
-                    : "No recorded activity"}
+                    : "Never used yet"}
                 </span>
               </div>
 
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Reactivation Policy</span>
-                <span className={styles.tileValue}>Automatic upon join</span>
+                <span className={styles.tileLabel}>Auto-Start</span>
+                <span className={styles.tileValue}>Starts when someone joins</span>
               </div>
             </div>
           </div>
 
-          {/* Card 5: Activity Timeline */}
+          {/* Card 5: Activity History */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
                 <IconActivity size={18} color="var(--color-violet)" />
-                <span>Recent Activity</span>
+                <span>Activity History</span>
               </div>
             </div>
 
@@ -787,7 +788,7 @@ export const RoomDetails = () => {
               </div>
             ) : (
               <Text size="sm" c="dimmed">
-                No activity recorded yet.
+                No activity yet.
               </Text>
             )}
           </div>
@@ -795,13 +796,13 @@ export const RoomDetails = () => {
       </div>
 
       {/* DELETE CONFIRMATION MODAL */}
-      <Modal opened={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Confirm Room Deletion" centered>
+      <Modal opened={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Delete Room" centered>
         <Text size="sm" mb="lg">
-          Are you sure you want to delete <strong>{room.roomTitle || room.roomId}</strong>? This action cannot be undone.
+          Are you sure you want to delete <strong>{room.roomTitle || room.roomId}</strong> forever? You will not be able to get it back.
         </Text>
         <Group justify="flex-end">
           <Button variant="default" onClick={() => setDeleteConfirm(false)}>
-            Cancel
+            Keep Room
           </Button>
           <Button color="red" onClick={handleDelete} loading={isDeleting}>
             Delete Room
