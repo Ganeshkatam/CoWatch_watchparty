@@ -73,8 +73,29 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 
   return (
     <div className={styles.dockContainer}>
-      {/* If Media is currently playing, provide a stop playback button */}
-      {Boolean(roomMedia) && onStopMedia && (
+      {/* Prioritized single stop button (VBrowser > ScreenShare > Standard Media) */}
+      {isPlayingVBrowser && onStopVBrowser ? (
+        <button
+          type="button"
+          className={styles.stopBtn}
+          onClick={onStopVBrowser}
+          disabled={!haveLock}
+          title="Stop Virtual Browser"
+        >
+          <IconX size={15} />
+          <span>Stop VBrowser</span>
+        </button>
+      ) : isScreenSharing && onStopScreenShare ? (
+        <button
+          type="button"
+          className={styles.stopBtn}
+          onClick={onStopScreenShare}
+          title="Stop Screenshare"
+        >
+          <IconX size={15} />
+          <span>Stop Share</span>
+        </button>
+      ) : Boolean(roomMedia) && onStopMedia ? (
         <button
           type="button"
           className={styles.stopBtn}
@@ -89,34 +110,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           <IconX size={15} />
           <span>Stop playback</span>
         </button>
-      )}
-
-      {/* If VBrowser is active, provide a stop button */}
-      {isPlayingVBrowser && onStopVBrowser && (
-        <button
-          type="button"
-          className={styles.stopBtn}
-          onClick={onStopVBrowser}
-          disabled={!haveLock}
-          title="Stop Virtual Browser"
-        >
-          <IconX size={15} />
-          <span>Stop VBrowser</span>
-        </button>
-      )}
-
-      {/* If Screenshare is active, provide a stop button */}
-      {isScreenSharing && onStopScreenShare && (
-        <button
-          type="button"
-          className={styles.stopBtn}
-          onClick={onStopScreenShare}
-          title="Stop Screenshare"
-        >
-          <IconX size={15} />
-          <span>Stop Share</span>
-        </button>
-      )}
+      ) : null}
 
       {/* Add Media Dropdown Menu */}
       <Menu shadow="xl" width={260} position="top-start" offset={10}>
