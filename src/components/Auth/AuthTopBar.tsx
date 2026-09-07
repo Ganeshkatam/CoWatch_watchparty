@@ -1,24 +1,19 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Button, Group } from "@mantine/core";
+import { Button, Group, ActionIcon, Tooltip } from "@mantine/core";
+import { IconArrowLeft, IconSun, IconMoon } from "@tabler/icons-react";
+import { useAppearance } from "../../theme/ThemeProvider";
+import styles from "./AuthShell.module.css";
 
 export const AuthTopBar: React.FC = () => {
+  const { resolvedColorScheme, setAppearance } = useAppearance();
+
+  const toggleTheme = () => {
+    setAppearance(resolvedColorScheme === "light" ? "mantine" : "light");
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "16px 24px",
-        borderBottom: "1px solid var(--border-subtle)",
-        backgroundColor: "rgba(10, 13, 20, 0.75)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        height: "72px",
-        position: "relative",
-        zIndex: 10,
-      }}
-    >
+    <div className={styles.authTopBar}>
       <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
         <img
           className="cowatch-brand-logo"
@@ -42,15 +37,31 @@ export const AuthTopBar: React.FC = () => {
         </div>
       </Link>
 
-      <Button
-        component={Link}
-        to="/"
-        variant="subtle"
-        color="violet"
-        style={{ fontSize: "14px" }}
-      >
-        ← Back to home
-      </Button>
+      <Group gap="xs">
+        <Tooltip label={resolvedColorScheme === "light" ? "Switch to dark theme" : "Switch to light theme"}>
+          <ActionIcon
+            onClick={toggleTheme}
+            variant="subtle"
+            color="violet"
+            size="lg"
+            radius="md"
+            aria-label="Toggle color scheme"
+          >
+            {resolvedColorScheme === "light" ? <IconMoon size={18} /> : <IconSun size={18} />}
+          </ActionIcon>
+        </Tooltip>
+
+        <Button
+          component={Link}
+          to="/"
+          variant="subtle"
+          color="violet"
+          leftSection={<IconArrowLeft size={16} />}
+          style={{ fontSize: "14px" }}
+        >
+          Back to home
+        </Button>
+      </Group>
     </div>
   );
 };

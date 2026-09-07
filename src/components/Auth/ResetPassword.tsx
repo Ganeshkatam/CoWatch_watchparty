@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { IconShieldCheck } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
+import styles from "./AuthShell.module.css";
 
 export const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -81,13 +82,7 @@ export const ResetPassword = () => {
         p={30} 
         mt={30} 
         radius="lg" 
-        style={{ 
-          background: "rgba(23, 27, 42, 0.78)", 
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderColor: "rgba(139, 92, 246, 0.22)",
-          boxShadow: "0 16px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(139, 92, 246, 0.12)" 
-        }}
+        className={styles.authCard}
       >
         {error && (
           <Alert color="red" mb="md" title="Error">

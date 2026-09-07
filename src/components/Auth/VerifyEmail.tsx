@@ -16,6 +16,7 @@ import {
   Center
 } from "@mantine/core";
 import { IconMail, IconCheck, IconAlertCircle } from "@tabler/icons-react";
+import styles from "./AuthShell.module.css";
 
 export const VerifyEmail = () => {
   const { user } = useContext(MetadataContext);
@@ -107,7 +108,7 @@ export const VerifyEmail = () => {
 
   return (
     <Container size="sm" mt={80}>
-      <Paper radius="md" p="xl" withBorder style={{ backgroundColor: "rgba(17, 21, 34, 0.65)", borderColor: "var(--border-subtle)" }}>
+      <Paper radius="md" p="xl" withBorder className={styles.authCard}>
         <Stack align="center" gap="md">
           <IconMail size={50} color="var(--color-violet)" />
           
