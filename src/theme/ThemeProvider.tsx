@@ -17,27 +17,48 @@ interface ThemeProviderProps {
   onAppearanceChange?: (appearance: AppearanceMode) => void;
 }
 
+const resolveInitialScheme = (mode: AppearanceMode): "light" | "dark" => {
+  if (mode === "light") return "light";
+  if (mode === "mantine") return "dark";
+  if (typeof window !== "undefined" && window.matchMedia) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return "dark";
+};
+
 export const ThemeProvider = ({
   children,
   userAppearance,
   onAppearanceChange,
 }: ThemeProviderProps) => {
-  // Try to get initial appearance from localStorage or fallback to system
+  // LocalStorage is authoritative for this browser session
   const [appearance, setAppearanceInternal] = useState<AppearanceMode>(() => {
-    if (userAppearance) return userAppearance;
-    const local = localStorage.getItem("cowatch-appearance");
-    if (local === "light" || local === "mantine" || local === "system") {
-      return local;
+    if (typeof window !== "undefined") {
+      const local = localStorage.getItem("cowatch-appearance");
+      if (local === "light" || local === "mantine" || local === "system") {
+        return local as AppearanceMode;
+      }
+    }
+    if (userAppearance && (userAppearance === "light" || userAppearance === "mantine" || userAppearance === "system")) {
+      return userAppearance;
     }
     return "system";
   });
 
-  const [resolvedColorScheme, setResolvedColorScheme] = useState<"light" | "dark">("dark");
+  const [resolvedColorScheme, setResolvedColorScheme] = useState<"light" | "dark">(() => {
+    return resolveInitialScheme(appearance);
+  });
 
-  // Sync with userAppearance prop if it loads from Supabase
+  // Sync with userAppearance prop from DB ONLY if user has not explicitly set a local preference
   useEffect(() => {
     if (userAppearance) {
-      setAppearanceInternal(userAppearance);
+      const local = typeof window !== "undefined" ? localStorage.getItem("cowatch-appearance") : null;
+      if (!local && (userAppearance === "light" || userAppearance === "mantine" || userAppearance === "system")) {
+        setAppearanceInternal(userAppearance);
+        try {
+          localStorage.setItem("cowatch-appearance", userAppearance);
+        } catch (e) {}
+      }
     }
   }, [userAppearance]);
 
@@ -74,7 +95,9 @@ export const ThemeProvider = ({
 
   const setAppearance = (mode: AppearanceMode) => {
     setAppearanceInternal(mode);
-    localStorage.setItem("cowatch-appearance", mode);
+    try {
+      localStorage.setItem("cowatch-appearance", mode);
+    } catch (e) {}
     if (onAppearanceChange) {
       onAppearanceChange(mode);
     }

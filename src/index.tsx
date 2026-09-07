@@ -151,7 +151,18 @@ try {
 const initialResolved = cachedUser ? resolveProfile(null, cachedUser) : null;
 const initialDisplayName = cachedProfileData.displayName || initialResolved?.displayName || "Guest";
 const initialAvatarUrl = cachedProfileData.avatarUrl !== undefined ? cachedProfileData.avatarUrl : (initialResolved?.avatarUrl || null);
-const initialAppearance = (cachedProfileData.pref_appearance_mode || "system") as AppearanceMode;
+
+const getInitialAppearance = (): AppearanceMode => {
+  if (typeof window !== "undefined") {
+    const local = window.localStorage.getItem("cowatch-appearance");
+    if (local === "light" || local === "mantine" || local === "system") {
+      return local as AppearanceMode;
+    }
+  }
+  return (cachedProfileData.pref_appearance_mode || "system") as AppearanceMode;
+};
+
+const initialAppearance = getInitialAppearance();
 
 class CoWatch extends React.Component {
   public state = {
@@ -167,12 +178,24 @@ class CoWatch extends React.Component {
 
   handleAppearanceChange = async (appearance: AppearanceMode) => {
     this.setState({ userAppearance: appearance });
+    try {
+      window.localStorage.setItem("cowatch-appearance", appearance);
+      const cached = window.localStorage.getItem("cowatch-cached-profile");
+      const parsed = cached ? JSON.parse(cached) : {};
+      parsed.pref_appearance_mode = appearance;
+      window.localStorage.setItem("cowatch-cached-profile", JSON.stringify(parsed));
+    } catch (e) {}
+
     const { user } = this.state;
     if (user) {
-      await supabase
-        .from("profiles")
-        .update({ pref_appearance_mode: appearance })
-        .eq("id", user.id);
+      try {
+        await supabase
+          .from("profiles")
+          .update({ pref_appearance_mode: appearance })
+          .eq("id", user.id);
+      } catch (err) {
+        console.warn("Failed to persist appearance preference to Supabase:", err);
+      }
     }
   };
 
@@ -311,16 +334,36 @@ class CoWatch extends React.Component {
               } catch (e) {}
             }
 
+            const activeAppearance = (() => {
+              if (typeof window !== "undefined") {
+                const local = window.localStorage.getItem("cowatch-appearance");
+                if (local === "light" || local === "mantine" || local === "system") {
+                  return local as AppearanceMode;
+                }
+              }
+              return (profile?.pref_appearance_mode || "system") as AppearanceMode;
+            })();
+
             try {
               window.localStorage.setItem(
                 "cowatch-cached-profile",
                 JSON.stringify({
                   displayName,
                   avatarUrl,
-                  pref_appearance_mode: profile?.pref_appearance_mode || "system",
+                  pref_appearance_mode: activeAppearance,
                 })
               );
+              window.localStorage.setItem("cowatch-appearance", activeAppearance);
             } catch (e) {}
+
+            if (profile && user && activeAppearance && profile.pref_appearance_mode !== activeAppearance) {
+              Promise.resolve(
+                supabase
+                  .from("profiles")
+                  .update({ pref_appearance_mode: activeAppearance })
+                  .eq("id", user.id)
+              ).catch((e: any) => console.warn("Could not sync appearance to DB:", e));
+            }
 
             this.setState({
               user,
@@ -330,7 +373,7 @@ class CoWatch extends React.Component {
               streamPath: metadata?.streamPath,
               convertPath: metadata?.convertPath,
               beta: metadata?.beta,
-              userAppearance: profile?.pref_appearance_mode || "system",
+              userAppearance: activeAppearance,
             });
           } else {
             try {
