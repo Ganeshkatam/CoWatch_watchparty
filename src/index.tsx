@@ -4,6 +4,7 @@ import "./index.css";
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 
 import type { User } from "@supabase/supabase-js";
 import {
@@ -519,6 +520,7 @@ class CoWatch extends React.Component {
                   </Suspense>
                 </BrowserRouter>
               </MetadataContext.Provider>
+              <Analytics />
             </MantineProvider>
           )}
         </ThemeConsumer>
