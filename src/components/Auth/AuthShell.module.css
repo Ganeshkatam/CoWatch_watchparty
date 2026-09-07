@@ -6,6 +6,45 @@
   background-color: var(--bg-app);
   position: relative;
   overflow: hidden;
+  isolation: isolate;
+}
+
+.authBgImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: -2;
+  opacity: 0.32;
+  filter: brightness(0.85) contrast(1.1);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.authBgOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 85% 15%, rgba(139, 92, 246, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 85%, rgba(20, 184, 166, 0.14) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(10, 13, 20, 0.90) 0%, rgba(10, 13, 20, 0.76) 45%, rgba(10, 13, 20, 0.92) 100%);
+  pointer-events: none;
+}
+
+:global([data-color-scheme="light"]) .authBgImage {
+  opacity: 0.16;
+  filter: brightness(1.05) saturate(0.9);
+}
+
+:global([data-color-scheme="light"]) .authBgOverlay {
+  background:
+    radial-gradient(ellipse at 85% 15%, rgba(139, 92, 246, 0.10) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.93) 0%, rgba(241, 245, 249, 0.82) 45%, rgba(248, 250, 252, 0.95) 100%);
 }
 
 /* Ambient glow effects matching the Midnight Violet design system */
@@ -54,12 +93,14 @@
   font-weight: 800;
   line-height: 1.2;
   color: var(--text-primary);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
 }
 
 .brandDescription {
   font-size: 18px;
   color: var(--text-secondary);
   max-width: 480px;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
 }
 
 .brandFeatures {
@@ -75,6 +116,7 @@
   gap: 12px;
   font-size: 16px;
   color: var(--text-secondary);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
 
 .featureCheck {

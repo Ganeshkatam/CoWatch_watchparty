@@ -298,42 +298,29 @@ export const TopBar = (props: {
           borderBottom: "1px solid var(--border-subtle)",
         }}
       >
-        <a href="/" style={{ display: "flex" }}>
-          <img style={{ width: "56px", height: "56px" }} src="/logo192.png" />
-          {/* <div
+        <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+          <img
+            className="cowatch-brand-logo"
+            style={{ width: "40px", height: "40px", marginRight: "8px", objectFit: "contain" }}
+            src="/logo192.png"
+            alt="CoWatch"
+          />
+          {!props.roomTitle && !props.roomDescription && (
+            <div
               style={{
-                height: '48px',
-                width: '48px',
-                marginRight: '10px',
-                borderRadius: '50%',
-                position: 'relative',
-                backgroundColor: '#' + colorMappings.blue,
+                textTransform: "uppercase",
+                fontWeight: 700,
+                fontSize: "26px",
+                lineHeight: "26px",
+                background: "linear-gradient(135deg, #14B8A6, #3B82F6)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
               }}
             >
-              <Icon
-                inverted
-                name="film"
-                size="large"
-                style={{
-                  position: 'absolute',
-                  top: 8,
-                  width: '100%',
-                  margin: '0 auto',
-                }}
-              />
-              <Icon
-                inverted
-                name="group"
-                size="large"
-                color="green"
-                style={{
-                  position: 'absolute',
-                  bottom: 8,
-                  width: '100%',
-                  margin: '0 auto',
-                }}
-              />
-            </div> */}
+              CoWatch
+            </div>
+          )}
         </a>
         {props.roomTitle || props.roomDescription ? (
           <div
@@ -359,33 +346,7 @@ export const TopBar = (props: {
               {props.roomDescription}
             </Text>
           </div>
-        ) : (
-          <React.Fragment>
-            <a href="/" style={{ display: "flex", textDecoration: "none" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <div
-                  style={{
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    fontSize: "30px",
-                    lineHeight: "30px",
-                    background: "linear-gradient(135deg, #14B8A6, #3B82F6)",
-                    WebkitBackgroundClip: "text",
-                    backgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  CoWatch
-                </div>
-              </div>
-            </a>
-          </React.Fragment>
-        )}
+        ) : null}
         <Announce />
         <div
           className={appStyles.mobileStack}

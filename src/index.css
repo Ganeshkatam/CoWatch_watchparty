@@ -379,3 +379,15 @@ html[data-color-scheme="light"] .mantine-Switch-input:checked + .mantine-Switch-
   box-shadow: 0 2px 8px rgba(112, 72, 232, 0.35) !important;
 }
 
+/* Brand Logo - Light & Dark Theme Support */
+.cowatch-brand-logo,
+img[src*="logo192.png"] {
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+html[data-color-scheme="light"] .cowatch-brand-logo,
+html[data-color-scheme="light"] img[src*="logo192.png"] {
+  filter: brightness(0) opacity(0.85);
+}
+
+

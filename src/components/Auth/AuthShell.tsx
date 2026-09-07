@@ -21,7 +21,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
         <span className={styles.featureCheck}>✓</span> High-quality video & audio streaming
       </div>
       <div className={styles.featureItem}>
-        <span className={styles.featureCheck}>✓</span> Interactive chat with emoji reactions
+        <span className={styles.featureCheck}>✓</span> Interactive chat with live reactions
       </div>
     </div>
   );
@@ -54,6 +54,12 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
 
   return (
     <div className={styles.authPage}>
+      <img
+        src="/auth_bg.jpg"
+        alt="Cinema watch party background"
+        className={styles.authBgImage}
+      />
+      <div className={styles.authBgOverlay} />
       <div className={styles.authLayout}>
         <div className={styles.brandPanel}>
           <div

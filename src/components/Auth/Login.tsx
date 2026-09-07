@@ -71,11 +71,13 @@ export const Login = () => {
         withBorder 
         p={30} 
         mt={30} 
-        radius="md" 
+        radius="lg" 
         style={{ 
-          background: "var(--bg-elevated)", 
-          borderColor: "var(--border-strong)",
-          boxShadow: "0 0 20px var(--surface-active)" 
+          background: "rgba(23, 27, 42, 0.78)", 
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderColor: "rgba(139, 92, 246, 0.22)",
+          boxShadow: "0 16px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(139, 92, 246, 0.12)" 
         }}
       >
         {error && (

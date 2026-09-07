@@ -11,11 +11,21 @@ export const AuthTopBar: React.FC = () => {
         alignItems: "center",
         padding: "16px 24px",
         borderBottom: "1px solid var(--border-subtle)",
-        backgroundColor: "var(--bg-app)",
+        backgroundColor: "rgba(10, 13, 20, 0.75)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
         height: "72px",
+        position: "relative",
+        zIndex: 10,
       }}
     >
       <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+        <img
+          className="cowatch-brand-logo"
+          style={{ width: "32px", height: "32px", marginRight: "10px", objectFit: "contain" }}
+          src="/logo192.png"
+          alt="CoWatch"
+        />
         <div
           style={{
             textTransform: "uppercase",
