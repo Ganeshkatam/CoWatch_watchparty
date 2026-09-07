@@ -131,6 +131,84 @@ textarea:focus-visible,
 }
 
 /* ==========================================
+   Modern Mantine Button Styling
+   ========================================== */
+.mantine-Button-root {
+  border-radius: var(--radius-sm, 8px) !important;
+  font-weight: 600 !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  letter-spacing: -0.01em !important;
+  cursor: pointer;
+}
+
+.mantine-Button-root:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.mantine-Button-root:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Light variant styling in dark mode */
+.mantine-Button-root[data-variant="light"][data-color="violet"] {
+  background-color: rgba(139, 92, 246, 0.14) !important;
+  border: 1px solid rgba(139, 92, 246, 0.32) !important;
+  color: #DDD6FE !important;
+}
+
+.mantine-Button-root[data-variant="light"][data-color="violet"]:hover:not(:disabled) {
+  background-color: rgba(139, 92, 246, 0.24) !important;
+  border-color: rgba(139, 92, 246, 0.55) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35) !important;
+}
+
+/* Outline variant styling */
+.mantine-Button-root[data-variant="outline"] {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: var(--text-primary) !important;
+}
+
+.mantine-Button-root[data-variant="outline"]:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Red / Danger button styling */
+.mantine-Button-root[data-color="red"][data-variant="filled"] {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
+}
+
+.mantine-Button-root[data-color="red"][data-variant="filled"]:hover:not(:disabled) {
+  background: linear-gradient(135deg, #F87171 0%, #EF4444 100%) !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45) !important;
+}
+
+.mantine-Button-root[data-color="red"][data-variant="light"] {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.28) !important;
+  color: #FCA5A5 !important;
+}
+
+.mantine-Button-root[data-color="red"][data-variant="light"]:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Subtle variant */
+.mantine-Button-root[data-variant="subtle"]:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ==========================================
    Modern Mantine Menu & Dropdown Styling
    ========================================== */
 .mantine-Menu-dropdown {
