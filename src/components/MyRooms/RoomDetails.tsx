@@ -452,7 +452,9 @@ export const RoomDetails = () => {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
-                <IconInfoCircle size={18} color="var(--color-violet)" />
+                <div className={styles.cardTitleIconWrap}>
+                  <IconInfoCircle size={18} />
+                </div>
                 <span>Room Details</span>
               </div>
             </div>
@@ -532,17 +534,37 @@ export const RoomDetails = () => {
                             {copiedPassword ? <IconCheck size={14} /> : <IconCopy size={14} />}
                           </ActionIcon>
                         </Tooltip>
-                        <Badge color="violet" variant="light" size="sm">
+                        <Badge
+                          color="violet"
+                          variant="light"
+                          size="md"
+                          radius="md"
+                          style={{ fontWeight: 600, border: "1px solid rgba(139, 92, 246, 0.25)" }}
+                        >
                           Password Protected
                         </Badge>
                       </Group>
                     ) : (
-                      <Badge color="violet" variant="light" size="sm" leftSection={<IconLock size={12} />}>
+                      <Badge
+                        color="violet"
+                        variant="light"
+                        size="md"
+                        radius="md"
+                        leftSection={<IconLock size={13} />}
+                        style={{ fontWeight: 600, border: "1px solid rgba(139, 92, 246, 0.25)" }}
+                      >
                         Password Protected
                       </Badge>
                     )
                   ) : (
-                    <Badge color="gray" variant="light" size="sm" leftSection={<IconLockOpen size={12} />}>
+                    <Badge
+                      color="gray"
+                      variant="light"
+                      size="md"
+                      radius="md"
+                      leftSection={<IconLockOpen size={13} />}
+                      style={{ fontWeight: 600 }}
+                    >
                       No Password Needed
                     </Badge>
                   )}
@@ -552,11 +574,22 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>Room Type</span>
                 <div className={styles.tileValue}>
-                  <Badge color={room.isPermanent ? "teal" : "blue"} variant="light" size="sm">
+                  <Badge
+                    color={room.isPermanent ? "teal" : "blue"}
+                    variant="light"
+                    size="md"
+                    radius="md"
+                    style={{
+                      fontWeight: 600,
+                      border: room.isPermanent
+                        ? "1px solid rgba(20, 184, 166, 0.25)"
+                        : "1px solid rgba(59, 130, 246, 0.25)",
+                    }}
+                  >
                     {room.isPermanent ? "Permanent Room" : "Temporary Room"}
                   </Badge>
                   {room.isSubRoom && (
-                    <Badge color="gray" variant="outline" size="sm">
+                    <Badge color="gray" variant="outline" size="md" radius="md" style={{ fontWeight: 600 }}>
                       Sub-Room
                     </Badge>
                   )}
@@ -593,7 +626,9 @@ export const RoomDetails = () => {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
-                <IconSettings size={18} color="var(--color-violet)" />
+                <div className={styles.cardTitleIconWrap}>
+                  <IconSettings size={18} />
+                </div>
                 <span>Room Settings</span>
               </div>
               <Button
@@ -611,7 +646,18 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>Live Chat</span>
                 <div className={styles.tileValue}>
-                  <Badge color={room.isChatDisabled ? "gray" : "green"} variant="light" size="sm">
+                  <Badge
+                    color={room.isChatDisabled ? "gray" : "green"}
+                    variant="light"
+                    size="md"
+                    radius="md"
+                    style={{
+                      fontWeight: 600,
+                      border: room.isChatDisabled
+                        ? "1px solid rgba(156, 163, 175, 0.25)"
+                        : "1px solid rgba(16, 185, 129, 0.25)",
+                    }}
+                  >
                     {room.isChatDisabled ? "Turned Off" : "Turned On"}
                   </Badge>
                 </div>
@@ -620,7 +666,14 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>Video Controls</span>
                 <div className={styles.tileValue}>
-                  <Badge color="violet" variant="light" size="sm" leftSection={<IconShieldCheck size={12} />}>
+                  <Badge
+                    color="violet"
+                    variant="light"
+                    size="md"
+                    radius="md"
+                    leftSection={<IconShieldCheck size={13} />}
+                    style={{ fontWeight: 600, border: "1px solid rgba(139, 92, 246, 0.25)" }}
+                  >
                     Host Only
                   </Badge>
                 </div>
@@ -671,7 +724,9 @@ export const RoomDetails = () => {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
-                <IconClock size={18} color="var(--color-violet)" />
+                <div className={styles.cardTitleIconWrap}>
+                  <IconClock size={18} />
+                </div>
                 <span>Status & Timing</span>
               </div>
               <Badge color={statusConfig.badgeColor} variant="light" size="sm">
@@ -750,7 +805,9 @@ export const RoomDetails = () => {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
-                <IconActivity size={18} color="var(--color-violet)" />
+                <div className={styles.cardTitleIconWrap}>
+                  <IconActivity size={18} />
+                </div>
                 <span>Activity History</span>
               </div>
             </div>
@@ -787,9 +844,17 @@ export const RoomDetails = () => {
                 ))}
               </div>
             ) : (
-              <Text size="sm" c="dimmed">
-                No activity yet.
-              </Text>
+              <div className={styles.emptyStateContainer}>
+                <div className={styles.emptyStateIconWrap}>
+                  <IconActivity size={22} color="var(--color-violet)" />
+                </div>
+                <Text fw={600} size="sm" c="var(--text-primary)">
+                  No Activity Recorded
+                </Text>
+                <Text size="xs" c="dimmed" ta="center" style={{ maxWidth: 260 }}>
+                  Room events, status changes, and participant activity will appear here.
+                </Text>
+              </div>
             )}
           </div>
         </div>

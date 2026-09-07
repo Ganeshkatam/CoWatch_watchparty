@@ -181,8 +181,11 @@ export class Profile extends React.Component<{}> {
     if (displayName.length > 50) return;
 
     const fallbackName =
+      this.context.user?.user_metadata?.display_name?.trim() ||
+      this.context.user?.user_metadata?.full_name?.trim() ||
+      this.context.user?.user_metadata?.name?.trim() ||
       this.context.profile?.username ||
-      this.context.user.email?.split("@")[0] ||
+      this.context.user?.email?.split("@")[0] ||
       "User";
     const finalDisplayName = displayName || fallbackName;
 

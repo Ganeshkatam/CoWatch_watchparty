@@ -2,10 +2,11 @@ import React, { useCallback, useContext } from "react";
 import { Link } from "react-router-dom";
 import { serverPath, addAndSavePasscode } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
-import { Avatar, Button, Menu, Text } from "@mantine/core";
+import { Avatar, Button, Menu, Text, Tooltip } from "@mantine/core";
 import type { User } from "@supabase/supabase-js";
 import Announce from "../Announce/Announce";
 import appStyles from "../App/App.module.css";
+import styles from "./TopBar.module.css";
 import { MetadataContext } from "../../MetadataContext";
 import {
   IconCirclePlusFilled,
@@ -18,6 +19,7 @@ import {
   IconDeviceDesktop,
   IconSun,
   IconMoon,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 
@@ -49,6 +51,32 @@ export const ThemeMenuItems = () => {
         Dark
       </Menu.Item>
     </>
+  );
+};
+
+export const ThemeToggleQuickButton = () => {
+  const { appearance, setAppearance } = useAppearance();
+  const isDark =
+    appearance === "mantine" ||
+    (appearance === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  const handleToggle = () => {
+    setAppearance(isDark ? "light" : "mantine");
+  };
+
+  return (
+    <Tooltip label={isDark ? "Switch to light theme" : "Switch to dark theme"} withArrow>
+      <button
+        type="button"
+        className={styles.themeToggleBtn}
+        onClick={handleToggle}
+        aria-label="Toggle theme"
+      >
+        {isDark ? <IconSun size={18} stroke={1.5} /> : <IconMoon size={18} stroke={1.5} />}
+      </button>
+    </Tooltip>
   );
 };
 
@@ -138,24 +166,21 @@ export class SignInButton extends React.Component<SignInButtonProps> {
       return (
         <Menu shadow="xl" width={240} position="bottom-end" offset={8}>
           <Menu.Target>
-            <div
-              className="topbar-avatar-btn"
-              style={{
-                margin: "4px",
-                minWidth: "40px",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Avatar
-                src={this.context.avatarUrl}
-                size={36}
-                radius="xl"
-                style={{
-                  border: "2px solid var(--border-subtle)",
-                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-                }}
-              />
+            <div className={styles.profilePill}>
+              <div className={styles.avatarWrap}>
+                <Avatar
+                  src={this.context.avatarUrl}
+                  size={30}
+                  radius="xl"
+                />
+                <span className={styles.statusDot} />
+              </div>
+              <div className={styles.profileInfo}>
+                <span className={styles.profileName}>
+                  {this.context.displayName || "My Account"}
+                </span>
+              </div>
+              <IconChevronDown size={14} className={styles.chevron} />
             </div>
           </Menu.Target>
 
@@ -288,105 +313,76 @@ export const TopBar = (props: {
 }) => {
   const context = useContext(MetadataContext);
   return (
-    <React.Fragment>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          padding: "4px 8px",
-          rowGap: "8px",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-          backgroundColor: "var(--bg-app)",
-          borderBottom: "1px solid var(--border-subtle)",
-        }}
-      >
-        <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
-          <img
-            className="cowatch-brand-logo"
-            style={{ width: "40px", height: "40px", marginRight: "8px", objectFit: "contain" }}
-            src="/logo192.png"
-            alt="CoWatch"
-          />
-          {!props.roomTitle && !props.roomDescription && (
-            <div
-              style={{
-                textTransform: "uppercase",
-                fontWeight: 700,
-                fontSize: "26px",
-                lineHeight: "26px",
-                background: "linear-gradient(135deg, #14B8A6, #3B82F6)",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              CoWatch
-            </div>
-          )}
-        </a>
-        {props.roomTitle || props.roomDescription ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              marginRight: 10,
-              marginLeft: 10,
-            }}
-          >
-            <div
-              style={{
-                fontSize: "30px",
-                lineHeight: "30px",
-                fontWeight: 700,
-                letterSpacing: 1,
-              }}
-            >
-              {props.roomTitle?.toUpperCase()}
-            </div>
-            <Text size="sm" style={{}}>
-              {props.roomDescription}
-            </Text>
+    <div className={styles.topBar}>
+      <a href="/" className={styles.brandGroup}>
+        <img
+          className={`cowatch-brand-logo ${styles.logo}`}
+          src="/logo192.png"
+          alt="CoWatch"
+        />
+        {!props.roomTitle && !props.roomDescription && (
+          <div className={styles.brandName}>
+            CoWatch
           </div>
-        ) : null}
-        <Announce />
+        )}
+      </a>
+      {props.roomTitle || props.roomDescription ? (
         <div
-          className={appStyles.mobileStack}
           style={{
             display: "flex",
-            marginLeft: "auto",
-            alignItems: "center",
-            gap: "4px",
+            flexDirection: "column",
+            justifyContent: "center",
+            marginRight: 10,
+            marginLeft: 10,
           }}
         >
-          {!props.hideMyRooms && context.user && <ListRoomsButton />}
-          {props.showExit && (
-            <Button
-              color="red"
-              variant="light"
-              onClick={() => {
-                window.location.assign("/");
-              }}
-              leftSection={<IconX size={16} />}
-            >
-              Exit
-            </Button>
+          <div
+            style={{
+              fontSize: "24px",
+              lineHeight: "26px",
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              color: "var(--text-primary)",
+            }}
+          >
+            {props.roomTitle?.toUpperCase()}
+          </div>
+          {props.roomDescription && (
+            <Text size="sm" c="dimmed">
+              {props.roomDescription}
+            </Text>
           )}
-          {props.onOpenSettings && (
-            <Button
-              color="violet"
-              variant="light"
-              onClick={props.onOpenSettings}
-              leftSection={<IconSettings size={16} />}
-            >
-              Settings
-            </Button>
-          )}
-          {!props.hideSignin && <SignInButton />}
         </div>
+      ) : null}
+      <Announce />
+      <div className={styles.actionsGroup}>
+        {!props.hideMyRooms && context.user && <ListRoomsButton />}
+        {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
+        {props.showExit && (
+          <Button
+            color="red"
+            variant="light"
+            onClick={() => {
+              window.location.assign("/");
+            }}
+            leftSection={<IconX size={16} />}
+          >
+            Exit
+          </Button>
+        )}
+        {props.onOpenSettings && (
+          <Button
+            color="violet"
+            variant="light"
+            onClick={props.onOpenSettings}
+            leftSection={<IconSettings size={16} />}
+          >
+            Settings
+          </Button>
+        )}
+        <ThemeToggleQuickButton />
+        {!props.hideSignin && <SignInButton />}
       </div>
-    </React.Fragment>
+    </div>
   );
 };

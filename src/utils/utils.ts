@@ -405,11 +405,11 @@ export const resolveProfile = (
 ): ResolvedProfile => ({
   displayName:
     profile?.display_name?.trim() ||
-    profile?.username?.trim() ||
     user.user_metadata?.display_name?.trim() ||
-    user.user_metadata?.username?.trim() ||
     user.user_metadata?.full_name?.trim() ||
     user.user_metadata?.name?.trim() ||
+    profile?.username?.trim() ||
+    user.user_metadata?.username?.trim() ||
     user.email?.split("@")[0] ||
     "Guest",
 
