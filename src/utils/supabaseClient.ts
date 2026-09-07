@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import config from "../config";
 
 const supabaseUrl = config.VITE_SUPABASE_URL;
@@ -16,6 +16,28 @@ export const supabase: SupabaseClient =
   createClient(supabaseUrl || "", supabaseKey || "");
 
 globalForSupabase.__supabase = supabase;
+
+export function getCachedSupabaseUser(): User | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
+        const val = window.localStorage.getItem(key);
+        if (val && val !== "{}" && val !== "null") {
+          const parsed = JSON.parse(val);
+          const user = parsed?.user ?? parsed?.currentSession?.user;
+          if (user && user.id) {
+            return user as User;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
 
 export function hasCachedSupabaseToken(): boolean {
   if (typeof window === "undefined" || !window.localStorage) return false;

@@ -201,12 +201,21 @@ export const iceServers = () => [
   // },
 ];
 
-export const serverPath =
-  config.VITE_SERVER_HOST ||
-  `${window.location.protocol}//${config.NODE_ENV === "development"
-    ? `${window.location.hostname}:8080`
-    : window.location.host
-  }`;
+export const serverPath = (() => {
+  if (config.VITE_SERVER_HOST) {
+    return config.VITE_SERVER_HOST;
+  }
+  if (typeof window === "undefined") {
+    return "http://localhost:8080";
+  }
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  if (config.NODE_ENV === "development" && isLocalhost) {
+    return `${window.location.protocol}//${window.location.hostname}:8080`;
+  }
+  return window.location.origin;
+})();
 
 export function getRoomUrl(roomId: string): string {
   return `${window.location.origin}/watch/${roomId.replace(/^\//, '')}`;

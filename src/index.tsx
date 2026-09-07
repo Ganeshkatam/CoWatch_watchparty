@@ -6,30 +6,45 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route } from "react-router-dom";
 
 import type { User } from "@supabase/supabase-js";
-import { supabase, hasCachedSupabaseToken, safeGetSession } from "./utils/supabaseClient";
+import {
+  supabase,
+  hasCachedSupabaseToken,
+  getCachedSupabaseUser,
+  safeGetSession,
+} from "./utils/supabaseClient";
 import { serverPath, resolveProfile } from "./utils/utils";
-import { Home } from "./components/Home/Home";
-import { App } from "./components/App/App";
 import { TopBar } from "./components/TopBar/TopBar";
 import { Footer } from "./components/Footer/Footer";
-import { AuthLayout } from "./components/Auth/AuthLayout";
-import { Create } from "./components/Create/Create";
-import { Profile } from "./components/Profile/Profile";
-import { MyRooms } from "./components/MyRooms/MyRooms";
-import { RoomDetails } from "./components/MyRooms/RoomDetails";
-import { Terms, Privacy, FAQ } from "./components/Pages/Pages";
-import { Login } from "./components/Auth/Login";
-import { Signup } from "./components/Auth/Signup";
-import { ForgotPassword } from "./components/Auth/ForgotPassword";
-import { ResetPassword } from "./components/Auth/ResetPassword";
 import { RequireGuest } from "./components/Auth/RequireGuest";
 import { RequireVerifiedEmail } from "./components/Auth/RequireVerifiedEmail";
-import { VerifyEmail } from "./components/Auth/VerifyEmail";
 import config from "./config";
 import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
-import { createTheme, MantineProvider } from "@mantine/core";
+import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
+
+// Route-level code splitting for rapid initial page loads
+const Home = lazy(() => import("./components/Home/Home").then((m) => ({ default: m.Home })));
+const App = lazy(() => import("./components/App/App").then((m) => ({ default: m.App })));
+const AuthLayout = lazy(() => import("./components/Auth/AuthLayout").then((m) => ({ default: m.AuthLayout })));
+const Create = lazy(() => import("./components/Create/Create").then((m) => ({ default: m.Create })));
+const Profile = lazy(() => import("./components/Profile/Profile").then((m) => ({ default: m.Profile })));
+const MyRooms = lazy(() => import("./components/MyRooms/MyRooms").then((m) => ({ default: m.MyRooms })));
+const RoomDetails = lazy(() => import("./components/MyRooms/RoomDetails").then((m) => ({ default: m.RoomDetails })));
+const Terms = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Privacy })));
+const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.FAQ })));
+const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
+const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
+const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
+const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
+
+const RouteFallback = () => (
+  <Center style={{ minHeight: "60vh", width: "100%" }}>
+    <Loader color="violet" size="md" />
+  </Center>
+);
 
 const theme = createTheme({
   /** Your theme override here */
@@ -124,13 +139,30 @@ const ThemeConsumer = ({ children }: { children: (resolvedColorScheme: "light" |
   return <>{children(resolvedColorScheme)}</>;
 };
 
+const cachedUser = getCachedSupabaseUser();
+let cachedProfileData: { displayName?: string; avatarUrl?: string | null; pref_appearance_mode?: AppearanceMode } = {};
+try {
+  const raw = typeof window !== "undefined" ? window.localStorage.getItem("cowatch-cached-profile") : null;
+  if (raw) {
+    cachedProfileData = JSON.parse(raw);
+  }
+} catch (e) {}
+
+const initialResolved = cachedUser ? resolveProfile(null, cachedUser) : null;
+const initialDisplayName = cachedProfileData.displayName || initialResolved?.displayName || "Guest";
+const initialAvatarUrl = cachedProfileData.avatarUrl !== undefined ? cachedProfileData.avatarUrl : (initialResolved?.avatarUrl || null);
+const initialAppearance = (cachedProfileData.pref_appearance_mode || "system") as AppearanceMode;
+
 class CoWatch extends React.Component {
   public state = {
     ...DEFAULT_STATE,
-    user: (hasCachedSupabaseToken() ? undefined : null) as User | null | undefined,
+    user: (cachedUser ?? (hasCachedSupabaseToken() ? undefined : null)) as User | null | undefined,
+    displayName: initialDisplayName,
+    avatarUrl: initialAvatarUrl,
+    userAppearance: initialAppearance,
     setMetadata: (data: any) => {
       this.setState(data);
-    }
+    },
   };
 
   handleAppearanceChange = async (appearance: AppearanceMode) => {
@@ -180,37 +212,45 @@ class CoWatch extends React.Component {
             // Eagerly set user so auth guards immediately resolve
             this.setState({ user });
 
-            let metadata: any = {};
-            try {
-              const res = await window.fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`, {
+            const fetchMetadataPromise = window
+              .fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`, {
                 signal: AbortSignal.timeout(1500),
+              })
+              .then((res) => (res.ok ? res.json() : {}))
+              .catch((err) => {
+                console.warn("Backend server unreachable or timed out, skipping metadata:", err);
+                return {};
               });
-              if (res.ok) {
-                metadata = await res.json();
+
+            const fetchProfilePromise = (async () => {
+              try {
+                const profilePromise = supabase
+                  .from("profiles")
+                  .select(
+                    "display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode"
+                  )
+                  .eq("id", user.id)
+                  .maybeSingle();
+
+                const timeoutPromise = new Promise<{ data: null }>((resolve) =>
+                  setTimeout(() => resolve({ data: null }), 1500)
+                );
+
+                const { data } = await Promise.race([profilePromise, timeoutPromise]);
+                return data;
+              } catch (err) {
+                console.warn("Profile fetch error:", err);
+                return null;
               }
-            } catch (err) {
-              console.warn("Backend server unreachable or timed out, skipping metadata:", err);
-            }
+            })();
 
-            let profile: any = null;
-            try {
-              const profilePromise = supabase
-                .from("profiles")
-                .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
-                .eq("id", user.id)
-                .maybeSingle();
+            const [metadataResult, profileResult] = await Promise.allSettled([
+              fetchMetadataPromise,
+              fetchProfilePromise,
+            ]);
 
-              const timeoutPromise = new Promise<{ data: null; error: null }>((resolve) =>
-                setTimeout(() => resolve({ data: null, error: null }), 1500)
-              );
-
-              const { data: profileData } = await Promise.race([profilePromise, timeoutPromise]);
-              if (profileData) {
-                profile = profileData;
-              }
-            } catch (err) {
-              console.warn("Profile fetch error:", err);
-            }
+            const metadata: any = metadataResult.status === "fulfilled" ? metadataResult.value : {};
+            let profile: any = profileResult.status === "fulfilled" ? profileResult.value : null;
 
             // Self-heal: if profile does not exist in DB, create one
             if (!profile && user) {
@@ -238,7 +278,9 @@ class CoWatch extends React.Component {
                     },
                     { onConflict: "id" }
                   )
-                  .select("display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode")
+                  .select(
+                    "display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode"
+                  )
                   .maybeSingle();
 
                 const timeoutPromise = new Promise<{ data: null }>((resolve) =>
@@ -266,8 +308,19 @@ class CoWatch extends React.Component {
                 const settings = JSON.parse(settingsStr);
                 settings.disableChatSound = profile.pref_disable_chat_sound;
                 window.localStorage.setItem("cowatch-setting", JSON.stringify(settings));
-              } catch (e) { }
+              } catch (e) {}
             }
+
+            try {
+              window.localStorage.setItem(
+                "cowatch-cached-profile",
+                JSON.stringify({
+                  displayName,
+                  avatarUrl,
+                  pref_appearance_mode: profile?.pref_appearance_mode || "system",
+                })
+              );
+            } catch (e) {}
 
             this.setState({
               user,
@@ -280,6 +333,9 @@ class CoWatch extends React.Component {
               userAppearance: profile?.pref_appearance_mode || "system",
             });
           } else {
+            try {
+              window.localStorage.removeItem("cowatch-cached-profile");
+            } catch (e) {}
             this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
           }
         } catch (fatalErr) {
@@ -335,89 +391,89 @@ class CoWatch extends React.Component {
             <MantineProvider theme={theme} forceColorScheme={resolvedColorScheme}>
               <MetadataContext.Provider value={this.state}>
                 <BrowserRouter>
-                  <Route
-                    path="/"
-                    exact
-                    render={(props) => {
-                      return (
-                        <React.Fragment>
-                          <TopBar hideNewRoom />
-                          <Home />
-                          <Footer />
-                        </React.Fragment>
-                      );
-                    }}
-                  />
-                  <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
-                    <RequireGuest>
-                      <AuthLayout>
-                        <Route path="/login" exact component={Login} />
-                        <Route path="/signup" exact component={Signup} />
-                        <Route path="/forgot-password" exact component={ForgotPassword} />
-                        <Route path="/reset-password" exact component={ResetPassword} />
-                      </AuthLayout>
-                    </RequireGuest>
-                  </Route>
-                  <Route path="/verify-email" exact component={VerifyEmail} />
-                  <Route
-                    path="/create"
-                    exact
-                    render={() => {
-                      return <RequireVerifiedEmail><Create /></RequireVerifiedEmail>;
-                    }}
-                  />
-                  <Route
-                    path="/watch/:roomId"
-                    exact
-                    render={(props) => {
-                      return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} /></RequireVerifiedEmail>;
-                    }}
-                  />
+                  <Suspense fallback={<RouteFallback />}>
+                    <Route
+                      path="/"
+                      exact
+                      render={(props) => {
+                        return (
+                          <React.Fragment>
+                            <TopBar hideNewRoom />
+                            <Home />
+                            <Footer />
+                          </React.Fragment>
+                        );
+                      }}
+                    />
+                    <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
+                      <RequireGuest>
+                        <AuthLayout>
+                          <Route path="/login" exact component={Login} />
+                          <Route path="/signup" exact component={Signup} />
+                          <Route path="/forgot-password" exact component={ForgotPassword} />
+                          <Route path="/reset-password" exact component={ResetPassword} />
+                        </AuthLayout>
+                      </RequireGuest>
+                    </Route>
+                    <Route path="/verify-email" exact component={VerifyEmail} />
+                    <Route
+                      path="/create"
+                      exact
+                      render={() => {
+                        return <RequireVerifiedEmail><Create /></RequireVerifiedEmail>;
+                      }}
+                    />
+                    <Route
+                      path="/watch/:roomId"
+                      exact
+                      render={(props) => {
+                        return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} /></RequireVerifiedEmail>;
+                      }}
+                    />
 
-                  <Route path="/terms">
-                    <>
-                      <TopBar />
-                      <Terms />
-                    </>
-                  </Route>
-                  <Route path="/privacy">
-                    <>
-                      <TopBar />
-                      <Privacy />
-                    </>
-                  </Route>
-                  <Route path="/faq">
-                    <>
-                      <TopBar />
-                      <FAQ />
-                    </>
-                  </Route>
-                  <Route path="/profile">
-                    <RequireVerifiedEmail>
-                      <TopBar hideNewRoom />
-                      <Profile />
-                    </RequireVerifiedEmail>
-                  </Route>
-                  <Route path="/rooms" exact>
-                    <RequireVerifiedEmail>
-                      <TopBar hideNewRoom hideMyRooms />
-                      <MyRooms />
-                    </RequireVerifiedEmail>
-                  </Route>
-                  <Route path="/rooms/:roomId">
-                    <RequireVerifiedEmail>
-                      <TopBar hideNewRoom hideMyRooms />
-                      <RoomDetails />
-                    </RequireVerifiedEmail>
-                  </Route>
-                  <Route path="/debug">
-                    <>
-                      <TopBar />
-                      <Suspense fallback={null}>
+                    <Route path="/terms">
+                      <>
+                        <TopBar />
+                        <Terms />
+                      </>
+                    </Route>
+                    <Route path="/privacy">
+                      <>
+                        <TopBar />
+                        <Privacy />
+                      </>
+                    </Route>
+                    <Route path="/faq">
+                      <>
+                        <TopBar />
+                        <FAQ />
+                      </>
+                    </Route>
+                    <Route path="/profile">
+                      <RequireVerifiedEmail>
+                        <TopBar hideNewRoom />
+                        <Profile />
+                      </RequireVerifiedEmail>
+                    </Route>
+                    <Route path="/rooms" exact>
+                      <RequireVerifiedEmail>
+                        <TopBar hideNewRoom hideMyRooms />
+                        <MyRooms />
+                      </RequireVerifiedEmail>
+                    </Route>
+                    <Route path="/rooms/:roomId">
+                      <RequireVerifiedEmail>
+                        <TopBar hideNewRoom hideMyRooms />
+                        <RoomDetails />
+                      </RequireVerifiedEmail>
+                    </Route>
+                    <Route path="/debug">
+                      <>
+                        <TopBar />
                         <Debug />
-                      </Suspense>
-                    </>
-                  </Route>
+                      </>
+                    </Route>
+                  </Suspense>
                 </BrowserRouter>
               </MetadataContext.Provider>
             </MantineProvider>
