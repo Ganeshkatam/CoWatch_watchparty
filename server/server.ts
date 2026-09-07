@@ -631,14 +631,16 @@ app.get("/metadata", async (req, res) => {
     return;
   }
   let isFreePoolFull = false;
-  try {
-    isFreePoolFull = (
-      await axios.get(
-        "http://localhost:" + config.VMWORKER_PORT + "/isFreePoolFull",
-      )
-    ).data.isFull;
-  } catch (e: any) {
-    console.warn("[WARNING]: free pool check failed: %s", e.code);
+  if (config.VM_MANAGER_CONFIG) {
+    try {
+      isFreePoolFull = (
+        await axios.get(
+          "http://localhost:" + config.VMWORKER_PORT + "/isFreePoolFull",
+        )
+      ).data.isFull;
+    } catch (e: any) {
+      console.warn("[WARNING]: free pool check failed: %s", e.code);
+    }
   }
   const beta =
     decoded?.email != null &&
