@@ -4,6 +4,7 @@ import { supabase } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import {
+  IconAlertTriangle,
   IconCircleCheckFilled,
   IconKeyFilled,
   IconLogout,
@@ -546,53 +547,127 @@ export class Profile extends React.Component<{}> {
               </Tabs.Panel>
 
               <Tabs.Panel value="security">
-                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                  <div>
-                    <Text size="sm" fw={500} mb="sm" c="var(--text-secondary)" style={{ textTransform: "uppercase", letterSpacing: "1px" }}>Account Security</Text>
-                    <Button
-                      className="profile-btn"
-                      disabled={this.state.resetDisabled}
-                      leftSection={<IconKeyFilled size={18} />}
-                      variant="light"
-                      color="indigo"
-                      fullWidth
-                      style={{ justifyContent: "flex-start", height: "45px" }}
-                      onClick={this.resetPassword}
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {/* Authentication & Session Card */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "16px",
+                      padding: "20px",
+                      background: "var(--bg-elevated)",
+                      borderRadius: "12px",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    <Text
+                      size="sm"
+                      fw={600}
+                      c="dimmed"
+                      style={{
+                        textTransform: "uppercase",
+                        letterSpacing: "1px",
+                        marginBottom: "-8px",
+                      }}
                     >
-                      Reset Password
-                    </Button>
-                    <Button
-                      className="profile-btn"
-                      leftSection={<IconLogout size={18} />}
-                      variant="outline"
-                      color="gray"
-                      fullWidth
-                      mt="md"
-                      style={{ height: "45px", borderColor: "var(--border-strong)", color: "var(--text-secondary)" }}
-                      onClick={this.onSignOut}
-                    >
-                      Sign Out
-                    </Button>
+                      Authentication & Session
+                    </Text>
+
+                    <Group justify="space-between" wrap="nowrap" style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
+                        <Text size="md" fw={500} c="var(--text-primary)">
+                          Password
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Send a secure password reset link to {this.context.user?.email || "your registered email"}.
+                        </Text>
+                      </div>
+                      <Button
+                        disabled={this.state.resetDisabled}
+                        leftSection={<IconKeyFilled size={15} />}
+                        variant="light"
+                        color="violet"
+                        size="sm"
+                        style={{ flexShrink: 0 }}
+                        onClick={this.resetPassword}
+                      >
+                        Reset Password
+                      </Button>
+                    </Group>
+
+                    <Group justify="space-between" wrap="nowrap">
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
+                        <Text size="md" fw={500} c="var(--text-primary)">
+                          Active Session
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Sign out of your active CoWatch account on this browser.
+                        </Text>
+                      </div>
+                      <Button
+                        leftSection={<IconLogout size={15} stroke={1.5} />}
+                        variant="outline"
+                        color="gray"
+                        size="sm"
+                        style={{
+                          flexShrink: 0,
+                          borderColor: "var(--border-strong)",
+                          color: "var(--text-secondary)",
+                        }}
+                        onClick={this.onSignOut}
+                      >
+                        Sign Out
+                      </Button>
+                    </Group>
                   </div>
 
-                  <div style={{
-                    background: "rgba(255, 50, 50, 0.05)",
-                    border: "1px solid rgba(255, 50, 50, 0.1)",
-                    borderRadius: "12px",
-                    padding: "20px"
-                  }}>
-                    <h3 style={{ color: "var(--color-danger)", margin: "0 0 15px 0", fontSize: "1rem" }}>Danger Zone</h3>
-                    <Button
-                      className="profile-btn"
-                      leftSection={<IconTrashFilled size={18} />}
-                      variant="light"
-                      color="red"
-                      fullWidth
-                      style={{ height: "45px" }}
-                      onClick={this.deleteAccountConfirm}
-                    >
-                      Delete Account
-                    </Button>
+                  {/* Danger Zone Card */}
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.04)",
+                      border: "1px solid rgba(239, 68, 68, 0.22)",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "-4px" }}>
+                      <IconAlertTriangle size={16} color="var(--color-danger)" />
+                      <Text
+                        size="sm"
+                        fw={600}
+                        c="var(--color-danger)"
+                        style={{
+                          textTransform: "uppercase",
+                          letterSpacing: "1px",
+                        }}
+                      >
+                        Danger Zone
+                      </Text>
+                    </div>
+
+                    <Group justify="space-between" wrap="nowrap">
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
+                        <Text size="md" fw={500} c="var(--text-primary)">
+                          Delete Account
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Permanently delete your account, saved preferences, rooms, and profile picture. This action cannot be undone.
+                        </Text>
+                      </div>
+                      <Button
+                        leftSection={<IconTrashFilled size={15} />}
+                        color="red"
+                        variant="filled"
+                        size="sm"
+                        style={{ flexShrink: 0 }}
+                        onClick={this.deleteAccountConfirm}
+                      >
+                        Delete Account
+                      </Button>
+                    </Group>
                   </div>
                 </div>
               </Tabs.Panel>
