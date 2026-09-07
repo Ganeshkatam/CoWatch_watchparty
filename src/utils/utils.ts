@@ -330,13 +330,29 @@ export function getOrCreateSessionId() {
 }
 
 export function addAndSavePasscode(roomId: string, passcode: string) {
+  if (!roomId || !passcode) return;
+  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
   const newPasscodes = {
     ...getSavedPasscodes(),
     [roomId]: passcode,
+    [cleanId]: passcode,
   };
   window.localStorage.setItem(
     "cowatch-passcodes",
     JSON.stringify(newPasscodes),
+  );
+}
+
+export function removeSavedPasscode(roomId: string) {
+  if (!roomId) return;
+  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+  const current = getSavedPasscodes();
+  delete current[roomId];
+  delete current[cleanId];
+  delete current[`/${cleanId}`];
+  window.localStorage.setItem(
+    "cowatch-passcodes",
+    JSON.stringify(current),
   );
 }
 

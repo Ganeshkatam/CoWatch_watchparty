@@ -1,6 +1,6 @@
 import React, { useCallback, useContext } from "react";
 import { Link } from "react-router-dom";
-import { serverPath } from "../../utils/utils";
+import { serverPath, addAndSavePasscode } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import { Avatar, Button, Menu, Text } from "@mantine/core";
 import type { User } from "@supabase/supabase-js";
@@ -86,6 +86,10 @@ export async function createRoom(
     throw new Error(data.error);
   }
   const { name } = data;
+
+  if (options.passcode && name) {
+    addAndSavePasscode(name, options.passcode);
+  }
   
   if (options?.noRedirect) {
     return name;

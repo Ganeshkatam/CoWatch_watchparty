@@ -1,4 +1,10 @@
-import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash } from './roomPasscode.ts';
+import {
+  hashRoomPasscode,
+  verifyRoomPasscode,
+  isBcryptHash,
+  encryptPasscodeForOwner,
+  decryptPasscodeForOwner,
+} from './roomPasscode.ts';
 
 async function runTests() {
   console.log('Running roomPasscode tests...');
@@ -36,7 +42,7 @@ async function runTests() {
   }
 
   // Test 5: Unicode >72 bytes
-  const unicodePass = '😊'.repeat(20); // Each emoji is 4 bytes, 20 * 4 = 80 bytes
+  const unicodePass = '\u{20AC}'.repeat(25); // Euro sign is 3 bytes, 25 * 3 = 75 bytes
   try {
     await hashRoomPasscode(unicodePass);
     throw new Error('Should have thrown on unicode >72 bytes');
@@ -45,6 +51,20 @@ async function runTests() {
       throw e;
     }
   }
+
+  // Test 6: Owner encryption and decryption
+  const secretPasscode = 'MySecretPasscode@2026';
+  const encrypted = encryptPasscodeForOwner(secretPasscode);
+  if (!encrypted || encrypted === secretPasscode) throw new Error('Encryption failed');
+  const decrypted = decryptPasscodeForOwner(encrypted);
+  if (decrypted !== secretPasscode) throw new Error(`Decryption failed: expected ${secretPasscode}, got ${decrypted}`);
+
+  // Test 7: Encryption empty/null cases
+  if (encryptPasscodeForOwner('') !== null) throw new Error('Expected null for empty passcode');
+  if (encryptPasscodeForOwner(null) !== null) throw new Error('Expected null for null passcode');
+  if (decryptPasscodeForOwner('') !== null) throw new Error('Expected null for empty encrypted data');
+  if (decryptPasscodeForOwner(null) !== null) throw new Error('Expected null for null encrypted data');
+  if (decryptPasscodeForOwner('invalid:token') !== null) throw new Error('Expected null for malformed encrypted data');
 
   console.log('All tests passed!');
 }

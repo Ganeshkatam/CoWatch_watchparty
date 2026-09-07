@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useHistory } from "react-router-dom";
-import { Title, Text, Badge, Button, Group, Modal, Loader, Paper, Stack, Grid, Divider } from "@mantine/core";
-import { IconArrowLeft, IconPlayerPlayFilled, IconCopy, IconSettings } from "@tabler/icons-react";
-import { serverPath, getRoomUrl } from "../../utils/utils";
+import { Title, Text, Badge, Button, Group, Modal, Loader, Paper, Stack, Grid, Divider, ActionIcon, Tooltip } from "@mantine/core";
+import { IconArrowLeft, IconPlayerPlayFilled, IconCopy, IconSettings, IconLock, IconLockOpen, IconEye, IconEyeOff, IconCheck } from "@tabler/icons-react";
+import { serverPath, getRoomUrl, addAndSavePasscode, getSavedPasscodes } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./MyRooms.module.css";
 import { EditRoomModal } from "./RoomCard";
@@ -22,6 +22,7 @@ interface LifecycleEvent {
 interface RoomDetailsData {
   roomId: string;
   isPasscodeProtected: boolean;
+  currentPasscode?: string | null;
   creationTime: string;
   roomTitle: string;
   roomDescription: string | null;
@@ -58,6 +59,8 @@ export const RoomDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
   const [editModalOpened, setEditModalOpened] = useState(false);
@@ -75,6 +78,9 @@ export const RoomDetails = () => {
         throw new Error("Failed to fetch room details");
       }
       const data = await response.json();
+      if (data && data.currentPasscode) {
+        addAndSavePasscode(data.roomId, data.currentPasscode);
+      }
       setRoom(data);
       setError(null);
     } catch (err: any) {
@@ -83,6 +89,12 @@ export const RoomDetails = () => {
       setLoading(false);
     }
   };
+
+  const currentPasscode =
+    room?.currentPasscode ||
+    (room?.roomId && getSavedPasscodes()[room.roomId]) ||
+    (room?.roomId && getSavedPasscodes()[room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId]) ||
+    "";
 
   useEffect(() => {
     fetchRoomDetails();
@@ -287,7 +299,51 @@ export const RoomDetails = () => {
                 </div>
                 <div className={styles.cinematicGridItem}>
                   <div className={styles.cinematicLabel}>Password</div>
-                  <div className={styles.cinematicValue}>{room.isPasscodeProtected ? "Protected" : "None"}</div>
+                  <div className={styles.cinematicValue}>
+                    {room.isPasscodeProtected ? (
+                      currentPasscode ? (
+                        <Group gap={6} align="center">
+                          <Text size="sm" fw={500} style={{ fontFamily: showPassword ? "inherit" : "monospace", letterSpacing: showPassword ? "normal" : "2px" }}>
+                            {showPassword ? currentPasscode : "••••••••"}
+                          </Text>
+                          <Tooltip label={showPassword ? "Hide password" : "Show password"} withArrow>
+                            <ActionIcon
+                              size="xs"
+                              variant="subtle"
+                              color="gray"
+                              onClick={() => setShowPassword(!showPassword)}
+                              aria-label="Toggle password visibility"
+                            >
+                              {showPassword ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label={copiedPassword ? "Copied!" : "Copy password"} withArrow>
+                            <ActionIcon
+                              size="xs"
+                              variant="subtle"
+                              color={copiedPassword ? "green" : "gray"}
+                              onClick={() => {
+                                navigator.clipboard.writeText(currentPasscode);
+                                setCopiedPassword(true);
+                                setTimeout(() => setCopiedPassword(false), 2000);
+                              }}
+                              aria-label="Copy password"
+                            >
+                              {copiedPassword ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      ) : (
+                        <Badge color="violet" variant="light" size="sm" leftSection={<IconLock size={12} />}>
+                          Protected
+                        </Badge>
+                      )
+                    ) : (
+                      <Badge color="gray" variant="light" size="sm" leftSection={<IconLockOpen size={12} />}>
+                        None
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className={styles.cinematicGridItem}>
                   <div className={styles.cinematicLabel}>Chat</div>
@@ -498,6 +554,7 @@ export const RoomDetails = () => {
           coverPhoto: room.coverPhoto,
           isChatDisabled: room.isChatDisabled,
           isPasscodeProtected: room.isPasscodeProtected,
+          currentPasscode: room.currentPasscode,
           isSubRoom: room.isSubRoom,
           status: room.status,
           startedAt: room.startedAt,

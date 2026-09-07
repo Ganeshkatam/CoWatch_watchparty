@@ -14,7 +14,7 @@ import {
   FileInput,
 } from "@mantine/core";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
-import { serverPath } from "../../utils/utils";
+import { serverPath, addAndSavePasscode } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import { useHistory } from "react-router-dom";
 import { IconCirclePlusFilled } from "@tabler/icons-react";
@@ -36,6 +36,10 @@ export const Create = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!roomTitle.trim()) {
+      setError("Room title is required.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -53,6 +57,10 @@ export const Create = () => {
           noRedirect: true,
         }
       );
+
+      if (passcode) {
+        addAndSavePasscode(roomName, passcode);
+      }
 
       if (coverPhotoFile && user) {
         if (coverPhotoFile.size > 5 * 1024 * 1024) {

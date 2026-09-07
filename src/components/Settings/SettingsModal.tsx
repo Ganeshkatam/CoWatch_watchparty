@@ -11,13 +11,24 @@ import {
   FileButton,
   Image,
   Group,
-  Divider
+  Divider,
+  Badge,
+  ActionIcon,
+  Tooltip,
 } from "@mantine/core";
+import {
+  IconLock,
+  IconLockOpen,
+  IconEye,
+  IconEyeOff,
+  IconCheck,
+  IconCopy,
+} from "@tabler/icons-react";
 import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
-import { serverPath } from "../../utils/utils";
+import { serverPath, addAndSavePasscode, getSavedPasscodes, removeSavedPasscode } from "../../utils/utils";
 
 interface SettingsModalProps {
   modalOpen: boolean;
@@ -103,6 +114,8 @@ export const SettingsModal = ({
       setPasswordAction("keep");
       setDraftPassword("");
       setDraftPasswordConfirm("");
+      setShowCurrentPassword(false);
+      setCopiedCurrentPassword(false);
       
       setCoverFile(null);
       setClearCover(false);
@@ -126,6 +139,17 @@ export const SettingsModal = ({
     }
   }, [modalOpen, roomTitle, roomDescription, roomLock, isChatDisabled, profile, roomId]);
 
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [copiedCurrentPassword, setCopiedCurrentPassword] = useState(false);
+
+  const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+  const currentSavedPasscode =
+    (passcode && passcode !== "true" ? passcode : "") ||
+    getSavedPasscodes()[roomId] ||
+    getSavedPasscodes()[cleanRoomId] ||
+    getSavedPasscodes()[`/${cleanRoomId}`] ||
+    "";
+
   const handleFileChange = (payload: File | null) => {
     if (payload) {
       if (payload.size > 5 * 1024 * 1024) {
@@ -134,49 +158,49 @@ export const SettingsModal = ({
       }
       setCoverFile(payload);
       setCoverPreview(URL.createObjectURL(payload));
-      setClearCover(false);
     }
   };
 
   const handleSave = async () => {
-    setError("");
-    const trimmedTitle = draftTitle.trim();
-    
-    // Validations
-    if (!trimmedTitle) return setError("Room title is required.");
-    if (trimmedTitle.length > 50) return setError("Room title must be under 50 characters.");
-    if (draftDescription.length > 500) return setError("Description must be under 500 characters.");
-    if (passwordAction === "change" && draftPassword !== draftPasswordConfirm) return setError("Passwords do not match.");
-    if (passwordAction === "change" && draftPassword.length === 0) return setError("Password cannot be empty.");
-
     setIsLoading(true);
+    setError("");
+
     try {
-      if (!user) throw new Error("Not logged in");
       const token = await getAccessToken();
-      
-      // 1. Save Room Cover if changed
+      if (!user) throw new Error("Not logged in");
+
+      const trimmedTitle = draftTitle.trim();
+      if (!trimmedTitle) throw new Error("Room title is required.");
+      if (trimmedTitle.length > 50) throw new Error("Room title must be under 50 characters.");
+      if (draftDescription.length > 500) throw new Error("Description must be under 500 characters.");
+      if (passwordAction === "change" && draftPassword !== draftPasswordConfirm) throw new Error("Passwords do not match.");
+      if (passwordAction === "change" && draftPassword.trim().length === 0) throw new Error("Password cannot be empty.");
+
+      // 1. Upload new cover if selected
       let finalCoverUrl = originalCoverUrl;
-      
-      if (clearCover) {
-        finalCoverUrl = null;
-        // Optionally delete from storage here, but we can also just let it orphan or cron job it
-        const { error: coverUpdateError } = await supabase
-          .from("rooms")
-          .update({ coverPhoto: null })
-          .eq("roomId", roomId);
-        if (coverUpdateError) throw coverUpdateError;
-      } else if (coverFile) {
+      if (coverFile) {
         const fileExt = coverFile.name.split('.').pop();
         const safeRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-        const filePath = `${user.id}/${safeRoomId}/cover_${Date.now()}.${fileExt}`;
+        const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage
           .from('room_covers')
           .upload(filePath, coverFile, { upsert: true });
         
         if (uploadError) throw uploadError;
+        
         const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
         finalCoverUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+      } else if (clearCover) {
+        finalCoverUrl = null;
+      }
+
+      if (finalCoverUrl !== originalCoverUrl) {
+        await fetch(`${serverPath}/updateRoomCover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: user.id, token, roomId, coverPhoto: finalCoverUrl }),
+        });
         
         const { error: coverUpdateError } = await supabase
           .from("rooms")
@@ -187,7 +211,8 @@ export const SettingsModal = ({
 
       // 2. Save Room Settings (only if owner)
       if (owner === user.id) {
-        const payloadPassword = passwordAction === "change" ? draftPassword : (passwordAction === "clear" ? "" : undefined);
+        const isClearing = passwordAction === "clear";
+        const payloadPassword = passwordAction === "change" ? draftPassword.trim() : (isClearing ? "" : undefined);
         const response = await fetch(`${serverPath}/updateRoomSettings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -199,6 +224,7 @@ export const SettingsModal = ({
             roomDescription: draftDescription,
             isPermanent: draftPermanent,
             isChatDisabled: !draftChatEnabled,
+            removePassword: isClearing,
             password: payloadPassword,
           }),
         });
@@ -211,8 +237,13 @@ export const SettingsModal = ({
         if (draftDescription !== roomDescription) setRoomDescription(draftDescription);
         if (!draftChatEnabled !== isChatDisabled) setIsChatDisabled(!draftChatEnabled);
         
-        if (passwordAction === "clear") setPasscode("");
-        else if (passwordAction === "change") setPasscode("true");
+        if (isClearing) {
+          removeSavedPasscode(roomId);
+          setPasscode("");
+        } else if (passwordAction === "change") {
+          addAndSavePasscode(roomId, draftPassword.trim());
+          setPasscode(draftPassword.trim());
+        }
 
         if (draftLock !== Boolean(roomLock)) {
           setRoomLock(draftLock);
@@ -360,21 +391,78 @@ export const SettingsModal = ({
               />
 
               <div>
-                <Text size="sm" fw={500} mb={4}>Password</Text>
+                <Text size="sm" fw={500} mb={4}>Password Protection</Text>
                 {passwordAction !== "change" ? (
-                  <Group justify="space-between">
-                    <Text size="sm" c="dimmed">{willHavePasscode ? "🔒 Protected" : "Unprotected"}</Text>
-                    <Group>
-                      {willHavePasscode && (
-                        <Button variant="subtle" color="red" size="xs" onClick={() => setPasswordAction("clear")} disabled={owner !== user?.id}>
-                          Clear Password
+                  <Stack gap="xs">
+                    <Group justify="space-between" align="center">
+                      <Group gap={6}>
+                        <Badge
+                          color={willHavePasscode ? "violet" : "gray"}
+                          variant="light"
+                          size="sm"
+                          leftSection={willHavePasscode ? <IconLock size={12} /> : <IconLockOpen size={12} />}
+                        >
+                          {willHavePasscode ? "Protected" : "Unprotected"}
+                        </Badge>
+                      </Group>
+                      <Group>
+                        {willHavePasscode && (
+                          <Button variant="subtle" color="red" size="xs" onClick={() => setPasswordAction("clear")} disabled={owner !== user?.id}>
+                            Clear Password
+                          </Button>
+                        )}
+                        <Button variant="light" size="xs" onClick={() => setPasswordAction("change")} disabled={owner !== user?.id}>
+                          {willHavePasscode ? "Change Password" : "Set Password"}
                         </Button>
-                      )}
-                      <Button variant="light" size="xs" onClick={() => setPasswordAction("change")} disabled={owner !== user?.id}>
-                        {willHavePasscode ? "Change Password" : "Set Password"}
-                      </Button>
+                      </Group>
                     </Group>
-                  </Group>
+
+                    {willHavePasscode && currentSavedPasscode && (
+                      <TextInput
+                        readOnly
+                        size="xs"
+                        label="Current Password"
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={currentSavedPasscode}
+                        rightSection={
+                          <Group gap={4} pr={4}>
+                            <Tooltip label={showCurrentPassword ? "Hide password" : "Show password"} withArrow>
+                              <ActionIcon
+                                size="xs"
+                                variant="subtle"
+                                color="gray"
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                aria-label="Toggle password visibility"
+                              >
+                                {showCurrentPassword ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+                              </ActionIcon>
+                            </Tooltip>
+                            <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy password"} withArrow>
+                              <ActionIcon
+                                size="xs"
+                                variant="subtle"
+                                color={copiedCurrentPassword ? "green" : "gray"}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(currentSavedPasscode);
+                                  setCopiedCurrentPassword(true);
+                                  setTimeout(() => setCopiedCurrentPassword(false), 2000);
+                                }}
+                                aria-label="Copy password"
+                              >
+                                {copiedCurrentPassword ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                        }
+                        styles={{
+                          input: {
+                            fontFamily: showCurrentPassword ? "inherit" : "monospace",
+                            letterSpacing: showCurrentPassword ? "normal" : "2px",
+                          },
+                        }}
+                      />
+                    )}
+                  </Stack>
                 ) : (
                   <Stack gap="xs">
                     <PasswordInput
