@@ -55,7 +55,14 @@ if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
 } else {
   server = new http.Server(app);
 }
-server?.listen(config.PORT, config.HOST);
+const listenPort = Number(process.env.PORT || config.PORT || 8080);
+const listenHost = config.HOST || "0.0.0.0";
+server?.listen(listenPort, listenHost, () => {
+  console.log(`Server listening on ${listenHost}:${listenPort}`);
+});
+server?.on("error", (err: any) => {
+  console.error("Server listen error:", err);
+});
 
 const io = new Server(server, { cors: {}, transports: ["websocket"] });
 io.engine.use(async (req: any, res: Response, next: () => void) => {

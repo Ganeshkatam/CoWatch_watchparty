@@ -1,11 +1,16 @@
 FROM node:24-alpine
 
-COPY . /usr/src
-
 WORKDIR /usr/src
+
+COPY package*.json ./
 
 RUN npm ci
 
-RUN npm run build
+COPY . .
 
-ENTRYPOINT ["/bin/sh", "-c" , "npm start"]
+RUN npm run buildReact
+
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["npm", "start"]
