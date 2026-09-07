@@ -1,9 +1,12 @@
 import { loadEnvFile } from "node:process";
+import fs from "node:fs";
 
-try {
-  loadEnvFile();
-} catch (e) {
-  console.log(e);
+if (fs.existsSync(".env")) {
+  try {
+    loadEnvFile();
+  } catch (e) {
+    // ignore
+  }
 }
 
 const defaults = {
@@ -41,9 +44,9 @@ const defaults = {
   CUSTOM_SETTINGS_HOSTNAME: "", // Hostname to send different config settings to client
   STREAM_PATH: "", // Path of server that supports additional video streams
   CONVERT_PATH: "", // Path of server that supports video conversion
-  ROOM_CAPACITY: 0, // Maximum capacity of a standard room. Set to 0 for unlimited.
-  ROOM_CAPACITY_SUB: 0, // Maximum capacity of a sub room. Set to 0 for unlimited.
-  VM_MIN_UPTIME_MINUTES: 0, // Number of minutes of the hour VMs must exist for before being eligible for termination
+  ROOM_CAPACITY: 10, // Maximum capacity of a standard room. Set to 0 for unlimited.
+  ROOM_CAPACITY_SUB: 10, // Maximum capacity of a sub room. Set to 0 for unlimited.
+  VM_MIN_UPTIME_MINUTES: 15, // Number of minutes of the hour VMs must exist for before being eligible for termination
   SHARD: undefined, // Shard ID of the web server (configure in ecosystem.config.js)
   FREE_ROOM_LIMIT: 2, // The maximum number of rooms a free user can have
   SUBSCRIBER_ROOM_LIMIT: 20, // The maximum number of rooms a subscriber can have
