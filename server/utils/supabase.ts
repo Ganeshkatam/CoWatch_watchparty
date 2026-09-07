@@ -47,15 +47,14 @@ export async function validateUserToken(uid: string, token: string, requireConfi
   }
 }
 
-import { newPostgres } from "./postgres.ts";
-const postgresAdmin = config.DATABASE_URL ? newPostgres() : undefined;
+import { postgres } from "./postgres.ts";
 
 // Administrative operations (bypass RLS)
 export async function getUserByEmail(email: string) {
   if (!supabaseUrl || !supabaseSecretKey) return null;
   try {
     // Supabase JS doesn't have a direct getUserByEmail, but we can query auth.users directly since we have pg connected as superuser.
-    const result = await postgresAdmin?.query("SELECT id, email FROM auth.users WHERE email = $1 LIMIT 1", [email]);
+    const result = await postgres?.query("SELECT id, email FROM auth.users WHERE email = $1 LIMIT 1", [email]);
     if (result && result.rows.length > 0) {
       return { uid: result.rows[0].id, email: result.rows[0].email };
     }

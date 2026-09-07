@@ -22,6 +22,13 @@ import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { getStats } from "./utils/getStats.ts";
 import { hashRoomPasscode } from "./utils/roomPasscode.ts";
 
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception in server process:", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled promise rejection at:", promise, "reason:", reason);
+});
+
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
     (config) => {
@@ -510,13 +517,14 @@ app.post("/updateRoomSettings", async (req, res) => {
     return;
   }
 
+  const client = await postgres.connect();
   try {
-    await postgres.query('BEGIN');
+    await client.query('BEGIN');
 
-    const existingRoom = await postgres.query(`SELECT "expiresAt", "isSubRoom" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
+    const existingRoom = await client.query(`SELECT "expiresAt", "isSubRoom" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
 
     if (existingRoom.rowCount === 0) {
-      await postgres.query('ROLLBACK');
+      await client.query('ROLLBACK');
       res.status(404).json({ error: "Room not found or unauthorized" });
       return;
     }
@@ -549,22 +557,26 @@ app.post("/updateRoomSettings", async (req, res) => {
     }
     updateQuery += ` WHERE "roomId" = $6 AND owner_id = $7`;
 
-    await postgres.query(updateQuery, updateValues);
+    await client.query(updateQuery, updateValues);
 
     if (permanenceChanged) {
-      await postgres.query(
+      await client.query(
         `INSERT INTO room_lifecycle_events (room_id, actor_id, event_type, previous_status, new_status, previous_expires_at, new_expires_at, reason)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [roomId, decoded.uid, 'room.permanence_changed', null, null, room.expiresAt, newExpiresAt, isPermanent ? "Room converted from temporary to permanent" : "Room converted from permanent to temporary"]
       );
     }
 
-    await postgres.query('COMMIT');
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err: any) {
-    await postgres.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error("updateRoomSettings error:", err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
