@@ -12,13 +12,25 @@ if (fs.existsSync(".env")) {
 export default {
   build: {
     outDir: "build",
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      onwarn(warning, warn) {
+        if (
+          warning.code === "MODULE_LEVEL_DIRECTIVE" &&
+          (warning.message?.includes("use client") || warning.message?.includes('"use client"'))
+        ) {
+          return;
+        }
+        warn(warning);
+      },
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "react-router-dom"],
           mantine: ["@mantine/core", "@mantine/hooks"],
           icons: ["@tabler/icons-react"],
           supabase: ["@supabase/supabase-js"],
+          hls: ["hls.js"],
+          dashjs: ["dashjs"],
         },
       },
     },
