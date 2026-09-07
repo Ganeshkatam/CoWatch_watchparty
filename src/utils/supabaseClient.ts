@@ -39,20 +39,31 @@ export function getCachedSupabaseUser(): User | null {
   return null;
 }
 
-export function hasCachedSupabaseToken(): boolean {
-  if (typeof window === "undefined" || !window.localStorage) return false;
+export function getCachedSupabaseToken(): string | undefined {
+  if (typeof window === "undefined" || !window.localStorage) return undefined;
   try {
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
       if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
         const val = window.localStorage.getItem(key);
-        if (val && val !== "{}" && val !== "null") return true;
+        if (val && val !== "{}" && val !== "null") {
+          const parsed = JSON.parse(val);
+          const token = parsed?.access_token ?? parsed?.currentSession?.access_token;
+          if (token && typeof token === "string") {
+            return token;
+          }
+        }
       }
     }
   } catch (e) {
-    return false;
+    return undefined;
   }
-  return false;
+  return undefined;
+}
+
+export function hasCachedSupabaseToken(): boolean {
+  if (typeof window === "undefined" || !window.localStorage) return false;
+  return Boolean(getCachedSupabaseToken());
 }
 
 export async function safeGetSession(timeoutMs = 2000) {
@@ -67,12 +78,15 @@ export async function safeGetSession(timeoutMs = 2000) {
   }
 }
 
-export async function getAccessToken(timeoutMs = 2000) {
+export async function getAccessToken(timeoutMs = 2500): Promise<string | undefined> {
   try {
     const { data } = await safeGetSession(timeoutMs);
-    return data.session?.access_token;
+    if (data.session?.access_token) {
+      return data.session.access_token;
+    }
+    return getCachedSupabaseToken();
   } catch (err) {
-    console.warn("Failed to get access token:", err);
-    return undefined;
+    console.warn("Failed to get access token, using cached token:", err);
+    return getCachedSupabaseToken();
   }
 }

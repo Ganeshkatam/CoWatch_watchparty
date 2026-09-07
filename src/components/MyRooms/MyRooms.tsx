@@ -41,23 +41,37 @@ const useRooms = (user: any) => {
     setLoading(true);
     try {
       const token = await getAccessToken();
-      let response: Response;
-      try {
-        response = await fetch(`${serverPath}/listRooms?uid=${user.id}&token=${token}`);
-      } catch (fetchErr) {
-        if (serverCandidates.length > 1) {
-          const fallback = serverCandidates.find((c: string) => c !== serverPath);
-          if (fallback) {
-            setServerPath(fallback);
-            response = await fetch(`${fallback}/listRooms?uid=${user.id}&token=${token}`);
+      let response: Response | undefined;
+      const candidatesToTry = [serverPath, ...serverCandidates.filter((c: string) => c !== serverPath)];
+
+      for (let i = 0; i < candidatesToTry.length; i++) {
+        const candidate = candidatesToTry[i];
+        try {
+          const res = await fetch(`${candidate}/listRooms?uid=${user.id}&token=${token}`);
+          if (res.ok) {
+            response = res;
+            if (candidate !== serverPath) {
+              setServerPath(candidate);
+            }
+            break;
           } else {
+            response = res;
+          }
+        } catch (fetchErr) {
+          if (i === candidatesToTry.length - 1 && !response) {
             throw fetchErr;
           }
-        } else {
-          throw fetchErr;
         }
       }
-      if (!response.ok) throw new Error("Failed to fetch rooms");
+
+      if (!response || !response.ok) {
+        const errData = await response?.json().catch(() => null);
+        const errMsg =
+          errData?.error?.message ||
+          errData?.error ||
+          (response ? `Failed to fetch rooms (${response.status})` : "Failed to fetch rooms");
+        throw new Error(errMsg);
+      }
       const data = await response.json();
       if (Array.isArray(data)) {
         data.forEach((r: RoomSummary) => {

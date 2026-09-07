@@ -685,48 +685,57 @@ app.get("/resolveShard/:roomId", async (req, res) => {
 });
 
 app.get("/listRooms", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  if (decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
-    return;
-  }
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  const result = await postgres?.query(
-    `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
-              "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-              status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
-       FROM rooms WHERE owner_id = $1 ORDER BY "creationTime" DESC`,
-    [decoded.uid],
-  );
-
-  const now = Date.now();
-  const warningWindow = 15 * 60 * 1000; // 15 minutes
-  const rows = (result?.rows ?? []).map((r: any) => {
-    let derivedStatus = r.status;
-    if ((r.status === 'active' || r.status === 'inactive') && !r.isPermanent && r.expiresAt) {
-      const expiresAt = new Date(r.expiresAt).getTime();
-      if (expiresAt <= now) {
-        derivedStatus = 'expired';
-      } else if (expiresAt <= now + warningWindow) {
-        derivedStatus = 'expiring';
-      }
+  try {
+    const decoded = await validateUserToken(
+      String(req.query?.uid),
+      String(req.query?.token),
+    );
+    if (decoded === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+      return;
     }
-    const currentPasscode = r.owner_passcode ? decryptPasscodeForOwner(r.owner_passcode) : null;
-    return {
-      ...r,
-      owner_passcode: undefined,
-      currentPasscode,
-      status: derivedStatus,
-    };
-  });
+    if (!decoded) {
+      res.status(400).json({ error: "invalid user token" });
+      return;
+    }
+    if (!postgres) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+    const result = await postgres.query(
+      `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+                "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
+                status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
+         FROM rooms WHERE owner_id = $1 ORDER BY "creationTime" DESC`,
+      [decoded.uid],
+    );
 
-  res.json(rows);
+    const now = Date.now();
+    const warningWindow = 15 * 60 * 1000; // 15 minutes
+    const rows = (result?.rows ?? []).map((r: any) => {
+      let derivedStatus = r.status;
+      if ((r.status === 'active' || r.status === 'inactive') && !r.isPermanent && r.expiresAt) {
+        const expiresAt = new Date(r.expiresAt).getTime();
+        if (expiresAt <= now) {
+          derivedStatus = 'expired';
+        } else if (expiresAt <= now + warningWindow) {
+          derivedStatus = 'expiring';
+        }
+      }
+      const currentPasscode = r.owner_passcode ? decryptPasscodeForOwner(r.owner_passcode) : null;
+      return {
+        ...r,
+        owner_passcode: undefined,
+        currentPasscode,
+        status: derivedStatus,
+      };
+    });
+
+    res.json(rows);
+  } catch (err: any) {
+    console.error("Error in /listRooms:", err);
+    res.status(500).json({ error: err?.message || "Failed to list rooms" });
+  }
 });
 
 app.get("/roomDetails", async (req, res) => {

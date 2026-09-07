@@ -202,22 +202,24 @@ export const iceServers = () => [
 ];
 
 export const serverCandidates: string[] = (() => {
+  if (typeof window !== "undefined") {
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (isLocalhost) {
+      return [`${window.location.protocol}//${window.location.hostname}:8080`];
+    }
+  }
   if (config.VITE_SERVER_HOST) {
     return String(config.VITE_SERVER_HOST)
       .split(",")
       .map((s: string) => s.trim().replace(/\/+$/, ""))
       .filter(Boolean);
   }
-  if (typeof window === "undefined") {
-    return ["http://localhost:8080"];
-  }
-  const isLocalhost =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1";
-  if (config.NODE_ENV === "development" && isLocalhost) {
-    return [`${window.location.protocol}//${window.location.hostname}:8080`];
-  }
-  return [window.location.origin];
+  return [
+    "https://cowatchwatchparty-production.up.railway.app",
+    "https://cowatch-watchparty.onrender.com",
+  ];
 })();
 
 const getInitialServerPath = (): string => {
