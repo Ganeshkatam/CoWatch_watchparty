@@ -20,12 +20,15 @@ export const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const history = useHistory();
   const location = useLocation();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSubmitting(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -39,25 +42,35 @@ export const Login = () => {
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
+    setError("");
+    setGoogleLoading(true);
     try {
+      const params = new URLSearchParams(location.search);
+      const redirect = params.get("redirect") || "/";
+      const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
+      const redirectTo = `${window.location.origin}${redirectTarget}`;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin,
+          redirectTo,
         },
       });
       if (error) throw error;
     } catch (err: any) {
       console.error("Google Auth error:", err);
       setError(err.message);
+      setGoogleLoading(false);
     }
   };
 
-  const enabledOptions = config.VITE_AUTH_SIGNIN_METHODS.split(",");
+  const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
 
   return (
     <div style={{ width: "100%" }}>
@@ -88,6 +101,7 @@ export const Login = () => {
               onClick={handleGoogleSignIn}
               variant="default"
               fullWidth
+              loading={googleLoading}
             >
               Continue with Google
             </Button>
@@ -118,7 +132,7 @@ export const Login = () => {
                   Forgot password?
                 </Link>
               </div>
-              <Button fullWidth type="submit">
+              <Button fullWidth type="submit" loading={submitting}>
                 Sign in
               </Button>
             </form>

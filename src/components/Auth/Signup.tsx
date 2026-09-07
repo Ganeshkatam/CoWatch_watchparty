@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useHistory, Link } from "react-router-dom";
+import { useHistory, useLocation, Link } from "react-router-dom";
 import {
   TextInput,
   PasswordInput,
@@ -8,8 +8,11 @@ import {
   Title,
   Text,
   Alert,
+  Divider,
 } from "@mantine/core";
+import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
+import config from "../../config";
 import styles from "./AuthShell.module.css";
 
 export const Signup = () => {
@@ -20,8 +23,35 @@ export const Signup = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const history = useHistory();
+  const location = useLocation();
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      const params = new URLSearchParams(location.search);
+      const redirect = params.get("redirect") || "/";
+      const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
+      const redirectTo = `${window.location.origin}${redirectTarget}`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Google Auth error:", err);
+      setError(err.message);
+      setGoogleLoading(false);
+    }
+  };
+
+  const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
 
   // Countdown timer for resend cooldown
   useEffect(() => {
@@ -144,39 +174,59 @@ export const Signup = () => {
             </Button>
           </div>
         ) : (
-          <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-            <TextInput
-              label="Username"
-              placeholder="Username"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-            <TextInput
-              label="Email"
-              placeholder="your@email.com"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <PasswordInput
-              label="Password"
-              placeholder="Your password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <PasswordInput
-              label="Confirm Password"
-              placeholder="Confirm password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-            <Button fullWidth type="submit" mt="md" loading={submitting}>
-              Create account
-            </Button>
-          </form>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {enabledOptions.includes("google") && (
+              <Button
+                leftSection={<IconBrandGoogleFilled />}
+                onClick={handleGoogleSignIn}
+                variant="default"
+                fullWidth
+                loading={googleLoading}
+              >
+                Continue with Google
+              </Button>
+            )}
+
+            {enabledOptions.includes("email") && enabledOptions.includes("google") && (
+              <Divider label="Or sign up with email" labelPosition="center" my="xs" />
+            )}
+
+            {enabledOptions.includes("email") && (
+              <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                <TextInput
+                  label="Username"
+                  placeholder="Username"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+                <TextInput
+                  label="Email"
+                  placeholder="your@email.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <PasswordInput
+                  label="Password"
+                  placeholder="Your password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <PasswordInput
+                  label="Confirm Password"
+                  placeholder="Confirm password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+                <Button fullWidth type="submit" mt="md" loading={submitting}>
+                  Create account
+                </Button>
+              </form>
+            )}
+          </div>
         )}
       </Paper>
       <Text size="sm" ta="center" mt="md" c="dimmed">

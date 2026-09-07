@@ -1,10 +1,11 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Redirect } from "react-router-dom";
+import { Redirect, useLocation } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
 import { Loader, Center } from "@mantine/core";
 
 export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
   const { user } = useContext(MetadataContext);
+  const location = useLocation();
   const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
@@ -33,5 +34,7 @@ export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
     return <Redirect to="/verify-email" />;
   }
 
-  return <Redirect to="/rooms" />;
+  const params = new URLSearchParams(location.search);
+  const redirect = params.get("redirect") || "/rooms";
+  return <Redirect to={redirect.startsWith("/") ? redirect : `/${redirect}`} />;
 };
