@@ -306,10 +306,6 @@ export class Profile extends React.Component<{}> {
             border-radius: 16px;
             box-shadow: 0 8px 32px var(--glass-shadow);
           }
-          .custom-switch .mantine-Switch-track:not([data-checked]) {
-            border: 1px solid var(--border-subtle);
-            background-color: var(--bg-surface);
-          }
         `}</style>
 
         <Modal
