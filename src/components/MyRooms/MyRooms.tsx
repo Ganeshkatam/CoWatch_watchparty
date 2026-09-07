@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext } from "react";
 import { useHistory } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
-import { serverPath, addAndSavePasscode } from "../../utils/utils";
+import { serverPath, serverCandidates, setServerPath, addAndSavePasscode } from "../../utils/utils";
 import { getAccessToken } from "../../utils/supabaseClient";
 import { MetadataContext } from "../../MetadataContext";
 import styles from "./MyRooms.module.css";
@@ -41,7 +41,22 @@ const useRooms = (user: any) => {
     setLoading(true);
     try {
       const token = await getAccessToken();
-      const response = await fetch(`${serverPath}/listRooms?uid=${user.id}&token=${token}`);
+      let response: Response;
+      try {
+        response = await fetch(`${serverPath}/listRooms?uid=${user.id}&token=${token}`);
+      } catch (fetchErr) {
+        if (serverCandidates.length > 1) {
+          const fallback = serverCandidates.find((c: string) => c !== serverPath);
+          if (fallback) {
+            setServerPath(fallback);
+            response = await fetch(`${fallback}/listRooms?uid=${user.id}&token=${token}`);
+          } else {
+            throw fetchErr;
+          }
+        } else {
+          throw fetchErr;
+        }
+      }
       if (!response.ok) throw new Error("Failed to fetch rooms");
       const data = await response.json();
       if (Array.isArray(data)) {

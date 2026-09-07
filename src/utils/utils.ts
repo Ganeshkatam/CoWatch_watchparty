@@ -201,21 +201,76 @@ export const iceServers = () => [
   // },
 ];
 
-export const serverPath = (() => {
+export const serverCandidates: string[] = (() => {
   if (config.VITE_SERVER_HOST) {
-    return config.VITE_SERVER_HOST;
+    return String(config.VITE_SERVER_HOST)
+      .split(",")
+      .map((s: string) => s.trim().replace(/\/+$/, ""))
+      .filter(Boolean);
   }
   if (typeof window === "undefined") {
-    return "http://localhost:8080";
+    return ["http://localhost:8080"];
   }
   const isLocalhost =
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1";
   if (config.NODE_ENV === "development" && isLocalhost) {
-    return `${window.location.protocol}//${window.location.hostname}:8080`;
+    return [`${window.location.protocol}//${window.location.hostname}:8080`];
   }
-  return window.location.origin;
+  return [window.location.origin];
 })();
+
+const getInitialServerPath = (): string => {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = sessionStorage.getItem("cowatch_active_backend");
+      if (cached && serverCandidates.includes(cached)) {
+        return cached;
+      }
+    } catch (_) {}
+  }
+  return serverCandidates[0] || "http://localhost:8080";
+};
+
+export let serverPath: string = getInitialServerPath();
+
+export function setServerPath(newPath: string): void {
+  serverPath = newPath.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem("cowatch_active_backend", serverPath);
+    } catch (_) {}
+  }
+}
+
+export async function resolveFastestServer(): Promise<string> {
+  if (serverCandidates.length <= 1) {
+    return serverPath;
+  }
+  try {
+    const fastest = await Promise.any(
+      serverCandidates.map(async (candidate) => {
+        const res = await fetch(`${candidate}/ping`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!res.ok) throw new Error(`Ping failed for ${candidate}`);
+        return candidate;
+      })
+    );
+    if (fastest && fastest !== serverPath) {
+      setServerPath(fastest);
+      console.log(`Active backend switched to fastest server: ${fastest}`);
+    }
+    return fastest;
+  } catch (e) {
+    return serverPath;
+  }
+}
+
+// Automatically race and connect to the fastest available backend
+if (typeof window !== "undefined" && serverCandidates.length > 1) {
+  resolveFastestServer().catch(() => {});
+}
 
 export function getRoomUrl(roomId: string): string {
   return `${window.location.origin}/watch/${roomId.replace(/^\//, '')}`;
