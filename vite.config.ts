@@ -1,3 +1,5 @@
+import { defineConfig } from "vite";
+import type { RollupLog } from "rollup";
 import { loadEnvFile } from "node:process";
 import fs from "node:fs";
 
@@ -9,12 +11,12 @@ if (fs.existsSync(".env")) {
   }
 }
 
-export default {
+export default defineConfig({
   build: {
     outDir: "build",
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
-      onwarn(warning, warn) {
+      onwarn(warning: RollupLog, warn: (warning: RollupLog | string) => void) {
         if (
           warning.code === "MODULE_LEVEL_DIRECTIVE" &&
           (warning.message?.includes("use client") || warning.message?.includes('"use client"'))
@@ -66,4 +68,4 @@ export default {
       },
     },
   },
-};
+});
