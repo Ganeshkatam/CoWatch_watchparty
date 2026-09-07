@@ -125,11 +125,11 @@ export const SettingsModal = ({
       const fetchRoomData = async () => {
         const { data } = await supabase
           .from("rooms")
-          .select("isSubRoom, expiresAt, coverPhoto")
+          .select("isPermanent, isSubRoom, expiresAt, coverPhoto")
           .eq("roomId", roomId)
           .single();
         if (data) {
-          const isPerm = data.isSubRoom || !data.expiresAt;
+          const isPerm = Boolean(data.isPermanent);
           setDraftPermanent(isPerm);
           setOriginalCoverUrl(data.coverPhoto);
           setCoverPreview(data.coverPhoto);

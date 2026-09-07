@@ -32,6 +32,7 @@ export const Create = () => {
 
   const [isChatDisabled, setIsChatDisabled] = useState(false);
   const [lock, setLock] = useState(false);
+  const [isPermanent, setIsPermanent] = useState(false);
   const [coverPhotoFile, setCoverPhotoFile] = useState<File | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,6 +53,7 @@ export const Create = () => {
           roomTitle: roomTitle.trim(),
           roomDescription: roomDescription || undefined,
           passcode: passcode || undefined,
+          isPermanent,
           isChatDisabled,
           lock,
           noRedirect: true,
@@ -179,6 +181,14 @@ export const Create = () => {
                 description="Only room creators/hosts can control playback"
                 checked={lock}
                 onChange={(e) => setLock(e.currentTarget.checked)}
+                size="md"
+              />
+
+              <Switch
+                label="Permanent Room"
+                description="Keep this room saved permanently (by default, temporary rooms expire after 3 hours)"
+                checked={isPermanent}
+                onChange={(e) => setIsPermanent(e.currentTarget.checked)}
                 size="md"
               />
             </div>

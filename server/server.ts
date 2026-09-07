@@ -405,12 +405,13 @@ app.post("/createRoom", async (req, res) => {
   newRoom.isChatDisabled = Boolean(req.body?.isChatDisabled);
   newRoom.creator = decoded.email || "";
 
+  const isPermanent = Boolean(req.body?.isPermanent);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
+  const expiresAt = isPermanent ? undefined : new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
   newRoom.expiresAt = expiresAt;
   newRoom.status = 'active';
   newRoom.owner_id = decoded.uid;
-  newRoom.isPermanent = false;
+  newRoom.isPermanent = isPermanent;
 
   if (postgres) {
     const rawPasscode = req.body?.passcode;
@@ -425,11 +426,11 @@ app.post("/createRoom", async (req, res) => {
       roomTitle: roomTitle,
       roomDescription: req.body?.roomDescription || null,
       owner_id: decoded.uid,
-      isSubRoom: true,
+      isSubRoom: isPermanent,
       status: 'active',
       startedAt: now,
-      expiresAt: expiresAt,
-      isPermanent: false,
+      expiresAt: expiresAt ?? null,
+      isPermanent: isPermanent,
     };
     try {
       await insertObject(postgres, "rooms", roomObj);
@@ -437,7 +438,7 @@ app.post("/createRoom", async (req, res) => {
         INSERT INTO room_lifecycle_events 
         ("roomId", actor, event, "newStatus", "newExpiresAt", reason)
         VALUES ($1, $2, $3, $4, $5, $6)
-      `, [newRoom.roomId, decoded.uid, 'room.created', 'active', expiresAt, 'room creation']);
+      `, [newRoom.roomId, decoded.uid, 'room.created', 'active', expiresAt ?? null, isPermanent ? 'permanent room creation' : 'temporary room creation']);
     } catch (e) {
       redisCount("createRoomError");
       throw e;
@@ -538,7 +539,7 @@ app.post("/updateRoomSettings", async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const existingRoom = await client.query(`SELECT "expiresAt", "isSubRoom" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
+    const existingRoom = await client.query(`SELECT "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
 
     if (existingRoom.rowCount === 0) {
       await client.query('ROLLBACK');
@@ -547,7 +548,7 @@ app.post("/updateRoomSettings", async (req, res) => {
     }
 
     const room = existingRoom.rows[0];
-    const currentlyPermanent = room.isSubRoom || !room.expiresAt;
+    const currentlyPermanent = Boolean(room.isPermanent);
 
     let newExpiresAt = room.expiresAt;
     let newIsSubRoom = room.isSubRoom;
@@ -565,8 +566,8 @@ app.post("/updateRoomSettings", async (req, res) => {
       permanenceChanged = true;
     }
 
-    let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "expiresAt" = $3, "isSubRoom" = $4, "isChatDisabled" = $5`;
-    const updateValues: any[] = [titleTrimmed, roomDescription || null, newExpiresAt, newIsSubRoom, isChatDisabled];
+    let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "expiresAt" = $3, "isSubRoom" = $4, "isChatDisabled" = $5, "isPermanent" = $6`;
+    const updateValues: any[] = [titleTrimmed, roomDescription || null, newExpiresAt, newIsSubRoom, isChatDisabled, isPermanent];
 
     if (isClearingPassword) {
       updateQuery += `, passcode = NULL, owner_passcode = NULL`;

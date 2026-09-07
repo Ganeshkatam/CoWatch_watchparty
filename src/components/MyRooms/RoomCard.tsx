@@ -48,7 +48,7 @@ import styles from "./MyRooms.module.css";
 // --- Pure Helpers ---
 
 const getComputedState = (room: RoomSummary) => {
-  const isPermanent = room.isSubRoom || !room.expiresAt;
+  const isPermanent = Boolean(room.isPermanent);
   if (room.status === 'expired') return 'Expired';
   if (room.status === 'ended') return 'Ended';
   if (room.status === 'active' && isPermanent) return 'Permanent';
@@ -119,7 +119,7 @@ export const EditRoomModal = ({
 
   const [title, setTitle] = useState(room.roomTitle || "");
   const [description, setDescription] = useState(room.roomDescription || "");
-  const [isPermanent, setIsPermanent] = useState(room.isSubRoom || !room.expiresAt);
+  const [isPermanent, setIsPermanent] = useState(Boolean(room.isPermanent));
   const [isChatDisabled, setIsChatDisabled] = useState(room.isChatDisabled || false);
 
   // Password management
@@ -153,7 +153,7 @@ export const EditRoomModal = ({
       setError("");
       setTitle(room.roomTitle || "");
       setDescription(room.roomDescription || "");
-      setIsPermanent(room.isSubRoom || !room.expiresAt);
+      setIsPermanent(Boolean(room.isPermanent));
       setIsChatDisabled(room.isChatDisabled || false);
       setCoverPreview(room.coverPhoto || null);
       setCoverFile(null);
@@ -610,7 +610,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
 
 const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, onDelete: (id: string) => void, onUpdateCover?: (id: string, url: string) => void }) => {
   const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
-  const isPermanent = room.isSubRoom || !room.expiresAt;
+  const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   return (
@@ -703,7 +703,7 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
 
 const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, onDelete: (id: string) => void, onUpdateCover?: (id: string, url: string) => void }) => {
   const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
-  const isPermanent = room.isSubRoom || !room.expiresAt;
+  const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   return (

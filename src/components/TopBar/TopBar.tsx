@@ -89,7 +89,7 @@ export async function createRoom(
     roomTitle: string;
     roomDescription?: string;
     passcode?: string;
-
+    isPermanent?: boolean;
     isChatDisabled?: boolean;
     lock?: boolean;
     noRedirect?: boolean;
