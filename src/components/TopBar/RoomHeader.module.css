@@ -262,11 +262,68 @@
   color: #FFFFFF;
 }
 
-@media only screen and (max-width: 640px) {
-  .roomDropdownBtn {
-    max-width: 120px;
+@media only screen and (max-width: 768px) {
+  .header {
+    padding: 0 8px;
   }
-  .liveBadge span {
+
+  .leftSection {
+    gap: 6px;
+  }
+
+  .rightSection {
+    gap: 4px;
+  }
+
+  .centerSection {
+    margin: 0;
+    flex: 0 0 auto;
+  }
+
+  .divider {
     display: none;
+  }
+
+  .roomDropdownBtn {
+    max-width: 110px;
+    font-size: 12.5px;
+    padding: 4px 6px;
+  }
+
+  .nowPlayingIdle {
+    display: none;
+  }
+
+  .nowPlayingActive {
+    max-width: 90px;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+
+  .exitText {
+    display: none;
+  }
+
+  .exitBtn {
+    padding: 0;
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+  }
+
+  .actionBtn {
+    padding: 0 8px;
+    gap: 4px;
+    font-size: 12px;
+  }
+}
+
+@media only screen and (max-width: 480px) {
+  .logoText {
+    display: none;
+  }
+
+  .roomDropdownBtn {
+    max-width: 90px;
   }
 }

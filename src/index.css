@@ -109,6 +109,27 @@ html body {
   border-color: var(--color-violet) !important;
 }
 
+/* Accessibility Focus Visible for interactive controls */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible {
+  outline: 2px solid var(--color-violet);
+  outline-offset: 2px;
+}
+
+.mantine-Menu-dropdown,
+.mantine-Menu-dropdown:focus,
+.mantine-Menu-dropdown:focus-visible,
+[data-focus-guard],
+[data-floating-ui-focus-guard],
+[tabindex="-1"] {
+  outline: none !important;
+}
+
 /* ==========================================
    Modern Mantine Menu & Dropdown Styling
    ========================================== */

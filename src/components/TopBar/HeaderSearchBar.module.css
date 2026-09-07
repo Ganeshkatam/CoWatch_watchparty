@@ -96,8 +96,8 @@
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  width: 100%;
-  min-width: 440px;
+  width: min(calc(100vw - 24px), 500px);
+  min-width: unset;
   max-width: 500px;
   background: rgba(14, 16, 24, 0.98);
   backdrop-filter: blur(20px);
@@ -407,8 +407,95 @@
   color: var(--text-muted);
 }
 
-@media only screen and (max-width: 680px) {
+.mobileSearchTrigger {
+  display: none;
+}
+
+.mobileBackBtn {
+  display: none;
+}
+
+@media only screen and (max-width: 768px) {
   .searchContainer {
+    width: auto;
+    max-width: none;
+  }
+
+  .mobileSearchTrigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mobileSearchTrigger:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+  }
+
+  .inputWrapper {
     display: none;
+  }
+
+  .mobileActive {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: rgba(14, 16, 24, 0.98);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 0 10px;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  }
+
+  .mobileActive .mobileSearchTrigger {
+    display: none;
+  }
+
+  .mobileActive .mobileBackBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .mobileActive .inputWrapper {
+    display: flex;
+    flex: 1;
+  }
+
+  .dropdownMenu {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100vw;
+    min-width: unset;
+    max-width: 100vw;
+    border-radius: 0 0 14px 14px;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 10px 8px;
   }
 }

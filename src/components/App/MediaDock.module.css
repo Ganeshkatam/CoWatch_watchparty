@@ -143,5 +143,37 @@
   color: var(--text-muted);
 }
 
+@media only screen and (max-width: 600px) {
+  .dockContainer {
+    bottom: 8px;
+    gap: 4px;
+    padding: 4px 6px;
+    max-width: calc(100% - 16px);
+  }
+
+  .addMediaBtn {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .dockBtn {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .iconBtn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .stopBtn {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+}
+
 
 

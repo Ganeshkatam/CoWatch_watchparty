@@ -17,6 +17,7 @@ import {
 } from "../../utils/utils";
 import { examples } from "../../utils/examples";
 import {
+  IconArrowLeft,
   IconBrandYoutubeFilled,
   IconCheck,
   IconLayersIntersect,
@@ -47,6 +48,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 }) => {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>("all");
   const [items, setItems] = useState<SearchResult[]>(examples);
   const [loading, setLoading] = useState(false);
@@ -65,16 +67,22 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        setMobileOpen(true);
         setIsOpen(true);
+        setTimeout(() => {
+          inputRef.current?.focus();
+          inputRef.current?.select();
+        }, 50);
       }
     };
 
     const handleFocusSearch = () => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      setMobileOpen(true);
       setIsOpen(true);
+      setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }, 50);
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
@@ -93,6 +101,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
         !containerRef.current.contains(e.target as Node)
       ) {
         setIsOpen(false);
+        setMobileOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -105,6 +114,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       if (!trimmed) return;
       roomSetMedia(trimmed);
       setIsOpen(false);
+      setMobileOpen(false);
       setQuery("");
       inputRef.current?.blur();
     },
@@ -233,7 +243,42 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   };
 
   return (
-    <div className={styles.searchContainer} ref={containerRef}>
+    <div
+      className={`${styles.searchContainer} ${
+        mobileOpen ? styles.mobileActive : ""
+      }`}
+      ref={containerRef}
+    >
+      {/* Mobile Search Trigger Button (compact on small screens) */}
+      <button
+        type="button"
+        className={styles.mobileSearchTrigger}
+        onClick={() => {
+          setMobileOpen(true);
+          setIsOpen(true);
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }}
+        title="Search or paste media link"
+        disabled={disabled}
+      >
+        <IconSearch size={16} />
+      </button>
+
+      {/* Mobile Back Button (to collapse overlay on mobile) */}
+      {mobileOpen && (
+        <button
+          type="button"
+          className={styles.mobileBackBtn}
+          onClick={() => {
+            setMobileOpen(false);
+            setIsOpen(false);
+          }}
+          title="Back"
+        >
+          <IconArrowLeft size={18} />
+        </button>
+      )}
+
       {/* Search Input */}
       <div className={styles.inputWrapper}>
         <span className={styles.searchIcon}>

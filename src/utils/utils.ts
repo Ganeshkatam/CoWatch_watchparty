@@ -148,7 +148,14 @@ export const getDefaultPicture = (name: string, background = "a0a0a0") => {
 };
 
 export const isMobile = () => {
-  return window.screen.width <= 600;
+  if (typeof window === "undefined") return false;
+  return (
+    window.innerWidth <= 768 ||
+    window.screen.width <= 768 ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent,
+    )
+  );
 };
 
 export function shuffle(array: any[]) {

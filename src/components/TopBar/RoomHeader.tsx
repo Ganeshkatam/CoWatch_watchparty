@@ -215,7 +215,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           title="Leave room"
         >
           <IconX size={15} stroke={2} />
-          <span>Exit</span>
+          <span className={styles.exitText}>Exit</span>
         </button>
 
         <SignInButton />

@@ -347,7 +347,7 @@ export const Controls = (props: ControlsProps) => {
       )}
       <IconTheater
         onClick={() => localFullScreen(false)}
-        className={` ${styles.action}`}
+        className={`${styles.action} ${styles.desktopOnly}`}
         title="Theater Mode"
       />
       <IconMaximize
@@ -370,7 +370,7 @@ export const Controls = (props: ControlsProps) => {
           className={` ${styles.action}`}
         />
       )}
-      <div style={{ width: "100px" }}>
+      <div className={styles.volumeSlider}>
         <Slider
           defaultValue={volume}
           disabled={muted}

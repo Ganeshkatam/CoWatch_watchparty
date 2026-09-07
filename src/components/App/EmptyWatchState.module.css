@@ -161,3 +161,55 @@
     transform: translateY(0);
   }
 }
+
+@media only screen and (max-width: 600px) {
+  .emptyContainer {
+    padding: 12px 10px;
+    max-width: 92%;
+  }
+
+  .playIconWrapper {
+    margin-bottom: 10px;
+  }
+
+  .playIconBox {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+  }
+
+  .playIconBox svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .playIconGlow {
+    width: 64px;
+    height: 64px;
+  }
+
+  .emptyTitle {
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  .emptySubtitle {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .emptySecondary {
+    display: none;
+  }
+
+  .addMediaCtaBtn {
+    padding: 6px 14px;
+    font-size: 12.5px;
+  }
+
+  .lockNotice {
+    margin-top: 6px;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}

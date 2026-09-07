@@ -2345,9 +2345,14 @@ export class App extends React.Component<AppProps, AppState> {
             roomTitle={this.state.roomTitle}
             participantCount={this.state.participants.length}
             currentTab={this.state.currentTab as "people" | "chat"}
-            onSelectTab={(tab) =>
-              this.setState({ currentTab: tab, showChatColumn: true })
-            }
+            onSelectTab={(tab) => {
+              if (this.state.currentTab === tab && this.state.showChatColumn) {
+                const newVal = !this.state.showChatColumn;
+                this.setState({ showChatColumn: newVal });
+              } else {
+                this.setState({ currentTab: tab, showChatColumn: true });
+              }
+            }}
             onOpenSettings={() => this.setSettingsModalOpen(true)}
             onExit={() => {
               window.location.href = "/";
@@ -2364,10 +2369,7 @@ export class App extends React.Component<AppProps, AppState> {
           />
         )}
         {
-          <div
-            className={styles.mobileStack}
-            style={{ margin: "0 8px", display: "flex", columnGap: "32px" }}
-          >
+          <div className={styles.mobileStack}>
             <div
               className={
                 (this.state.fullScreen
@@ -2692,20 +2694,14 @@ export class App extends React.Component<AppProps, AppState> {
               </div>
             </div>
             <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                position: "relative",
-                width: this.state.showChatColumn ? 400 : 0,
-                maxWidth: 400,
-                overflow: "hidden",
-                gap: "4px",
-              }}
               className={`${(this.state.fullScreen
                 ? styles.fullHeightColumnFullscreen
                 : styles.fullHeightColumn) +
                 " " +
-                styles.rightColumn
+                styles.rightColumn +
+                (!this.state.showChatColumn
+                  ? " " + styles.rightColumnCollapsed
+                  : "")
                 }`}
             >
               <Tabs
