@@ -19,6 +19,8 @@ import { RequireGuest } from "./components/Auth/RequireGuest";
 import { RequireVerifiedEmail } from "./components/Auth/RequireVerifiedEmail";
 import config from "./config";
 import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
+import { AuthContext } from "./context/AuthContext";
+import { AppShell } from "./components/Layout/AppShell";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
@@ -433,91 +435,101 @@ class CoWatch extends React.Component {
           {(resolvedColorScheme) => (
             <MantineProvider theme={theme} forceColorScheme={resolvedColorScheme}>
               <MetadataContext.Provider value={this.state}>
-                <BrowserRouter>
-                  <Suspense fallback={<RouteFallback />}>
-                    <Route
-                      path="/"
-                      exact
-                      render={(props) => {
-                        return (
-                          <React.Fragment>
-                            <TopBar hideNewRoom />
-                            <Home />
-                            <Footer />
-                          </React.Fragment>
-                        );
-                      }}
-                    />
-                    <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
-                      <RequireGuest>
-                        <AuthLayout>
-                          <Route path="/login" exact component={Login} />
-                          <Route path="/signup" exact component={Signup} />
-                          <Route path="/forgot-password" exact component={ForgotPassword} />
-                          <Route path="/reset-password" exact component={ResetPassword} />
-                        </AuthLayout>
-                      </RequireGuest>
-                    </Route>
-                    <Route path="/verify-email" exact component={VerifyEmail} />
-                    <Route
-                      path="/create"
-                      exact
-                      render={() => {
-                        return <RequireVerifiedEmail><Create /></RequireVerifiedEmail>;
-                      }}
-                    />
-                    <Route
-                      path="/watch/:roomId"
-                      exact
-                      render={(props) => {
-                        return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} /></RequireVerifiedEmail>;
-                      }}
-                    />
+                <AuthContext.Provider
+                  value={{
+                    user: this.state.user,
+                    isAuthenticated: Boolean(this.state.user),
+                    isLoading: this.state.user === undefined,
+                  }}
+                >
+                  <BrowserRouter>
+                    <AppShell>
+                      <Suspense fallback={<RouteFallback />}>
+                        <Route
+                          path="/"
+                          exact
+                          render={(props) => {
+                            return (
+                              <React.Fragment>
+                                <TopBar hideNewRoom />
+                                <Home />
+                                <Footer />
+                              </React.Fragment>
+                            );
+                          }}
+                        />
+                        <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
+                          <RequireGuest>
+                            <AuthLayout>
+                              <Route path="/login" exact component={Login} />
+                              <Route path="/signup" exact component={Signup} />
+                              <Route path="/forgot-password" exact component={ForgotPassword} />
+                              <Route path="/reset-password" exact component={ResetPassword} />
+                            </AuthLayout>
+                          </RequireGuest>
+                        </Route>
+                        <Route path="/verify-email" exact component={VerifyEmail} />
+                        <Route
+                          path="/create"
+                          exact
+                          render={() => {
+                            return <RequireVerifiedEmail><Create /></RequireVerifiedEmail>;
+                          }}
+                        />
+                        <Route
+                          path="/watch/:roomId"
+                          exact
+                          render={(props) => {
+                            return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} /></RequireVerifiedEmail>;
+                          }}
+                        />
 
-                    <Route path="/terms">
-                      <>
-                        <TopBar />
-                        <Terms />
-                      </>
-                    </Route>
-                    <Route path="/privacy">
-                      <>
-                        <TopBar />
-                        <Privacy />
-                      </>
-                    </Route>
-                    <Route path="/faq">
-                      <>
-                        <TopBar />
-                        <FAQ />
-                      </>
-                    </Route>
-                    <Route path="/profile">
-                      <RequireVerifiedEmail>
-                        <TopBar hideNewRoom />
-                        <Profile />
-                      </RequireVerifiedEmail>
-                    </Route>
-                    <Route path="/rooms" exact>
-                      <RequireVerifiedEmail>
-                        <TopBar hideMyRooms />
-                        <MyRooms />
-                      </RequireVerifiedEmail>
-                    </Route>
-                    <Route path="/rooms/:roomId">
-                      <RequireVerifiedEmail>
-                        <TopBar />
-                        <RoomDetails />
-                      </RequireVerifiedEmail>
-                    </Route>
-                    <Route path="/debug">
-                      <>
-                        <TopBar />
-                        <Debug />
-                      </>
-                    </Route>
-                  </Suspense>
-                </BrowserRouter>
+                        <Route path="/terms">
+                          <>
+                            <TopBar />
+                            <Terms />
+                          </>
+                        </Route>
+                        <Route path="/privacy">
+                          <>
+                            <TopBar />
+                            <Privacy />
+                          </>
+                        </Route>
+                        <Route path="/faq">
+                          <>
+                            <TopBar />
+                            <FAQ />
+                          </>
+                        </Route>
+                        <Route path="/profile">
+                          <RequireVerifiedEmail>
+                            <TopBar hideNewRoom />
+                            <Profile />
+                          </RequireVerifiedEmail>
+                        </Route>
+                        <Route path="/rooms" exact>
+                          <RequireVerifiedEmail>
+                            <TopBar hideMyRooms />
+                            <MyRooms />
+                          </RequireVerifiedEmail>
+                        </Route>
+                        <Route path="/rooms/:roomId">
+                          <RequireVerifiedEmail>
+                            <TopBar />
+                            <RoomDetails />
+                          </RequireVerifiedEmail>
+                        </Route>
+                        <Route path="/debug">
+                          <>
+                            <TopBar />
+                            <Debug />
+                          </>
+                        </Route>
+                      </Suspense>
+                    </AppShell>
+                  </BrowserRouter>
+                </AuthContext.Provider>
               </MetadataContext.Provider>
             </MantineProvider>
           )}

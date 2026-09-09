@@ -1,0 +1,169 @@
+/* Mobile Bottom Navigation Styles */
+
+.mobileBottomNav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobileBottomNav {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 850;
+    background-color: var(--mobile-nav-bg-fallback);
+    background-color: var(--mobile-nav-bg);
+    border-top: 1px solid var(--mobile-nav-border);
+    box-shadow: var(--mobile-nav-shadow);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  @supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+    .mobileBottomNav {
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+  }
+
+  .navContainer {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: var(--mobile-nav-height);
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 0 4px;
+    box-sizing: border-box;
+  }
+
+  .navItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    min-height: 48px;
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 2px 4px 2px;
+    position: relative;
+    color: var(--mobile-nav-inactive);
+    transition: color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-tap-highlight-color: transparent;
+    font-family: inherit;
+  }
+
+  .navItem:hover {
+    color: var(--text-primary);
+  }
+
+  .navItem:focus-visible {
+    outline: 2px solid var(--color-violet);
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .iconWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 24px;
+    height: 24px;
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .navLabel {
+    font-size: 11px;
+    line-height: 13px;
+    font-weight: 500;
+    margin-top: 3px;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    transition: font-weight 0.15s ease, color 0.15s ease;
+  }
+
+  /* Active State */
+  .activeItem {
+    color: var(--mobile-nav-active);
+  }
+
+  .activeItem .iconWrapper {
+    transform: translateY(-1px);
+  }
+
+  .activeItem .navLabel {
+    font-weight: 700;
+    color: var(--mobile-nav-active);
+  }
+
+  .activeDot {
+    position: absolute;
+    top: 4px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: var(--mobile-nav-active);
+    box-shadow: 0 0 6px var(--mobile-nav-active);
+  }
+
+  /* Elevated Center CTA Button */
+  .ctaWrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    min-height: 48px;
+    padding: 0 2px;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .ctaWrapper:focus-visible .ctaButton {
+    outline: 2px solid var(--color-violet);
+    outline-offset: 3px;
+  }
+
+  .ctaButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--mobile-nav-cta);
+    box-shadow: var(--mobile-nav-cta-shadow);
+    color: #ffffff;
+    transform: translateY(-8px);
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+  }
+
+  .ctaWrapper:active .ctaButton {
+    transform: translateY(-6px) scale(0.92);
+  }
+
+  .ctaLabel {
+    font-size: 11px;
+    line-height: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: -4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

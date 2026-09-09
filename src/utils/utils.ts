@@ -297,8 +297,26 @@ if (typeof window !== "undefined" && serverCandidates.length > 1) {
   resolveFastestServer().catch(() => {});
 }
 
-export function getRoomUrl(roomId: string): string {
-  return `${window.location.origin}/watch/${roomId.replace(/^\//, '')}`;
+export function getRoomUrl(roomId: string, passcode?: string): string {
+  const cleanId = roomId.replace(/^\//, '');
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "";
+  const url = origin ? `${origin}/watch/${cleanId}` : `/watch/${cleanId}`;
+  if (passcode) {
+    return `${url}?passcode=${encodeURIComponent(passcode)}`;
+  }
+  return url;
+}
+
+export function getInviteMessage(roomId: string, passcode?: string): string {
+  const cleanId = roomId.replace(/^\//, '');
+  const url = getRoomUrl(roomId, passcode);
+  if (passcode) {
+    return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: ${passcode}`;
+  }
+  return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}`;
 }
 
 export async function getMediaPathResults(
@@ -428,41 +446,36 @@ export function getOrCreateSessionId() {
   return sessionId;
 }
 
-export function addAndSavePasscode(roomId: string, passcode: string) {
-  if (!roomId || !passcode) return;
-  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-  const newPasscodes = {
-    ...getSavedPasscodes(),
-    [roomId]: passcode,
-    [cleanId]: passcode,
-  };
-  window.localStorage.setItem(
-    "cowatch-passcodes",
-    JSON.stringify(newPasscodes),
-  );
+// Passcodes must NEVER be stored locally. Purge any legacy stored passcodes on module load.
+if (typeof window !== "undefined" && window.localStorage) {
+  try {
+    window.localStorage.removeItem("cowatch-passcodes");
+  } catch (e) {}
 }
 
-export function removeSavedPasscode(roomId: string) {
-  if (!roomId) return;
-  const cleanId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-  const current = getSavedPasscodes();
-  delete current[roomId];
-  delete current[cleanId];
-  delete current[`/${cleanId}`];
-  window.localStorage.setItem(
-    "cowatch-passcodes",
-    JSON.stringify(current),
-  );
+export function addAndSavePasscode(_roomId: string, _passcode: string) {
+  // Passcodes must NEVER be stored locally in localStorage or IndexedDB
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem("cowatch-passcodes");
+    } catch (e) {}
+  }
+}
+
+export function removeSavedPasscode(_roomId: string) {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem("cowatch-passcodes");
+    } catch (e) {}
+  }
 }
 
 export function getSavedPasscodes(): Record<string, string> {
-  try {
-    const savedPasscodesString =
-      window.localStorage.getItem("cowatch-passcodes") ?? "{}";
-    const savedPasscodes = JSON.parse(savedPasscodesString);
-    return savedPasscodes;
-  } catch (e) {
-    console.warn("[ALERT] Could not parse saved passcodes");
+  // Always return empty and ensure local storage is clean
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem("cowatch-passcodes");
+    } catch (e) {}
   }
   return {};
 }

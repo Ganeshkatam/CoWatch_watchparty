@@ -34,7 +34,7 @@ import {
   IconInfinity,
   IconTrash,
 } from "@tabler/icons-react";
-import { serverPath, getRoomUrl, addAndSavePasscode, getSavedPasscodes } from "../../utils/utils";
+import { serverPath, getRoomUrl } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
@@ -162,9 +162,6 @@ export const RoomDetails = () => {
         throw new Error("Failed to fetch room details");
       }
       const data = await response.json();
-      if (data && data.currentPasscode) {
-        addAndSavePasscode(data.roomId, data.currentPasscode);
-      }
       setRoom(data);
       setError(null);
     } catch (err: any) {
@@ -174,11 +171,7 @@ export const RoomDetails = () => {
     }
   };
 
-  const currentPasscode =
-    room?.currentPasscode ||
-    (room?.roomId && getSavedPasscodes()[room.roomId]) ||
-    (room?.roomId && getSavedPasscodes()[room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId]) ||
-    "";
+  const currentPasscode = room?.currentPasscode || "";
 
   useEffect(() => {
     fetchRoomDetails();
@@ -186,7 +179,7 @@ export const RoomDetails = () => {
 
   const handleCopyUrl = () => {
     if (!room) return;
-    const url = getRoomUrl(room.roomId);
+    const url = getRoomUrl(room.roomId, currentPasscode);
     navigator.clipboard.writeText(url).then(() => {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);

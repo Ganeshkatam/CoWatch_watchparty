@@ -38,6 +38,7 @@ interface VideoChatProps {
   owner: string | undefined;
   getLeaderTime: () => number;
   roomId?: string;
+  passcode?: string;
   onOpenInviteModal?: () => void;
 }
 
@@ -725,6 +726,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         {this.state.isInviteModalOpen && (
           <InviteModal
             roomId={this.props.roomId || ""}
+            passcode={this.props.passcode}
             closeInviteModal={() => this.setState({ isInviteModalOpen: false })}
           />
         )}

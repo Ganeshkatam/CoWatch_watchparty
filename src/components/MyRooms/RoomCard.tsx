@@ -38,9 +38,6 @@ import { type RoomSummary } from "./MyRooms";
 import {
   getRoomUrl,
   serverPath,
-  addAndSavePasscode,
-  getSavedPasscodes,
-  removeSavedPasscode,
 } from "../../utils/utils";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
 import styles from "./MyRooms.module.css";
@@ -110,12 +107,7 @@ export const EditRoomModal = ({
   onSuccess: () => void;
 }) => {
   const cleanId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
-  const initialPasscode =
-    room.currentPasscode ||
-    getSavedPasscodes()[room.roomId] ||
-    getSavedPasscodes()[cleanId] ||
-    getSavedPasscodes()[`/${cleanId}`] ||
-    "";
+  const initialPasscode = room.currentPasscode || "";
 
   const [title, setTitle] = useState(room.roomTitle || "");
   const [description, setDescription] = useState(room.roomDescription || "");
@@ -138,12 +130,7 @@ export const EditRoomModal = ({
 
   useEffect(() => {
     if (opened) {
-      const saved =
-        room.currentPasscode ||
-        getSavedPasscodes()[room.roomId] ||
-        getSavedPasscodes()[cleanId] ||
-        getSavedPasscodes()[`/${cleanId}`] ||
-        "";
+      const saved = room.currentPasscode || "";
       setCurrentPassword(saved);
       setShowCurrentPassword(false);
       setCopiedCurrentPassword(false);
@@ -245,10 +232,8 @@ export const EditRoomModal = ({
       if (!response.ok) throw new Error(result.error || "Failed to save room settings");
 
       if (removeProtection) {
-        removeSavedPasscode(room.roomId);
         setCurrentPassword("");
       } else if (password) {
-        addAndSavePasscode(room.roomId, password.trim());
         setCurrentPassword(password.trim());
       }
 

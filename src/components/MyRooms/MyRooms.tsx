@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext } from "react";
 import { useHistory } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
-import { serverPath, serverCandidates, setServerPath, addAndSavePasscode } from "../../utils/utils";
+import { serverPath, serverCandidates, setServerPath } from "../../utils/utils";
 import { getAccessToken } from "../../utils/supabaseClient";
 import { MetadataContext } from "../../MetadataContext";
 import styles from "./MyRooms.module.css";
@@ -74,13 +74,6 @@ const useRooms = (user: any) => {
         throw new Error(errMsg);
       }
       const data = await response.json();
-      if (Array.isArray(data)) {
-        data.forEach((r: RoomSummary) => {
-          if (r.currentPasscode) {
-            addAndSavePasscode(r.roomId, r.currentPasscode);
-          }
-        });
-      }
       setRooms(data);
       setError(null);
     } catch (err: any) {

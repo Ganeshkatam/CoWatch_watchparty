@@ -7,31 +7,50 @@ import {
   IconBrandTelegram,
   IconMail,
   IconHash,
+  IconKey,
   IconQrcode,
   IconShare,
+  IconMessageShare,
 } from "@tabler/icons-react";
-import { getSavedPasscodes } from "../../utils/utils";
 
-export const InviteModal = ({
-  roomId,
-  closeInviteModal,
-}: {
+interface InviteModalProps {
   roomId?: string;
+  passcode?: string;
   closeInviteModal: () => void;
+}
+
+export const InviteModal: React.FC<InviteModalProps> = ({
+  roomId,
+  passcode: propPasscode,
+  closeInviteModal,
 }) => {
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const [inviteMsgCopied, setInviteMsgCopied] = useState(false);
+  const [passcodeCopied, setPasscodeCopied] = useState(false);
   const [roomIdCopied, setRoomIdCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
   const pathParts = window.location.pathname.split("/");
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
-  const passcode =
-    (roomId && getSavedPasscodes()[roomId]) ||
-    getSavedPasscodes()[roomIdOrVanity];
-  const baseUrl = window.location.origin + window.location.pathname;
-  const fullUrl = passcode
-    ? `${baseUrl}?passcode=${encodeURIComponent(passcode)}`
-    : window.location.href;
+  const cleanId = roomIdOrVanity.replace(/^\//, "");
+
+  const urlPass =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("passcode") ||
+        new URLSearchParams(window.location.search).get("pass") ||
+        new URLSearchParams(window.location.search).get("password")
+      : null;
+
+  const resolvedPasscode = propPasscode || urlPass || "";
+
+  const baseUrl = `${window.location.origin}/watch/${cleanId}`;
+  const fullUrl = resolvedPasscode
+    ? `${baseUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
+    : baseUrl;
+
+  const inviteMessage = resolvedPasscode
+    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -39,25 +58,42 @@ export const InviteModal = ({
     setTimeout(() => setInviteLinkCopied(false), 2000);
   };
 
+  const handleCopyInviteMessage = () => {
+    navigator.clipboard.writeText(inviteMessage);
+    setInviteMsgCopied(true);
+    setTimeout(() => setInviteMsgCopied(false), 2000);
+  };
+
+  const handleCopyPasscode = () => {
+    if (!resolvedPasscode) return;
+    navigator.clipboard.writeText(resolvedPasscode);
+    setPasscodeCopied(true);
+    setTimeout(() => setPasscodeCopied(false), 2000);
+  };
+
   const handleCopyRoomId = () => {
-    navigator.clipboard.writeText(roomIdOrVanity);
+    navigator.clipboard.writeText(cleanId);
     setRoomIdCopied(true);
     setTimeout(() => setRoomIdCopied(false), 2000);
   };
 
-  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
-    `Join my watch party: ${fullUrl}`
-  )}`;
+  const whatsappText = resolvedPasscode
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}`;
+
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
+
+  const telegramText = resolvedPasscode
+    ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Join my watch party on CoWatch!`;
 
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
     fullUrl
-  )}&text=${encodeURIComponent("Join my watch party!")}`;
+  )}&text=${encodeURIComponent(telegramText)}`;
 
   const mailtoUrl = `mailto:?subject=${encodeURIComponent(
     "Join my CoWatch Party"
-  )}&body=${encodeURIComponent(
-    `Hey! Join my watch party and let's watch together:\n\n${fullUrl}`
-  )}`;
+  )}&body=${encodeURIComponent(inviteMessage)}`;
 
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
     fullUrl
@@ -84,9 +120,21 @@ export const InviteModal = ({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {/* Copy Full Invite Message CTA */}
+        <Button
+          onClick={handleCopyInviteMessage}
+          variant="gradient"
+          gradient={{ from: "teal", to: "blue", deg: 135 }}
+          fullWidth
+          leftSection={inviteMsgCopied ? <IconCheck size={18} /> : <IconMessageShare size={18} />}
+          style={{ fontWeight: 600 }}
+        >
+          {inviteMsgCopied ? "Invite Message Copied!" : "Copy Full Invite Message (with Passcode)"}
+        </Button>
+
         {/* Copy Invite Link */}
         <TextInput
-          label="Invite Link"
+          label="Invite Link (includes passcode)"
           readOnly
           rightSection={
             <Tooltip label={inviteLinkCopied ? "Copied!" : "Copy Link"}>
@@ -97,6 +145,23 @@ export const InviteModal = ({
           }
           value={fullUrl}
         />
+
+        {/* Copy Room Passcode */}
+        {resolvedPasscode ? (
+          <TextInput
+            label="Room Passcode"
+            readOnly
+            leftSection={<IconKey size={16} />}
+            rightSection={
+              <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
+                <ActionIcon onClick={handleCopyPasscode} color={passcodeCopied ? "green" : "violet"} variant="light">
+                  {passcodeCopied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                </ActionIcon>
+              </Tooltip>
+            }
+            value={resolvedPasscode}
+          />
+        ) : null}
 
         {/* Copy Room ID / Name */}
         <TextInput
@@ -110,13 +175,13 @@ export const InviteModal = ({
             </Tooltip>
           }
           leftSection={<IconHash size={16} />}
-          value={roomIdOrVanity}
+          value={cleanId}
         />
 
         {/* Share buttons */}
         <div>
           <Text size="sm" fw={500} mb="xs">
-            Quick Share
+            Quick Share (Includes Link & Passcode)
           </Text>
           <Group gap="xs">
             <Button
@@ -159,7 +224,9 @@ export const InviteModal = ({
                   navigator
                     .share({
                       title: "Join my CoWatch Party",
-                      text: "Join my watch party and let's watch together!",
+                      text: resolvedPasscode
+                        ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+                        : "Join my watch party and let's watch together!",
                       url: fullUrl,
                     })
                     .catch(() => {});
@@ -176,7 +243,7 @@ export const InviteModal = ({
         </div>
 
         {/* QR Code toggler */}
-        <div style={{ marginTop: "8px" }}>
+        <div style={{ marginTop: "4px" }}>
           <Button
             onClick={() => setShowQr(!showQr)}
             variant="default"

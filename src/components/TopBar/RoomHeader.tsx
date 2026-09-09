@@ -4,23 +4,28 @@ import {
   IconCheck,
   IconChevronDown,
   IconCopy,
+  IconCrown,
+  IconEye,
+  IconEyeOff,
+  IconHash,
+  IconKey,
+  IconLink,
   IconLock,
   IconLockOpen,
-  IconMessage,
+  IconMessageShare,
   IconSettings,
-  IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
-import { Menu, Tooltip } from "@mantine/core";
-import { SignInButton } from "./TopBar";
+import { Menu, Tooltip, ActionIcon } from "@mantine/core";
 import { HeaderSearchBar } from "./HeaderSearchBar";
+import { getRoomUrl, getInviteMessage } from "../../utils/utils";
 import styles from "./RoomHeader.module.css";
 
 interface RoomHeaderProps {
   roomTitle: string;
-  participantCount: number;
-  currentTab: string;
-  onSelectTab: (tab: "people" | "chat") => void;
+  participantCount?: number;
+  currentTab?: string;
+  onSelectTab?: (tab: "people" | "chat") => void;
   onOpenSettings: () => void;
   onExit: () => void;
   isLocked?: boolean;
@@ -32,13 +37,13 @@ interface RoomHeaderProps {
   roomSetMedia?: (value: string) => void;
   playlistAdd?: (value: string) => void;
   mediaPath?: string;
+  roomId?: string;
+  hostName?: string;
+  passcode?: string;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
   roomTitle,
-  participantCount,
-  currentTab,
-  onSelectTab,
   onOpenSettings,
   onExit,
   isLocked,
@@ -50,13 +55,59 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   roomSetMedia,
   playlistAdd,
   mediaPath,
+  roomId: propRoomId,
+  hostName,
+  passcode: propPasscode,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedMsg, setCopiedMsg] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const getCleanRoomId = () => {
+    if (propRoomId) return propRoomId.replace(/^\//, "");
+    const pathParts = window.location.pathname.split("/");
+    return (pathParts[pathParts.length - 1] || "").replace(/^\//, "");
+  };
+
+  const cleanRoomId = getCleanRoomId();
+  const urlPass =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("passcode") ||
+      new URLSearchParams(window.location.search).get("pass") ||
+      new URLSearchParams(window.location.search).get("password")
+      : null;
+
+  const resolvedPasscode = propPasscode || urlPass || "";
+
+  const roomUrl = getRoomUrl(cleanRoomId, resolvedPasscode);
+  const hostDisplayName = hostName || "Host";
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    navigator.clipboard.writeText(roomUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyInviteMessage = () => {
+    const msg = getInviteMessage(cleanRoomId, resolvedPasscode);
+    navigator.clipboard.writeText(msg);
+    setCopiedMsg(true);
+    setTimeout(() => setCopiedMsg(false), 2000);
+  };
+
+  const handleCopyRoomId = () => {
+    navigator.clipboard.writeText(cleanRoomId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const handleCopyPasscode = () => {
+    if (!resolvedPasscode) return;
+    navigator.clipboard.writeText(resolvedPasscode);
+    setCopiedPass(true);
+    setTimeout(() => setCopiedPass(false), 2000);
   };
 
   return (
@@ -73,7 +124,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
         <div className={styles.divider} />
 
-        <Menu shadow="md" width={220} position="bottom-start">
+        <Menu shadow="lg" width={300} position="bottom-start" radius="md">
           <Menu.Target>
             <button
               className={styles.roomDropdownBtn}
@@ -85,6 +136,114 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             </button>
           </Menu.Target>
           <Menu.Dropdown>
+            {/* Room Details Card */}
+            <div className={styles.roomInfoCard}>
+              {/* Host Name Row */}
+              <div className={styles.roomInfoRow}>
+                <span className={styles.roomInfoLabel}>
+                  <IconCrown size={14} color="var(--color-warning)" /> Host
+                </span>
+                <span className={styles.roomInfoValue} title={hostDisplayName}>
+                  {hostDisplayName}
+                </span>
+              </div>
+
+              {/* Room ID Row */}
+              <div className={styles.roomInfoRow}>
+                <span className={styles.roomInfoLabel}>
+                  <IconHash size={14} /> Room ID
+                </span>
+                <div className={styles.roomInfoValueWithCopy}>
+                  <span className={styles.codeSnippet} title={cleanRoomId}>
+                    {cleanRoomId}
+                  </span>
+                  <Tooltip label={copiedId ? "Copied!" : "Copy ID"} withArrow position="top">
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color={copiedId ? "green" : "gray"}
+                      onClick={handleCopyRoomId}
+                      aria-label="Copy Room ID"
+                    >
+                      {copiedId ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </div>
+              </div>
+
+              {/* Password Row */}
+              <div className={styles.roomInfoRow}>
+                <span className={styles.roomInfoLabel}>
+                  <IconKey size={14} /> Password
+                </span>
+                <div className={styles.roomInfoValueWithCopy}>
+                  {resolvedPasscode ? (
+                    <>
+                      <span
+                        className={styles.codeSnippet}
+                        title={showPassword ? resolvedPasscode : "Password hidden"}
+                      >
+                        {showPassword ? resolvedPasscode : "••••••••"}
+                      </span>
+                      <Tooltip label={showPassword ? "Hide password" : "Show password"} withArrow position="top">
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label="Toggle password visibility"
+                        >
+                          {showPassword ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={copiedPass ? "Copied!" : "Copy password"} withArrow position="top">
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color={copiedPass ? "green" : "gray"}
+                          onClick={handleCopyPasscode}
+                          aria-label="Copy Password"
+                        >
+                          {copiedPass ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                        </ActionIcon>
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>None (Open)</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Room Link Row */}
+              <div className={styles.roomInfoRow}>
+                <span className={styles.roomInfoLabel}>
+                  <IconLink size={14} /> Room Link
+                </span>
+                <div className={styles.roomInfoValueWithCopy}>
+                  <span
+                    className={styles.codeSnippet}
+                    style={{ maxWidth: "120px" }}
+                    title={roomUrl}
+                  >
+                    {roomUrl}
+                  </span>
+                  <Tooltip label={copied ? "Copied!" : "Copy Link"} withArrow position="top">
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color={copied ? "green" : "violet"}
+                      onClick={handleCopyLink}
+                      aria-label="Copy Room Link"
+                    >
+                      {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </div>
+              </div>
+            </div>
+
+            <Menu.Divider />
+
             <Menu.Label>Room Options</Menu.Label>
             <Menu.Item
               leftSection={
@@ -97,6 +256,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               onClick={handleCopyLink}
             >
               {copied ? "Link Copied!" : "Copy room link"}
+            </Menu.Item>
+            <Menu.Item
+              leftSection={
+                copiedMsg ? (
+                  <IconCheck size={16} color="var(--color-live)" />
+                ) : (
+                  <IconMessageShare size={16} />
+                )
+              }
+              onClick={handleCopyInviteMessage}
+            >
+              {copiedMsg ? "Invite Copied!" : "Copy invite message"}
             </Menu.Item>
             {onToggleLock && (
               <Menu.Item
@@ -135,9 +306,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         >
           <button
             type="button"
-            className={`${styles.nowPlayingBadge} ${
-              currentMedia ? styles.nowPlayingActive : styles.nowPlayingIdle
-            }`}
+            className={`${styles.nowPlayingBadge} ${currentMedia ? styles.nowPlayingActive : styles.nowPlayingIdle
+              }`}
             onClick={onOpenQuickAdd}
             title={
               currentMedia
@@ -178,29 +348,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       <div className={styles.rightSection}>
         <button
           type="button"
-          className={`${styles.actionBtn} ${
-            currentTab === "people" ? styles.actionBtnActive : ""
-          }`}
-          onClick={() => onSelectTab("people")}
-          title="Toggle People panel"
-        >
-          <IconUsersGroup size={16} stroke={1.5} />
-          <span>{participantCount}</span>
-        </button>
-
-        <button
-          type="button"
-          className={`${styles.iconOnlyBtn} ${
-            currentTab === "chat" ? styles.actionBtnActive : ""
-          }`}
-          onClick={() => onSelectTab("chat")}
-          title="Toggle Messages panel"
-        >
-          <IconMessage size={16} stroke={1.5} />
-        </button>
-
-        <button
-          type="button"
           className={styles.iconOnlyBtn}
           onClick={onOpenSettings}
           title="Open Settings"
@@ -217,8 +364,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           <IconX size={15} stroke={2} />
           <span className={styles.exitText}>Exit</span>
         </button>
-
-        <SignInButton />
       </div>
     </header>
   );

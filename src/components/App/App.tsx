@@ -25,8 +25,6 @@ import {
   VIDEO_MAX_HEIGHT_CSS,
   createUuid,
   softWhite,
-  getSavedPasscodes,
-  addAndSavePasscode,
   getRoomUrl,
   decodeEntities,
 } from "../../utils/utils";
@@ -184,6 +182,7 @@ interface AppState {
   showChatColumn: boolean;
   showPeopleColumn: boolean;
   owner: string | undefined;
+  hostName: string | undefined;
 
   passcode: string | undefined;
   inviteLink: string;
@@ -266,6 +265,7 @@ export class App extends React.Component<AppProps, AppState> {
         ),
       ),
     owner: undefined,
+    hostName: undefined,
 
     passcode: undefined,
     inviteLink: "",
@@ -512,6 +512,10 @@ export class App extends React.Component<AppProps, AppState> {
       const { data } = await Promise.race([roomPromise, timeoutPromise]);
       if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
 
+      if (data.owner_id) {
+        this.resolveHostName(data.owner_id);
+      }
+
       const isOwner = Boolean(user && data.owner_id === user.id);
       const requiresPasscode = Boolean(data.passcode);
 
@@ -522,7 +526,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  join = async (roomId: string) => {
+  join = async (roomId: string, explicitPasscode?: string) => {
     const cleanRoomId = (roomId || "").trim();
     if (!cleanRoomId) {
       this.setState({ state: "connected", overlayMsg: "Invalid room identifier." });
@@ -542,10 +546,10 @@ export class App extends React.Component<AppProps, AppState> {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
-      if (urlPass) {
-        addAndSavePasscode(cleanRoomId, urlPass);
+      const passcode = explicitPasscode || this.state.passcode || urlPass || "";
+      if (passcode && passcode !== this.state.passcode) {
+        this.setState({ passcode });
       }
-      let passcode = getSavedPasscodes()[cleanRoomId] ?? "";
 
       try {
         const access = await this.checkRoomAccess(cleanRoomId);
@@ -1330,9 +1334,35 @@ export class App extends React.Component<AppProps, AppState> {
     return getRoomUrl(this.state.roomId);
   };
 
+  resolveHostName = async (ownerId: string, ownerNameHint?: string) => {
+    if (ownerNameHint) {
+      this.setState({ hostName: ownerNameHint });
+      return;
+    }
+    if (this.context.user && this.context.user.id === ownerId) {
+      this.setState({ hostName: this.context.displayName || "You" });
+      return;
+    }
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, username")
+        .eq("id", ownerId)
+        .maybeSingle();
+      if (profile) {
+        this.setState({ hostName: profile.display_name || profile.username || "Host" });
+      }
+    } catch (e) {
+      console.warn("Failed to resolve host name:", e);
+    }
+  };
+
   handleRoomState = (data: any) => {
     this.setIsChatDisabled(data.isChatDisabled);
     this.setOwner(data.owner);
+    if (data.owner) {
+      this.resolveHostName(data.owner, data.ownerName);
+    }
     this.setPasscode(data.passcode);
     this.setRoomTitle(data.roomTitle);
     this.setRoomDescription(data.roomDescription);
@@ -2391,7 +2421,18 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.state.isErrorAuth) {
       return (
         <div style={{ height: "100vh", backgroundColor: "var(--bg-app)" }}>
-          <PasscodeModal roomId={this.state.roomId} />
+          <PasscodeModal
+            roomId={this.state.roomId}
+            onSubmit={(passcode) => {
+              this.setState({ passcode, isErrorAuth: false, state: "starting" }, () => {
+                if (this.socket) {
+                  this.socket.disconnect();
+                  this.socket = null!;
+                }
+                this.join(this.state.roomId, passcode);
+              });
+            }}
+          />
         </div>
       );
     }
@@ -2602,6 +2643,9 @@ export class App extends React.Component<AppProps, AppState> {
             roomSetMedia={this.roomSetMedia}
             playlistAdd={this.roomPlaylistAdd}
             mediaPath={this.state.mediaPath}
+            roomId={this.state.roomId}
+            hostName={this.state.hostName || (this.state.owner && this.context.user?.id === this.state.owner ? (this.context.displayName || "You") : undefined)}
+            passcode={this.state.passcode || ""}
           />
         )}
         {
@@ -2992,6 +3036,7 @@ export class App extends React.Component<AppProps, AppState> {
                       owner={this.state.owner}
                       getLeaderTime={this.getLeaderTime}
                       roomId={this.state.roomId}
+                      passcode={this.state.passcode}
                     />
                   </VideoChatErrorBoundary>
                 </Tabs.Panel>

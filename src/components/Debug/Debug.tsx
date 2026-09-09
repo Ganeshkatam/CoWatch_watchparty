@@ -14,9 +14,7 @@ import CountUp from "react-countup";
 import { Table } from "@mantine/core";
 
 const timeSeriesUrl = serverPath + `/timeSeries${window.location.search}`;
-// const timeSeriesUrl = 'https://www.cowatch.me' + `/timeSeries${window.location.search}`;
 const statsUrl = serverPath + `/stats${window.location.search}`;
-// const statsUrl = 'https://www.cowatch.me' + `/stats${window.location.search}`;
 
 // Rendering:
 // Anything that's a Record<string, number> should render as 2 column table

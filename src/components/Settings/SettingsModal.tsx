@@ -28,7 +28,7 @@ import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
-import { serverPath, addAndSavePasscode, getSavedPasscodes, removeSavedPasscode } from "../../utils/utils";
+import { serverPath } from "../../utils/utils";
 
 interface SettingsModalProps {
   modalOpen: boolean;
@@ -143,12 +143,7 @@ export const SettingsModal = ({
   const [copiedCurrentPassword, setCopiedCurrentPassword] = useState(false);
 
   const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-  const currentSavedPasscode =
-    (passcode && passcode !== "true" ? passcode : "") ||
-    getSavedPasscodes()[roomId] ||
-    getSavedPasscodes()[cleanRoomId] ||
-    getSavedPasscodes()[`/${cleanRoomId}`] ||
-    "";
+  const currentSavedPasscode = (passcode && passcode !== "true" ? passcode : "");
 
   const handleFileChange = (payload: File | null) => {
     if (payload) {
@@ -238,10 +233,8 @@ export const SettingsModal = ({
         if (!draftChatEnabled !== isChatDisabled) setIsChatDisabled(!draftChatEnabled);
         
         if (isClearing) {
-          removeSavedPasscode(roomId);
           setPasscode("");
         } else if (passwordAction === "change") {
-          addAndSavePasscode(roomId, draftPassword.trim());
           setPasscode(draftPassword.trim());
         }
 

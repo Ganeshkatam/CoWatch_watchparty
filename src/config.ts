@@ -3,7 +3,8 @@ export default {
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_SERVER_HOST) ||
     "https://cowatchwatchparty-production.up.railway.app,https://cowatch-watchparty.onrender.com",
   VITE_OAUTH_REDIRECT_HOSTNAME:
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_OAUTH_REDIRECT_HOSTNAME) ?? "https://www.cowatch.me",
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_OAUTH_REDIRECT_HOSTNAME) ||
+    (typeof window !== "undefined" && window.location?.origin ? window.location.origin : ""),
   VITE_AUTH_SIGNIN_METHODS:
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_AUTH_SIGNIN_METHODS) ?? "google,email",
   NODE_ENV:
