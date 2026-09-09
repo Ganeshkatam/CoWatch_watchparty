@@ -1,5 +1,6 @@
 import { default as toWebVTT } from "srt-webvtt";
 import { Player } from "./Player";
+import { pipManager } from "../../utils/pipManager";
 
 export class HTML implements Player {
   elId: string;
@@ -193,20 +194,17 @@ export class HTML implements Player {
   };
 
   isPictureInPictureSupported = (): boolean => {
-    return document.pictureInPictureEnabled && !(this.getVideoEl() as HTMLVideoElement)?.disablePictureInPicture;
+    const video = this.getVideoEl() as HTMLVideoElement;
+    return (
+      pipManager.isDocumentPiPSupported() ||
+      pipManager.isNativePiPSupported(video)
+    );
   };
 
   togglePictureInPicture = async (): Promise<void> => {
     const videoEl = this.getVideoEl() as HTMLVideoElement;
-    if (!videoEl || !this.isPictureInPictureSupported()) return;
-    try {
-      if (document.pictureInPictureElement === videoEl) {
-        await document.exitPictureInPicture();
-      } else {
-        await videoEl.requestPictureInPicture();
-      }
-    } catch (e) {
-      console.warn("Error toggling Picture-in-Picture:", e);
-    }
+    if (!videoEl) return;
+    const container = (videoEl.parentElement as HTMLElement) || videoEl;
+    await pipManager.toggle(container, videoEl);
   };
 }

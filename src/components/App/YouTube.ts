@@ -1,5 +1,6 @@
 import { MediaPlayerClass } from "dashjs";
 import { Player } from "./Player";
+import { pipManager } from "../../utils/pipManager";
 import { getYoutubeVideoID } from "../../utils/utils";
 
 export class YouTube implements Player {
@@ -234,10 +235,14 @@ export class YouTube implements Player {
   };
 
   isPictureInPictureSupported = (): boolean => {
-    return false;
+    return pipManager.isDocumentPiPSupported();
   };
 
   togglePictureInPicture = async (): Promise<void> => {
-    return;
+    const container =
+      document.getElementById("leftYtContainer") ||
+      document.getElementById("leftYt");
+    if (!container) return;
+    await pipManager.toggle(container);
   };
 }

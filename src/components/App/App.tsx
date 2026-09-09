@@ -72,11 +72,13 @@ import {
   IconKeyboardFilled,
   IconLink,
   IconMessage,
+  IconPictureInPicture,
   IconUserScreen,
   IconUsersGroup,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
+import { pipManager, type PiPState } from "../../utils/pipManager";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -182,6 +184,7 @@ interface AppState {
   isLiveStream: boolean;
   settingsModalOpen: boolean;
   uploadController: AbortController | undefined;
+  pipState: PiPState;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -265,6 +268,7 @@ export class App extends React.Component<AppProps, AppState> {
     isLiveStream: false,
     settingsModalOpen: false,
     uploadController: undefined,
+    pipState: pipManager.getState(),
   };
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
@@ -290,6 +294,7 @@ export class App extends React.Component<AppProps, AppState> {
   chatRef = React.createRef<ChatComponent>();
   metadataCleanup?: () => void;
   mediaSessionInterval?: number;
+  pipUnsubscribe?: () => void;
 
   syncDocumentMetadata = () => {
     if (this.metadataCleanup) {
@@ -429,6 +434,10 @@ export class App extends React.Component<AppProps, AppState> {
     this.syncMediaSessionPlayback();
     this.syncMediaSessionActions();
 
+    this.pipUnsubscribe = pipManager.subscribe((pipState) => {
+      this.setState({ pipState });
+    });
+
     this.mediaSessionInterval = window.setInterval(() => {
       this.syncMediaSessionPosition();
     }, 1000);
@@ -452,6 +461,8 @@ export class App extends React.Component<AppProps, AppState> {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
     window.clearInterval(this.heartbeat);
+    this.pipUnsubscribe?.();
+    pipManager.cleanup();
     if (this.startingTimer) {
       window.clearTimeout(this.startingTimer);
       this.startingTimer = null;
@@ -692,6 +703,9 @@ export class App extends React.Component<AppProps, AppState> {
       });
       socket.on("REC:host", async (data: HostState) => {
         let currentMedia = data.video || "";
+        if (this.state.pipState?.active && this.state.roomMedia !== currentMedia) {
+          pipManager.restoreAndClose().catch(console.warn);
+        }
         if (this.playingScreenShare() && !isScreenShare(currentMedia)) {
           this.stopPublishingLocalStream();
         }
@@ -2241,6 +2255,9 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   roomSetMedia = (value: string) => {
+    if (this.state.pipState?.active) {
+      pipManager.restoreAndClose().catch(console.warn);
+    }
     const normalized = isYouTube(value) ? normalizeYouTubeUrl(value) : value;
     this.socket.emit("CMD:host", normalized);
   };
@@ -2459,6 +2476,7 @@ export class App extends React.Component<AppProps, AppState> {
         roomPlaylistPlay={this.roomPlaylistPlay}
         playlist={this.state.playlist}
         isPiPSupported={this.Player().isPictureInPictureSupported()}
+        isPiPActive={this.state.pipState?.active}
         togglePiP={this.Player().togglePictureInPicture}
       />
     );
@@ -2825,6 +2843,31 @@ export class App extends React.Component<AppProps, AppState> {
                             this.state.nonPlayableMedia && (
                               <NonPlayableMediaState />
                             )}
+                        </div>
+                      )}
+                    {this.state.pipState?.active &&
+                      this.state.pipState?.mode === "document" && (
+                        <div
+                          className={`${styles.videoContent} ${styles.flexCenter}`}
+                          style={{
+                            flexDirection: "column",
+                            gap: 12,
+                            backgroundColor: "var(--bg-video-player, #000)",
+                            zIndex: 2,
+                          }}
+                        >
+                          <IconPictureInPicture size={36} color="var(--color-violet, #8B5CF6)" />
+                          <Text size="sm" fw={500} c="dimmed">
+                            Stream playing in Picture-in-Picture window
+                          </Text>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="violet"
+                            onClick={() => pipManager.close()}
+                          >
+                            Return Stream to Room
+                          </Button>
                         </div>
                       )}
                     <div

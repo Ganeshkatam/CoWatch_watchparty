@@ -48,6 +48,7 @@ interface ControlsProps {
   roomPlaylistPlay: (index: number) => void;
   playlist: PlaylistVideo[];
   isPiPSupported?: boolean;
+  isPiPActive?: boolean;
   togglePiP?: () => void;
 }
 
@@ -362,7 +363,8 @@ export const Controls = (props: ControlsProps) => {
         <IconPictureInPicture
           onClick={props.togglePiP}
           className={`${styles.action} ${styles.desktopOnly}`}
-          title="Picture in Picture"
+          style={props.isPiPActive ? { color: "var(--color-violet, #8B5CF6)" } : undefined}
+          title={props.isPiPActive ? "Exit Picture-in-Picture" : "Picture in Picture"}
         />
       )}
       {muted ? (
