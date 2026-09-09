@@ -13,6 +13,7 @@ import {
 import { IconShieldCheck } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import styles from "./AuthShell.module.css";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -20,6 +21,12 @@ export const ResetPassword = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const history = useHistory();
+
+  useDocumentMetadata({
+    title: "Reset Password",
+    description: "Create a new password for your CoWatch account.",
+    noIndex: true,
+  });
 
   useEffect(() => {
     // Supabase will automatically parse the hash containing the recovery token

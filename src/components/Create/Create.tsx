@@ -18,6 +18,7 @@ import { serverPath, addAndSavePasscode } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import { useHistory } from "react-router-dom";
 import { IconCirclePlusFilled } from "@tabler/icons-react";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export const Create = () => {
   const { user } = useContext(MetadataContext);
@@ -25,10 +26,16 @@ export const Create = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  useDocumentMetadata({
+    title: "Create a Room",
+    description: "Create a new watch party room to stream movies, YouTube videos, and browse together.",
+  });
+
   // Form states
   const [roomTitle, setRoomTitle] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
-  const [passcode, setPasscode] = useState("");
+  const generatePasscode = () => Math.random().toString(36).substring(2, 10).padEnd(8, '0');
+  const [passcode, setPasscode] = useState(generatePasscode());
 
   const [isChatDisabled, setIsChatDisabled] = useState(false);
   const [lock, setLock] = useState(false);
@@ -39,6 +46,10 @@ export const Create = () => {
     e.preventDefault();
     if (!roomTitle.trim()) {
       setError("Room title is required.");
+      return;
+    }
+    if (passcode.length < 8) {
+      setError("Passcode must be at least 8 characters long.");
       return;
     }
     setLoading(true);
@@ -160,10 +171,12 @@ export const Create = () => {
 
 
             <PasswordInput
-              label="Room Passcode (Optional)"
-              description="Users must enter this passcode to join"
+              label="Room Passcode (Required)"
+              description="Users must enter this passcode to join (min 8 characters)"
               placeholder="Passcode"
               value={passcode}
+              required
+              minLength={8}
               onChange={(e) => setPasscode(e.target.value)}
             />
 

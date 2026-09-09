@@ -675,7 +675,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       )}
                       {p.isMuted ? (
                         <div className={styles.indicatorItem} title="Microphone muted">
-                          <IconMicrophoneOff size={13} color="var(--color-danger, #EF4444)" />
+                          <IconMicrophoneOff size={13} color="var(--color-danger)" />
                         </div>
                       ) : p.isVideoChat ? (
                         <div className={styles.indicatorItem} title="Microphone on">
@@ -684,7 +684,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       ) : null}
                       {p.isScreenShare && (
                         <div className={styles.indicatorItem} title="Sharing screen">
-                          <IconScreenShare size={13} color="#60A5FA" />
+                          <IconScreenShare size={13} color="var(--media-video)" />
                         </div>
                       )}
                     </div>

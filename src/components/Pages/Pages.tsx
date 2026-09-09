@@ -2,6 +2,7 @@ import React from "react";
 import { Container, Paper, Title, Text, Accordion, List, Anchor, Button } from "@mantine/core";
 import { useHistory } from "react-router-dom";
 import { IconArrowLeft } from "@tabler/icons-react";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 const containerStyle: React.CSSProperties = {
   maxWidth: "840px",
@@ -40,6 +41,11 @@ const BackButton = () => {
 };
 
 export const Privacy = () => {
+  useDocumentMetadata({
+    title: "Privacy Policy | CoWatch",
+    description: "Read the privacy policy for CoWatch. Learn how we handle rooms, data, and user privacy.",
+  });
+
   return (
     <Container style={containerStyle}>
       <BackButton />
@@ -88,6 +94,11 @@ export const Privacy = () => {
 };
 
 export const Terms = () => {
+  useDocumentMetadata({
+    title: "Terms of Service | CoWatch",
+    description: "Read the terms of service for using CoWatch watch party platform.",
+  });
+
   return (
     <Container style={containerStyle}>
       <BackButton />
@@ -114,6 +125,11 @@ export const Terms = () => {
 };
 
 export const FAQ = () => {
+  useDocumentMetadata({
+    title: "Frequently Asked Questions | CoWatch",
+    description: "Frequently asked questions about CoWatch, virtual browsers, screensharing, and watch party features.",
+  });
+
   return (
     <Container style={containerStyle}>
       <BackButton />

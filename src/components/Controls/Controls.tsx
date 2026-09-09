@@ -14,6 +14,7 @@ import {
   IconVolume,
   IconTheater,
   IconMaximize,
+  IconPictureInPicture,
   IconPlayerSkipForwardFilled,
 } from "@tabler/icons-react";
 
@@ -46,6 +47,8 @@ interface ControlsProps {
   localSetSubtitleMode: (mode: TextTrackMode, lang?: string) => void;
   roomPlaylistPlay: (index: number) => void;
   playlist: PlaylistVideo[];
+  isPiPSupported?: boolean;
+  togglePiP?: () => void;
 }
 
 export const Controls = (props: ControlsProps) => {
@@ -119,7 +122,7 @@ export const Controls = (props: ControlsProps) => {
         style={{
           position: "absolute",
           height: "8px",
-          backgroundColor: "grey",
+          backgroundColor: "var(--border-subtle)",
           left: buffStartPct + "%",
           width: buffLengthPct + "%",
           bottom: "0em",
@@ -161,7 +164,7 @@ export const Controls = (props: ControlsProps) => {
       >
         <Button
           size="compact-xs"
-          color={isBehind ? "blue" : "grey"}
+          color={isBehind ? "blue" : "gray"}
           title="Sync"
           onClick={() => {
             if (isLiveStream) {
@@ -265,7 +268,7 @@ export const Controls = (props: ControlsProps) => {
             <div
               className={`${styles.text} ${styles.action}`}
               style={{
-                backgroundColor: "rgba(100,100,100, 0.6)",
+                backgroundColor: "var(--surface-hover)",
                 fontSize: 10,
                 borderRadius: "4px",
                 padding: "2px",
@@ -308,7 +311,7 @@ export const Controls = (props: ControlsProps) => {
         }}
         className={` ${styles.action}`}
         title="Loop"
-        color={props.loop ? "green" : softWhite}
+        color={props.loop ? "var(--color-success)" : undefined}
       />
       {props.isYouTube ? (
         <Menu>
@@ -342,7 +345,7 @@ export const Controls = (props: ControlsProps) => {
           }}
           className={` ${styles.action}`}
           title="Captions"
-          color={subtitled ? "green" : softWhite}
+          color={subtitled ? "var(--color-success)" : undefined}
         />
       )}
       <IconTheater
@@ -355,6 +358,13 @@ export const Controls = (props: ControlsProps) => {
         className={` ${styles.action}`}
         title="Fullscreen"
       />
+      {props.isPiPSupported && props.togglePiP && (
+        <IconPictureInPicture
+          onClick={props.togglePiP}
+          className={`${styles.action} ${styles.desktopOnly}`}
+          title="Picture in Picture"
+        />
+      )}
       {muted ? (
         <IconVolumeOff
           onClick={() => {

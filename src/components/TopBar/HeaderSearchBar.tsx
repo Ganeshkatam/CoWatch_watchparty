@@ -197,27 +197,27 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       return {
         label: "YouTube Video",
         color: "red",
-        icon: <IconBrandYoutubeFilled size={13} color="#EF4444" />,
+        icon: <IconBrandYoutubeFilled size={13} color="var(--media-youtube)" />,
       };
     }
     if (isMagnet(trimmed)) {
       return {
         label: "WebTorrent Magnet",
         color: "violet",
-        icon: <IconMagnetFilled size={13} color="#A78BFA" />,
+        icon: <IconMagnetFilled size={13} color="var(--media-magnet)" />,
       };
     }
     if (trimmed.toLowerCase().includes(".m3u8")) {
       return {
         label: "HLS Stream",
         color: "cyan",
-        icon: <IconVideo size={13} color="#22D3EE" />,
+        icon: <IconVideo size={13} color="var(--color-cyan)" />,
       };
     }
     return {
       label: "Direct Video Stream",
       color: "blue",
-      icon: <IconVideo size={13} color="#60A5FA" />,
+      icon: <IconVideo size={13} color="var(--media-video)" />,
     };
   }, [isDirect, trimmed]);
 
@@ -334,7 +334,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
               className={`${styles.filterPill} ${activeFilter === "youtube" ? styles.filterPillActive : ""}`}
               onClick={() => setActiveFilter("youtube")}
             >
-              <IconBrandYoutubeFilled size={12} color="#EF4444" />
+              <IconBrandYoutubeFilled size={12} color="var(--media-youtube)" />
               YouTube
             </button>
             <button
@@ -342,7 +342,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
               className={`${styles.filterPill} ${activeFilter === "file" ? styles.filterPillActive : ""}`}
               onClick={() => setActiveFilter("file")}
             >
-              <IconVideo size={12} color="#60A5FA" />
+              <IconVideo size={12} color="var(--media-video)" />
               Direct Video
             </button>
             <button
@@ -350,7 +350,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
               className={`${styles.filterPill} ${activeFilter === "magnet" ? styles.filterPillActive : ""}`}
               onClick={() => setActiveFilter("magnet")}
             >
-              <IconMagnetFilled size={12} color="#A78BFA" />
+              <IconMagnetFilled size={12} color="var(--media-magnet)" />
               Torrent
             </button>
           </div>
@@ -403,7 +403,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
                 : "Suggested Streams"}
             </span>
             {trimmed && !isDirect && loading && (
-              <span style={{ fontSize: "10px", color: "#A78BFA" }}>
+              <span style={{ fontSize: "10px", color: "var(--color-violet)" }}>
                 Searching...
               </span>
             )}
@@ -437,11 +437,11 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
                     ) : (
                       <div className={styles.thumbnailPlaceholder}>
                         {item.type === "youtube" ? (
-                          <IconBrandYoutubeFilled size={18} color="#EF4444" />
+                          <IconBrandYoutubeFilled size={18} color="var(--media-youtube)" />
                         ) : item.type === "magnet" ? (
-                          <IconMagnetFilled size={18} color="#A78BFA" />
+                          <IconMagnetFilled size={18} color="var(--media-magnet)" />
                         ) : (
-                          <IconVideo size={18} color="#60A5FA" />
+                          <IconVideo size={18} color="var(--media-video)" />
                         )}
                       </div>
                     )}

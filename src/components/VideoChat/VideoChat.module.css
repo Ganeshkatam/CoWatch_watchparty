@@ -12,7 +12,7 @@
   height: 190px;
   border-radius: 12px;
   overflow: hidden;
-  background-color: #0c0e14;
+  background-color: var(--bg-video-tile);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   display: flex;
@@ -23,7 +23,7 @@
 }
 
 .videoTile:hover {
-  border-color: rgba(139, 92, 246, 0.4);
+  border-color: var(--border-video-tile-hover);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(139, 92, 246, 0.15);
 }
 
@@ -32,7 +32,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  background-color: #000000;
+  background-color: var(--bg-video-player);
 }
 
 .avatarPlaceholder {
@@ -43,7 +43,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: radial-gradient(circle at 50% 35%, rgba(139, 92, 246, 0.12), transparent 70%), #0c0e14;
+  background: radial-gradient(circle at 50% 35%, rgba(139, 92, 246, 0.12), transparent 70%), var(--bg-video-tile);
   padding: 16px;
   box-sizing: border-box;
 }
@@ -53,7 +53,7 @@
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid rgba(139, 92, 246, 0.3);
+  border: 2px solid var(--border-accent);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
   background-color: var(--bg-surface);
 }
@@ -87,12 +87,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(10, 12, 18, 0.82);
+  background: var(--bg-video-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-video-tile);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   max-width: 75%;
 }
@@ -101,9 +101,9 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #10B981;
+  background-color: var(--color-success);
   flex-shrink: 0;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 6px var(--status-success-soft);
 }
 
 .nameText {
@@ -120,8 +120,8 @@
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background-color: rgba(139, 92, 246, 0.3);
-  color: #C4B5FD;
+  background-color: var(--accent-primary-soft);
+  color: var(--color-violet);
   flex-shrink: 0;
 }
 
@@ -133,17 +133,17 @@
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: rgba(10, 12, 18, 0.82);
+  background: var(--bg-video-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-video-tile);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .menuTrigger:hover {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--surface-hover);
   color: #FFFFFF;
 }
 
@@ -164,12 +164,12 @@
   font-size: 11px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
-  background: rgba(10, 12, 18, 0.82);
+  background: var(--bg-video-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 3px 8px;
   border-radius: 50px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-video-tile);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
@@ -184,12 +184,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(10, 12, 18, 0.85);
+  background: var(--bg-video-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 3px 5px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-video-tile);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
@@ -197,12 +197,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(10, 12, 18, 0.82);
+  background: var(--bg-video-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 4px 6px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-video-tile);
 }
 
 .indicatorItem {
@@ -216,7 +216,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--bg-surface);
   border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -226,8 +226,8 @@
 }
 
 .inviteCard:hover {
-  background-color: rgba(139, 92, 246, 0.06);
-  border-color: var(--color-violet);
+  background-color: var(--accent-primary-soft);
+  border-color: var(--border-accent);
 }
 
 .inviteIconBadge {

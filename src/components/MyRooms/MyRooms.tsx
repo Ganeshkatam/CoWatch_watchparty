@@ -10,6 +10,7 @@ import { RoomStats } from "./RoomStats";
 import { RoomsToolbar } from "./RoomsToolbar";
 import { RoomCard } from "./RoomCard";
 import { RoomPagination } from "./RoomPagination";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export interface RoomSummary {
   roomId: string;
@@ -137,6 +138,11 @@ const useRooms = (user: any) => {
 export const MyRooms = () => {
   const { user } = useContext(MetadataContext);
   const { rooms, loading, error, deleteRoom, updateRoomCover } = useRooms(user);
+  
+  useDocumentMetadata({
+    title: "My Rooms",
+    description: "Manage your active and permanent CoWatch watch party rooms.",
+  });
   
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState("newest");

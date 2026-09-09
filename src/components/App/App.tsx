@@ -56,6 +56,15 @@ import { RoomHeader } from "../TopBar/RoomHeader";
 import { MediaDock } from "./MediaDock";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
+import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
+import {
+  updateMediaSessionMetadata,
+  updateMediaSessionPlaybackState,
+  updateMediaSessionPosition,
+  setupMediaSessionActionHandlers,
+  clearMediaSession,
+  type MediaSessionActions,
+} from "../../utils/mediaSession";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
 import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
 import {
@@ -288,6 +297,130 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   chatRef = React.createRef<ChatComponent>();
+  metadataCleanup?: () => void;
+  mediaSessionInterval?: number;
+
+  syncDocumentMetadata = () => {
+    if (this.metadataCleanup) {
+      this.metadataCleanup();
+      this.metadataCleanup = undefined;
+    }
+
+    const mediaName = this.getMediaDisplayName(this.state.roomMedia);
+    const roomName = this.state.roomTitle?.trim();
+
+    let title: string;
+    if (mediaName && roomName) {
+      title = `${mediaName} • ${roomName}`;
+    } else if (mediaName) {
+      title = `${mediaName} • Room`;
+    } else if (roomName) {
+      title = `${roomName}`;
+    } else {
+      title = `Watch Party`;
+    }
+
+    this.metadataCleanup = setDocumentMetadata({
+      title,
+      description: "Watch videos together with friends in real-time on CoWatch.",
+      noIndex: true,
+    });
+  };
+
+  syncMediaSessionMetadata = () => {
+    const mediaName = this.getMediaDisplayName(this.state.roomMedia);
+    const title = mediaName || this.state.roomTitle || "CoWatch Watch Party";
+    const artist = this.state.roomTitle || "CoWatch";
+    const album = "CoWatch Watch Party";
+
+    let artworkUrl: string | null = null;
+    if (isYouTube(this.state.roomMedia)) {
+      try {
+        const url = new URL(this.state.roomMedia);
+        const ytId =
+          new URLSearchParams(url.search).get("v") ||
+          this.state.roomMedia.split("/").slice(-1)[0].split("?")[0];
+        if (ytId) {
+          artworkUrl = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+        }
+      } catch {
+        // Ignore parsing error
+      }
+    }
+
+    updateMediaSessionMetadata({
+      title,
+      artist,
+      album,
+      artworkUrl,
+      roomCoverUrl: null,
+    });
+  };
+
+  syncMediaSessionPlayback = () => {
+    updateMediaSessionPlaybackState(this.state.roomPaused);
+  };
+
+  syncMediaSessionPosition = (force = false) => {
+    if (!this.state.roomMedia || this.state.isLiveStream) {
+      return;
+    }
+    const duration = this.Player().getDuration();
+    const currentTime = this.Player().getCurrentTime();
+    const playbackRate = this.Player().getPlaybackRate() || 1.0;
+
+    updateMediaSessionPosition(
+      {
+        duration,
+        currentTime,
+        playbackRate,
+      },
+      force
+    );
+  };
+
+  syncMediaSessionActions = () => {
+    const actions: MediaSessionActions = {
+      play: () => {
+        if (this.haveLock() && !this.isPauseDisabled()) {
+          this.socket?.emit("CMD:play");
+          this.localPlay();
+        }
+      },
+      pause: () => {
+        if (this.haveLock() && !this.isPauseDisabled()) {
+          this.socket?.emit("CMD:pause");
+          this.localPause();
+        }
+      },
+      seek: (seconds: number) => {
+        if (this.haveLock()) {
+          this.roomSeek(seconds);
+        }
+      },
+      seekBackward: (offset: number) => {
+        if (this.haveLock()) {
+          this.roomSeek(Math.max(0, this.Player().getCurrentTime() - (offset || 10)));
+        }
+      },
+      seekForward: (offset: number) => {
+        if (this.haveLock()) {
+          this.roomSeek(this.Player().getCurrentTime() + (offset || 10));
+        }
+      },
+      next:
+        this.state.playlist.length > 0
+          ? () => {
+              this.roomPlaylistPlay(0);
+            }
+          : undefined,
+    };
+
+    setupMediaSessionActionHandlers(actions, {
+      hasNext: this.state.playlist.length > 0,
+      hasPrevious: false,
+    });
+  };
 
   async componentDidMount() {
     if (this.context.displayName && this.context.displayName !== this.state.myName) {
@@ -299,6 +432,15 @@ export class App extends React.Component<AppProps, AppState> {
     }
     document.onfullscreenchange = this.onFullScreenChange;
     document.onkeydown = this.onKeydown;
+
+    this.syncDocumentMetadata();
+    this.syncMediaSessionMetadata();
+    this.syncMediaSessionPlayback();
+    this.syncMediaSessionActions();
+
+    this.mediaSessionInterval = window.setInterval(() => {
+      this.syncMediaSessionPosition();
+    }, 1000);
 
     // Send heartbeat to the server
     this.heartbeat = window.setInterval(
@@ -323,6 +465,15 @@ export class App extends React.Component<AppProps, AppState> {
       window.clearTimeout(this.startingTimer);
       this.startingTimer = null;
     }
+    if (this.mediaSessionInterval) {
+      window.clearInterval(this.mediaSessionInterval);
+      this.mediaSessionInterval = undefined;
+    }
+    if (this.metadataCleanup) {
+      this.metadataCleanup();
+      this.metadataCleanup = undefined;
+    }
+    clearMediaSession();
   }
 
   init = async () => {
@@ -1027,7 +1178,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  componentDidUpdate() {
+  componentDidUpdate(_prevProps: AppProps, prevState: AppState) {
     const contextName = this.context.displayName || "";
     const contextPicture = this.context.avatarUrl || "";
     if (contextName && contextName !== this.state.myName) {
@@ -1035,6 +1186,25 @@ export class App extends React.Component<AppProps, AppState> {
     }
     if (contextPicture !== this.state.myPicture) {
       this.updatePicture(contextPicture);
+    }
+
+    if (
+      prevState.roomTitle !== this.state.roomTitle ||
+      prevState.roomMedia !== this.state.roomMedia
+    ) {
+      this.syncDocumentMetadata();
+      this.syncMediaSessionMetadata();
+      this.syncMediaSessionPosition(true);
+    }
+    if (prevState.roomPaused !== this.state.roomPaused) {
+      this.syncMediaSessionPlayback();
+      this.syncMediaSessionPosition(true);
+    }
+    if (prevState.playlist !== this.state.playlist) {
+      this.syncMediaSessionActions();
+    }
+    if (prevState.roomPlaybackRate !== this.state.roomPlaybackRate) {
+      this.syncMediaSessionPosition(true);
     }
   }
 
@@ -2197,6 +2367,8 @@ export class App extends React.Component<AppProps, AppState> {
         localSetSubtitleMode={this.Player().setSubtitleMode}
         roomPlaylistPlay={this.roomPlaylistPlay}
         playlist={this.state.playlist}
+        isPiPSupported={this.Player().isPictureInPictureSupported()}
+        togglePiP={this.Player().togglePictureInPicture}
       />
     );
     return (
@@ -2246,7 +2418,7 @@ export class App extends React.Component<AppProps, AppState> {
             fixed
             zIndex={2000}
             backgroundOpacity={0.96}
-            color="var(--bg-app, #08090D)"
+            color="var(--bg-app)"
             style={{
               display: "flex",
               flexDirection: "column",
@@ -2260,7 +2432,7 @@ export class App extends React.Component<AppProps, AppState> {
               <Title
                 order={3}
                 style={{
-                  color: "var(--text-main, #ffffff)",
+                  color: "var(--text-primary)",
                   fontWeight: 600,
                   letterSpacing: "-0.01em",
                 }}

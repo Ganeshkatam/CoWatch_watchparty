@@ -154,4 +154,12 @@ export class YouTube implements Player {
   getVideoEl = (): HTMLMediaElement => {
     return document.getElementById("leftYt") as HTMLMediaElement;
   };
+
+  isPictureInPictureSupported = (): boolean => {
+    return false;
+  };
+
+  togglePictureInPicture = async (): Promise<void> => {
+    return;
+  };
 }

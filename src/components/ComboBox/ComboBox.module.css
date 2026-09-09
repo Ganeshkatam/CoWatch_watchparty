@@ -12,8 +12,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: var(--status-danger-soft);
+  border: 1px solid var(--border-danger-soft);
   border-radius: 10px;
   box-sizing: border-box;
 }
@@ -30,7 +30,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: #F87171;
+  color: var(--color-danger);
   text-transform: uppercase;
 }
 
@@ -51,18 +51,18 @@
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  color: #FCA5A5;
+  background: var(--status-danger-soft);
+  border: 1px solid var(--border-danger-soft);
+  color: var(--color-danger);
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
 .removePlayBtn:hover:not(:disabled) {
-  background: #EF4444;
+  background: var(--color-danger);
   color: #FFFFFF;
-  border-color: #EF4444;
+  border-color: var(--color-danger);
 }
 
 .removePlayBtn:disabled {
@@ -81,8 +81,8 @@
 }
 
 .searchInput :global(.mantine-TextInput-input) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
   border-radius: 10px !important;
   color: var(--text-primary) !important;
   font-size: 13.5px !important;
@@ -93,9 +93,9 @@
 }
 
 .searchInput :global(.mantine-TextInput-input:focus) {
-  border-color: var(--color-violet, #8B5CF6) !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22) !important;
+  border-color: var(--color-violet) !important;
+  background: var(--surface-active) !important;
+  box-shadow: 0 0 0 3px var(--accent-primary-soft) !important;
 }
 
 .searchInput :global(.mantine-TextInput-input::placeholder) {
@@ -110,7 +110,7 @@
   height: 24px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-hover);
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -118,7 +118,7 @@
 }
 
 .clearBtn:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--surface-active);
   color: var(--text-primary);
 }
 
@@ -130,18 +130,18 @@
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
-  background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+  background: var(--gradient-accent);
   border: none;
   color: #FFFFFF;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .actionBtnPlay:hover {
   filter: brightness(1.1);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.45);
+  box-shadow: var(--shadow-accent);
 }
 
 .actionBtnPlaylist {
@@ -152,7 +152,7 @@
   border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   cursor: pointer;
@@ -160,8 +160,8 @@
 }
 
 .actionBtnPlaylist:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--surface-active);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -173,25 +173,25 @@
   height: 30px;
   border-radius: 6px;
   border: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .miniActionBtn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-active);
   color: var(--text-primary);
 }
 
 .miniActionBtnPlay {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.3);
-  color: #C4B5FD;
+  background: var(--accent-primary-soft);
+  border-color: var(--border-accent);
+  color: var(--color-violet);
 }
 
 .miniActionBtnPlay:hover {
-  background: #8B5CF6;
+  background: var(--color-violet);
   color: #FFFFFF;
 }
 
@@ -201,9 +201,9 @@
   gap: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: #34D399;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--color-success);
+  background: var(--status-success-soft);
+  border: 1px solid var(--border-success-soft);
   padding: 2px 8px;
   border-radius: 12px;
   animation: fadeIn 0.2s ease;
@@ -225,7 +225,7 @@
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   cursor: pointer;
@@ -233,15 +233,15 @@
 }
 
 .filterPill:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-active);
   color: var(--text-primary);
-  border-color: rgba(139, 92, 246, 0.4);
+  border-color: var(--border-accent);
 }
 
 .filterPillActive {
-  background: rgba(139, 92, 246, 0.18);
-  color: #C4B5FD;
-  border-color: var(--color-violet, #8B5CF6);
+  background: var(--accent-primary-soft);
+  color: var(--color-violet);
+  border-color: var(--border-accent);
 }
 
 .directActionCard {
@@ -250,10 +250,10 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(17, 19, 26, 0.95));
-  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
   box-sizing: border-box;
 }
 
@@ -324,8 +324,8 @@
 }
 
 .resultCard:hover {
-  background: var(--bg-elevated);
-  border-color: rgba(139, 92, 246, 0.35);
+  background: var(--surface-hover);
+  border-color: var(--border-accent);
   transform: translateX(2px);
 }
 
@@ -336,7 +336,7 @@
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
-  background: #08090D;
+  background: var(--bg-video-tile);
 }
 
 .thumbnailImg {
@@ -351,7 +351,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
   color: var(--text-muted);
 }
 
@@ -428,8 +428,8 @@
 
 .shortcutKbd {
   padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   font-size: 10px;
   font-family: inherit;

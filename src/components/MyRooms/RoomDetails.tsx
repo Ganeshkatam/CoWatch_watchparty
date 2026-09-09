@@ -38,6 +38,7 @@ import { serverPath, getRoomUrl, addAndSavePasscode, getSavedPasscodes } from ".
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 interface LifecycleEvent {
   id: string;
@@ -141,6 +142,12 @@ export const RoomDetails = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
   const [editModalOpened, setEditModalOpened] = useState(false);
+
+  useDocumentMetadata({
+    title: room?.roomTitle ? `${room.roomTitle} - Room Details` : "Room Details",
+    description: "Manage room preferences, passcode, lifecycle, and view activity statistics.",
+    noIndex: true,
+  }, [room?.roomTitle]);
 
   const fetchRoomDetails = async () => {
     setLoading(true);
@@ -344,7 +351,7 @@ export const RoomDetails = () => {
 
               <Tooltip label={copiedUrl ? "Copied to clipboard!" : "Click to copy invite link"} withArrow>
                 <div className={styles.heroUrlBadge} onClick={handleCopyUrl}>
-                  {copiedUrl ? <IconCheck size={14} color="#10B981" /> : <IconCopy size={14} />}
+                  {copiedUrl ? <IconCheck size={14} color="var(--color-success)" /> : <IconCopy size={14} />}
                   <span>/watch/{room.roomId.replace(/^\//, "")}</span>
                 </div>
               </Tooltip>
@@ -373,7 +380,7 @@ export const RoomDetails = () => {
                 size="md"
                 className={styles.glassBtn}
                 onClick={handleCopyUrl}
-                leftSection={copiedUrl ? <IconCheck size={16} color="#10B981" /> : <IconCopy size={16} />}
+                leftSection={copiedUrl ? <IconCheck size={16} color="var(--color-success)" /> : <IconCopy size={16} />}
               >
                 {copiedUrl ? "Copied!" : "Copy Link"}
               </Button>
@@ -385,8 +392,8 @@ export const RoomDetails = () => {
       {/* QUICK STATS ROW */}
       <div className={styles.statsRow}>
         <div className={styles.statCard}>
-          <div className={styles.statIconWrap} style={{ backgroundColor: "rgba(16, 185, 129, 0.12)" }}>
-            <IconActivity size={22} color="#10B981" />
+          <div className={styles.statIconWrap} style={{ backgroundColor: "var(--status-success-soft)" }}>
+            <IconActivity size={22} color="var(--color-success)" />
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>Room Status</span>
@@ -396,8 +403,8 @@ export const RoomDetails = () => {
         </div>
 
         <div className={styles.statCard}>
-          <div className={styles.statIconWrap} style={{ backgroundColor: "rgba(139, 92, 246, 0.12)" }}>
-            <IconUsers size={22} color="#8B5CF6" />
+          <div className={styles.statIconWrap} style={{ backgroundColor: "var(--accent-primary-soft)" }}>
+            <IconUsers size={22} color="var(--color-violet)" />
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>Viewers</span>
@@ -412,10 +419,10 @@ export const RoomDetails = () => {
           <div
             className={styles.statIconWrap}
             style={{
-              backgroundColor: room.isPermanent ? "rgba(20, 184, 166, 0.12)" : "rgba(245, 158, 11, 0.12)",
+              backgroundColor: room.isPermanent ? "var(--status-success-soft)" : "var(--status-warning-soft)",
             }}
           >
-            {room.isPermanent ? <IconInfinity size={22} color="#14B8A6" /> : <IconClock size={22} color="#F59E0B" />}
+            {room.isPermanent ? <IconInfinity size={22} color="var(--color-teal)" /> : <IconClock size={22} color="var(--color-warning)" />}
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>Room Expiry</span>
@@ -429,8 +436,8 @@ export const RoomDetails = () => {
         </div>
 
         <div className={styles.statCard}>
-          <div className={styles.statIconWrap} style={{ backgroundColor: "rgba(236, 72, 153, 0.12)" }}>
-            <IconMessage size={22} color="#EC4899" />
+          <div className={styles.statIconWrap} style={{ backgroundColor: "var(--surface-hover)" }}>
+            <IconMessage size={22} color="var(--color-pink)" />
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>Chat</span>

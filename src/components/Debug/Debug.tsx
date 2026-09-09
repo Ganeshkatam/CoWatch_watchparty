@@ -158,7 +158,7 @@ const Debug = () => {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey={key} stroke="#8884d8" />
+              <Line type="monotone" dataKey={key} stroke="var(--color-violet)" />
             </LineChart>
           );
         })}

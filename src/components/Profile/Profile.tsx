@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { openFileSelector } from "../../utils/utils";
 import { useAppearance } from "../../theme/ThemeProvider";
+import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
 import styles from "./Profile.module.css";
 
 const AppearanceSelector = () => {
@@ -51,9 +52,19 @@ export class Profile extends React.Component<{}> {
     has_loaded_profile: false,
     isEditingName: false,
   };
+  private cleanupMetadata?: () => void;
 
   componentDidMount() {
+    this.cleanupMetadata = setDocumentMetadata({
+      title: "Profile & Preferences",
+      description: "Manage your CoWatch profile, appearance, and audio/video preferences.",
+      noIndex: true,
+    });
     this.syncProfile();
+  }
+
+  componentWillUnmount() {
+    this.cleanupMetadata?.();
   }
 
   componentDidUpdate() {

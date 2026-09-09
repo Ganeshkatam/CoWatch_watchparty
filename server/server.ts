@@ -394,6 +394,15 @@ app.post("/createRoom", async (req, res) => {
     return;
   }
 
+  const rawPasscode = req.body?.passcode;
+  if (typeof rawPasscode !== "string" || rawPasscode.length < 8) {
+    res.status(400).json({
+      error: "Passcode is required and must be at least 8 characters long.",
+    });
+    return;
+  }
+
+
   const genName = () => makeRoomName(config.SHARD);
   let name = genName();
   console.log("createRoom: ", name, "by user:", decoded.email);

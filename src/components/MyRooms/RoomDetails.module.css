@@ -123,10 +123,10 @@
   gap: 8px;
   padding: 6px 14px;
   border-radius: 100px;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-subtle);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -141,31 +141,31 @@
 }
 
 .pulseDot.active {
-  background-color: #10B981;
-  box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+  background-color: var(--color-success);
+  box-shadow: 0 0 0 var(--border-success-soft);
   animation: pulseAnimation 2s infinite;
 }
 
 .pulseDot.inactive {
-  background-color: #F59E0B;
+  background-color: var(--color-warning);
 }
 
 .pulseDot.expiring {
-  background-color: #F97316;
+  background-color: var(--color-warning);
   animation: pulseAnimation 1.5s infinite;
 }
 
 .pulseDot.scheduled {
-  background-color: #3B82F6;
+  background-color: var(--color-info);
 }
 
 .pulseDot.ended {
-  background-color: #9CA3AF;
+  background-color: var(--text-muted);
 }
 
 @keyframes pulseAnimation {
   0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    box-shadow: 0 0 0 0 var(--border-success-soft);
   }
   70% {
     box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
@@ -218,10 +218,10 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-hover);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
@@ -233,9 +233,9 @@
 }
 
 .heroUrlBadge:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--surface-active);
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: var(--border-strong);
 }
 
 .heroActions {
@@ -246,32 +246,32 @@
 }
 
 .primaryOpenBtn {
-  background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%) !important;
+  background: var(--gradient-accent) !important;
   color: #ffffff !important;
   border: 0 !important;
   font-weight: 700 !important;
-  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 4px 18px var(--border-accent) !important;
   transition: all 0.2s ease !important;
 }
 
 .primaryOpenBtn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(139, 92, 246, 0.65) !important;
+  box-shadow: var(--shadow-accent) !important;
 }
 
 .glassBtn {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: var(--surface-hover) !important;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border: 1px solid var(--border-subtle) !important;
   color: #ffffff !important;
   font-weight: 600 !important;
   transition: all 0.2s ease !important;
 }
 
 .glassBtn:hover {
-  background: rgba(255, 255, 255, 0.22) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: var(--surface-active) !important;
+  border-color: var(--border-strong) !important;
   transform: translateY(-1px);
 }
 
@@ -315,8 +315,8 @@
 
 .statCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.1);
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-md);
 }
 
 .statIconWrap {
@@ -394,8 +394,8 @@
 }
 
 .card:hover {
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 10px 28px -4px rgba(15, 23, 42, 0.1), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-md);
 }
 
 .cardHeader {
@@ -427,16 +427,10 @@
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.22);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--border-accent);
   color: var(--color-violet);
   flex-shrink: 0;
-}
-
-:global([data-color-scheme="light"]) .cardTitleIconWrap {
-  background: rgba(112, 72, 232, 0.08);
-  border-color: rgba(112, 72, 232, 0.18);
-  color: var(--color-violet);
 }
 
 .cardHeaderAction {
@@ -459,7 +453,7 @@
 }
 
 .tile {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 16px 18px;
@@ -477,16 +471,12 @@
 
 .tile:hover {
   background: var(--surface-hover);
-  border-color: rgba(139, 92, 246, 0.35);
+  border-color: var(--border-accent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
 }
 
-:global([data-color-scheme="light"]) .tile:hover {
-  background: #ffffff;
-  border-color: rgba(112, 72, 232, 0.35);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.07);
-}
+
 
 .emptyStateContainer {
   display: flex;
@@ -504,14 +494,9 @@
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
   margin-bottom: 4px;
-}
-
-:global([data-color-scheme="light"]) .emptyStateIconWrap {
-  background: rgba(112, 72, 232, 0.08);
-  border-color: rgba(112, 72, 232, 0.16);
 }
 
 .tileLabel {
@@ -561,18 +546,18 @@
 }
 
 .lifecycleBanner.active {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.25);
+  background: var(--status-success-soft);
+  border-color: var(--border-success-soft);
 }
 
 .lifecycleBanner.inactive {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.25);
+  background: var(--status-warning-soft);
+  border-color: var(--color-warning);
 }
 
 .lifecycleBanner.permanent {
-  background: rgba(139, 92, 246, 0.08);
-  border-color: rgba(139, 92, 246, 0.25);
+  background: var(--accent-primary-soft);
+  border-color: var(--border-accent);
 }
 
 .countdownBig {
@@ -654,8 +639,8 @@
 
 /* Danger Zone */
 .dangerCard {
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  background: rgba(239, 68, 68, 0.03);
+  border: 1px solid var(--border-danger-soft);
+  background: var(--status-danger-soft);
   border-radius: 18px;
   padding: 22px 24px;
   display: flex;
@@ -667,15 +652,11 @@
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-:global([data-color-scheme="light"]) .dangerCard {
-  background: #fff8f8;
-  border-color: #fecaca;
-  box-shadow: 0 4px 16px -2px rgba(239, 68, 68, 0.06);
-}
+
 
 .dangerCard:hover {
-  border-color: rgba(239, 68, 68, 0.45);
-  box-shadow: 0 8px 24px -4px rgba(239, 68, 68, 0.1);
+  border-color: var(--color-danger);
+  box-shadow: 0 8px 24px -4px var(--status-danger-soft);
 }
 
 .dangerInfo {

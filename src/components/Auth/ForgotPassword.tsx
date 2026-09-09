@@ -13,11 +13,18 @@ import {
 import { IconLock } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import styles from "./AuthShell.module.css";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  useDocumentMetadata({
+    title: "Forgot Password",
+    description: "Reset your CoWatch account password.",
+    noIndex: true,
+  });
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();

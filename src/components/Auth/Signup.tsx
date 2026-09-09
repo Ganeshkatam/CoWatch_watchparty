@@ -14,6 +14,7 @@ import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export const Signup = () => {
   const [email, setEmail] = useState("");
@@ -25,6 +26,11 @@ export const Signup = () => {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  useDocumentMetadata({
+    title: "Sign Up",
+    description: "Create a free CoWatch account to host watch parties and connect with friends.",
+  });
   const history = useHistory();
   const location = useLocation();
 

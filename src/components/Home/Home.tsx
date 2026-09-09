@@ -15,9 +15,15 @@ import {
 import { NewRoomButton, SignInButton } from "../TopBar/TopBar";
 import styles from "./Home.module.css";
 import { MetadataContext } from "../../MetadataContext";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 export const Home = () => {
   const { user } = useContext(MetadataContext);
+  useDocumentMetadata({
+    title: "Watch Party & Synchronized Streaming",
+    description:
+      "Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser.",
+  });
   return (
     <div className={styles.container}>
       {/* Primary Hero Section */}

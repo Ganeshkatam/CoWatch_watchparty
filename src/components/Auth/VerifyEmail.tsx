@@ -3,6 +3,7 @@ import { useHistory, useLocation } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
 import { supabase } from "../../utils/supabaseClient";
 import { getSafeRedirectUrl } from "../../utils/redirect";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import {
   Container,
   Paper,
@@ -19,6 +20,12 @@ import { IconMail, IconCheck, IconAlertCircle } from "@tabler/icons-react";
 import styles from "./AuthShell.module.css";
 
 export const VerifyEmail = () => {
+  useDocumentMetadata({
+    title: "Verify Email | CoWatch",
+    description: "Verify your email address to access your CoWatch account.",
+    noIndex: true,
+  });
+
   const { user } = useContext(MetadataContext);
   const history = useHistory();
   const location = useLocation();

@@ -1,6 +1,6 @@
 .header {
   height: 56px;
-  background-color: rgba(8, 9, 13, 0.94);
+  background-color: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
@@ -55,7 +55,7 @@
 .divider {
   width: 1px;
   height: 18px;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--border-strong);
   flex-shrink: 0;
 }
 
@@ -79,8 +79,8 @@
 }
 
 .roomDropdownBtn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--surface-hover);
+  border-color: var(--border-subtle);
 }
 
 .nowPlayingBadge {
@@ -101,26 +101,26 @@
 }
 
 .nowPlayingActive {
-  background-color: rgba(139, 92, 246, 0.12);
-  border-color: rgba(139, 92, 246, 0.28);
-  color: #C4B5FD;
+  background-color: var(--accent-primary-soft);
+  border-color: var(--border-accent);
+  color: var(--accent-primary);
 }
 
 .nowPlayingActive:hover {
-  background-color: rgba(139, 92, 246, 0.2);
-  border-color: rgba(139, 92, 246, 0.45);
-  color: #DDD6FE;
+  background-color: var(--accent-primary-hover);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
 }
 
 .nowPlayingIdle {
-  background-color: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--bg-surface);
+  border-color: var(--border-subtle);
   color: var(--text-muted);
 }
 
 .nowPlayingIdle:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
   color: var(--text-secondary);
 }
 
@@ -128,8 +128,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #A78BFA;
-  box-shadow: 0 0 8px #8B5CF6;
+  background-color: var(--accent-primary);
+  box-shadow: var(--shadow-accent);
   animation: livePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   flex-shrink: 0;
 }
@@ -138,7 +138,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -154,7 +154,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 600;
-  color: #EDE9FE;
+  color: var(--text-primary);
 }
 
 .idleText {
@@ -163,10 +163,13 @@
 }
 
 @keyframes livePulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
+
   50% {
     opacity: 0.4;
     transform: scale(0.85);
@@ -195,8 +198,8 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: var(--radius-sm);
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
@@ -207,14 +210,14 @@
 }
 
 .actionBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
 .actionBtnActive {
-  background-color: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.35);
+  background-color: var(--accent-primary-soft);
+  border-color: var(--border-accent);
   color: var(--text-primary);
 }
 
@@ -226,16 +229,16 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .iconOnlyBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -245,9 +248,9 @@
   gap: 5px;
   padding: 6px 12px;
   border-radius: var(--radius-sm);
-  background-color: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  color: #FCA5A5;
+  background-color: var(--status-danger-soft);
+  border: 1px solid var(--border-danger-soft);
+  color: var(--color-danger);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -257,8 +260,8 @@
 }
 
 .exitBtn:hover {
-  background-color: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.35);
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
   color: #FFFFFF;
 }
 

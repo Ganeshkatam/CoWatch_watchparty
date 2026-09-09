@@ -64,7 +64,7 @@ export const QuickAdd: React.FC<QuickAddProps> = ({
         title={
           <div className={styles.modalHeader}>
             <div className={styles.modalTitleRow}>
-              <IconSparkles size={18} color="#A78BFA" />
+              <IconSparkles size={18} color="var(--color-violet)" />
               <span>Add Media to Room</span>
             </div>
             <span className={styles.modalBadge}>

@@ -155,27 +155,27 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
       return {
         label: "YouTube Video",
         color: "red",
-        icon: <IconBrandYoutubeFilled size={14} color="#EF4444" />,
+        icon: <IconBrandYoutubeFilled size={14} color="var(--media-youtube)" />,
       };
     }
     if (isMagnet(trimmedInput)) {
       return {
         label: "WebTorrent Magnet",
         color: "violet",
-        icon: <IconMagnetFilled size={14} color="#A78BFA" />,
+        icon: <IconMagnetFilled size={14} color="var(--media-magnet)" />,
       };
     }
     if (trimmedInput.toLowerCase().includes(".m3u8")) {
       return {
         label: "HLS Live Stream",
         color: "cyan",
-        icon: <IconVideo size={14} color="#22D3EE" />,
+        icon: <IconVideo size={14} color="var(--color-cyan)" />,
       };
     }
     return {
       label: "Direct Video Stream",
       color: "blue",
-      icon: <IconVideo size={14} color="#60A5FA" />,
+      icon: <IconVideo size={14} color="var(--media-video)" />,
     };
   }, [isDirect, trimmedInput]);
 
@@ -218,7 +218,7 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
           className={`${classes.filterPill} ${activeFilter === "youtube" ? classes.filterPillActive : ""}`}
           onClick={() => setActiveFilter("youtube")}
         >
-          <IconBrandYoutubeFilled size={14} color="#EF4444" />
+          <IconBrandYoutubeFilled size={14} color="var(--media-youtube)" />
           YouTube
         </button>
         <button
@@ -226,7 +226,7 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
           className={`${classes.filterPill} ${activeFilter === "file" ? classes.filterPillActive : ""}`}
           onClick={() => setActiveFilter("file")}
         >
-          <IconVideo size={14} color="#60A5FA" />
+          <IconVideo size={14} color="var(--media-video)" />
           Direct Video (MP4 / HLS)
         </button>
         <button
@@ -234,7 +234,7 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
           className={`${classes.filterPill} ${activeFilter === "magnet" ? classes.filterPillActive : ""}`}
           onClick={() => setActiveFilter("magnet")}
         >
-          <IconMagnetFilled size={14} color="#A78BFA" />
+          <IconMagnetFilled size={14} color="var(--media-magnet)" />
           Torrent Magnet
         </button>
       </div>
@@ -350,7 +350,7 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
             : "Featured Streams & Test Files"}
         </span>
         {trimmedInput && !isDirect && loading && (
-          <span style={{ fontSize: "11px", color: "#A78BFA" }}>
+          <span style={{ fontSize: "11px", color: "var(--color-violet)" }}>
             Searching...
           </span>
         )}
@@ -396,11 +396,11 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
                 ) : (
                   <div className={classes.thumbnailPlaceholder}>
                     {item.type === "youtube" ? (
-                      <IconBrandYoutubeFilled size={22} color="#EF4444" />
+                      <IconBrandYoutubeFilled size={22} color="var(--media-youtube)" />
                     ) : item.type === "magnet" ? (
-                      <IconMagnetFilled size={22} color="#A78BFA" />
+                      <IconMagnetFilled size={22} color="var(--media-magnet)" />
                     ) : (
-                      <IconVideo size={22} color="#60A5FA" />
+                      <IconVideo size={22} color="var(--media-video)" />
                     )}
                   </div>
                 )}
@@ -418,11 +418,11 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
                 </div>
                 <div className={classes.resultChannel}>
                   {item.type === "youtube" ? (
-                    <IconBrandYoutubeFilled size={12} color="#EF4444" />
+                    <IconBrandYoutubeFilled size={12} color="var(--media-youtube)" />
                   ) : item.type === "magnet" ? (
-                    <IconMagnetFilled size={12} color="#A78BFA" />
+                    <IconMagnetFilled size={12} color="var(--media-magnet)" />
                   ) : (
-                    <IconVideo size={12} color="#60A5FA" />
+                    <IconVideo size={12} color="var(--media-video)" />
                   )}
                   <span>{item.channel || item.type.toUpperCase()}</span>
                 </div>

@@ -191,4 +191,22 @@ export class HTML implements Player {
     const leftVideo = this.getVideoEl();
     leftVideo.loop = loop;
   };
+
+  isPictureInPictureSupported = (): boolean => {
+    return document.pictureInPictureEnabled && !(this.getVideoEl() as HTMLVideoElement)?.disablePictureInPicture;
+  };
+
+  togglePictureInPicture = async (): Promise<void> => {
+    const videoEl = this.getVideoEl() as HTMLVideoElement;
+    if (!videoEl || !this.isPictureInPictureSupported()) return;
+    try {
+      if (document.pictureInPictureElement === videoEl) {
+        await document.exitPictureInPicture();
+      } else {
+        await videoEl.requestPictureInPicture();
+      }
+    } catch (e) {
+      console.warn("Error toggling Picture-in-Picture:", e);
+    }
+  };
 }

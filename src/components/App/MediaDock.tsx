@@ -130,7 +130,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           <Menu.Label>Add to watch party</Menu.Label>
 
           <Menu.Item
-            leftSection={<IconScreenShare size={18} color="#60A5FA" />}
+            leftSection={<IconScreenShare size={18} color="var(--media-video)" />}
             onClick={onOpenScreenShare}
           >
             <div className={styles.menuItemWithDesc}>
@@ -140,7 +140,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           </Menu.Item>
 
           <Menu.Item
-            leftSection={<IconBrowser size={18} color="#34D399" />}
+            leftSection={<IconBrowser size={18} color="var(--color-success)" />}
             onClick={onOpenVBrowser}
           >
             <div className={styles.menuItemWithDesc}>
@@ -150,7 +150,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           </Menu.Item>
 
           <Menu.Item
-            leftSection={<IconFile size={18} color="#A78BFA" />}
+            leftSection={<IconFile size={18} color="var(--media-magnet)" />}
             onClick={onOpenFileShare}
           >
             <div className={styles.menuItemWithDesc}>
@@ -160,7 +160,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           </Menu.Item>
 
           <Menu.Item
-            leftSection={<IconLink size={18} color="#F472B6" />}
+            leftSection={<IconLink size={18} color="var(--color-pink)" />}
             onClick={onOpenQuickAdd}
           >
             <div className={styles.menuItemWithDesc}>
