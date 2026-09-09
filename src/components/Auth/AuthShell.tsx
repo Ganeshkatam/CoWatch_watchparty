@@ -28,7 +28,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
 
   if (path.includes("signup")) {
     title = "Join the party.";
-    description = "Create a free account to unlock premium features and keep your rooms forever.";
+    description = "Create an account to host watch parties and keep your rooms forever.";
     features = (
       <div className={styles.brandFeatures}>
         <div className={styles.featureItem}>

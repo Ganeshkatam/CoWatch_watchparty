@@ -1,5 +1,7 @@
-import React, { useContext } from "react";
-import { Modal, Button, Table } from "@mantine/core";
+import React from "react";
+import { Modal, Button, Text, Stack, Card, Group, Badge } from "@mantine/core";
+import { IconScreenShare, IconServer } from "@tabler/icons-react";
+
 export const ScreenShareModal = ({
   closeModal,
   startScreenShare,
@@ -11,79 +13,56 @@ export const ScreenShareModal = ({
     <Modal
       opened={true}
       onClose={closeModal}
-      title="Share your screen"
+      title="Share Your Screen"
       centered
-      size="auto"
+      size="md"
     >
-      <div>You're about to share your screen.</div>
-      <ul>
-        <li>This feature is only supported on Chrome and Edge on desktop.</li>
-        <li>
-          Audio sharing only works if sharing your entire screen or a browser
-          tab, not an application.
-        </li>
-      </ul>
-      <Table striped>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th />
-            <Table.Th>CoWatch Free</Table.Th>
-            <Table.Th>CoWatch Plus</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
+      <Stack gap="md">
+        <Text size="sm" c="dimmed">
+          Share your screen or a browser tab with everyone in the room. Audio sharing is supported when sharing a browser tab or entire screen.
+        </Text>
 
-        <Table.Tbody>
-          <Table.Tr>
-            <Table.Td>Method</Table.Td>
-            <Table.Td>
-              Stream your video to each viewer from your device.
-            </Table.Td>
-            <Table.Td>
-              Stream your video to our relay server, which sends it to each
-              viewer, reducing bandwidth usage.
-            </Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Latency</Table.Td>
-            <Table.Td>{`<1s`}</Table.Td>
-            <Table.Td>{`<1s`}</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Recommended Max Viewers</Table.Td>
-            <Table.Td>5</Table.Td>
-            <Table.Td>20</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Recommended Upload Speed</Table.Td>
-            <Table.Td>5 Mbps per viewer</Table.Td>
-            <Table.Td>5 Mbps</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td></Table.Td>
-            <Table.Td>
-              <Button
-                onClick={() => {
-                  startScreenShare(false);
-                  closeModal();
-                }}
-              >
-                Start Screenshare
-              </Button>
-            </Table.Td>
-            <Table.Td>
-              <Button
-                color="orange"
-                onClick={() => {
-                  startScreenShare(true);
-                  closeModal();
-                }}
-              >
-                Start Screenshare w/Relay
-              </Button>
-            </Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
+        <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Group gap="xs">
+                <IconServer size={18} color="var(--accent-primary)" />
+                <Text size="sm" fw={600}>Streaming Mode</Text>
+              </Group>
+              <Badge color="violet" variant="light">Recommended</Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Relay server optimizes upload bandwidth and delivers smooth, low-latency streaming to all viewers.
+            </Text>
+          </Stack>
+        </Card>
+
+        <Group justify="flex-end" gap="xs" mt="sm">
+          <Button variant="default" onClick={closeModal}>
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            color="gray"
+            onClick={() => {
+              startScreenShare(false);
+              closeModal();
+            }}
+          >
+            Direct (P2P)
+          </Button>
+          <Button
+            color="violet"
+            leftSection={<IconScreenShare size={16} />}
+            onClick={() => {
+              startScreenShare(true);
+              closeModal();
+            }}
+          >
+            Start Screenshare
+          </Button>
+        </Group>
+      </Stack>
     </Modal>
   );
 };

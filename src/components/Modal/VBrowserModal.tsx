@@ -1,10 +1,21 @@
 import React from "react";
-import { Modal, Button, Table, Alert, Select, Avatar } from "@mantine/core";
+import {
+  Modal,
+  Button,
+  Alert,
+  Select,
+  Avatar,
+  Group,
+  Text,
+  Stack,
+  Card,
+  Badge,
+} from "@mantine/core";
 import { SignInButton } from "../TopBar/TopBar";
 import { serverPath } from "../../utils/utils";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
-import { IconHourglass } from "@tabler/icons-react";
+import { IconHourglass, IconWorld, IconDeviceDesktop } from "@tabler/icons-react";
 
 export class VBrowserModal extends React.Component<{
   closeModal: () => void;
@@ -18,10 +29,15 @@ export class VBrowserModal extends React.Component<{
   };
 
   async componentDidMount() {
-    const resp = await fetch(serverPath + "/metadata");
-    const metadata = await resp.json();
-    this.setState({ isFreePoolFull: metadata.isFreePoolFull });
+    try {
+      const resp = await fetch(serverPath + "/metadata");
+      const metadata = await resp.json();
+      this.setState({ isFreePoolFull: metadata.isFreePoolFull });
+    } catch (e) {
+      console.warn("Failed to fetch metadata", e);
+    }
   }
+
   render() {
     const regionOptions = [
       {
@@ -45,125 +61,110 @@ export class VBrowserModal extends React.Component<{
         image: { avatar: false, src: "/flag-european-union.png" },
       },
     ];
+
     const { closeModal, startVBrowser } = this.props;
-    const LaunchButton = ({ large }: { large: boolean }) => {
-      return (
-        <Button
-          color={large ? "orange" : undefined}
-          onClick={async () => {
-            startVBrowser({
-              size: large ? "large" : "",
-              region: this.state.region === "any" ? "" : this.state.region,
-            });
-            closeModal();
-          }}
-        >
-          {large ? "Launch VBrowser+" : "Continue with Free"}
-        </Button>
-      );
-    };
+
     const vmPoolFullMessage = (
       <Alert
-        style={{ maxWidth: "300px" }}
         color="red"
         icon={<IconHourglass />}
-        title="No Free VBrowsers Available"
+        title="Virtual Browsers Currently Busy"
       >
-        <div>
-          <div>All of the free VBrowsers are currently being used.</div>
-          <div>
-            Please consider subscribing for anytime access to faster VBrowsers,
-            or try again later.
-          </div>
-        </div>
+        All virtual browsers are currently being used. Please try again in a few moments.
       </Alert>
     );
 
-    const canLaunch = this.context.user || !config.VITE_SUPABASE_URL;
+    const canLaunch = Boolean(this.context.user || !config.VITE_SUPABASE_URL);
+
     return (
       <Modal
         opened
         onClose={closeModal}
-        title="Launch a VBrowser"
+        title="Launch Virtual Browser"
         centered
-        size="auto"
+        size="md"
       >
-        <div>
-          You're about to launch a virtual browser to share in this room.
-        </div>
-        <Table striped>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th />
-              <Table.Th>CoWatch Free</Table.Th>
-              <Table.Th>CoWatch Plus</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Launch a shared cloud browser in this room to stream websites, watch video platforms, and browse the web together.
+          </Text>
 
-          <Table.Tbody>
-            <Table.Tr>
-              <Table.Td>VBrowser Max Resolution</Table.Td>
-              <Table.Td>720p</Table.Td>
-              <Table.Td>1080p</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>VBrowser CPU/RAM</Table.Td>
-              <Table.Td>Standard</Table.Td>
-              <Table.Td>Extra</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>VBrowser Session Length</Table.Td>
-              <Table.Td>3 hours</Table.Td>
-              <Table.Td>24 hours</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>Recommended Max Viewers</Table.Td>
-              <Table.Td>15</Table.Td>
-              <Table.Td>30</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>Region</Table.Td>
-              <Table.Td>Where available </Table.Td>
-              <Table.Td>
-                <Select
-                  onChange={(value, option) => this.setState({ region: value })}
-                  value={this.state.region}
-                  data={regionOptions}
-                  renderOption={({ option }: { option: any }) => (
-                    <div
-                      key={option.value}
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Avatar radius="xs" src={option.image.src} />
-                      {option.label}
-                    </div>
-                  )}
-                />
-              </Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td></Table.Td>
-              <Table.Td>
-                {canLaunch ? (
-                  this.state.isFreePoolFull ? (
-                    vmPoolFullMessage
-                  ) : (
-                    <LaunchButton large={false} />
-                  )
-                ) : (
-                  <SignInButton />
-                )}
-              </Table.Td>
-              <Table.Td>
-                <LaunchButton large />
-              </Table.Td>
-            </Table.Tr>
-          </Table.Tbody>
-        </Table>
+          <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <IconDeviceDesktop size={18} color="var(--accent-primary)" />
+                  <Text size="sm" fw={600}>Browser Specifications</Text>
+                </Group>
+                <Badge color="violet" variant="light">Cloud VBrowser</Badge>
+              </Group>
+
+              <Group justify="space-between" mt="xs">
+                <Text size="xs" c="dimmed">Resolution</Text>
+                <Text size="xs" fw={500}>Full HD (1080p)</Text>
+              </Group>
+
+              <Group justify="space-between">
+                <Text size="xs" c="dimmed">Max Session Duration</Text>
+                <Text size="xs" fw={500}>Up to 24 hours</Text>
+              </Group>
+
+              <Group justify="space-between">
+                <Text size="xs" c="dimmed">Supported Viewers</Text>
+                <Text size="xs" fw={500}>Up to 30 people</Text>
+              </Group>
+            </Stack>
+          </Card>
+
+          <Select
+            label="Server Region"
+            description="Select the closest server location for optimal latency"
+            leftSection={<IconWorld size={16} />}
+            onChange={(value) => this.setState({ region: value || "any" })}
+            value={this.state.region}
+            data={regionOptions}
+            renderOption={({ option }: { option: any }) => (
+              <div
+                key={option.value}
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center",
+                }}
+              >
+                {option.image?.src ? (
+                  <Avatar radius="xs" size="sm" src={option.image.src} />
+                ) : null}
+                <span>{option.label}</span>
+              </div>
+            )}
+          />
+
+          {this.state.isFreePoolFull && vmPoolFullMessage}
+
+          <Group justify="flex-end" gap="xs" mt="sm">
+            <Button variant="default" onClick={closeModal}>
+              Cancel
+            </Button>
+            {canLaunch ? (
+              <Button
+                color="violet"
+                disabled={this.state.isFreePoolFull}
+                onClick={() => {
+                  startVBrowser({
+                    size: "large",
+                    region: this.state.region === "any" ? "" : this.state.region,
+                  });
+                  closeModal();
+                }}
+              >
+                Launch VBrowser
+              </Button>
+            ) : (
+              <SignInButton />
+            )}
+          </Group>
+        </Stack>
       </Modal>
     );
   }

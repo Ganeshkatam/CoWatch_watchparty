@@ -3,16 +3,16 @@ import { Player } from "./Player";
 import { getYoutubeVideoID } from "../../utils/utils";
 
 export class YouTube implements Player {
-  watchPartyYTPlayer: YT.Player | null;
-  constructor(watchPartyYTPlayer: YT.Player | null) {
-    this.watchPartyYTPlayer = watchPartyYTPlayer;
+  coWatchYTPlayer: YT.Player | null;
+  constructor(coWatchYTPlayer: YT.Player | null) {
+    this.coWatchYTPlayer = coWatchYTPlayer;
   }
-  clearDashState = () => {};
-  setDashState = (_player: MediaPlayerClass) => {};
+  clearDashState = () => { };
+  setDashState = (_player: MediaPlayerClass) => { };
 
   getCurrentTime = () => {
     try {
-      return this.watchPartyYTPlayer?.getCurrentTime() ?? 0;
+      return this.coWatchYTPlayer?.getCurrentTime() ?? 0;
     } catch (e) {
       return 0;
     }
@@ -20,7 +20,7 @@ export class YouTube implements Player {
 
   getDuration = () => {
     try {
-      return this.watchPartyYTPlayer?.getDuration() ?? 0;
+      return this.coWatchYTPlayer?.getDuration() ?? 0;
     } catch (e) {
       return 0;
     }
@@ -28,7 +28,7 @@ export class YouTube implements Player {
 
   isMuted = () => {
     try {
-      return this.watchPartyYTPlayer?.isMuted() ?? false;
+      return this.coWatchYTPlayer?.isMuted() ?? false;
     } catch (e) {
       return false;
     }
@@ -40,7 +40,7 @@ export class YouTube implements Player {
 
   getPlaybackRate = (): number => {
     try {
-      return this.watchPartyYTPlayer?.getPlaybackRate() ?? 1;
+      return this.coWatchYTPlayer?.getPlaybackRate() ?? 1;
     } catch (e) {
       return 1;
     }
@@ -48,7 +48,7 @@ export class YouTube implements Player {
 
   setPlaybackRate = (rate: number) => {
     try {
-      this.watchPartyYTPlayer?.setPlaybackRate(rate);
+      this.coWatchYTPlayer?.setPlaybackRate(rate);
     } catch (e) {
       console.warn("Error setting playback rate:", e);
     }
@@ -60,12 +60,12 @@ export class YouTube implements Player {
       console.warn("Invalid YouTube video URL or ID:", src);
       return;
     }
-    if (!this.watchPartyYTPlayer) {
+    if (!this.coWatchYTPlayer) {
       console.warn("YouTube player not ready yet when setting src:", src);
       return;
     }
     try {
-      this.watchPartyYTPlayer.cueVideoById({
+      this.coWatchYTPlayer.cueVideoById({
         videoId,
         startSeconds: time,
       });
@@ -75,18 +75,18 @@ export class YouTube implements Player {
   };
 
   playVideo = async () => {
-    if (!this.watchPartyYTPlayer) return;
+    if (!this.coWatchYTPlayer) return;
     try {
-      this.watchPartyYTPlayer.playVideo();
+      this.coWatchYTPlayer.playVideo();
       // Ensure playback starts if player was in CUED or UNSTARTED state
       setTimeout(() => {
         try {
-          const state = this.watchPartyYTPlayer?.getPlayerState();
+          const state = this.coWatchYTPlayer?.getPlayerState();
           if (
             state === window.YT?.PlayerState?.CUED ||
             state === window.YT?.PlayerState?.UNSTARTED
           ) {
-            this.watchPartyYTPlayer?.playVideo();
+            this.coWatchYTPlayer?.playVideo();
           }
         } catch (err) {
           // ignore
@@ -99,7 +99,7 @@ export class YouTube implements Player {
 
   pauseVideo = () => {
     try {
-      this.watchPartyYTPlayer?.pauseVideo();
+      this.coWatchYTPlayer?.pauseVideo();
     } catch (e) {
       console.warn("Error pausing YouTube video:", e);
     }
@@ -107,7 +107,7 @@ export class YouTube implements Player {
 
   seekVideo = (time: number) => {
     try {
-      this.watchPartyYTPlayer?.seekTo(time, true);
+      this.coWatchYTPlayer?.seekTo(time, true);
     } catch (e) {
       console.warn("Error seeking YouTube video:", e);
     }
@@ -115,7 +115,7 @@ export class YouTube implements Player {
 
   shouldPlay = () => {
     try {
-      const state = this.watchPartyYTPlayer?.getPlayerState();
+      const state = this.coWatchYTPlayer?.getPlayerState();
       return (
         state === window.YT?.PlayerState?.PAUSED ||
         state === window.YT?.PlayerState?.CUED ||
@@ -130,9 +130,9 @@ export class YouTube implements Player {
   setMute = (muted: boolean) => {
     try {
       if (muted) {
-        this.watchPartyYTPlayer?.mute();
+        this.coWatchYTPlayer?.mute();
       } else {
-        this.watchPartyYTPlayer?.unMute();
+        this.coWatchYTPlayer?.unMute();
       }
     } catch (e) {
       console.warn("Error toggling mute on YouTube video:", e);
@@ -141,7 +141,7 @@ export class YouTube implements Player {
 
   setVolume = (volume: number) => {
     try {
-      this.watchPartyYTPlayer?.setVolume(volume * 100);
+      this.coWatchYTPlayer?.setVolume(volume * 100);
     } catch (e) {
       console.warn("Error setting volume on YouTube video:", e);
     }
@@ -149,7 +149,7 @@ export class YouTube implements Player {
 
   getVolume = (): number => {
     try {
-      const volume = this.watchPartyYTPlayer?.getVolume();
+      const volume = this.coWatchYTPlayer?.getVolume();
       return (volume ?? 0) / 100;
     } catch (e) {
       return 1;
@@ -160,15 +160,15 @@ export class YouTube implements Player {
     try {
       if (mode === "showing") {
         //@ts-expect-error
-        this.watchPartyYTPlayer?.setOption("captions", "reload", true);
+        this.coWatchYTPlayer?.setOption("captions", "reload", true);
         //@ts-expect-error
-        this.watchPartyYTPlayer?.setOption("captions", "track", {
+        this.coWatchYTPlayer?.setOption("captions", "track", {
           languageCode: lang ?? "en",
         });
       }
       if (mode === "hidden") {
         //@ts-expect-error
-        this.watchPartyYTPlayer?.setOption("captions", "track", {});
+        this.coWatchYTPlayer?.setOption("captions", "track", {});
       }
     } catch (e) {
       console.warn("Error setting YouTube subtitles:", e);
@@ -181,14 +181,14 @@ export class YouTube implements Player {
 
   isReady = () => {
     return Boolean(
-      this.watchPartyYTPlayer &&
-      typeof this.watchPartyYTPlayer.cueVideoById === "function"
+      this.coWatchYTPlayer &&
+      typeof this.coWatchYTPlayer.cueVideoById === "function"
     );
   };
 
   stopVideo = () => {
     try {
-      this.watchPartyYTPlayer?.stopVideo();
+      this.coWatchYTPlayer?.stopVideo();
     } catch (e) {
       // ignore
     }
@@ -212,7 +212,7 @@ export class YouTube implements Player {
         {
           start: 0,
           end:
-            (this.watchPartyYTPlayer?.getVideoLoadedFraction() ?? 0) *
+            (this.coWatchYTPlayer?.getVideoLoadedFraction() ?? 0) *
             this.getDuration(),
         },
       ];
@@ -223,7 +223,7 @@ export class YouTube implements Player {
 
   setLoop = (loop: boolean): void => {
     try {
-      this.watchPartyYTPlayer?.setLoop(loop);
+      this.coWatchYTPlayer?.setLoop(loop);
     } catch (e) {
       console.warn("Error setting loop:", e);
     }

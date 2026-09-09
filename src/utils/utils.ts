@@ -217,11 +217,6 @@ export const iceServers = () => [
     username: "username",
     credential: "password",
   },
-  // {
-  //   urls: 'turn:numb.viagenie.ca',
-  //   credential: 'cowatch',
-  //   username: 'howardzchung@gmail.com',
-  // },
 ];
 
 export const serverCandidates: string[] = (() => {
@@ -239,10 +234,10 @@ export const serverCandidates: string[] = (() => {
       .map((s: string) => s.trim().replace(/\/+$/, ""))
       .filter(Boolean);
   }
-  return [
-    "https://cowatchwatchparty-production.up.railway.app",
-    "https://cowatch-watchparty.onrender.com",
-  ];
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return [window.location.origin];
+  }
+  return [];
 })();
 
 const getInitialServerPath = (): string => {
@@ -254,7 +249,12 @@ const getInitialServerPath = (): string => {
       }
     } catch (_) {}
   }
-  return serverCandidates[0] || "http://localhost:8080";
+  return (
+    serverCandidates[0] ||
+    (typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "http://localhost:8080")
+  );
 };
 
 export let serverPath: string = getInitialServerPath();

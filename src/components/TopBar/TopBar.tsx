@@ -4,7 +4,6 @@ import { serverPath } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import { Avatar, Button, Menu, Text, Tooltip } from "@mantine/core";
 import type { User } from "@supabase/supabase-js";
-import Announce from "../Announce/Announce";
 import appStyles from "../App/App.module.css";
 import styles from "./TopBar.module.css";
 import { MetadataContext } from "../../MetadataContext";
@@ -367,7 +366,6 @@ export const TopBar = (props: {
           )}
         </div>
       ) : null}
-      <Announce />
       <div className={styles.actionsGroup}>
         {!props.hideMyRooms && context.user && <ListRoomsButton />}
         {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}

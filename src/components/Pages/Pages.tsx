@@ -63,8 +63,8 @@ export const Privacy = () => {
 
         <Title order={2} size="h4" mb="sm">Personal Information</Title>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>You are not required to register to use the service, but you have the option to sign in with an email or authentication provider, which will be used to display your name and picture in the rooms you join.</List.Item>
-          <List.Item>If you provide this information, we may use it to contact you regarding your use of the service, or to link your account to a subscription.</List.Item>
+          <List.Item>An account is required to use the service. You can sign in or register with an email or authentication provider, which will be used to display your name and picture in the rooms you join.</List.Item>
+          <List.Item>If you provide this information, we may use it to contact you regarding your use of the service.</List.Item>
           <List.Item>We do not sell personal information to third parties.</List.Item>
           <List.Item>
             You have the right to request deletion of your user data, in accordance with various laws governing data protection. Please contact <Anchor href="mailto:support@cowatch.me" c="var(--color-violet)">support@cowatch.me</Anchor> to request user data deletion.

@@ -126,7 +126,7 @@ export const VerifyEmail = () => {
           <Text c="dimmed" ta="center">
             You need to confirm your email before you can log in. 
             We've sent a verification link to <strong>{user.email}</strong>. 
-            Please click the link to confirm your account and access WatchParty.
+            Please click the link to confirm your account and access CoWatch.
           </Text>
 
           {error && (

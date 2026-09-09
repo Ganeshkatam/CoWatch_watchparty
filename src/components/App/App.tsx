@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Alert, Loader, Menu, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
+import { Alert, Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -31,13 +31,10 @@ import {
 import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
 import { Chat, ChatComponent } from "../Chat/Chat";
-import { TopBar } from "../TopBar/TopBar";
 import { VBrowser } from "../VBrowser/VBrowser";
 import { VideoChat, VideoChatErrorBoundary } from "../VideoChat/VideoChat";
 import { getCurrentSettings } from "../Settings/LocalSettings";
 import { MultiStreamModal } from "../Modal/MultiStreamModal";
-import { ComboBox } from "../ComboBox/ComboBox";
-import { SearchComponent } from "../SearchComponent/SearchComponent";
 import { Controls } from "../Controls/Controls";
 import { VBrowserModal } from "../Modal/VBrowserModal";
 import { SettingsModal } from "../Settings/SettingsModal";
@@ -65,29 +62,21 @@ import {
   clearMediaSession,
   type MediaSessionActions,
 } from "../../utils/mediaSession";
-import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
-import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
+import { ActionIcon, Button } from "@mantine/core";
 import {
   IconAntennaBars5,
-  IconBrowser,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
-  IconFile,
   IconKeyboardFilled,
   IconLink,
-  IconList,
   IconMessage,
-  IconScreenShare,
-  IconSettings,
-  IconUser,
   IconUserScreen,
   IconUsersGroup,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
-import { InviteButton } from "../InviteButton/InviteButton";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -413,8 +402,8 @@ export class App extends React.Component<AppProps, AppState> {
       next:
         this.state.playlist.length > 0
           ? () => {
-              this.roomPlaylistPlay(0);
-            }
+            this.roomPlaylistPlay(0);
+          }
           : undefined,
     };
 
@@ -476,9 +465,9 @@ export class App extends React.Component<AppProps, AppState> {
       this.metadataCleanup = undefined;
     }
     clearMediaSession();
-    if (this.YouTubeInterface?.watchPartyYTPlayer) {
+    if (this.YouTubeInterface?.coWatchYTPlayer) {
       try {
-        this.YouTubeInterface.watchPartyYTPlayer.destroy();
+        this.YouTubeInterface.coWatchYTPlayer.destroy();
       } catch (e) {
         console.warn("Error destroying YouTube player on unmount:", e);
       }
@@ -650,512 +639,512 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
         }
       });
-    socket.on("disconnect", (reason) => {
-      if (reason === "io server disconnect") {
-        // the disconnection was initiated by the server, you need to reconnect manually
-        this.setState({ overlayMsg: "Disconnected from server." });
-      } else {
-        // else the socket will automatically try to reconnect
-        // Use the alert pill since it's less disruptive
-        this.setState({ warningMessage: "Reconnecting..." });
-      }
-    });
-    socket.on("errorMessage", (err: string) => {
-      this.setState({ errorMessage: err });
-      setTimeout(() => {
-        this.setState({ errorMessage: "" });
-      }, 3000);
-    });
-    socket.on("successMessage", (success: string) => {
-      this.setState({ successMessage: success });
-      setTimeout(() => {
-        this.setState({ successMessage: "" });
-      }, 3000);
-    });
-    socket.on("kicked", () => {
-      window.location.assign("/");
-    });
-    socket.on("REC:play", () => {
-      this.localPlay();
-    });
-    socket.on("REC:pause", () => {
-      this.localPause();
-    });
-    socket.on("REC:seek", (data: number) => {
-      this.localSeek(data);
-    });
-    socket.on("REC:playbackRate", (data: number) => {
-      this.setState({ roomPlaybackRate: data });
-      if (data > 0) {
-        this.Player().setPlaybackRate(data);
-      }
-    });
-    socket.on("REC:subtitle", (data: string) => {
-      this.setState({ roomSubtitle: data }, () => {
-        this.Player().loadSubtitles(data);
+      socket.on("disconnect", (reason) => {
+        if (reason === "io server disconnect") {
+          // the disconnection was initiated by the server, you need to reconnect manually
+          this.setState({ overlayMsg: "Disconnected from server." });
+        } else {
+          // else the socket will automatically try to reconnect
+          // Use the alert pill since it's less disruptive
+          this.setState({ warningMessage: "Reconnecting..." });
+        }
       });
-    });
-    socket.on("REC:loop", (data: boolean) => {
-      this.setState({ roomLoop: data });
-    });
-    socket.on("REC:changeController", (data: string) => {
-      this.setState({ controller: data });
-    });
-    socket.on("REC:host", async (data: HostState) => {
-      let currentMedia = data.video || "";
-      if (this.playingScreenShare() && !isScreenShare(currentMedia)) {
-        this.stopPublishingLocalStream();
-      }
-      if (this.playingFileShare() && !isFileShare(currentMedia)) {
-        this.stopPublishingLocalStream();
-      }
-      if (this.playingVBrowser() && !isVBrowser(currentMedia)) {
-        this.stopVBrowser();
-      }
-      if (this.playingScreenShare() && isScreenShare(currentMedia)) {
-        // Ignore, it's probably a reconnection
-        return;
-      }
-      if (this.playingFileShare() && isFileShare(currentMedia)) {
-        // Ignore, it's probably a reconnection
-        return;
-      }
-      if (
-        this.playingVBrowser() &&
-        this.getVBrowserHost() &&
-        isVBrowser(currentMedia)
-      ) {
-        // Ignore, it's probably a reconnection
-        return;
-      }
-      this.setState(
-        {
-          roomMedia: currentMedia,
-          roomPaused: data.paused,
-          roomSubtitle: data.subtitle,
-          roomLoop: data.loop,
-          roomPlaybackRate: data.playbackRate,
-          loading: Boolean(data.video),
-          nonPlayableMedia: false,
-          isVBrowserLarge: data.isVBrowserLarge,
-          vBrowserResolution: "1280x720@30",
-          vBrowserQuality: "1",
-          controller: data.controller,
-          isLiveStream: false,
-        },
-        async () => {
-          const leftVideo = this.HTMLInterface.getVideoEl();
+      socket.on("errorMessage", (err: string) => {
+        this.setState({ errorMessage: err });
+        setTimeout(() => {
+          this.setState({ errorMessage: "" });
+        }, 3000);
+      });
+      socket.on("successMessage", (success: string) => {
+        this.setState({ successMessage: success });
+        setTimeout(() => {
+          this.setState({ successMessage: "" });
+        }, 3000);
+      });
+      socket.on("kicked", () => {
+        window.location.assign("/");
+      });
+      socket.on("REC:play", () => {
+        this.localPlay();
+      });
+      socket.on("REC:pause", () => {
+        this.localPause();
+      });
+      socket.on("REC:seek", (data: number) => {
+        this.localSeek(data);
+      });
+      socket.on("REC:playbackRate", (data: number) => {
+        this.setState({ roomPlaybackRate: data });
+        if (data > 0) {
+          this.Player().setPlaybackRate(data);
+        }
+      });
+      socket.on("REC:subtitle", (data: string) => {
+        this.setState({ roomSubtitle: data }, () => {
+          this.Player().loadSubtitles(data);
+        });
+      });
+      socket.on("REC:loop", (data: boolean) => {
+        this.setState({ roomLoop: data });
+      });
+      socket.on("REC:changeController", (data: string) => {
+        this.setState({ controller: data });
+      });
+      socket.on("REC:host", async (data: HostState) => {
+        let currentMedia = data.video || "";
+        if (this.playingScreenShare() && !isScreenShare(currentMedia)) {
+          this.stopPublishingLocalStream();
+        }
+        if (this.playingFileShare() && !isFileShare(currentMedia)) {
+          this.stopPublishingLocalStream();
+        }
+        if (this.playingVBrowser() && !isVBrowser(currentMedia)) {
+          this.stopVBrowser();
+        }
+        if (this.playingScreenShare() && isScreenShare(currentMedia)) {
+          // Ignore, it's probably a reconnection
+          return;
+        }
+        if (this.playingFileShare() && isFileShare(currentMedia)) {
+          // Ignore, it's probably a reconnection
+          return;
+        }
+        if (
+          this.playingVBrowser() &&
+          this.getVBrowserHost() &&
+          isVBrowser(currentMedia)
+        ) {
+          // Ignore, it's probably a reconnection
+          return;
+        }
+        this.setState(
+          {
+            roomMedia: currentMedia,
+            roomPaused: data.paused,
+            roomSubtitle: data.subtitle,
+            roomLoop: data.loop,
+            roomPlaybackRate: data.playbackRate,
+            loading: Boolean(data.video),
+            nonPlayableMedia: false,
+            isVBrowserLarge: data.isVBrowserLarge,
+            vBrowserResolution: "1280x720@30",
+            vBrowserQuality: "1",
+            controller: data.controller,
+            isLiveStream: false,
+          },
+          async () => {
+            const leftVideo = this.HTMLInterface.getVideoEl();
 
-          // Stop all players
-          // Unless the user is sharing a file, because we play it in leftVideo and capture stream
-          if (!this.isLocalStreamAFile) {
-            this.HTMLInterface.pauseVideo();
-          }
-          this.YouTubeInterface.stopVideo();
-
-          if (!this.isLocalStreamAFile) {
-            this.Player().clearState();
-          }
-          if (data.subtitle) {
-            this.Player().loadSubtitles(data.subtitle);
-          }
-          if (data.playbackRate) {
-            this.Player().setPlaybackRate(data.playbackRate);
-          }
-
-          if (
-            this.playingScreenShare() ||
-            this.playingFileShare() ||
-            this.playingVBrowser()
-          ) {
-            console.log(
-              "exiting REC:host since we are using webRTC (fileshare, screenshare, or vbrowser). Check setupRTCConnections()",
-            );
-            if (!(this.playingVBrowser() && !this.getVBrowserHost())) {
-              // Remove the loader unless we're waiting for a vbrowser
-              this.setLoadingFalse();
+            // Stop all players
+            // Unless the user is sharing a file, because we play it in leftVideo and capture stream
+            if (!this.isLocalStreamAFile) {
+              this.HTMLInterface.pauseVideo();
             }
-            return;
-          }
-          if (this.usingYoutube() && !this.YouTubeInterface.isReady()) {
-            console.log(
-              "YT player not ready, onReady callback will retry when it is",
-            );
-            return;
-          }
-          const src = data.video;
-          const time = data.videoTS;
-          if (isMagnet(src)) {
-            // WebTorrent
-            if (!window.cowatch.webtorrent) {
-              const WebTorrent = //@ts-expect-error
-                (await import("webtorrent/dist/webtorrent.min.js")).default;
-              window.cowatch.webtorrent = new WebTorrent();
-              const reg = await navigator.serviceWorker?.register("/sw.min.js");
-              const worker = reg.active || reg.waiting || reg.installing;
-              const checkState = (worker: ServiceWorker | null) => {
-                if (worker?.state === "activated") {
-                  return window.cowatch.webtorrent?.createServer({
-                    controller: reg,
+            this.YouTubeInterface.stopVideo();
+
+            if (!this.isLocalStreamAFile) {
+              this.Player().clearState();
+            }
+            if (data.subtitle) {
+              this.Player().loadSubtitles(data.subtitle);
+            }
+            if (data.playbackRate) {
+              this.Player().setPlaybackRate(data.playbackRate);
+            }
+
+            if (
+              this.playingScreenShare() ||
+              this.playingFileShare() ||
+              this.playingVBrowser()
+            ) {
+              console.log(
+                "exiting REC:host since we are using webRTC (fileshare, screenshare, or vbrowser). Check setupRTCConnections()",
+              );
+              if (!(this.playingVBrowser() && !this.getVBrowserHost())) {
+                // Remove the loader unless we're waiting for a vbrowser
+                this.setLoadingFalse();
+              }
+              return;
+            }
+            if (this.usingYoutube() && !this.YouTubeInterface.isReady()) {
+              console.log(
+                "YT player not ready, onReady callback will retry when it is",
+              );
+              return;
+            }
+            const src = data.video;
+            const time = data.videoTS;
+            if (isMagnet(src)) {
+              // WebTorrent
+              if (!window.cowatch.webtorrent) {
+                const WebTorrent = //@ts-expect-error
+                  (await import("webtorrent/dist/webtorrent.min.js")).default;
+                window.cowatch.webtorrent = new WebTorrent();
+                const reg = await navigator.serviceWorker?.register("/sw.min.js");
+                const worker = reg.active || reg.waiting || reg.installing;
+                const checkState = (worker: ServiceWorker | null) => {
+                  if (worker?.state === "activated") {
+                    return window.cowatch.webtorrent?.createServer({
+                      controller: reg,
+                    });
+                  }
+                  return null;
+                };
+                if (!checkState(worker)) {
+                  worker?.addEventListener("statechange", ({ target }) =>
+                    checkState(target as ServiceWorker),
+                  );
+                }
+              }
+              await new Promise(async (resolve) => {
+                const finish = (torrent: Torrent) => {
+                  // Got torrent metadata!
+                  console.log("Client is downloading:", torrent.infoHash);
+
+                  // Torrents can contain many files.
+                  const files = torrent.files;
+                  const fileIndex = new URLSearchParams(src).get("fileIndex");
+                  // Try to find a single large file to play
+                  let target;
+                  if (fileIndex != null && fileIndex !== "") {
+                    target = files[Number(fileIndex)];
+                  }
+                  if (!target) {
+                    // Open the selector
+                    // Selecting a file sets a new URL with the fileIndex set so we go through again
+                    this.setMultiSelectModal(true);
+                    this.setFileSelection(
+                      files.map((f: WebTorrent.TorrentFile, i: number) => ({
+                        name: f.name,
+                        url: src + `&fileIndex=${i}`,
+                        length: f.length,
+                      })),
+                    );
+                  } else {
+                    //@ts-expect-error
+                    target.streamTo(leftVideo);
+                  }
+                  resolve(undefined);
+                };
+                let target = await window.cowatch.webtorrent?.get(src);
+                if (!target) {
+                  target = window.cowatch.webtorrent?.add(src, {
+                    announce: [
+                      "wss://tracker.btorrent.xyz",
+                      "wss://tracker.openwebtorrent.com",
+                    ],
+                    destroyStoreOnDestroy: true,
+                    maxWebConns: 4,
+                    path: "/tmp/webtorrent/",
+                    storeCacheSlots: 20,
+                    strategy: "sequential",
+                    // noPeersIntervalTime: 30,
                   });
                 }
-                return null;
-              };
-              if (!checkState(worker)) {
-                worker?.addEventListener("statechange", ({ target }) =>
-                  checkState(target as ServiceWorker),
-                );
-              }
-            }
-            await new Promise(async (resolve) => {
-              const finish = (torrent: Torrent) => {
-                // Got torrent metadata!
-                console.log("Client is downloading:", torrent.infoHash);
-
-                // Torrents can contain many files.
-                const files = torrent.files;
-                const fileIndex = new URLSearchParams(src).get("fileIndex");
-                // Try to find a single large file to play
-                let target;
-                if (fileIndex != null && fileIndex !== "") {
-                  target = files[Number(fileIndex)];
-                }
-                if (!target) {
-                  // Open the selector
-                  // Selecting a file sets a new URL with the fileIndex set so we go through again
-                  this.setMultiSelectModal(true);
-                  this.setFileSelection(
-                    files.map((f: WebTorrent.TorrentFile, i: number) => ({
-                      name: f.name,
-                      url: src + `&fileIndex=${i}`,
-                      length: f.length,
-                    })),
-                  );
-                } else {
-                  //@ts-expect-error
-                  target.streamTo(leftVideo);
-                }
-                resolve(undefined);
-              };
-              let target = await window.cowatch.webtorrent?.get(src);
-              if (!target) {
-                target = window.cowatch.webtorrent?.add(src, {
-                  announce: [
-                    "wss://tracker.btorrent.xyz",
-                    "wss://tracker.openwebtorrent.com",
-                  ],
-                  destroyStoreOnDestroy: true,
-                  maxWebConns: 4,
-                  path: "/tmp/webtorrent/",
-                  storeCacheSlots: 20,
-                  strategy: "sequential",
-                  // noPeersIntervalTime: 30,
-                });
-              }
-              if (target?.ready) {
-                finish(target);
-              } else {
-                target?.on("ready", () => {
+                if (target?.ready) {
                   finish(target);
+                } else {
+                  target?.on("ready", () => {
+                    finish(target);
+                  });
+                }
+              });
+            } else if (isDash(src)) {
+              if (!window.cowatch.dash) {
+                const Dash = await import("dashjs");
+                window.cowatch.dash = Dash.MediaPlayer().create();
+                window.cowatch.dash.on("streamInitialized", (_e: any) => {
+                  // for a live stream:
+                  // html.currenttime is time since stream start
+                  // html.duration is infinite
+                  // player.duration is the seekable range
+                  const isLiveStream = this.Player().getDuration() >= Infinity;
+                  console.log("DASH stream initialized: isLive %s", isLiveStream);
+                  this.setState({
+                    isLiveStream,
+                  });
                 });
               }
-            });
-          } else if (isDash(src)) {
-            if (!window.cowatch.dash) {
-              const Dash = await import("dashjs");
-              window.cowatch.dash = Dash.MediaPlayer().create();
-              window.cowatch.dash.on("streamInitialized", (_e: any) => {
-                // for a live stream:
-                // html.currenttime is time since stream start
-                // html.duration is infinite
-                // player.duration is the seekable range
-                const isLiveStream = this.Player().getDuration() >= Infinity;
-                console.log("DASH stream initialized: isLive %s", isLiveStream);
-                this.setState({
-                  isLiveStream,
+              window.cowatch.dash.initialize(leftVideo, src);
+            } else if (isHls(src) && window.MediaSource) {
+              // Prefer using hls.js if MediaSource Extensions are supported
+              // otherwise fallback to native HLS support using video tag (i.e. iPhones)
+              if (!window.cowatch.hls) {
+                const Hls = (await import("hls.js")).default;
+                window.cowatch.hls = new Hls();
+                window.cowatch.hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+                  const isLiveStream = data.details.live;
+                  this.setState({ isLiveStream });
+                  console.log("HLS level loaded: isLive %s", isLiveStream);
                 });
-              });
+              }
+              window.cowatch.hls.loadSource(src);
+              window.cowatch.hls.attachMedia(leftVideo);
             }
-            window.cowatch.dash.initialize(leftVideo, src);
-          } else if (isHls(src) && window.MediaSource) {
-            // Prefer using hls.js if MediaSource Extensions are supported
-            // otherwise fallback to native HLS support using video tag (i.e. iPhones)
-            if (!window.cowatch.hls) {
-              const Hls = (await import("hls.js")).default;
-              window.cowatch.hls = new Hls();
-              window.cowatch.hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-                const isLiveStream = data.details.live;
-                this.setState({ isLiveStream });
-                console.log("HLS level loaded: isLive %s", isLiveStream);
-              });
+            // else if (isMpegTs(src)) {
+            //   const mpegts = (await import('mpegts.js')).default;
+            //   let player = mpegts.createPlayer({
+            //     type: 'mse', // could also be mpegts, m2ts, flv
+            //     // isLive: true,
+            //     url: src,
+            //   });
+            //   player.attachMediaElement(leftVideo);
+            //   player.load();
+            //   player.play();
+            // }
+            else {
+              await this.Player().setSrcAndTime(src, time);
             }
-            window.cowatch.hls.loadSource(src);
-            window.cowatch.hls.attachMedia(leftVideo);
-          }
-          // else if (isMpegTs(src)) {
-          //   const mpegts = (await import('mpegts.js')).default;
-          //   let player = mpegts.createPlayer({
-          //     type: 'mse', // could also be mpegts, m2ts, flv
-          //     // isLive: true,
-          //     url: src,
-          //   });
-          //   player.attachMediaElement(leftVideo);
-          //   player.load();
-          //   player.play();
-          // }
-          else {
-            await this.Player().setSrcAndTime(src, time);
-          }
-          // Start this video
-          if (!data.paused) {
-            this.localPlay();
-          }
-          // Do right before playing
-          leftVideo?.addEventListener(
-            "canplay",
-            () => {
-              this.setLoadingFalse();
-              let ts = undefined;
-              // WebTorrent and Hls and Dash reset position back to 0 so set it back here
-              if (
-                isMagnet(src) ||
-                isHls(src) ||
-                isDash(src) ||
-                this.state.isLiveStream
-              ) {
-                ts = time;
-              }
-              // Resync to leader since the loading might have taken some time
-              this.localSeek(ts);
-              if (this.state.uploadController) {
-                // Jump back to the start of the video
-                this.roomSeek(0);
-              }
-              if (data.playbackRate) {
-                // Set playback rate again since it might have been lost
-                console.log("setting playback rate again", data.playbackRate);
-                this.Player().setPlaybackRate(data.playbackRate);
-              }
-            },
-            { once: true },
-          );
+            // Start this video
+            if (!data.paused) {
+              this.localPlay();
+            }
+            // Do right before playing
+            leftVideo?.addEventListener(
+              "canplay",
+              () => {
+                this.setLoadingFalse();
+                let ts = undefined;
+                // WebTorrent and Hls and Dash reset position back to 0 so set it back here
+                if (
+                  isMagnet(src) ||
+                  isHls(src) ||
+                  isDash(src) ||
+                  this.state.isLiveStream
+                ) {
+                  ts = time;
+                }
+                // Resync to leader since the loading might have taken some time
+                this.localSeek(ts);
+                if (this.state.uploadController) {
+                  // Jump back to the start of the video
+                  this.roomSeek(0);
+                }
+                if (data.playbackRate) {
+                  // Set playback rate again since it might have been lost
+                  console.log("setting playback rate again", data.playbackRate);
+                  this.Player().setPlaybackRate(data.playbackRate);
+                }
+              },
+              { once: true },
+            );
 
-          // Progress updater
-          window.clearInterval(this.progressUpdater);
-          this.setState({ downloaded: 0, total: 0, speed: 0 });
-          if (currentMedia.includes("/stream?torrent=magnet")) {
-            this.progressUpdater = window.setInterval(async () => {
-              const response = await fetch(
-                currentMedia.replace("/stream", "/progress"),
-              );
-              const data = await response.json();
-              this.setState({
-                downloaded: data.downloaded,
-                total: data.total,
-                speed: data.speed,
-                connections: data.connections,
-              });
-            }, 1000);
-          }
-          if (isMagnet(currentMedia)) {
-            this.progressUpdater = window.setInterval(async () => {
-              const client = window.cowatch.webtorrent;
-              if (client) {
+            // Progress updater
+            window.clearInterval(this.progressUpdater);
+            this.setState({ downloaded: 0, total: 0, speed: 0 });
+            if (currentMedia.includes("/stream?torrent=magnet")) {
+              this.progressUpdater = window.setInterval(async () => {
+                const response = await fetch(
+                  currentMedia.replace("/stream", "/progress"),
+                );
+                const data = await response.json();
                 this.setState({
-                  downloaded: client.torrents[0]?.downloaded,
-                  total: client.torrents[0]?.length,
-                  speed: client.torrents[0]?.downloadSpeed,
-                  connections: client.torrents[0]?.numPeers,
+                  downloaded: data.downloaded,
+                  total: data.total,
+                  speed: data.speed,
+                  connections: data.connections,
                 });
-              }
-            }, 1000);
+              }, 1000);
+            }
+            if (isMagnet(currentMedia)) {
+              this.progressUpdater = window.setInterval(async () => {
+                const client = window.cowatch.webtorrent;
+                if (client) {
+                  this.setState({
+                    downloaded: client.torrents[0]?.downloaded,
+                    total: client.torrents[0]?.length,
+                    speed: client.torrents[0]?.downloadSpeed,
+                    connections: client.torrents[0]?.numPeers,
+                  });
+                }
+              }, 1000);
+            }
+          },
+        );
+      });
+      socket.on("REC:chat", (data: ChatMessage) => {
+        if (
+          !getCurrentSettings().disableChatSound &&
+          !data.system &&
+          ((document.visibilityState && document.visibilityState !== "visible") ||
+            this.state.currentTab !== "chat")
+        ) {
+          new Audio("/clearly.mp3").play();
+        }
+        this.state.chat.push(data);
+        if (this.state.chat.length > 100) {
+          this.state.chat.shift();
+        }
+        this.setState({
+          chat: this.state.chat,
+          scrollTimestamp: Date.now(),
+          unreadCount:
+            this.state.currentTab === "chat"
+              ? this.state.unreadCount
+              : this.state.unreadCount + 1,
+        });
+      });
+      socket.on("REC:editMessage", (data: ChatMessage) => {
+        const { chat } = this.state;
+        const msgIndex = chat.findIndex((m) => m.dbId === data.dbId);
+        if (msgIndex === -1) {
+          return;
+        }
+        chat[msgIndex] = { ...chat[msgIndex], ...data };
+        this.setState({ chat });
+      });
+      socket.on("REC:addReaction", (data: Reaction) => {
+        const { chat } = this.state;
+        const msgIndex = chat.findIndex(
+          (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
+        );
+        if (msgIndex === -1) {
+          return;
+        }
+        const msg = chat[msgIndex];
+        msg.reactions = msg.reactions || {};
+        msg.reactions[data.value] = msg.reactions[data.value] || [];
+        msg.reactions[data.value].push(data.user);
+        this.setState({ chat }, () => {
+          // if we add a reaction to the last message we need to scroll down
+          // or else the reaction icon might be hidden
+          if (
+            msgIndex === chat.length - 1 &&
+            this.chatRef.current?.state.isNearBottom
+          ) {
+            this.chatRef.current?.scrollToBottom();
+          }
+        });
+      });
+      socket.on("REC:removeReaction", (data: Reaction) => {
+        const { chat } = this.state;
+        const msg = chat.find(
+          (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
+        );
+        if (!msg || !msg.reactions?.[data.value]) {
+          return;
+        }
+        msg.reactions[data.value] = msg.reactions[data.value].filter(
+          (id) => id !== data.user,
+        );
+        this.setState({ chat });
+      });
+      socket.on("REC:tsMap", (data: NumberDict) => {
+        this.setState({ tsMap: data }, () => {
+          // Dynamic playback rate based on timestamps
+          // Disable for sharing types where the users can have different timestamps
+          // e.g. screenshare, fileshare, .m3u8 HLS streams
+          // Also not necessary for WebRTC sharing since it should be close to realtime
+          if (
+            !this.state.roomPaused &&
+            !this.state.isLiveStream &&
+            this.hasDuration() &&
+            this.state.roomPlaybackRate === 0
+          ) {
+            const leader = this.getLeaderTime();
+            const delta = leader - data[clientId];
+            // Set leader pbr to 1
+            let pbr = 1;
+            // Add .01 pbr for each 100ms delay
+            if (delta > 0.5) {
+              pbr += Number((delta / 10).toFixed(2));
+              pbr = Math.min(pbr, 1.1);
+            }
+            // console.log(delta, pbr);
+            if (this.Player().getPlaybackRate() !== pbr) {
+              this.Player().setPlaybackRate(pbr);
+            }
+          }
+          if (this.state.roomSubtitle) {
+            const sharer = this.state.participants.find((p) => p.isScreenShare);
+            if (sharer && sharer.id !== clientId) {
+              // Sync only if someone is sharing and it's not us
+              const sharerTime = this.state.tsMap[sharer.id];
+              this.Player().syncSubtitles(sharerTime);
+            }
+          }
+        });
+      });
+      socket.on("REC:nameMap", (data: StringDict) => {
+        this.setState({ nameMap: data });
+      });
+      socket.on("REC:pictureMap", (data: StringDict) => {
+        this.setState({ pictureMap: data });
+      });
+      socket.on("REC:lock", (data: string) => {
+        this.setState({ roomLock: data });
+      });
+      socket.on("roster", (data: any[]) => {
+        this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
+          this.setupRTCConnections();
+        });
+      });
+      socket.on("chatinit", (data: ChatMessage[]) => {
+        this.setState({ chat: data, scrollTimestamp: Date.now() });
+      });
+      socket.on("playlist", (data: PlaylistVideo[]) => {
+        this.setState({ playlist: data });
+      });
+      socket.on(
+        "signalSS",
+        async (data: {
+          msg: { ice: any; sdp: any };
+          from: string;
+          sharer: boolean;
+        }) => {
+          config.NODE_ENV === "development" && console.log(data);
+          // Handle messages received from signaling server
+          const msg = data.msg;
+          const from = data.from;
+          // Determine whether the message came from the sharer or the sharee
+          const pc = (
+            data.sharer ? this.consumerConn : this.publisherConns[from]
+          ) as RTCPeerConnection;
+          if (msg.ice !== undefined) {
+            pc.addIceCandidate(new RTCIceCandidate(msg.ice));
+          } else if (msg.sdp && msg.sdp.type === "offer") {
+            // console.log('offer');
+            // TODO Currently ios/Safari cannot handle this property, so remove it from the offer
+            const _sdp = msg.sdp.sdp
+              .split("\n")
+              .filter((line: string) => {
+                return line.trim() !== "a=extmap-allow-mixed";
+              })
+              .join("\n");
+            msg.sdp.sdp = _sdp;
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            const answer = await pc.createAnswer();
+            // Allow stereo audio
+            answer.sdp = answer.sdp?.replace(
+              "useinbandfec=1",
+              "useinbandfec=1; stereo=1; maxaveragebitrate=510000",
+            );
+            // console.log(answer.sdp);
+            // Allow multichannel audio if Chromium
+            //@ts-expect-error
+            const isChromium = Boolean(window.chrome);
+            if (isChromium) {
+              answer.sdp = answer.sdp
+                ?.replace("opus/48000/2", "multiopus/48000/6")
+                .replace(
+                  "useinbandfec=1",
+                  "channel_mapping=0,4,1,2,3,5; num_streams=4; coupled_streams=2;maxaveragebitrate=510000;minptime=10;useinbandfec=1",
+                );
+            }
+            await pc.setLocalDescription(answer);
+            this.sendSignalSS(from, { sdp: pc.localDescription }, !data.sharer);
+          } else if (msg.sdp && msg.sdp.type === "answer") {
+            pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
           }
         },
       );
-    });
-    socket.on("REC:chat", (data: ChatMessage) => {
-      if (
-        !getCurrentSettings().disableChatSound &&
-        !data.system &&
-        ((document.visibilityState && document.visibilityState !== "visible") ||
-          this.state.currentTab !== "chat")
-      ) {
-        new Audio("/clearly.mp3").play();
-      }
-      this.state.chat.push(data);
-      if (this.state.chat.length > 100) {
-        this.state.chat.shift();
-      }
-      this.setState({
-        chat: this.state.chat,
-        scrollTimestamp: Date.now(),
-        unreadCount:
-          this.state.currentTab === "chat"
-            ? this.state.unreadCount
-            : this.state.unreadCount + 1,
-      });
-    });
-    socket.on("REC:editMessage", (data: ChatMessage) => {
-      const { chat } = this.state;
-      const msgIndex = chat.findIndex((m) => m.dbId === data.dbId);
-      if (msgIndex === -1) {
-        return;
-      }
-      chat[msgIndex] = { ...chat[msgIndex], ...data };
-      this.setState({ chat });
-    });
-    socket.on("REC:addReaction", (data: Reaction) => {
-      const { chat } = this.state;
-      const msgIndex = chat.findIndex(
-        (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
-      );
-      if (msgIndex === -1) {
-        return;
-      }
-      const msg = chat[msgIndex];
-      msg.reactions = msg.reactions || {};
-      msg.reactions[data.value] = msg.reactions[data.value] || [];
-      msg.reactions[data.value].push(data.user);
-      this.setState({ chat }, () => {
-        // if we add a reaction to the last message we need to scroll down
-        // or else the reaction icon might be hidden
-        if (
-          msgIndex === chat.length - 1 &&
-          this.chatRef.current?.state.isNearBottom
-        ) {
-          this.chatRef.current?.scrollToBottom();
+      socket.on("REC:getRoomState", this.handleRoomState);
+      window.setInterval(() => {
+        if (this.state.roomMedia) {
+          const toSend = this.getRoomTSToSet(this.Player().getCurrentTime());
+          this.socket.emit("CMD:ts", toSend);
         }
-      });
-    });
-    socket.on("REC:removeReaction", (data: Reaction) => {
-      const { chat } = this.state;
-      const msg = chat.find(
-        (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
-      );
-      if (!msg || !msg.reactions?.[data.value]) {
-        return;
-      }
-      msg.reactions[data.value] = msg.reactions[data.value].filter(
-        (id) => id !== data.user,
-      );
-      this.setState({ chat });
-    });
-    socket.on("REC:tsMap", (data: NumberDict) => {
-      this.setState({ tsMap: data }, () => {
-        // Dynamic playback rate based on timestamps
-        // Disable for sharing types where the users can have different timestamps
-        // e.g. screenshare, fileshare, .m3u8 HLS streams
-        // Also not necessary for WebRTC sharing since it should be close to realtime
-        if (
-          !this.state.roomPaused &&
-          !this.state.isLiveStream &&
-          this.hasDuration() &&
-          this.state.roomPlaybackRate === 0
-        ) {
-          const leader = this.getLeaderTime();
-          const delta = leader - data[clientId];
-          // Set leader pbr to 1
-          let pbr = 1;
-          // Add .01 pbr for each 100ms delay
-          if (delta > 0.5) {
-            pbr += Number((delta / 10).toFixed(2));
-            pbr = Math.min(pbr, 1.1);
-          }
-          // console.log(delta, pbr);
-          if (this.Player().getPlaybackRate() !== pbr) {
-            this.Player().setPlaybackRate(pbr);
-          }
-        }
-        if (this.state.roomSubtitle) {
-          const sharer = this.state.participants.find((p) => p.isScreenShare);
-          if (sharer && sharer.id !== clientId) {
-            // Sync only if someone is sharing and it's not us
-            const sharerTime = this.state.tsMap[sharer.id];
-            this.Player().syncSubtitles(sharerTime);
-          }
-        }
-      });
-    });
-    socket.on("REC:nameMap", (data: StringDict) => {
-      this.setState({ nameMap: data });
-    });
-    socket.on("REC:pictureMap", (data: StringDict) => {
-      this.setState({ pictureMap: data });
-    });
-    socket.on("REC:lock", (data: string) => {
-      this.setState({ roomLock: data });
-    });
-    socket.on("roster", (data: any[]) => {
-      this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
-        this.setupRTCConnections();
-      });
-    });
-    socket.on("chatinit", (data: ChatMessage[]) => {
-      this.setState({ chat: data, scrollTimestamp: Date.now() });
-    });
-    socket.on("playlist", (data: PlaylistVideo[]) => {
-      this.setState({ playlist: data });
-    });
-    socket.on(
-      "signalSS",
-      async (data: {
-        msg: { ice: any; sdp: any };
-        from: string;
-        sharer: boolean;
-      }) => {
-        config.NODE_ENV === "development" && console.log(data);
-        // Handle messages received from signaling server
-        const msg = data.msg;
-        const from = data.from;
-        // Determine whether the message came from the sharer or the sharee
-        const pc = (
-          data.sharer ? this.consumerConn : this.publisherConns[from]
-        ) as RTCPeerConnection;
-        if (msg.ice !== undefined) {
-          pc.addIceCandidate(new RTCIceCandidate(msg.ice));
-        } else if (msg.sdp && msg.sdp.type === "offer") {
-          // console.log('offer');
-          // TODO Currently ios/Safari cannot handle this property, so remove it from the offer
-          const _sdp = msg.sdp.sdp
-            .split("\n")
-            .filter((line: string) => {
-              return line.trim() !== "a=extmap-allow-mixed";
-            })
-            .join("\n");
-          msg.sdp.sdp = _sdp;
-          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-          const answer = await pc.createAnswer();
-          // Allow stereo audio
-          answer.sdp = answer.sdp?.replace(
-            "useinbandfec=1",
-            "useinbandfec=1; stereo=1; maxaveragebitrate=510000",
-          );
-          // console.log(answer.sdp);
-          // Allow multichannel audio if Chromium
-          //@ts-expect-error
-          const isChromium = Boolean(window.chrome);
-          if (isChromium) {
-            answer.sdp = answer.sdp
-              ?.replace("opus/48000/2", "multiopus/48000/6")
-              .replace(
-                "useinbandfec=1",
-                "channel_mapping=0,4,1,2,3,5; num_streams=4; coupled_streams=2;maxaveragebitrate=510000;minptime=10;useinbandfec=1",
-              );
-          }
-          await pc.setLocalDescription(answer);
-          this.sendSignalSS(from, { sdp: pc.localDescription }, !data.sharer);
-        } else if (msg.sdp && msg.sdp.type === "answer") {
-          pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        }
-      },
-    );
-    socket.on("REC:getRoomState", this.handleRoomState);
-    window.setInterval(() => {
-      if (this.state.roomMedia) {
-        const toSend = this.getRoomTSToSet(this.Player().getCurrentTime());
-        this.socket.emit("CMD:ts", toSend);
-      }
-    }, 1000);
+      }, 1000);
     } catch (criticalErr) {
       console.error("Critical error in join:", criticalErr);
       if (this.startingTimer) {
@@ -1225,7 +1214,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
   }
 
-  initYTPlayer = () => {
+  initcoWatchYTPlayer = () => {
     const el = document.getElementById("leftYt");
     if (!el || !window.YT?.Player) {
       return;
@@ -1234,7 +1223,7 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
     try {
-      const ytPlayer = new window.YT.Player("leftYt", {
+      const coWatchYTPlayer = new window.YT.Player("leftYt", {
         width: "100%",
         height: "100%",
         playerVars: {
@@ -1248,7 +1237,7 @@ export class App extends React.Component<AppProps, AppState> {
         events: {
           onReady: () => {
             console.log("yt onReady");
-            this.YouTubeInterface = new YouTube(ytPlayer);
+            this.YouTubeInterface = new YouTube(coWatchYTPlayer);
             this.setState({ loading: false });
             if (this.usingYoutube()) {
               console.log("requesting host data again after ytReady");
@@ -1302,7 +1291,7 @@ export class App extends React.Component<AppProps, AppState> {
 
   loadYouTube = () => {
     if (window.YT && window.YT.Player) {
-      this.initYTPlayer();
+      this.initcoWatchYTPlayer();
       return;
     }
 
@@ -1315,7 +1304,7 @@ export class App extends React.Component<AppProps, AppState> {
           console.warn(e);
         }
       }
-      this.initYTPlayer();
+      this.initcoWatchYTPlayer();
     };
 
     if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
@@ -1438,7 +1427,6 @@ export class App extends React.Component<AppProps, AppState> {
     }
     const uuid = createUuid();
     const convertPath = this.context.convertPath;
-    // const convertPath = 'https://azure.howardchung.net:5001';
     let convertUrl = convertPath + "/" + uuid + ".m3u8";
     convertUrl += sourceUrl ? "?url=" + encodeURIComponent(sourceUrl) : "";
     // Wait for the playlist to get generated
@@ -2367,7 +2355,7 @@ export class App extends React.Component<AppProps, AppState> {
           }
         }
       }
-    } catch {}
+    } catch { }
     return input;
   };
 

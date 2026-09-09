@@ -1,106 +1,92 @@
-import React, { useContext } from "react";
-import { Modal, Button, Table } from "@mantine/core";
-import { MetadataContext } from "../../MetadataContext";
+import React from "react";
+import { Modal, Button, Text, Stack, Card, Group, Badge } from "@mantine/core";
+import { IconVideo, IconServer, IconArrowsShuffle } from "@tabler/icons-react";
 
 export const FileShareModal = (props: {
   closeModal: () => void;
   startFileShare: (useMediaSoup: boolean) => void;
   startConvert: () => void;
 }) => {
-  const context = useContext(MetadataContext);
   const { closeModal } = props;
   return (
     <Modal
       opened
       onClose={closeModal}
-      title="Share a file"
-      size="auto"
+      title="Share Video File"
+      size="md"
       centered
     >
-      <div>You're about to share a file from your device.</div>
-      <Table striped>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th />
-            <Table.Th>CoWatch Free</Table.Th>
-            <Table.Th>CoWatch Plus (Relay)</Table.Th>
-            <Table.Th>CoWatch Plus (Convert)</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
+      <Stack gap="md">
+        <Text size="sm" c="dimmed">
+          Select a video file from your device to stream directly to everyone in this room.
+        </Text>
 
-        <Table.Tbody>
-          <Table.Tr>
-            <Table.Td>Method</Table.Td>
-            <Table.Td>
-              Stream your video to each viewer from your device. May not work
-              with codecs not playable in browsers.
-            </Table.Td>
-            <Table.Td>
-              Stream your video to our relay server, which sends it to each
-              viewer, reducing bandwidth usage. May not work with codecs not
-              playable in browsers.
-            </Table.Td>
-            <Table.Td>
-              We convert your video in real-time to a web-compatible format and
-              serve the result. Avoids codec compatibility issues and allows
-              more viewers.
-            </Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Latency</Table.Td>
-            <Table.Td>{`<1s`}</Table.Td>
-            <Table.Td>{`<1s`}</Table.Td>
-            <Table.Td>{`~5s`}</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Recommended Max Viewers</Table.Td>
-            <Table.Td>5</Table.Td>
-            <Table.Td>20</Table.Td>
-            <Table.Td>100</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td>Recommended Upload Speed</Table.Td>
-            <Table.Td>5 Mbps per viewer</Table.Td>
-            <Table.Td>5 Mbps</Table.Td>
-            <Table.Td>5 Mbps</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td></Table.Td>
-            <Table.Td>
-              <Button
-                onClick={() => {
-                  props.startFileShare(false);
-                  props.closeModal();
-                }}
-              >
-                Start Fileshare
-              </Button>
-            </Table.Td>
-            <Table.Td>
-              <Button
-                color="orange"
-                onClick={() => {
-                  props.startFileShare(true);
-                  props.closeModal();
-                }}
-              >
-                Start Fileshare w/Relay
-              </Button>
-            </Table.Td>
-            <Table.Td>
-              <Button
-                color="orange"
-                onClick={() => {
-                  props.startConvert();
-                  props.closeModal();
-                }}
-              >
-                Start Fileshare w/Convert
-              </Button>
-            </Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
+        <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Group gap="xs">
+                <IconServer size={18} color="var(--accent-primary)" />
+                <Text size="sm" fw={600}>Relay Streaming</Text>
+              </Group>
+              <Badge color="violet" variant="light">Recommended</Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Streams through our relay server to optimize upload bandwidth from your device.
+            </Text>
+          </Stack>
+        </Card>
+
+        <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Group gap="xs">
+                <IconArrowsShuffle size={18} color="var(--accent-primary)" />
+                <Text size="sm" fw={600}>Auto-Transcode</Text>
+              </Group>
+              <Badge color="blue" variant="light">Broad Codec Support</Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Transcodes video in real-time to ensure playback compatibility across all browsers and devices.
+            </Text>
+          </Stack>
+        </Card>
+
+        <Group justify="flex-end" gap="xs" mt="sm">
+          <Button variant="default" onClick={closeModal}>
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            color="gray"
+            onClick={() => {
+              props.startFileShare(false);
+              props.closeModal();
+            }}
+          >
+            Direct
+          </Button>
+          <Button
+            variant="outline"
+            color="blue"
+            onClick={() => {
+              props.startConvert();
+              props.closeModal();
+            }}
+          >
+            Transcode & Stream
+          </Button>
+          <Button
+            color="violet"
+            leftSection={<IconVideo size={16} />}
+            onClick={() => {
+              props.startFileShare(true);
+              props.closeModal();
+            }}
+          >
+            Share with Relay
+          </Button>
+        </Group>
+      </Stack>
     </Modal>
   );
 };
