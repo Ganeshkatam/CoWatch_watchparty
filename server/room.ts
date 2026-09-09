@@ -16,7 +16,7 @@ import {
 //@ts-expect-error
 import twitch from "twitch-m3u8";
 import { type QueryResult } from "pg";
-import { Docker } from "./vm/docker.ts";
+import { getVBrowserProvider, VBrowserDisabledError } from "./vm/provider.ts";
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -100,18 +100,7 @@ export async function loadRoomMessages(roomId: string, limit: number = 50, befor
     return [];
   }
 }
-// Stateless pool instance to use for VMs if full management isn't needed
-let stateless: Docker | undefined = undefined;
-if (!config.VM_MANAGER_CONFIG) {
-  stateless = new Docker({
-    provider: "Docker",
-    isLarge: false,
-    region: "US",
-    limitSize: 0,
-    minSize: 0,
-    hostname: config.DOCKER_VM_HOST,
-  });
-}
+
 
 // Extend the interface
 declare module "socket.io" {
@@ -787,22 +776,16 @@ export class Room {
 
     if (id) {
       try {
-        if (stateless) {
-          await stateless.terminateVM(id);
-        } else {
-          await axios.post(
-            "http://localhost:" + config.VMWORKER_PORT + "/releaseVM",
-            {
-              provider,
-              isLarge,
-              region,
-              id,
-              roomId: this.roomId,
-            },
-          );
-        }
+        const vBrowserProvider = getVBrowserProvider();
+        await vBrowserProvider.release({
+          id,
+          provider,
+          isLarge,
+          region,
+          roomId: this.roomId,
+        });
       } catch (e) {
-        console.warn(e);
+        console.warn("Failed to release VBrowser:", e);
       }
     }
   };
@@ -1442,6 +1425,12 @@ export class Room {
       }
     }
 
+    const vBrowserProvider = getVBrowserProvider();
+    if (!vBrowserProvider.isEnabled) {
+      socket.emit("errorMessage", "Virtual Browser is disabled on this server.");
+      return;
+    }
+
     redisCount("vBrowserStarts");
     this.cmdHost(socket, "vbrowser://");
     // Put the room in the vbrowser queue
@@ -1459,28 +1448,20 @@ export class Room {
         this.vBrowserQueue;
       let assignment: AssignedVM | undefined = undefined;
       try {
-        if (stateless) {
-          const pass = crypto.randomUUID();
-          const id = await stateless.startVM(pass);
-          assignment = {
-            ...(await stateless.getVM(id)),
-            pass,
-            assignTime: Date.now(),
-          };
-        } else {
-          const { data } = await axios.post<AssignedVM>(
-            "http://localhost:" + config.VMWORKER_PORT + "/assignVM",
-            {
-              isLarge,
-              region,
-              uid,
-              roomId,
-            },
-          );
-          assignment = data;
+        assignment =
+          (await vBrowserProvider.assign({
+            isLarge,
+            region,
+            uid,
+            roomId,
+          })) || undefined;
+      } catch (e: any) {
+        if (e instanceof VBrowserDisabledError) {
+          socket.emit("errorMessage", "Virtual Browser is disabled on this server.");
+          this.vBrowserQueue = undefined;
+          return;
         }
-      } catch (e) {
-        console.warn(e);
+        console.warn("VBrowser assignment failed:", e?.message || e);
       }
       if (assignment) {
         this.vBrowser = assignment;

@@ -12,6 +12,9 @@ export const DEFAULT_STATE = {
   convertPath: undefined as string | undefined,
   beta: false,
   userAppearance: "system" as AppearanceMode,
+  capabilities: {
+    virtualBrowser: false,
+  },
   setMetadata: (data: any) => {},
 };
 

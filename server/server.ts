@@ -25,6 +25,7 @@ import {
   encryptPasscodeForOwner,
   decryptPasscodeForOwner,
 } from "./utils/roomPasscode.ts";
+import { getVBrowserProvider } from "./vm/provider.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -670,11 +671,23 @@ app.get("/metadata", async (req, res) => {
       console.warn("[WARNING]: active_user upsert failed:", e.message);
     });
   }
+  const vBrowserProvider = getVBrowserProvider();
   res.json({
     isFreePoolFull,
     beta,
     streamPath,
     convertPath,
+    capabilities: {
+      virtualBrowser: vBrowserProvider.isEnabled,
+    },
+  });
+});
+
+app.get("/capabilities", (_req, res) => {
+  const vBrowserProvider = getVBrowserProvider();
+  res.json({
+    virtualBrowser: vBrowserProvider.isEnabled,
+    provider: vBrowserProvider.id,
   });
 });
 

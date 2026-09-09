@@ -2948,9 +2948,11 @@ export class App extends React.Component<AppProps, AppState> {
                       onOpenScreenShare={() =>
                         this.setState({ isScreenShareModalOpen: true })
                       }
-                      onOpenVBrowser={() =>
-                        this.setState({ isVBrowserModalOpen: true })
-                      }
+                      onOpenVBrowser={() => {
+                        if (this.context?.capabilities?.virtualBrowser) {
+                          this.setState({ isVBrowserModalOpen: true });
+                        }
+                      }}
                       onOpenFileShare={() =>
                         this.setState({ isFileShareModalOpen: true })
                       }

@@ -375,6 +375,7 @@ class CoWatch extends React.Component {
               streamPath: metadata?.streamPath,
               convertPath: metadata?.convertPath,
               beta: metadata?.beta,
+              capabilities: metadata?.capabilities || DEFAULT_STATE.capabilities,
               userAppearance: activeAppearance,
             });
           } else {
@@ -382,6 +383,17 @@ class CoWatch extends React.Component {
               window.localStorage.removeItem("cowatch-cached-profile");
             } catch (e) {}
             this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+            window
+              .fetch(serverPath + "/metadata", {
+                signal: AbortSignal.timeout(1500),
+              })
+              .then((res) => (res.ok ? res.json() : {}))
+              .then((guestMeta: any) => {
+                if (guestMeta?.capabilities) {
+                  this.setState({ capabilities: guestMeta.capabilities });
+                }
+              })
+              .catch(() => {});
           }
         } catch (fatalErr) {
           console.error("Critical error in handleSession:", fatalErr);

@@ -10,10 +10,12 @@ if (fs.existsSync(".env")) {
 }
 
 const defaults = {
+  NODE_ENV: "",
   REDIS_URL: "", // Optional, for metrics
   DATABASE_URL: "", // Optional, for permanent rooms and VBrowser management
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
-  NODE_ENV: "", // Usually, you should let process.env.NODE_ENV override this
+  VIRTUAL_BROWSER_ENABLED: false, // Authoritative server switch. Defaults to false.
+  VIRTUAL_BROWSER_PROVIDER: "auto", // Provider selection: "auto" | "local" | "hetzner" | "pooled"
   VBROWSER_SESSION_SECONDS: 10800, // Number of seconds to allow vbrowsers to run for
   VBROWSER_SESSION_SECONDS_LARGE: 86400, // Number of seconds to allow large vbrowsers to run for
   VM_POOL_RAMP_DOWN_HOURS: "", // Comma separated start/end UTC hours of the ramp down period
@@ -61,7 +63,16 @@ const defaults = {
   SUPABASE_SECRET_KEY: "", // Optional, required for Supabase integration
 };
 
-export default {
+const resolvedConfig = {
   ...defaults,
   ...process.env,
+  VIRTUAL_BROWSER_ENABLED:
+    process.env.VIRTUAL_BROWSER_ENABLED !== undefined
+      ? process.env.VIRTUAL_BROWSER_ENABLED === "true"
+      : defaults.VIRTUAL_BROWSER_ENABLED,
+  VIRTUAL_BROWSER_PROVIDER: (
+    process.env.VIRTUAL_BROWSER_PROVIDER || defaults.VIRTUAL_BROWSER_PROVIDER
+  ).toLowerCase(),
 };
+
+export default resolvedConfig;

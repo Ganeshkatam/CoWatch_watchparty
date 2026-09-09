@@ -17,6 +17,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { Menu } from "@mantine/core";
+import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
 import styles from "./MediaDock.module.css";
 
@@ -63,6 +64,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   isFullScreen,
   onToggleFullScreen,
 }) => {
+  const metadata = React.useContext(MetadataContext);
   const [copied, setCopied] = React.useState(false);
 
   const handleCopyLink = () => {
@@ -139,15 +141,17 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             </div>
           </Menu.Item>
 
-          <Menu.Item
-            leftSection={<IconBrowser size={18} color="var(--color-success)" />}
-            onClick={onOpenVBrowser}
-          >
-            <div className={styles.menuItemWithDesc}>
-              <span className={styles.menuItemTitle}>Browser</span>
-              <span className={styles.menuItemDesc}>Browse the web together</span>
-            </div>
-          </Menu.Item>
+          {metadata.capabilities?.virtualBrowser && (
+            <Menu.Item
+              leftSection={<IconBrowser size={18} color="var(--color-success)" />}
+              onClick={onOpenVBrowser}
+            >
+              <div className={styles.menuItemWithDesc}>
+                <span className={styles.menuItemTitle}>Browser</span>
+                <span className={styles.menuItemDesc}>Browse the web together</span>
+              </div>
+            </Menu.Item>
+          )}
 
           <Menu.Item
             leftSection={<IconFile size={18} color="var(--media-magnet)" />}
