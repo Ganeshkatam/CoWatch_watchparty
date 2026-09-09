@@ -40,6 +40,7 @@ interface RoomHeaderProps {
   roomId?: string;
   hostName?: string;
   passcode?: string;
+  onSelectStream?: (result: SearchResult) => Promise<void> | void;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
@@ -58,6 +59,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   roomId: propRoomId,
   hostName,
   passcode: propPasscode,
+  onSelectStream,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -341,6 +343,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             playlistAdd={playlistAdd}
             mediaPath={mediaPath}
             disabled={!haveLock}
+            onSelectStream={onSelectStream}
           />
         </div>
       )}

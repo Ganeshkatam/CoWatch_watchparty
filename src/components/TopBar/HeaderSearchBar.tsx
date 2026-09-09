@@ -4,12 +4,15 @@ import React, {
   useRef,
   useMemo,
   useCallback,
+  useContext,
 } from "react";
 import {
   debounce,
   decodeEntities,
+  formatSize,
   formatTimestamp,
   getMediaPathResults,
+  getStreamPathResults,
   getYouTubeResults,
   isHttp,
   isMagnet,
@@ -21,6 +24,7 @@ import {
   IconArrowLeft,
   IconBrandYoutubeFilled,
   IconCheck,
+  IconFile,
   IconLayersIntersect,
   IconMagnetFilled,
   IconPlayerPlayFilled,
@@ -30,6 +34,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { Badge, Loader, Tooltip } from "@mantine/core";
+import { MetadataContext } from "../../MetadataContext";
 import styles from "./HeaderSearchBar.module.css";
 
 export interface HeaderSearchBarProps {
@@ -37,6 +42,7 @@ export interface HeaderSearchBarProps {
   playlistAdd: (value: string) => void;
   mediaPath?: string;
   disabled?: boolean;
+  onSelectStream?: (result: SearchResult) => Promise<void> | void;
 }
 
 type FilterCategory = "all" | "youtube" | "file" | "magnet";
@@ -46,7 +52,11 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   playlistAdd,
   mediaPath,
   disabled,
+  onSelectStream,
 }) => {
+  const metadata = useContext(MetadataContext);
+  const streamPath = metadata?.streamPath;
+
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -110,9 +120,22 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   }, []);
 
   const handlePlayNow = useCallback(
-    (url: string) => {
-      const trimmed = url.trim();
+    (itemOrUrl: SearchResult | string) => {
+      const isResultObj = typeof itemOrUrl === "object";
+      const rawUrl = isResultObj ? itemOrUrl.url || itemOrUrl.magnet || "" : itemOrUrl;
+      const trimmed = rawUrl.trim();
       if (!trimmed) return;
+
+      // If this is a magnet stream and the parent supplied onSelectStream, delegate to it
+      if (isResultObj && itemOrUrl.type === "magnet" && onSelectStream) {
+        onSelectStream(itemOrUrl);
+        setIsOpen(false);
+        setMobileOpen(false);
+        setQuery("");
+        inputRef.current?.blur();
+        return;
+      }
+
       const targetUrl = isYouTube(trimmed) ? normalizeYouTubeUrl(trimmed) : trimmed;
       roomSetMedia(targetUrl);
       setIsOpen(false);
@@ -120,7 +143,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       setQuery("");
       inputRef.current?.blur();
     },
-    [roomSetMedia],
+    [roomSetMedia, onSelectStream],
   );
 
   const handleAddToPlaylist = useCallback(
@@ -165,15 +188,23 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 
       setLoading(true);
       try {
-        const results = await getYouTubeResults(trimmed);
-        setItems(results);
+        const searchPromises: Promise<SearchResult[]>[] = [
+          getYouTubeResults(trimmed),
+        ];
+        if (streamPath) {
+          searchPromises.push(
+            getStreamPathResults(streamPath, trimmed).catch(() => []),
+          );
+        }
+        const [ytResults, streamResults = []] = await Promise.all(searchPromises);
+        setItems([...ytResults, ...streamResults]);
       } catch {
         setItems([]);
       } finally {
         setLoading(false);
       }
     },
-    [mediaPath],
+    [mediaPath, streamPath],
   );
 
   const debouncedSearch = useMemo(() => debounce(doSearch, 300), [doSearch]);
@@ -416,13 +447,23 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 
           {/* Results List */}
           <div className={styles.resultsList}>
-            {filteredItems.slice(0, 6).map((item, index) => {
+            {filteredItems.length === 0 && !loading && trimmed && !isDirect && (
+              <div className={styles.emptyResults}>
+                <IconSearch size={24} opacity={0.4} />
+                <span className={styles.emptyResultsTitle}>No streams found</span>
+                <span className={styles.emptyResultsDesc}>
+                  Try another search term, or paste a direct video stream (MP4, HLS), YouTube link, or WebTorrent magnet above.
+                </span>
+              </div>
+            )}
+
+            {filteredItems.slice(0, 20).map((item, index) => {
               const isAdded = Boolean(addedUrls[item.url]);
               return (
                 <div
                   key={`${item.url}-${index}`}
                   className={styles.resultCard}
-                  onClick={() => handlePlayNow(item.url)}
+                  onClick={() => handlePlayNow(item)}
                   title={`Play ${item.name || item.url}`}
                 >
                   <div className={styles.thumbnailWrapper}>
@@ -463,6 +504,20 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
                     </div>
                     <div className={styles.resultChannel}>
                       <span>{item.channel || item.type.toUpperCase()}</span>
+                      {item.type === "magnet" && Boolean(item.seeders) && (
+                        <span
+                          className={`${styles.torrentMetaChip} ${
+                            Number(item.seeders) > 0 ? styles.torrentMetaChipGreen : ""
+                          }`}
+                        >
+                          {item.seeders} seeds
+                        </span>
+                      )}
+                      {item.type === "magnet" && Boolean(item.size) && (
+                        <span className={styles.torrentMetaChip}>
+                          {typeof item.size === "number" ? formatSize(item.size) : item.size}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -489,7 +544,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
                       <button
                         type="button"
                         className={`${styles.miniActionBtn} ${styles.miniActionBtnPlay}`}
-                        onClick={() => handlePlayNow(item.url)}
+                        onClick={() => handlePlayNow(item)}
                       >
                         <IconPlayerPlayFilled size={13} />
                       </button>

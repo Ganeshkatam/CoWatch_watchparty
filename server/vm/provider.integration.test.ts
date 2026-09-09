@@ -9,6 +9,7 @@ import {
   PooledVMProvider,
   ProviderReleaseRouter,
   VBrowserDisabledError,
+  type IVBrowserProvider,
 } from "./provider.ts";
 
 async function runIntegrationSuite() {

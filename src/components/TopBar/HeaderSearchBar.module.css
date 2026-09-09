@@ -397,6 +397,49 @@
   border-radius: 10px;
 }
 
+.emptyResults {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  text-align: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.emptyResultsTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.emptyResultsDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.torrentMetaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.torrentMetaChipGreen {
+  color: var(--color-success);
+  background: var(--status-success-soft);
+  border-color: var(--border-success-soft);
+}
+
 .footerBar {
   display: flex;
   align-items: center;

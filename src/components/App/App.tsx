@@ -1183,6 +1183,50 @@ export class App extends React.Component<AppProps, AppState> {
     this.setState({ isMultiSelectModalOpen: false, fileSelection: [] });
   };
 
+  onSelectStream = async (result: SearchResult) => {
+    const magnet = result.magnet || result.url;
+    if (!magnet) return;
+
+    const streamPath = this.context?.streamPath;
+    if (!streamPath) {
+      // If no streamPath relay server configured, directly play magnet via WebTorrent
+      this.roomSetMedia(magnet);
+      return;
+    }
+
+    try {
+      this.setState({ isMultiSelectModalOpen: true, fileSelection: [] });
+      const response = await fetch(
+        streamPath + "/data?torrent=" + encodeURIComponent(magnet),
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const metadata = await response.json();
+      if (Array.isArray(metadata?.files) && metadata.files.length > 0) {
+        const multiStreamSelection = metadata.files.map((file: any, i: number) => ({
+          name: file.name || `File ${i + 1}`,
+          length: file.length || 0,
+          url:
+            streamPath +
+            "/stream?torrent=" +
+            encodeURIComponent(magnet) +
+            "&fileIndex=" +
+            i,
+        }));
+        this.setFileSelection(multiStreamSelection);
+      } else {
+        // Single file or fallback: play directly
+        this.resetMultiSelect();
+        this.roomSetMedia(magnet);
+      }
+    } catch (err) {
+      console.warn("Failed to inspect streamPath torrent metadata, falling back to direct play:", err);
+      this.resetMultiSelect();
+      this.roomSetMedia(magnet);
+    }
+  };
+
   loadSettings = async () => {
     // Load settings from localstorage
     let settings = getCurrentSettings();
@@ -2652,6 +2696,7 @@ export class App extends React.Component<AppProps, AppState> {
             roomId={this.state.roomId}
             hostName={this.state.hostName || (this.state.owner && this.context.user?.id === this.state.owner ? (this.context.displayName || "You") : undefined)}
             passcode={this.state.passcode || ""}
+            onSelectStream={this.onSelectStream}
           />
         )}
         {
