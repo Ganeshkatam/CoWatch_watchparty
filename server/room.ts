@@ -313,9 +313,22 @@ export class Room {
         }
       }
 
+      next();
+    });
+    io.of(roomId).on("connection", async (socket: Socket) => {
+      const clientId = socket.handshake.query?.clientId;
+      if (typeof clientId !== "string") {
+        // We already validated in middleware above, this is just to satisfy TS
+        return;
+      }
+
+      socket.clientId = clientId;
+      
+      // -- Start socket state initialization --
+      
       // Disconnect other sockets with this clientId
       if (this.socketIdMap[clientId]) {
-        io.of(roomId).sockets.get(this.socketIdMap[clientId])?.disconnect();
+        this.io.of(this.roomId).sockets.get(this.socketIdMap[clientId])?.disconnect(true);
       }
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
@@ -335,17 +348,10 @@ export class Room {
           updateObject(postgres, "rooms", { status: 'active', "lastActiveAt": new Date() }, { "roomId": this.roomId }).catch(console.error);
         }
       }
+      
+      socket.on("disconnect", () => this.onDisconnect(socket));
+      // -- End socket state initialization --
 
-      next();
-    });
-    io.of(roomId).on("connection", async (socket: Socket) => {
-      const clientId = socket.handshake.query?.clientId;
-      if (typeof clientId !== "string") {
-        // We already validated in middleware above, this is just to satisfy TS
-        return;
-      }
-
-      socket.clientId = clientId;
       // Preserve uid if already set by the middleware (owner auth bypass)
       if (!socket.uid) {
         socket.uid = "";
@@ -569,8 +575,6 @@ export class Room {
       socket.on("signalSS", (data: unknown) =>
         validateNotExpired() && this.sendSignal(socket, data, "signalSS"),
       );
-
-socket.on("disconnect", () => this.onDisconnect(socket));
 
       // Attempt to resolve profile from auth token if passed in handshake
       const authUid = socket.handshake.auth?.uid;

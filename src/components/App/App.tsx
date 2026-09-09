@@ -92,6 +92,7 @@ declare global {
       ourStream: MediaStream | undefined;
       videoRefs: HTMLVideoElementDict;
       videoPCs: PCDict;
+      iceQueues: Record<string, RTCIceCandidateInit[]>;
       webtorrent?: WebTorrent.Instance;
       hls?: Hls;
       dash?: MediaPlayerClass;
@@ -103,6 +104,7 @@ window.cowatch = {
   ourStream: undefined,
   videoRefs: {},
   videoPCs: {},
+  iceQueues: {},
 };
 
 const clientId = getOrCreateClientId();

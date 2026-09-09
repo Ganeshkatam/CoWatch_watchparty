@@ -78,6 +78,9 @@ export class VideoChatErrorBoundary extends React.Component<
 }
 
 export class VideoChat extends React.Component<VideoChatProps> {
+  createPeerConnection(from: any): RTCPeerConnection {
+    throw new Error("Method not implemented.");
+  }
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
 
@@ -149,34 +152,72 @@ export class VideoChat extends React.Component<VideoChatProps> {
     this.socket.emit("CMD:userMute", { isMuted: !this.getAudioWebRTC() });
   };
 
+  makingOffer: Record<string, boolean> = {};
+  ignoreOffer: Record<string, boolean> = {};
+
   handleSignal = async (data: any) => {
     // Handle messages received from signaling server
     const msg = data.msg;
     const from = data.from;
+    const selfId = getOrCreateClientId();
+
     let pc = window.cowatch.videoPCs[from];
     if (!pc) {
-      return;
+      if (msg.sdp && msg.sdp.type === "answer") return;
+      pc = this.createPeerConnection(from);
     }
+
     console.log("recv", from, data);
-    if (msg.ice !== undefined) {
-      pc.addIceCandidate(new RTCIceCandidate(msg.ice));
-    } else if (msg.sdp && msg.sdp.type === "offer") {
-      // If our PC is stale, replace it with a fresh one before handling the offer
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-        pc.close();
-        delete window.cowatch.videoPCs[from];
-        this.updateWebRTC();
-        pc = window.cowatch.videoPCs[from];
-        if (!pc) {
+
+    try {
+      if (msg.sdp) {
+        const isOfferer = selfId < from;
+        const polite = !isOfferer;
+        const offerCollision =
+          msg.sdp.type === "offer" &&
+          (this.makingOffer[from] || pc.signalingState !== "stable");
+
+        this.ignoreOffer[from] = !polite && offerCollision;
+        if (this.ignoreOffer[from]) {
           return;
         }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+
+        if (msg.sdp.type === "offer") {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          this.sendSignal(from, { sdp: pc.localDescription });
+        }
+
+        const queue = window.cowatch.iceQueues[from];
+        if (queue && queue.length > 0) {
+          for (const candidate of queue) {
+            try {
+              await pc.addIceCandidate(candidate);
+            } catch (err) {
+              console.warn("Failed to add queued ICE candidate", err);
+            }
+          }
+          window.cowatch.iceQueues[from] = [];
+        }
+      } else if (msg.ice !== undefined) {
+        try {
+          const candidate = new RTCIceCandidate(msg.ice);
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(candidate);
+          } else {
+            window.cowatch.iceQueues[from] = window.cowatch.iceQueues[from] || [];
+            window.cowatch.iceQueues[from].push(candidate);
+          }
+        } catch (err) {
+          if (!this.ignoreOffer[from]) {
+            console.warn("Error adding ICE candidate:", err);
+          }
+        }
       }
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      this.sendSignal(from, { sdp: pc.localDescription });
-    } else if (msg.sdp && msg.sdp.type === "answer") {
-      pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    } catch (err) {
+      console.error("Signal handling error", err);
     }
   };
 
@@ -229,7 +270,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       Object.keys(videoPCs).forEach((key) => {
         try {
           videoPCs[key]?.close();
-        } catch (e) {}
+        } catch (e) { }
         delete videoPCs[key];
       });
       this.socket?.emit("CMD:leaveVideo");
@@ -325,7 +366,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         if (!clientIds.has(key)) {
           try {
             value.close();
-          } catch (e) {}
+          } catch (e) { }
           delete videoPCs[key];
         }
       });
@@ -378,7 +419,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
               // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
               try {
                 pc.close();
-              } catch (e) {}
+              } catch (e) { }
               delete videoPCs[id];
               this.updateWebRTC();
             }
