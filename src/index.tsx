@@ -41,6 +41,7 @@ const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ defa
 const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
 const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
+const Join = lazy(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
 
 const RouteFallback = () => (
   <Center style={{ minHeight: "60vh", width: "100%" }}>
@@ -481,6 +482,11 @@ class CoWatch extends React.Component {
                           </RequireGuest>
                         </Route>
                         <Route path="/verify-email" exact component={VerifyEmail} />
+                        <Route
+                          path={["/join", "/join/:roomId"]}
+                          exact
+                          component={Join}
+                        />
                         <Route
                           path="/create"
                           exact
