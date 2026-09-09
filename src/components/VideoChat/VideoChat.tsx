@@ -78,9 +78,7 @@ export class VideoChatErrorBoundary extends React.Component<
 }
 
 export class VideoChat extends React.Component<VideoChatProps> {
-  createPeerConnection(from: any): RTCPeerConnection {
-    throw new Error("Method not implemented.");
-  }
+
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
 
@@ -346,6 +344,82 @@ export class VideoChat extends React.Component<VideoChatProps> {
     );
   };
 
+  createPeerConnection = (id: string) => {
+    const existing = window.cowatch.videoPCs[id];
+    if (existing) {
+      return existing;
+    }
+
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    window.cowatch.videoPCs[id] = pc;
+    window.cowatch.iceQueues[id] = [];
+    
+    const ourStream = window.cowatch.ourStream;
+    const videoRefs = window.cowatch.videoRefs;
+
+    // Add our own video as outgoing stream
+    if (ourStream) {
+      ourStream.getTracks().forEach((track) => {
+        try {
+          pc.addTrack(track, ourStream);
+        } catch (e) {
+          console.warn("Could not add track to pc:", e);
+        }
+      });
+    }
+
+    pc.onicecandidate = (event) => {
+      // We generated an ICE candidate, send it to peer
+      if (event.candidate) {
+        this.sendSignal(id, { ice: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event: RTCTrackEvent) => {
+      if (videoRefs && videoRefs[id] && event.streams && event.streams[0]) {
+        try {
+          videoRefs[id].srcObject = event.streams[0];
+        } catch (e) {
+          console.warn("Could not set remote stream on video element:", e);
+        }
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "failed") {
+        // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
+        try {
+          pc.close();
+        } catch (e) { }
+        delete window.cowatch.videoPCs[id];
+        delete window.cowatch.iceQueues[id];
+        this.updateWebRTC();
+      }
+    };
+
+    // For each pair, have the lexicographically smaller ID be the offerer
+    const selfId = getOrCreateClientId();
+    const isOfferer = selfId < id;
+    if (isOfferer) {
+      pc.onnegotiationneeded = async () => {
+        try {
+          this.makingOffer[id] = true;
+          // Start connection for peer's video
+          const offer = await pc.createOffer();
+          if (pc.signalingState !== "stable") return;
+          await pc.setLocalDescription(offer);
+          this.sendSignal(id, { sdp: pc.localDescription });
+        } catch (e) {
+          console.warn("Negotiation error:", e);
+        } finally {
+          this.makingOffer[id] = false;
+        }
+      };
+    }
+
+    return pc;
+  };
+
   updateWebRTC = () => {
     try {
       const ourStream = window.cowatch.ourStream;
@@ -368,17 +442,20 @@ export class VideoChat extends React.Component<VideoChatProps> {
             value.close();
           } catch (e) { }
           delete videoPCs[key];
+          delete window.cowatch.iceQueues[key];
         }
       });
 
       this.props.participants.forEach((user) => {
         const id = user.id;
-        if (!user.isVideoChat || videoPCs[id]) {
-          // User isn't in video chat, or we already have a connection to them
+        if (!user.isVideoChat) {
+          // User isn't in video chat, skip
           return;
         }
         if (id === selfId) {
-          videoPCs[id] = new RTCPeerConnection();
+          if (!videoPCs[id]) {
+            videoPCs[id] = new RTCPeerConnection();
+          }
           if (videoRefs && videoRefs[id] && ourStream) {
             try {
               videoRefs[id].srcObject = ourStream;
@@ -387,57 +464,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
             }
           }
         } else {
-          const pc = new RTCPeerConnection({ iceServers: iceServers() });
-          videoPCs[id] = pc;
-          // Add our own video as outgoing stream
-          ourStream?.getTracks().forEach((track) => {
-            if (ourStream) {
-              try {
-                pc.addTrack(track, ourStream);
-              } catch (e) {
-                console.warn("Could not add track to pc:", e);
-              }
-            }
-          });
-          pc.onicecandidate = (event) => {
-            // We generated an ICE candidate, send it to peer
-            if (event.candidate) {
-              this.sendSignal(id, { ice: event.candidate });
-            }
-          };
-          pc.ontrack = (event: RTCTrackEvent) => {
-            if (videoRefs && videoRefs[id] && event.streams && event.streams[0]) {
-              try {
-                videoRefs[id].srcObject = event.streams[0];
-              } catch (e) {
-                console.warn("Could not set remote stream on video element:", e);
-              }
-            }
-          };
-          pc.oniceconnectionstatechange = () => {
-            if (pc.iceConnectionState === "failed") {
-              // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
-              try {
-                pc.close();
-              } catch (e) { }
-              delete videoPCs[id];
-              this.updateWebRTC();
-            }
-          };
-          // For each pair, have the lexicographically smaller ID be the offerer
-          const isOfferer = selfId < id;
-          if (isOfferer) {
-            pc.onnegotiationneeded = async () => {
-              try {
-                // Start connection for peer's video
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                this.sendSignal(id, { sdp: pc.localDescription });
-              } catch (e) {
-                console.warn("Negotiation error:", e);
-              }
-            };
-          }
+          this.createPeerConnection(id);
         }
       });
     } catch (err) {
