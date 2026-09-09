@@ -33,6 +33,7 @@ import {
   IconEye,
   IconEyeOff,
   IconCheck,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import { type RoomSummary } from "./MyRooms";
 import {
@@ -464,11 +465,68 @@ export const EditRoomModal = ({
   );
 };
 
+// --- Delete Confirmation Modal ---
+interface DeleteConfirmModalProps {
+  room: RoomSummary;
+  opened: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  isDeleting: boolean;
+}
+
+const DeleteConfirmModal = ({
+  room,
+  opened,
+  onClose,
+  onConfirm,
+  isDeleting,
+}: DeleteConfirmModalProps) => {
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconAlertTriangle size={18} color="var(--mantine-color-red-6)" />
+          <Text fw={600} size="md">Delete Room</Text>
+        </Group>
+      }
+      centered
+      radius="md"
+      size="sm"
+    >
+      <Stack gap="md">
+        <Text size="sm">
+          Are you sure you want to delete <Text span fw={600}>"{room.roomTitle || room.roomId}"</Text>?
+        </Text>
+        <Text size="xs" c="dimmed">
+          This will permanently delete the room and its settings. This action cannot be undone.
+        </Text>
+        <Group justify="flex-end" mt="md" gap="sm">
+          <Button variant="default" onClick={onClose} disabled={isDeleting} size="sm">
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            onClick={onConfirm}
+            loading={isDeleting}
+            size="sm"
+            leftSection={<IconTrash size={15} />}
+          >
+            Delete Room
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+};
+
 // --- Shared Action Hook ---
 const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRefresh?: () => void, onUpdateCover?: (id: string, url: string) => void) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [editModalOpened, setEditModalOpened] = useState(false);
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const history = useHistory();
 
@@ -476,10 +534,14 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     navigator.clipboard.writeText(getRoomUrl(room.roomId)).catch(console.error);
   };
 
-  const handleDelete = async () => {
-    if (window.confirm("Are you sure you want to delete this room?")) {
-      setIsDeleting(true);
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
       await onDelete(room.roomId);
+      setDeleteModalOpened(false);
+    } catch (e) {
+      console.error("Failed to delete room:", e);
+    } finally {
       setIsDeleting(false);
     }
   };
@@ -594,14 +656,27 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
 
     items.push(<Menu.Divider key="div2" />);
     items.push(
-      <Menu.Item key="delete" color="red" leftSection={<IconTrash size={14} />} onClick={handleDelete}>
+      <Menu.Item key="delete" color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleteModalOpened(true)}>
         Delete Room
       </Menu.Item>
     );
     return items;
   };
 
-  return { isUploading, fileInputRef, handleFileUpload, renderPrimary, renderSecondary, renderMenuItems, editModalOpened, setEditModalOpened };
+  return {
+    isUploading,
+    isDeleting,
+    fileInputRef,
+    handleFileUpload,
+    renderPrimary,
+    renderSecondary,
+    renderMenuItems,
+    editModalOpened,
+    setEditModalOpened,
+    deleteModalOpened,
+    setDeleteModalOpened,
+    handleConfirmDelete,
+  };
 };
 
 // --- View Components ---
@@ -695,6 +770,14 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         onClose={() => actions.setEditModalOpened(false)} 
         onSuccess={() => window.location.reload()} 
       />
+
+      <DeleteConfirmModal
+        room={room}
+        opened={actions.deleteModalOpened}
+        onClose={() => actions.setDeleteModalOpened(false)}
+        onConfirm={actions.handleConfirmDelete}
+        isDeleting={actions.isDeleting}
+      />
     </div>
   );
 };
@@ -787,6 +870,14 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         opened={actions.editModalOpened} 
         onClose={() => actions.setEditModalOpened(false)} 
         onSuccess={() => window.location.reload()} 
+      />
+
+      <DeleteConfirmModal
+        room={room}
+        opened={actions.deleteModalOpened}
+        onClose={() => actions.setDeleteModalOpened(false)}
+        onConfirm={actions.handleConfirmDelete}
+        isDeleting={actions.isDeleting}
       />
     </div>
   );
