@@ -1,17 +1,25 @@
 import React, { useState } from "react";
-import { Modal, TextInput, ActionIcon, Button, Text, Group, Tooltip } from "@mantine/core";
+import { Modal, Button, Text, Tooltip, ActionIcon } from "@mantine/core";
 import {
   IconCopy,
   IconCheck,
   IconBrandWhatsapp,
   IconBrandTelegram,
+  IconBrandX,
   IconMail,
   IconHash,
   IconKey,
   IconQrcode,
   IconShare,
   IconMessageShare,
+  IconUsers,
+  IconLock,
+  IconShieldCheck,
+  IconEye,
+  IconEyeOff,
+  IconLink,
 } from "@tabler/icons-react";
+import styles from "./InviteModal.module.css";
 
 interface InviteModalProps {
   roomId?: string;
@@ -28,6 +36,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const [inviteMsgCopied, setInviteMsgCopied] = useState(false);
   const [passcodeCopied, setPasscodeCopied] = useState(false);
   const [roomIdCopied, setRoomIdCopied] = useState(false);
+  const [showPasscode, setShowPasscode] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
   const pathParts = window.location.pathname.split("/");
@@ -91,193 +100,257 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     fullUrl
   )}&text=${encodeURIComponent(telegramText)}`;
 
+  const twitterText = "Join my watch party on CoWatch and let's stream together!";
+  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    twitterText
+  )}&url=${encodeURIComponent(fullUrl)}`;
+
   const mailtoUrl = `mailto:?subject=${encodeURIComponent(
     "Join my CoWatch Party"
   )}&body=${encodeURIComponent(inviteMessage)}`;
 
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
     fullUrl
   )}`;
+
+  const hasNativeShare =
+    typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleNativeShare = () => {
+    if (!hasNativeShare) return;
+    navigator
+      .share({
+        title: "Join my CoWatch Party",
+        text: resolvedPasscode
+          ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+          : "Join my watch party and let's stream together!",
+        url: fullUrl,
+      })
+      .catch(() => {});
+  };
 
   return (
     <Modal
       opened
       centered
       onClose={closeInviteModal}
-      title="Invite friends to your Watch Party!"
-      radius="md"
-      styles={{
-        content: {
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
-          color: "var(--text-primary)",
-        },
-        header: {
-          background: "var(--bg-surface)",
-          color: "var(--text-primary)",
-          borderBottom: "1px solid var(--border-subtle)",
-        },
-      }}
+      className={styles.modalRoot}
+      size="lg"
+      title={
+        <div className={styles.modalHeader}>
+          <div className={styles.headerIconBadge}>
+            <IconUsers size={22} />
+          </div>
+          <div className={styles.headerMeta}>
+            <span className={styles.headerTitle}>Invite Friends</span>
+            <span className={styles.headerSubtitle}>
+              Share your watch party link to stream together in real-time
+            </span>
+          </div>
+        </div>
+      }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* Copy Full Invite Message CTA */}
-        <Button
-          onClick={handleCopyInviteMessage}
-          variant="gradient"
-          gradient={{ from: "teal", to: "blue", deg: 135 }}
-          fullWidth
-          leftSection={inviteMsgCopied ? <IconCheck size={18} /> : <IconMessageShare size={18} />}
-          style={{ fontWeight: 600 }}
-        >
-          {inviteMsgCopied ? "Invite Message Copied!" : "Copy Full Invite Message (with Passcode)"}
-        </Button>
-
-        {/* Copy Invite Link */}
-        <TextInput
-          label="Invite Link (includes passcode)"
-          readOnly
-          rightSection={
-            <Tooltip label={inviteLinkCopied ? "Copied!" : "Copy Link"}>
-              <ActionIcon onClick={handleCopyInviteLink} color={inviteLinkCopied ? "green" : "violet"} variant="light">
-                {inviteLinkCopied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-              </ActionIcon>
-            </Tooltip>
-          }
-          value={fullUrl}
-        />
-
-        {/* Copy Room Passcode */}
+      <div className={styles.container}>
+        {/* Room Status Banner */}
         {resolvedPasscode ? (
-          <TextInput
-            label="Room Passcode"
-            readOnly
-            leftSection={<IconKey size={16} />}
-            rightSection={
-              <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
-                <ActionIcon onClick={handleCopyPasscode} color={passcodeCopied ? "green" : "violet"} variant="light">
-                  {passcodeCopied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+          <div className={`${styles.statusBanner} ${styles.statusBannerProtected}`}>
+            <IconLock size={18} className={styles.statusBannerIcon} />
+            <div>
+              <strong>Passcode Protected Room.</strong> The invite link below automatically includes the access token for seamless one-click joining.
+            </div>
+          </div>
+        ) : (
+          <div className={`${styles.statusBanner} ${styles.statusBannerOpen}`}>
+            <IconShieldCheck size={18} className={styles.statusBannerIcon} />
+            <div>
+              <strong>Public Room.</strong> Anyone with the link can join the watch party directly.
+            </div>
+          </div>
+        )}
+
+        {/* Primary Link Card */}
+        <div className={styles.linkCard}>
+          <div className={styles.linkCardHeader}>
+            <span className={styles.linkCardLabel}>
+              <IconLink size={14} />
+              Party Link
+            </span>
+            <Button
+              onClick={handleCopyInviteMessage}
+              variant="subtle"
+              color="violet"
+              size="compact-xs"
+              leftSection={inviteMsgCopied ? <IconCheck size={13} /> : <IconMessageShare size={13} />}
+            >
+              {inviteMsgCopied ? "Message Copied" : "Copy Formatted Message"}
+            </Button>
+          </div>
+
+          <div className={styles.linkInputRow}>
+            <div className={styles.urlDisplay} title={fullUrl}>
+              {fullUrl}
+            </div>
+            <Button
+              onClick={handleCopyInviteLink}
+              variant="gradient"
+              gradient={{ from: "violet", to: "indigo", deg: 135 }}
+              className={styles.copyButton}
+              leftSection={inviteLinkCopied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+            >
+              {inviteLinkCopied ? "Copied!" : "Copy Link"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Room Credentials Grid */}
+        <div className={styles.credentialsGrid}>
+          {/* Room ID Card */}
+          <div
+            className={styles.credentialCard}
+            onClick={handleCopyRoomId}
+            title="Click to copy room slug"
+          >
+            <div className={styles.credentialHeader}>
+              <span className={styles.credentialTitle}>
+                <IconHash size={13} />
+                Room Code / Slug
+              </span>
+              <Tooltip label={roomIdCopied ? "Copied!" : "Copy Room Code"}>
+                <ActionIcon size="xs" variant="transparent" color={roomIdCopied ? "green" : "gray"}>
+                  {roomIdCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
                 </ActionIcon>
               </Tooltip>
-            }
-            value={resolvedPasscode}
-          />
-        ) : null}
+            </div>
+            <div className={styles.credentialValue}>{cleanId}</div>
+          </div>
 
-        {/* Copy Room ID / Name */}
-        <TextInput
-          label="Room ID / Slug"
-          readOnly
-          rightSection={
-            <Tooltip label={roomIdCopied ? "Copied!" : "Copy Room ID"}>
-              <ActionIcon onClick={handleCopyRoomId} color={roomIdCopied ? "green" : "violet"} variant="light">
-                {roomIdCopied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-              </ActionIcon>
-            </Tooltip>
-          }
-          leftSection={<IconHash size={16} />}
-          value={cleanId}
-        />
+          {/* Passcode Card */}
+          {resolvedPasscode ? (
+            <div
+              className={styles.credentialCard}
+              onClick={handleCopyPasscode}
+              title="Click to copy passcode"
+            >
+              <div className={styles.credentialHeader}>
+                <span className={styles.credentialTitle}>
+                  <IconKey size={13} />
+                  Room Passcode
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <ActionIcon
+                    size="xs"
+                    variant="transparent"
+                    color="gray"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPasscode(!showPasscode);
+                    }}
+                    title={showPasscode ? "Hide Passcode" : "Show Passcode"}
+                  >
+                    {showPasscode ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+                  </ActionIcon>
+                  <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
+                    <ActionIcon size="xs" variant="transparent" color={passcodeCopied ? "green" : "gray"}>
+                      {passcodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </div>
+              </div>
+              <div className={styles.credentialValue}>
+                {showPasscode ? resolvedPasscode : "••••••••"}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.credentialCard} style={{ cursor: "default", opacity: 0.8 }}>
+              <div className={styles.credentialHeader}>
+                <span className={styles.credentialTitle}>
+                  <IconKey size={13} />
+                  Room Passcode
+                </span>
+              </div>
+              <div className={styles.credentialValue} style={{ color: "var(--text-secondary)" }}>
+                None (Open)
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* Share buttons */}
-        <div>
-          <Text size="sm" fw={500} mb="xs">
-            Quick Share (Includes Link & Passcode)
-          </Text>
-          <Group gap="xs">
-            <Button
-              component="a"
+        {/* Quick Share Section */}
+        <div className={styles.shareSection}>
+          <span className={styles.shareTitle}>Quick Share</span>
+          <div className={styles.shareGrid}>
+            <a
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              color="green"
-              variant="light"
-              leftSection={<IconBrandWhatsapp size={16} />}
-              style={{ flexGrow: 1 }}
+              className={`${styles.shareButton} ${styles.shareWhatsapp}`}
             >
-              WhatsApp
-            </Button>
-            <Button
-              component="a"
+              <IconBrandWhatsapp size={16} />
+              <span>WhatsApp</span>
+            </a>
+            <a
               href={telegramUrl}
               target="_blank"
               rel="noopener noreferrer"
-              color="blue"
-              variant="light"
-              leftSection={<IconBrandTelegram size={16} />}
-              style={{ flexGrow: 1 }}
+              className={`${styles.shareButton} ${styles.shareTelegram}`}
             >
-              Telegram
-            </Button>
-            <Button
-              component="a"
+              <IconBrandTelegram size={16} />
+              <span>Telegram</span>
+            </a>
+            <a
+              href={twitterUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${styles.shareButton} ${styles.shareTwitter}`}
+            >
+              <IconBrandX size={16} />
+              <span>X (Twitter)</span>
+            </a>
+            <a
               href={mailtoUrl}
-              color="gray"
-              variant="light"
-              leftSection={<IconMail size={16} />}
-              style={{ flexGrow: 1 }}
+              className={`${styles.shareButton} ${styles.shareEmail}`}
             >
-              Email
+              <IconMail size={16} />
+              <span>Email</span>
+            </a>
+          </div>
+          {hasNativeShare && (
+            <Button
+              onClick={handleNativeShare}
+              variant="light"
+              color="violet"
+              fullWidth
+              leftSection={<IconShare size={16} />}
+              style={{ marginTop: "4px" }}
+            >
+              Share via System / More Apps
             </Button>
-            {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
-              <Button
-                onClick={() => {
-                  navigator
-                    .share({
-                      title: "Join my CoWatch Party",
-                      text: resolvedPasscode
-                        ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-                        : "Join my watch party and let's watch together!",
-                      url: fullUrl,
-                    })
-                    .catch(() => {});
-                }}
-                color="violet"
-                variant="light"
-                leftSection={<IconShare size={16} />}
-                style={{ flexGrow: 1 }}
-              >
-                Share
-              </Button>
-            )}
-          </Group>
+          )}
         </div>
 
-        {/* QR Code toggler */}
-        <div style={{ marginTop: "4px" }}>
+        {/* QR Code Section */}
+        <div>
           <Button
             onClick={() => setShowQr(!showQr)}
             variant="default"
             fullWidth
             leftSection={<IconQrcode size={16} />}
           >
-            {showQr ? "Hide QR Code" : "Show QR Code"}
+            {showQr ? "Hide QR Code" : "Show QR Code for Mobile Scanning"}
           </Button>
 
           {showQr && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: "16px",
-                padding: "16px",
-                background: "var(--bg-elevated)",
-                borderRadius: "8px",
-              }}
-            >
-              <img
-                src={qrCodeUrl}
-                alt="Room QR Code"
-                style={{
-                  borderRadius: "4px",
-                  border: "8px solid white",
-                  boxShadow: "var(--shadow-sm)",
-                }}
-              />
-              <Text size="xs" c="dimmed" mt="xs">
-                Scan with a mobile camera to join instantly
-              </Text>
+            <div className={styles.qrContainer}>
+              <div className={styles.qrFrame}>
+                <img
+                  src={qrCodeUrl}
+                  alt="Watch party QR Code"
+                  className={styles.qrImage}
+                />
+              </div>
+              <span className={styles.qrCaption}>
+                Scan with your phone camera to join the room instantly
+              </span>
             </div>
           )}
         </div>
