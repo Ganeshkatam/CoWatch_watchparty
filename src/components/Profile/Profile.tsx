@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { openFileSelector } from "../../utils/utils";
 import { useAppearance } from "../../theme/ThemeProvider";
+import styles from "./Profile.module.css";
 
 const AppearanceSelector = () => {
   const { appearance, setAppearance } = useAppearance();
@@ -281,15 +282,7 @@ export class Profile extends React.Component<{}> {
     }
 
     return (
-      <div style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "flex-start",
-        padding: "60px 20px",
-        minHeight: "calc(100vh - 60px)",
-        background: "linear-gradient(135deg, var(--bg-app) 0%, var(--bg-surface) 100%)",
-        animation: "fadeIn 0.5s ease-out"
-      }}>
+      <div className={styles.page}>
         <style>{`
           @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
@@ -337,15 +330,7 @@ export class Profile extends React.Component<{}> {
           </div>
         </Modal>
 
-        <div className="glass-card" style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "min(100% - 48px, 1100px)",
-          margin: "0 auto",
-          padding: "40px",
-          overflow: "hidden",
-          position: "relative"
-        }}>
+        <div className={`glass-card ${styles.card}`}>
           {/* Decorative background glow */}
           <div style={{
             position: "absolute",
@@ -358,7 +343,7 @@ export class Profile extends React.Component<{}> {
             zIndex: 0
           }} />
 
-          <div style={{ position: "relative", zIndex: 1, maxWidth: "800px", margin: "0 auto", width: "100%" }}>
+          <div className={styles.content}>
             <h1 style={{
               margin: "0 0 30px 0",
               fontFamily: "Inter, sans-serif",
@@ -370,15 +355,9 @@ export class Profile extends React.Component<{}> {
             }}>Account Settings</h1>
 
             {/* Profile Header */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "20px",
-              paddingBottom: "30px",
-              borderBottom: "1px solid var(--border-subtle)",
-              marginBottom: "30px"
-            }}>
+            <div className={styles.profileHeader}>
               <Avatar
+                className={styles.avatar}
                 size={120}
                 src={this.context.avatarUrl}
                 style={{
@@ -386,8 +365,8 @@ export class Profile extends React.Component<{}> {
                   boxShadow: "0 4px 15px rgba(0,0,0,0.3)"
                 }}
               />
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div className={styles.identity}>
+                <div className={styles.identityName}>
                   <span style={{ fontSize: "1.2rem", fontWeight: 500, color: "var(--text-primary)" }}>
                     {this.state.original_display_name || this.context.displayName || this.context.user?.email?.split('@')[0]}
                   </span>
@@ -395,16 +374,15 @@ export class Profile extends React.Component<{}> {
                     <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={18} />
                   )}
                 </div>
-                <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>{this.context.user?.email}</span>
+                <span className={styles.identityEmail} style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>{this.context.user?.email}</span>
               </div>
 
               <Button
-                className="profile-btn"
                 leftSection={<IconUpload size={16} />}
                 onClick={this.uploadAvatar}
                 variant="light"
                 color="violet"
-                style={{ marginLeft: "auto" }}
+                className={`profile-btn ${styles.uploadButton}`}
               >
                 {this.context.avatarUrl ? "Change Picture" : "Upload Picture"}
               </Button>
@@ -417,7 +395,7 @@ export class Profile extends React.Component<{}> {
               }}
               color="violet"
             >
-              <Tabs.List mb="xl">
+              <Tabs.List className={styles.tabsList} mb="xl">
                 <Tabs.Tab value="general" leftSection={<IconUser size={16} />}>General</Tabs.Tab>
                 <Tabs.Tab value="preferences" leftSection={<IconSettings size={16} />}>Preferences</Tabs.Tab>
                 <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>Security</Tabs.Tab>
@@ -425,7 +403,7 @@ export class Profile extends React.Component<{}> {
 
               <Tabs.Panel value="general">
                 <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  <div style={{ flex: 1, minWidth: "250px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <Text size="sm" fw={500} mb={5} c="var(--text-secondary)" style={{ textTransform: "uppercase", letterSpacing: "1px" }}>Display name</Text>
                     <Text size="xs" c="dimmed" mb="sm">This is the name other people see in CoWatch.</Text>
                     {this.state.isEditingName ? (
@@ -468,7 +446,7 @@ export class Profile extends React.Component<{}> {
               <Tabs.Panel value="preferences">
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px", background: "var(--bg-elevated)", borderRadius: "12px", border: "1px solid var(--border-subtle)" }}>
                   <Text size="sm" fw={600} c="dimmed" style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-8px" }}>Media</Text>
-                  <Group justify="space-between" wrap="nowrap">
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Camera on by default</Text>
                       <Text size="xs" c="dimmed">Start video automatically when joining a room.</Text>
@@ -482,7 +460,7 @@ export class Profile extends React.Component<{}> {
                     />
                   </Group>
 
-                  <Group justify="space-between" wrap="nowrap" style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap" style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Microphone on by default</Text>
                       <Text size="xs" c="dimmed">Start microphone automatically when joining a room.</Text>
@@ -497,7 +475,7 @@ export class Profile extends React.Component<{}> {
                   </Group>
 
                   <Text size="sm" fw={600} c="dimmed" style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-8px", marginTop: "8px" }}>General</Text>
-                  <Group justify="space-between" wrap="nowrap">
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Show Chat Column</Text>
                       <Text size="xs" c="dimmed">Display the chat sidebar by default when joining rooms.</Text>
@@ -511,7 +489,7 @@ export class Profile extends React.Component<{}> {
                     />
                   </Group>
 
-                  <Group justify="space-between" wrap="nowrap">
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Show People Column</Text>
                       <Text size="xs" c="dimmed">Display the participant list by default.</Text>
@@ -525,7 +503,7 @@ export class Profile extends React.Component<{}> {
                     />
                   </Group>
 
-                  <Group justify="space-between" wrap="nowrap">
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Disable Chat Sound</Text>
                       <Text size="xs" c="dimmed">Mute notification sounds for new chat messages.</Text>
@@ -539,7 +517,7 @@ export class Profile extends React.Component<{}> {
                     />
                   </Group>
 
-                  <Group justify="space-between" wrap="nowrap" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginTop: "8px" }}>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginTop: "8px" }}>
                     <div>
                       <Text size="md" fw={500} c="var(--text-primary)">Appearance</Text>
                       <Text size="xs" c="dimmed">Customize your visual interface theme.</Text>
@@ -576,7 +554,7 @@ export class Profile extends React.Component<{}> {
                       Authentication & Session
                     </Text>
 
-                    <Group justify="space-between" wrap="nowrap" style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
+                    <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap" style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
                       <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
                         <Text size="md" fw={500} c="var(--text-primary)">
                           Password
@@ -598,7 +576,7 @@ export class Profile extends React.Component<{}> {
                       </Button>
                     </Group>
 
-                    <Group justify="space-between" wrap="nowrap">
+                    <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                       <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
                         <Text size="md" fw={500} c="var(--text-primary)">
                           Active Session
@@ -651,7 +629,7 @@ export class Profile extends React.Component<{}> {
                       </Text>
                     </div>
 
-                    <Group justify="space-between" wrap="nowrap">
+                    <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                       <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
                         <Text size="md" fw={500} c="var(--text-primary)">
                           Delete Account

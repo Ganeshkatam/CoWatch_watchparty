@@ -1,0 +1,120 @@
+.page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - 60px);
+  padding: 60px 20px;
+  background: linear-gradient(135deg, var(--bg-app) 0%, var(--bg-surface) 100%);
+  animation: fadeIn 0.5s ease-out;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  padding: 40px;
+  overflow: hidden;
+  position: relative;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.profileHeader {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 30px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.identityName {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.identityName span,
+.identityEmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploadButton {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tabsList {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .page {
+    min-height: calc(100vh - 52px);
+    padding: 32px 16px;
+  }
+
+  .card {
+    padding: 24px 20px;
+  }
+
+  .profileHeader {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px;
+    padding-bottom: 24px;
+    margin-bottom: 24px;
+  }
+
+  .avatar {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  .uploadButton {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .tabsList > button {
+    flex: 1 1 40%;
+    justify-content: center;
+  }
+
+  .mobileStackRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .mobileStackRow > button {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 380px) {
+  .page {
+    padding: 24px 12px;
+  }
+
+  .card {
+    padding: 20px 16px;
+  }
+}
