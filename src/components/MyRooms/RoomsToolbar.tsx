@@ -25,11 +25,16 @@ export const RoomsToolbar = ({
           placeholder="Search rooms by title or description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          leftSection={<IconSearch size={18} color="var(--text-muted)" />}
-          size="md"
+          leftSection={<IconSearch size={16} color="var(--text-muted)" />}
+          size="sm"
           radius="md"
           styles={{
-            input: { background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }
+            input: {
+              background: 'var(--bg-surface)',
+              borderColor: 'var(--border-subtle)',
+              color: 'var(--text-primary)',
+              height: '38px',
+            },
           }}
         />
       </div>
@@ -43,22 +48,22 @@ export const RoomsToolbar = ({
               {
                 value: 'grid',
                 label: (
-                  <Center style={{ gap: 10 }}>
-                    <IconLayoutGrid size={16} />
+                  <Center style={{ gap: 6 }}>
+                    <IconLayoutGrid size={15} />
                   </Center>
                 ),
               },
               {
                 value: 'stack',
                 label: (
-                  <Center style={{ gap: 10 }}>
-                    <IconList size={16} />
+                  <Center style={{ gap: 6 }}>
+                    <IconList size={15} />
                   </Center>
                 ),
               },
             ]}
             color="violet"
-            size="md"
+            size="sm"
             radius="md"
           />
         </div>
@@ -74,10 +79,15 @@ export const RoomsToolbar = ({
               { value: "title-desc", label: "Title Z–A" },
               { value: "expiring", label: "Expiring Soon" },
             ]}
-            size="md"
+            size="sm"
             radius="md"
             styles={{
-              input: { background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }
+              input: {
+                background: 'var(--bg-surface)',
+                borderColor: 'var(--border-subtle)',
+                color: 'var(--text-primary)',
+                height: '38px',
+              },
             }}
           />
         </div>

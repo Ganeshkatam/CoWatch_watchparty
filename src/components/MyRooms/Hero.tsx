@@ -19,11 +19,18 @@ export const Hero: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
           </div>
           
           <Button
-            size="md"
+            size="sm"
             variant="default"
-            leftSection={<IconCirclePlusFilled size={18} />}
+            leftSection={<IconCirclePlusFilled size={16} />}
             onClick={() => history.push("/create")}
-            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: 'none' }}
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              backdropFilter: 'blur(8px)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              fontWeight: 600,
+              borderRadius: 'var(--radius-sm)',
+            }}
           >
             New Room
           </Button>

@@ -539,13 +539,22 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const renderPrimary = () => {
     if (computedState === 'Expired' || computedState === 'Ended') {
       return (
-        <Button variant="default" onClick={() => history.push(detailsPath)}>
+        <Button
+          size="xs"
+          className={styles.secondaryBtn}
+          onClick={() => history.push(detailsPath)}
+        >
           Details
         </Button>
       );
     }
     return (
-      <Button variant="white" color="dark" onClick={() => history.push(urlPath)} leftSection={<IconPlayerPlayFilled size={14} />}>
+      <Button
+        size="xs"
+        className={styles.primaryBtn}
+        onClick={() => history.push(urlPath)}
+        leftSection={<IconPlayerPlayFilled size={12} />}
+      >
         Open Room
       </Button>
     );
@@ -554,7 +563,11 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const renderSecondary = () => {
     if (computedState === 'Expired' || computedState === 'Ended') return null;
     return (
-      <Button variant="subtle" color="gray" onClick={() => history.push(detailsPath)}>
+      <Button
+        size="xs"
+        className={styles.secondaryBtn}
+        onClick={() => history.push(detailsPath)}
+      >
         Details
       </Button>
     );
@@ -622,18 +635,18 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
           <div className={styles.coverPlaceholder}>WATCH PARTY</div>
         )}
 
-        <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 10 }}>
+        <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}>
           <RoomStatusBadge status={room.status} isPermanent={isPermanent} />
         </div>
 
         {onUpdateCover && (
           <>
             <ActionIcon
-              variant="filled" color="dark" size="md" radius="md" loading={actions.isUploading}
-              style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)' }}
+              variant="filled" color="dark" size="sm" radius="md" loading={actions.isUploading}
+              style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)' }}
               onClick={(e) => { e.stopPropagation(); actions.fileInputRef.current?.click(); }}
             >
-              <IconPhotoPlus size={16} color="white" />
+              <IconPhotoPlus size={14} color="white" />
             </ActionIcon>
             <input type="file" accept="image/*" ref={actions.fileInputRef} style={{ display: 'none' }} onChange={actions.handleFileUpload} />
           </>
@@ -652,18 +665,18 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
           <div className={styles.metaItemValue}>
             {room.isPasscodeProtected ? (
               <>
-                <IconLock size={16} />
+                <IconLock size={14} />
                 Protected
               </>
             ) : (
               <>
-                <IconLockOpen size={16} />
+                <IconLockOpen size={14} />
                 Public
               </>
             )}
           </div>
           <div className={styles.metaItemValue}>
-            <IconMessage size={16} />
+            <IconMessage size={14} />
             {room.isChatDisabled ? 'Chat disabled' : 'Chat'}
           </div>
           <div className={styles.metaItemValue}>{creationDate}</div>
@@ -681,8 +694,8 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         </div>
         <Menu shadow="md" width={220} position="bottom-end">
           <Menu.Target>
-            <ActionIcon variant="subtle" color="gray" size="lg" radius="md">
-              <IconDots size={18} />
+            <ActionIcon className={styles.moreBtn} size="sm" radius="md">
+              <IconDots size={16} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
@@ -772,8 +785,8 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
             {actions.renderSecondary()}
             <Menu shadow="md" width={220} position="bottom-end">
               <Menu.Target>
-                <ActionIcon variant="subtle" color="gray" size="lg" radius="md">
-                  <IconDots size={18} />
+                <ActionIcon className={styles.moreBtn} size="sm" radius="md">
+                  <IconDots size={16} />
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>

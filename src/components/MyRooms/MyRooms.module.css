@@ -53,19 +53,14 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--text-primary);
+  color: #ffffff;
   margin-bottom: 4px;
   line-height: 1.2;
 }
 
 .heroSubtitle {
   font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.heroSubtitle {
-  font-size: 18px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .heroActions {
@@ -97,7 +92,11 @@
     gap: 24px;
   }
   .heroTitle {
-    font-size: 36px;
+    font-size: 28px;
+    color: var(--text-primary);
+  }
+  .heroSubtitle {
+    color: var(--text-secondary);
   }
   .heroActions {
     width: 100%;
@@ -114,39 +113,40 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  gap: 24px;
+  margin-bottom: 24px;
+  gap: 16px;
 }
 
 .search {
   flex-grow: 1;
-  max-width: 580px;
+  max-width: 480px;
 }
 
 .search input {
-  height: 52px;
-  border-radius: 12px;
+  height: 40px;
+  border-radius: 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
+  font-size: 13px;
 }
 
 .toolbarActions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .viewToggle {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 4px;
+  padding: 3px;
   display: flex;
   gap: 4px;
 }
 
 .sort {
-  width: 180px;
+  width: 160px;
 }
 
 @media (max-width: 900px) {
@@ -170,19 +170,14 @@
 /* Grid Layout */
 .roomGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
 }
 
-@media (max-width: 1199px) {
+@media (max-width: 640px) {
   .roomGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .roomGrid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 }
 
@@ -190,14 +185,14 @@
 .roomList {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 /* Grid Card (Cinematic, Vertical) */
 .gridCard {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   display: flex;
@@ -206,13 +201,13 @@
 .gridCard:hover {
   transform: translateY(-2px);
   border-color: var(--color-violet);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .gridCardCover {
   position: relative;
   width: 100%;
-  height: 180px;
+  height: 140px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -220,15 +215,16 @@
 .gridCardBody {
   display: flex;
   flex-direction: column;
-  padding: 20px 24px;
+  padding: 14px 16px;
   flex-grow: 1;
+  gap: 6px;
 }
 
 /* Stack Card (Management, Horizontal) */
 .stackCard {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   display: flex;
@@ -237,12 +233,13 @@
 }
 .stackCard:hover {
   border-color: var(--color-violet);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .stackCardCover {
   position: relative;
-  width: 200px;
+  width: 180px;
+  height: 120px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
 }
@@ -251,14 +248,14 @@
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  padding: 20px 24px;
+  padding: 14px 18px;
 }
 
 .stackCardHeader {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .stackCardTitleBox {
@@ -271,7 +268,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   text-align: right;
 }
 
@@ -288,13 +285,13 @@
   }
   .stackCardCover {
     width: 100%;
-    height: 140px;
+    height: 130px;
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
   .stackCardHeader {
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
   }
   .stackCardLifecycleBox {
     align-items: flex-start;
@@ -303,7 +300,7 @@
   .stackCardBottom {
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
+    gap: 12px;
   }
   .stackCardBottom .actionButtons {
     justify-content: flex-start;
@@ -324,28 +321,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--bg-base);
+  background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 11px;
   letter-spacing: 2px;
 }
 
 .roomTitle {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .roomDescription {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: 1.4;
   margin: 0;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -354,30 +355,33 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 .metaItemValue {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .roomLifecycle {
   margin-top: auto;
+  padding-top: 2px;
 }
 
 .lifecycleText {
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-size: 11px;
   font-weight: 500;
 }
 
 .lifecycleExpiring {
   color: var(--mantine-color-orange-5);
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -385,14 +389,87 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 10px 14px;
   border-top: 1px solid var(--border-subtle);
-  background: var(--bg-base);
+  background: var(--bg-elevated);
+  gap: 8px;
 }
 
 .actionButtons {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Button Classes */
+.primaryBtn {
+  background: var(--gradient-brand) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  height: 30px !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-sm) !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(139, 92, 246, 0.28) !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.primaryBtn:hover {
+  filter: brightness(1.08) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.4) !important;
+}
+
+.primaryBtn:active {
+  transform: translateY(0) !important;
+  filter: brightness(0.95) !important;
+}
+
+.secondaryBtn {
+  background: var(--bg-surface) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  font-weight: 500 !important;
+  font-size: 12px !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.secondaryBtn:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+}
+
+.moreBtn {
+  height: 30px !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  color: var(--text-muted) !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.moreBtn:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
 }
 
 /* Pagination */

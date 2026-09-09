@@ -38,7 +38,7 @@ export const RoomStats = ({ rooms }: { rooms: RoomSummary[] }) => {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255, 255, 255, 0.7)' }}>
           FINISHED
         </div>
         <div style={{ fontSize: '24px', fontWeight: 600, color: 'white', lineHeight: 1 }}>
