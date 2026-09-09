@@ -1,4 +1,5 @@
 CREATE EXTENSION pg_trgm;
+CREATE EXTENSION pgcrypto;
 
 CREATE TABLE public.profiles(
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, -- Unique user identifier linked to Supabase Auth
@@ -11,7 +12,8 @@ CREATE TABLE public.profiles(
   pref_disable_chat_sound boolean NOT NULL DEFAULT false, -- Preference to disable chat notification sounds
   pref_camera_on boolean NOT NULL DEFAULT false, -- Preference to turn camera on by default
   pref_mic_on boolean NOT NULL DEFAULT false, -- Preference to turn microphone on by default
-  pref_appearance_mode text NOT NULL DEFAULT 'system' CHECK (pref_appearance_mode IN ('light', 'mantine', 'system')) -- Preference for UI theme mode
+  pref_appearance_mode text NOT NULL DEFAULT 'system' CHECK (pref_appearance_mode IN ('light', 'mantine', 'system')), -- Preference for UI theme mode
+  CONSTRAINT profiles_display_name_length CHECK (display_name IS NULL OR char_length(display_name) BETWEEN 1 AND 50)
 );
 
 CREATE TABLE public.rooms(
@@ -35,14 +37,24 @@ CREATE TABLE public.rooms(
   "expiresAt" timestamp with time zone, -- Timestamp when the room is scheduled to expire, null if permanent
   "endedAt" timestamp with time zone, -- Timestamp when the room was explicitly ended
   "lastActiveAt" timestamp with time zone, -- Timestamp of the last verified socket presence
+  owner_passcode text NOT NULL, -- Encrypted passcode available only to the room owner
+  "scheduledStartsAt" timestamp with time zone, -- Optional scheduled start timestamp
+  passcode_fingerprint text NOT NULL, -- Stable fingerprint used to identify the room passcode
   PRIMARY KEY ("roomId"),
   CONSTRAINT room_status_check CHECK (status IN ('scheduled', 'active', 'inactive', 'ended', 'expired')),
-  CONSTRAINT room_title_not_empty CHECK (btrim("roomTitle") <> '')
+  CONSTRAINT room_title_not_empty CHECK (btrim("roomTitle") <> ''),
+  CONSTRAINT rooms_expiration_policy_check CHECK (
+    ("isPermanent" = true AND "expiresAt" IS NULL) OR
+    ("isPermanent" = false AND "expiresAt" IS NOT NULL)
+  ),
+  CONSTRAINT rooms_passcode_fingerprint_key UNIQUE (passcode_fingerprint)
 );
 
-CREATE INDEX on rooms(owner_id);
-CREATE INDEX on rooms("creationTime");
-CREATE INDEX on rooms USING GIN("roomId" gin_trgm_ops);
+CREATE INDEX room_owner_id_idx ON rooms(owner_id);
+CREATE INDEX "room_creationTime_idx" ON rooms("creationTime");
+CREATE INDEX "room_roomId_idx" ON rooms USING GIN("roomId" gin_trgm_ops);
+CREATE INDEX idx_room_expires_at ON rooms("expiresAt") WHERE "expiresAt" IS NOT NULL AND status = 'active';
+CREATE INDEX rooms_inactivity_idx ON rooms("lastActiveAt") WHERE status = 'active';
 
 CREATE TABLE public.room_lifecycle_events(
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), -- Unique event ID
@@ -54,10 +66,12 @@ CREATE TABLE public.room_lifecycle_events(
   "previousExpiresAt" timestamp with time zone, -- Expiration time before the event
   "newExpiresAt" timestamp with time zone, -- Expiration time after the event
   reason text, -- Human-readable reason for the event
-  timestamp timestamp with time zone NOT NULL DEFAULT NOW() -- When the event occurred
+  timestamp timestamp with time zone NOT NULL DEFAULT NOW(), -- When the event occurred
+  CONSTRAINT room_lifecycle_events_room_fk
+    FOREIGN KEY ("roomId") REFERENCES public.rooms("roomId") ON DELETE CASCADE
 );
-CREATE INDEX on room_lifecycle_events("roomId");
-CREATE INDEX on room_lifecycle_events(timestamp);
+CREATE INDEX idx_room_lifecycle_events_room_id ON room_lifecycle_events("roomId");
+CREATE INDEX idx_room_lifecycle_events_timestamp ON room_lifecycle_events(timestamp);
 
 CREATE TABLE public.room_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -71,10 +85,15 @@ CREATE TABLE public.room_messages (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone,
   CONSTRAINT room_messages_client_message_id_key UNIQUE (room_id, user_id, client_message_id),
-  CONSTRAINT room_messages_updated_at_check CHECK (updated_at IS NULL OR updated_at >= created_at)
+  CONSTRAINT room_messages_updated_at_check CHECK (updated_at IS NULL OR updated_at >= created_at),
+  CONSTRAINT room_messages_type_check CHECK (message_type IN ('user', 'system')),
+  CONSTRAINT room_messages_event_check CHECK (
+    (message_type = 'user' AND event_type IS NULL) OR
+    (message_type = 'system' AND event_type IS NOT NULL)
+  ),
+  CONSTRAINT room_messages_not_empty CHECK (btrim(message) <> '')
 );
-CREATE INDEX on room_messages(room_id, created_at DESC);
-CREATE INDEX on room_messages(user_id);
+CREATE INDEX room_messages_room_created_id_idx ON room_messages(room_id, created_at DESC, id DESC);
 
 
 
@@ -93,10 +112,10 @@ CREATE TABLE public.vbrowser(
   pass text, -- password to access vbrowser
   image text -- ID of the last image applied to this VM
 );
-CREATE UNIQUE INDEX on vbrowser(pool, vmid);
-CREATE INDEX on vbrowser(pool, state);
-CREATE INDEX on vbrowser("roomId");
-CREATE INDEX on vbrowser(uid);
+CREATE UNIQUE INDEX vbrowser_pool_vmid_idx ON vbrowser(pool, vmid);
+CREATE INDEX vbrowser_pool_state_idx ON vbrowser(pool, state);
+CREATE INDEX "vbrowser_roomId_idx" ON vbrowser("roomId");
+CREATE INDEX vbrowser_uid_idx ON vbrowser(uid);
 
 CREATE TABLE active_user(
   uid text PRIMARY KEY, -- Unique user identifier (session or auth uid)
