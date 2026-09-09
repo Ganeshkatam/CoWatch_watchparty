@@ -82,11 +82,34 @@ export function getColorForStringHex(id: string) {
 }
 
 
-export const isYouTube = (input: string) => {
-  return (
-    input.startsWith("https://www.youtube.com/") ||
-    input.startsWith("https://youtu.be/")
-  );
+export const YOUTUBE_VIDEO_ID_REGEX =
+  /(?:(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts|live)\/|\S*?[?&]v=)|youtu\.be\/))([a-zA-Z0-9_-]{11})/i;
+
+export const getYoutubeVideoID = (url: string): string | undefined => {
+  if (!url || typeof url !== "string") {
+    return undefined;
+  }
+  const trimmed = url.trim();
+  const idParts = YOUTUBE_VIDEO_ID_REGEX.exec(trimmed);
+  if (idParts && idParts[1]) {
+    return idParts[1];
+  }
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return undefined;
+};
+
+export const normalizeYouTubeUrl = (url: string): string => {
+  const id = getYoutubeVideoID(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : url;
+};
+
+export const isYouTube = (input: string): boolean => {
+  if (!input || typeof input !== "string") {
+    return false;
+  }
+  return Boolean(getYoutubeVideoID(input));
 };
 
 export const isHttp = (input: string) => {
@@ -298,13 +321,21 @@ export async function getMediaPathResults(
   //     name: mediaPath + '/' + file.Key,
   //   }));
   // } else
-  if (mediaPath.startsWith("https://www.youtube.com/playlist?list=")) {
+  const playlistMatch = /(?:youtube\.com\/playlist\?list=)([a-zA-Z0-9_-]+)/i.exec(mediaPath);
+  if (playlistMatch) {
     // https://www.youtube.com/playlist?list=<playlist ID>
-    const playlistID = mediaPath.split(
-      "https://www.youtube.com/playlist?list=",
-    )[1];
-    const response = await fetch(serverPath + "/youtubePlaylist/" + playlistID);
-    results = await response.json();
+    const playlistID = playlistMatch[1];
+    try {
+      const response = await fetch(serverPath + "/youtubePlaylist/" + playlistID);
+      if (response.ok) {
+        const json = await response.json();
+        if (Array.isArray(json)) {
+          results = json;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch YouTube playlist:", e);
+    }
   } else {
     // Assume it's a text list of URLs
     const response = await fetch(mediaPath);
@@ -333,11 +364,22 @@ export async function getStreamPathResults(
 export async function getYouTubeResults(
   query: string,
 ): Promise<SearchResult[]> {
-  const response = await fetch(
-    serverPath + "/youtube?q=" + encodeURIComponent(query),
-  );
-  const data = await response.json();
-  return data.map((d: any) => ({ ...d, type: "youtube" }));
+  try {
+    const response = await fetch(
+      serverPath + "/youtube?q=" + encodeURIComponent(query),
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    return data.map((d: any) => ({ ...d, type: "youtube" }));
+  } catch (err) {
+    console.warn("Failed to fetch YouTube results:", err);
+    return [];
+  }
 }
 
 export async function openFileSelector(accept?: string) {

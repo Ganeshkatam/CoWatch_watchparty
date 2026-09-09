@@ -1,5 +1,6 @@
 import { MediaPlayerClass } from "dashjs";
 import { Player } from "./Player";
+import { getYoutubeVideoID } from "../../utils/utils";
 
 export class YouTube implements Player {
   watchPartyYTPlayer: YT.Player | null;
@@ -7,108 +8,170 @@ export class YouTube implements Player {
     this.watchPartyYTPlayer = watchPartyYTPlayer;
   }
   clearDashState = () => {};
-  setDashState = (player: MediaPlayerClass) => {};
+  setDashState = (_player: MediaPlayerClass) => {};
 
   getCurrentTime = () => {
-    return this.watchPartyYTPlayer?.getCurrentTime() ?? 0;
+    try {
+      return this.watchPartyYTPlayer?.getCurrentTime() ?? 0;
+    } catch (e) {
+      return 0;
+    }
   };
 
   getDuration = () => {
-    return this.watchPartyYTPlayer?.getDuration() ?? 0;
+    try {
+      return this.watchPartyYTPlayer?.getDuration() ?? 0;
+    } catch (e) {
+      return 0;
+    }
   };
 
   isMuted = () => {
-    return this.watchPartyYTPlayer?.isMuted() ?? false;
+    try {
+      return this.watchPartyYTPlayer?.isMuted() ?? false;
+    } catch (e) {
+      return false;
+    }
   };
 
   isSubtitled = (): boolean => {
-    // This actually isn't accurate after subtitles have been toggled off because track doesn't update
-    // try {
-    //   const current = this.watchPartyYTPlayer?.getOption('captions', 'track');
-    //   return Boolean(current && current.languageCode);
-    // } catch (e) {
-    //   console.warn(e);
-    //   return false;
-    // }
     return false;
   };
 
   getPlaybackRate = (): number => {
-    return this.watchPartyYTPlayer?.getPlaybackRate() ?? 1;
+    try {
+      return this.watchPartyYTPlayer?.getPlaybackRate() ?? 1;
+    } catch (e) {
+      return 1;
+    }
   };
 
   setPlaybackRate = (rate: number) => {
-    this.watchPartyYTPlayer?.setPlaybackRate(rate);
+    try {
+      this.watchPartyYTPlayer?.setPlaybackRate(rate);
+    } catch (e) {
+      console.warn("Error setting playback rate:", e);
+    }
   };
 
   setSrcAndTime = async (src: string, time: number) => {
-    let url = new window.URL(src);
-    // Standard link https://www.youtube.com/watch?v=ID
-    let videoId = new URLSearchParams(url.search).get("v");
-    // Link shortener https://youtu.be/ID
-    let altVideoId = src.split("/").slice(-1)[0].split("?")[0];
-    this.watchPartyYTPlayer?.cueVideoById(videoId || altVideoId, time);
-    // this.watchPartyYTPlayer?.cuePlaylist({listType: 'playlist', list: 'OLAK5uy_mtoaOGQksRdPbwlNtQ9IiK67wir5QqyIc'});
+    const videoId = getYoutubeVideoID(src);
+    if (!videoId) {
+      console.warn("Invalid YouTube video URL or ID:", src);
+      return;
+    }
+    if (!this.watchPartyYTPlayer) {
+      console.warn("YouTube player not ready yet when setting src:", src);
+      return;
+    }
+    try {
+      this.watchPartyYTPlayer.cueVideoById({
+        videoId,
+        startSeconds: time,
+      });
+    } catch (e) {
+      console.warn("Error in YouTube cueVideoById:", e);
+    }
   };
 
   playVideo = async () => {
-    setTimeout(() => {
-      console.log("play yt");
-      this.watchPartyYTPlayer?.playVideo();
-    }, 200);
+    if (!this.watchPartyYTPlayer) return;
+    try {
+      this.watchPartyYTPlayer.playVideo();
+      // Ensure playback starts if player was in CUED or UNSTARTED state
+      setTimeout(() => {
+        try {
+          const state = this.watchPartyYTPlayer?.getPlayerState();
+          if (
+            state === window.YT?.PlayerState?.CUED ||
+            state === window.YT?.PlayerState?.UNSTARTED
+          ) {
+            this.watchPartyYTPlayer?.playVideo();
+          }
+        } catch (err) {
+          // ignore
+        }
+      }, 150);
+    } catch (e) {
+      console.warn("Error playing YouTube video:", e);
+    }
   };
 
   pauseVideo = () => {
-    this.watchPartyYTPlayer?.pauseVideo();
+    try {
+      this.watchPartyYTPlayer?.pauseVideo();
+    } catch (e) {
+      console.warn("Error pausing YouTube video:", e);
+    }
   };
 
   seekVideo = (time: number) => {
-    this.watchPartyYTPlayer?.seekTo(time, true);
+    try {
+      this.watchPartyYTPlayer?.seekTo(time, true);
+    } catch (e) {
+      console.warn("Error seeking YouTube video:", e);
+    }
   };
 
   shouldPlay = () => {
-    return (
-      this.watchPartyYTPlayer?.getPlayerState() ===
-        window.YT?.PlayerState.PAUSED ||
-      this.getCurrentTime() === this.getDuration()
-    );
+    try {
+      const state = this.watchPartyYTPlayer?.getPlayerState();
+      return (
+        state === window.YT?.PlayerState?.PAUSED ||
+        state === window.YT?.PlayerState?.CUED ||
+        state === window.YT?.PlayerState?.UNSTARTED ||
+        (this.getDuration() > 0 && this.getCurrentTime() >= this.getDuration())
+      );
+    } catch (e) {
+      return false;
+    }
   };
 
   setMute = (muted: boolean) => {
-    if (muted) {
-      this.watchPartyYTPlayer?.mute();
-    } else {
-      this.watchPartyYTPlayer?.unMute();
+    try {
+      if (muted) {
+        this.watchPartyYTPlayer?.mute();
+      } else {
+        this.watchPartyYTPlayer?.unMute();
+      }
+    } catch (e) {
+      console.warn("Error toggling mute on YouTube video:", e);
     }
   };
 
   setVolume = (volume: number) => {
-    this.watchPartyYTPlayer?.setVolume(volume * 100);
+    try {
+      this.watchPartyYTPlayer?.setVolume(volume * 100);
+    } catch (e) {
+      console.warn("Error setting volume on YouTube video:", e);
+    }
   };
 
   getVolume = (): number => {
-    const volume = this.watchPartyYTPlayer?.getVolume();
-    return (volume ?? 0) / 100;
+    try {
+      const volume = this.watchPartyYTPlayer?.getVolume();
+      return (volume ?? 0) / 100;
+    } catch (e) {
+      return 1;
+    }
   };
 
   setSubtitleMode = (mode?: TextTrackMode, lang?: string) => {
-    // Show the available options
-    // console.log(this.watchPartyYTPlayer?.getOptions('captions'));
-    if (mode === "showing") {
-      console.log(lang);
-      //@ts-expect-error
-      this.watchPartyYTPlayer?.setOption("captions", "reload", true);
-      //@ts-expect-error
-      this.watchPartyYTPlayer?.setOption("captions", "track", {
-        languageCode: lang ?? "en",
-      });
-    }
-    if (mode === "hidden") {
-      // BUG this doesn't actually set the value of track
-      // so we can't determine if subtitles are on or off
-      // need to provide separate menu options
-      //@ts-expect-error
-      this.watchPartyYTPlayer?.setOption("captions", "track", {});
+    try {
+      if (mode === "showing") {
+        //@ts-expect-error
+        this.watchPartyYTPlayer?.setOption("captions", "reload", true);
+        //@ts-expect-error
+        this.watchPartyYTPlayer?.setOption("captions", "track", {
+          languageCode: lang ?? "en",
+        });
+      }
+      if (mode === "hidden") {
+        //@ts-expect-error
+        this.watchPartyYTPlayer?.setOption("captions", "track", {});
+      }
+    } catch (e) {
+      console.warn("Error setting YouTube subtitles:", e);
     }
   };
 
@@ -117,42 +180,57 @@ export class YouTube implements Player {
   };
 
   isReady = () => {
-    return Boolean(this.watchPartyYTPlayer);
+    return Boolean(
+      this.watchPartyYTPlayer &&
+      typeof this.watchPartyYTPlayer.cueVideoById === "function"
+    );
   };
 
   stopVideo = () => {
-    this.watchPartyYTPlayer?.stopVideo();
+    try {
+      this.watchPartyYTPlayer?.stopVideo();
+    } catch (e) {
+      // ignore
+    }
   };
 
   clearState = () => {
     return;
   };
 
-  loadSubtitles = async (src: string) => {
+  loadSubtitles = async (_src: string) => {
     return;
   };
 
-  syncSubtitles = (sharerTime: number) => {
+  syncSubtitles = (_sharerTime: number) => {
     return;
   };
 
   getTimeRanges = (): { start: number; end: number }[] => {
-    return [
-      {
-        start: 0,
-        end:
-          (this.watchPartyYTPlayer?.getVideoLoadedFraction() ?? 0) *
-          this.getDuration(),
-      },
-    ];
+    try {
+      return [
+        {
+          start: 0,
+          end:
+            (this.watchPartyYTPlayer?.getVideoLoadedFraction() ?? 0) *
+            this.getDuration(),
+        },
+      ];
+    } catch (e) {
+      return [{ start: 0, end: 0 }];
+    }
   };
 
   setLoop = (loop: boolean): void => {
-    this.watchPartyYTPlayer?.setLoop(loop);
+    try {
+      this.watchPartyYTPlayer?.setLoop(loop);
+    } catch (e) {
+      console.warn("Error setting loop:", e);
+    }
   };
 
   getVideoEl = (): HTMLMediaElement => {
-    return document.getElementById("leftYt") as HTMLMediaElement;
+    return document.getElementById("leftYt") as unknown as HTMLMediaElement;
   };
 
   isPictureInPictureSupported = (): boolean => {

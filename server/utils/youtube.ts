@@ -78,18 +78,31 @@ export const youtubePlaylist = async (
   return response?.data?.items?.map(mapYoutubePlaylistResult) ?? [];
 };
 
-export const getYoutubeVideoID = (url: string) => {
-  const idParts = YOUTUBE_VIDEO_ID_REGEX.exec(url);
-  if (!idParts) {
-    return;
+export const getYoutubeVideoID = (url: string): string | undefined => {
+  if (!url || typeof url !== "string") {
+    return undefined;
   }
-
-  const id = idParts[1];
-  if (!id) {
-    return;
+  const trimmed = url.trim();
+  const idParts = YOUTUBE_VIDEO_ID_REGEX.exec(trimmed);
+  if (idParts && idParts[1]) {
+    return idParts[1];
   }
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return undefined;
+};
 
-  return id;
+export const normalizeYouTubeUrl = (url: string): string => {
+  const id = getYoutubeVideoID(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : url;
+};
+
+export const isYouTube = (input: string): boolean => {
+  if (!input || typeof input !== "string") {
+    return false;
+  }
+  return Boolean(getYoutubeVideoID(input));
 };
 
 export const fetchYoutubeVideo = async (
@@ -117,11 +130,4 @@ export const getVideoDuration = (string: string): number => {
 
   const totalSeconds = seconds + minutes * 60 + hours * 60 * 60;
   return totalSeconds;
-};
-
-export const isYouTube = (input: string) => {
-  return (
-    input.startsWith("https://www.youtube.com/") ||
-    input.startsWith("https://youtu.be/")
-  );
 };

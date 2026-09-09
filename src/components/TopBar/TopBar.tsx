@@ -302,10 +302,27 @@ export const ListRoomsButton = () => {
   );
 };
 
+export const GetStartedButton = (props: { size?: string }) => {
+  const context = useContext(MetadataContext);
+  const target = context.user ? "/create" : "/signup";
+  return (
+    <Button
+      component={Link}
+      to={target}
+      size={props.size || "sm"}
+      variant="gradient"
+      style={{ fontWeight: 600 }}
+    >
+      Get Started
+    </Button>
+  );
+};
+
 export const TopBar = (props: {
   hideNewRoom?: boolean;
   hideSignin?: boolean;
   hideMyRooms?: boolean;
+  hideGetStarted?: boolean;
   showExit?: boolean;
   onOpenSettings?: () => void;
   roomTitle?: string;
@@ -381,6 +398,7 @@ export const TopBar = (props: {
           </Button>
         )}
         <ThemeToggleQuickButton />
+        {!props.hideGetStarted && !context.user && <GetStartedButton />}
         {!props.hideSignin && <SignInButton />}
       </div>
     </div>

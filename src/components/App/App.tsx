@@ -13,6 +13,8 @@ import {
   getOrCreateSessionId,
   calculateMedian,
   isYouTube,
+  getYoutubeVideoID,
+  normalizeYouTubeUrl,
   isMagnet,
   isHttp,
   isHls,
@@ -474,6 +476,14 @@ export class App extends React.Component<AppProps, AppState> {
       this.metadataCleanup = undefined;
     }
     clearMediaSession();
+    if (this.YouTubeInterface?.watchPartyYTPlayer) {
+      try {
+        this.YouTubeInterface.watchPartyYTPlayer.destroy();
+      } catch (e) {
+        console.warn("Error destroying YouTube player on unmount:", e);
+      }
+      this.YouTubeInterface = new YouTube(null);
+    }
   }
 
   init = async () => {
@@ -1206,44 +1216,55 @@ export class App extends React.Component<AppProps, AppState> {
     if (prevState.roomPlaybackRate !== this.state.roomPlaybackRate) {
       this.syncMediaSessionPosition(true);
     }
+    if (this.usingYoutube() && !this.YouTubeInterface.isReady()) {
+      this.loadYouTube();
+    }
   }
 
-  loadYouTube = () => {
-    // This code loads the IFrame Player API code asynchronously.
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    tag.onerror = () => {
-      console.warn("YouTube iframe API failed to load");
-      this.setState({ loading: false });
-    };
-    document.body.append(tag);
-    window.onYouTubeIframeAPIReady = () => {
-      // Note: this fails silently if the element is not available
+  initYTPlayer = () => {
+    const el = document.getElementById("leftYt");
+    if (!el || !window.YT?.Player) {
+      return;
+    }
+    if (this.YouTubeInterface.isReady()) {
+      return;
+    }
+    try {
       const ytPlayer = new window.YT.Player("leftYt", {
+        width: "100%",
+        height: "100%",
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          rel: 0,
+          enablejsapi: 1,
+          origin: typeof window !== "undefined" ? window.location.origin : "",
+          playsinline: 1,
+        },
         events: {
           onReady: () => {
             console.log("yt onReady");
             this.YouTubeInterface = new YouTube(ytPlayer);
             this.setState({ loading: false });
-            // We might have failed to play YT originally, ask for the current video again
             if (this.usingYoutube()) {
               console.log("requesting host data again after ytReady");
               this.socket?.emit("CMD:askHost");
             }
           },
           onStateChange: (e) => {
-            if (
-              this.usingYoutube() &&
-              e.data === window.YT?.PlayerState?.CUED
-            ) {
-              this.setState({ loading: false });
-            }
-            if (
-              this.usingYoutube() &&
-              e.data === window.YT?.PlayerState?.ENDED
-            ) {
-              console.log(e.data, e.target.getVideoUrl());
-              this.onVideoEnded(e.target.getVideoUrl());
+            if (this.usingYoutube()) {
+              if (
+                e.data === window.YT?.PlayerState?.CUED ||
+                e.data === window.YT?.PlayerState?.PLAYING ||
+                e.data === window.YT?.PlayerState?.PAUSED ||
+                e.data === window.YT?.PlayerState?.BUFFERING
+              ) {
+                this.setState({ loading: false });
+              }
+              if (e.data === window.YT?.PlayerState?.ENDED) {
+                console.log(e.data, e.target.getVideoUrl());
+                this.onVideoEnded(e.target.getVideoUrl());
+              }
             }
             if (
               this.ytDebounce &&
@@ -1263,9 +1284,45 @@ export class App extends React.Component<AppProps, AppState> {
               window.setTimeout(() => (this.ytDebounce = true), 500);
             }
           },
+          onError: (e) => {
+            console.warn("YouTube player error:", e.data);
+            this.setState({ loading: false, nonPlayableMedia: true });
+          },
         },
       });
+    } catch (err) {
+      console.warn("Failed to init YouTube player:", err);
+      this.setState({ loading: false });
+    }
+  };
+
+  loadYouTube = () => {
+    if (window.YT && window.YT.Player) {
+      this.initYTPlayer();
+      return;
+    }
+
+    const prevReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prevReady === "function") {
+        try {
+          prevReady();
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      this.initYTPlayer();
     };
+
+    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      tag.onerror = () => {
+        console.warn("YouTube iframe API failed to load");
+        this.setState({ loading: false });
+      };
+      document.body.append(tag);
+    }
   };
 
   // Functions for managing room settings
@@ -2166,7 +2223,8 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   roomSetMedia = (value: string) => {
-    this.socket.emit("CMD:host", value);
+    const normalized = isYouTube(value) ? normalizeYouTubeUrl(value) : value;
+    this.socket.emit("CMD:host", normalized);
   };
 
   roomPlaylistPlay = (index: number) => {
@@ -2239,6 +2297,10 @@ export class App extends React.Component<AppProps, AppState> {
     }
     if (input.startsWith("vbrowser://")) {
       return "Virtual Browser" + (this.state.isVBrowserLarge ? "+" : "");
+    }
+    if (isYouTube(input)) {
+      const id = getYoutubeVideoID(input);
+      return id ? `YouTube (${id})` : "YouTube Video";
     }
     if (isMagnet(input)) {
       const magnetParsed = new URLSearchParams(input);
@@ -2733,21 +2795,18 @@ export class App extends React.Component<AppProps, AppState> {
                             )}
                         </div>
                       )}
-                    <iframe
-                      style={{
-                        display:
-                          this.usingYoutube() && !this.state.loading
-                            ? "block"
-                            : "none",
-                      }}
-                      title="YouTube"
-                      id="leftYt"
+                    <div
+                      id="leftYtContainer"
                       className={styles.videoContent}
-                      allowFullScreen
-                      frameBorder="0"
-                      allow="autoplay; encrypted-media"
-                      src="https://www.youtube.com/embed/?enablejsapi=1&controls=0&rel=0"
-                    />
+                      style={{
+                        display: this.usingYoutube() ? "block" : "none",
+                        width: "100%",
+                        height: "100%",
+                        position: "relative",
+                      }}
+                    >
+                      <div id="leftYt" style={{ width: "100%", height: "100%" }} />
+                    </div>
                     {this.playingVBrowser() &&
                       this.getVBrowserPass() &&
                       this.getVBrowserHost() ? (

@@ -10,6 +10,8 @@ import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash } from "./utils/room
 import {
   fetchYoutubeVideo,
   getYoutubeVideoID,
+  normalizeYouTubeUrl,
+  isYouTube,
 } from "./utils/youtube.ts";
 //@ts-expect-error
 import twitch from "twitch-m3u8";
@@ -998,6 +1000,8 @@ export class Room {
       } catch (e) {
         console.warn(e);
       }
+    } else if (isYouTube(data)) {
+      data = normalizeYouTubeUrl(data);
     }
     this.cmdHost(socket, data);
   };
@@ -1028,12 +1032,13 @@ export class Room {
     }
     redisCount("playlistAdds");
     const youtubeVideoId = getYoutubeVideoID(data);
-    const item = {
+    const targetUrl = youtubeVideoId ? normalizeYouTubeUrl(data) : data;
+    const item: PlaylistVideo = {
       name: data,
-      channel: "Video URL",
+      channel: youtubeVideoId ? "YouTube" : "Video URL",
       duration: 0,
-      url: data,
-      type: data.startsWith("magnet:") ? "magnet" : "file",
+      url: targetUrl,
+      type: youtubeVideoId ? "youtube" : data.startsWith("magnet:") ? "magnet" : "file",
     };
     let video: PlaylistVideo | null = null;
     try {

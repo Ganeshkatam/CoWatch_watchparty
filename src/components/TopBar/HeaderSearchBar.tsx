@@ -14,6 +14,7 @@ import {
   isHttp,
   isMagnet,
   isYouTube,
+  normalizeYouTubeUrl,
 } from "../../utils/utils";
 import { examples } from "../../utils/examples";
 import {
@@ -112,7 +113,8 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
     (url: string) => {
       const trimmed = url.trim();
       if (!trimmed) return;
-      roomSetMedia(trimmed);
+      const targetUrl = isYouTube(trimmed) ? normalizeYouTubeUrl(trimmed) : trimmed;
+      roomSetMedia(targetUrl);
       setIsOpen(false);
       setMobileOpen(false);
       setQuery("");
@@ -125,7 +127,8 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
     (url: string) => {
       const trimmed = url.trim();
       if (!trimmed) return;
-      playlistAdd(trimmed);
+      const targetUrl = isYouTube(trimmed) ? normalizeYouTubeUrl(trimmed) : trimmed;
+      playlistAdd(targetUrl);
       setAddedUrls((prev) => ({ ...prev, [trimmed]: true }));
       setTimeout(() => {
         setAddedUrls((prev) => ({ ...prev, [trimmed]: false }));
@@ -189,7 +192,9 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   };
 
   const trimmed = query.trim();
-  const isDirect = Boolean(trimmed && (isHttp(trimmed) || isMagnet(trimmed)));
+  const isDirect = Boolean(
+    trimmed && (isHttp(trimmed) || isMagnet(trimmed) || isYouTube(trimmed)),
+  );
 
   const directType = useMemo(() => {
     if (!isDirect) return null;
