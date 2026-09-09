@@ -68,9 +68,15 @@
   align-items: center;
 }
 
+.heroMetrics {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
 @media (min-width: 901px) {
   .hero {
-    min-height: 160px;
+    min-height: 180px;
   }
 }
 

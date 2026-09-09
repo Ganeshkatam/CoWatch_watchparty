@@ -34,12 +34,14 @@ const useRooms = (user: any) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRooms = useCallback(async () => {
+  const fetchRooms = useCallback(async (silent = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const token = await getAccessToken();
       let response: Response | undefined;
@@ -84,8 +86,8 @@ const useRooms = (user: any) => {
   }, [user]);
 
   useEffect(() => {
-    fetchRooms();
-    const interval = setInterval(fetchRooms, 30000);
+    fetchRooms(false);
+    const interval = setInterval(() => fetchRooms(true), 30000);
     return () => clearInterval(interval);
   }, [fetchRooms]);
 
@@ -219,7 +221,12 @@ export const MyRooms = () => {
     <div className={styles.page}>
       <div className={styles.container}>
         <Hero>
-          {(!loading && !error && rooms.length > 0) && <RoomStats rooms={rooms} />}
+          {!error && (
+            <RoomStats
+              rooms={rooms}
+              loading={loading && rooms.length === 0}
+            />
+          )}
         </Hero>
 
         {loading && rooms.length === 0 ? (
