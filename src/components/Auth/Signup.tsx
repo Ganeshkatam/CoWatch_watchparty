@@ -344,9 +344,6 @@ export const Signup = () => {
           <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
             <div>
               <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />
-              <Text size="xs" c="dimmed" mt={4}>
-                Auto-created username: <span style={{ color: "var(--color-violet)", fontWeight: 600 }}>@{autoUsername}</span>
-              </Text>
             </div>
             <div>
               <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
