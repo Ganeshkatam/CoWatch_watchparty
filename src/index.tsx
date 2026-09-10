@@ -25,6 +25,7 @@ import { AppShell } from "./components/Layout/AppShell";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
+import { Analytics } from "@vercel/analytics/react";
 
 // Route-level code splitting for rapid initial page loads
 const Home = lazy(() => import("./components/Home/Home").then((m) => ({ default: m.Home })));
@@ -618,6 +619,7 @@ class CoWatch extends React.Component {
                   </BrowserRouter>
                 </AuthContext.Provider>
               </MetadataContext.Provider>
+              <Analytics />
             </MantineProvider>
           )}
         </ThemeConsumer>
