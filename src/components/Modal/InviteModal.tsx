@@ -17,6 +17,7 @@ import {
   IconEye,
   IconEyeOff,
   IconLink,
+  IconExternalLink,
 } from "@tabler/icons-react";
 import styles from "./InviteModal.module.css";
 
@@ -177,19 +178,43 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               <IconLink size={14} />
               Party Link
             </span>
-            <Button
-              onClick={handleCopyInviteMessage}
-              variant="subtle"
-              color="violet"
-              size="compact-xs"
-              leftSection={inviteMsgCopied ? <IconCheck size={13} /> : <IconMessageShare size={13} />}
-            >
-              {inviteMsgCopied ? "Message Copied" : "Copy Formatted Message"}
-            </Button>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <Tooltip label="Open party link in new tab">
+                <ActionIcon
+                  component="a"
+                  href={fullUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                  variant="subtle"
+                  color="gray"
+                  title="Open party link in new tab"
+                >
+                  <IconExternalLink size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Button
+                onClick={handleCopyInviteMessage}
+                variant="subtle"
+                color="violet"
+                size="compact-xs"
+                leftSection={inviteMsgCopied ? <IconCheck size={13} /> : <IconMessageShare size={13} />}
+              >
+                {inviteMsgCopied ? "Message Copied" : "Copy Formatted Message"}
+              </Button>
+            </div>
           </div>
 
           <div className={styles.linkInputRow}>
-            <div className={styles.urlDisplay} title={fullUrl}>
+            <div
+              className={styles.urlDisplay}
+              title="Click to copy or select party link"
+              onClick={() => {
+                const sel = window.getSelection()?.toString();
+                if (sel && sel.length > 0) return;
+                handleCopyInviteLink();
+              }}
+            >
               {fullUrl}
             </div>
             <Button
@@ -209,8 +234,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           {/* Room ID Card */}
           <div
             className={styles.credentialCard}
-            onClick={handleCopyRoomId}
-            title="Click to copy room slug"
+            onClick={() => {
+              const sel = window.getSelection()?.toString();
+              if (sel && sel.length > 0) return;
+              handleCopyRoomId();
+            }}
+            title="Click to copy, or select Room ID"
           >
             <div className={styles.credentialHeader}>
               <span className={styles.credentialTitle}>
@@ -218,7 +247,15 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 Room Code / Slug
               </span>
               <Tooltip label={roomIdCopied ? "Copied!" : "Copy Room Code"}>
-                <ActionIcon size="xs" variant="transparent" color={roomIdCopied ? "green" : "gray"}>
+                <ActionIcon
+                  size="xs"
+                  variant="transparent"
+                  color={roomIdCopied ? "green" : "gray"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyRoomId();
+                  }}
+                >
                   {roomIdCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
                 </ActionIcon>
               </Tooltip>
@@ -230,8 +267,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           {resolvedPasscode ? (
             <div
               className={styles.credentialCard}
-              onClick={handleCopyPasscode}
-              title="Click to copy passcode"
+              onClick={() => {
+                const sel = window.getSelection()?.toString();
+                if (sel && sel.length > 0) return;
+                handleCopyPasscode();
+              }}
+              title="Click to copy, or select Passcode"
             >
               <div className={styles.credentialHeader}>
                 <span className={styles.credentialTitle}>
@@ -252,7 +293,15 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                     {showPasscode ? <IconEyeOff size={14} /> : <IconEye size={14} />}
                   </ActionIcon>
                   <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
-                    <ActionIcon size="xs" variant="transparent" color={passcodeCopied ? "green" : "gray"}>
+                    <ActionIcon
+                      size="xs"
+                      variant="transparent"
+                      color={passcodeCopied ? "green" : "gray"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyPasscode();
+                      }}
+                    >
                       {passcodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
                     </ActionIcon>
                   </Tooltip>

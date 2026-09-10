@@ -140,6 +140,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: all;
+  -webkit-user-select: all;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.urlDisplay:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(139, 92, 246, 0.4);
 }
 
 .copyButton {
@@ -205,6 +213,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  user-select: all;
+  -webkit-user-select: all;
+  cursor: text;
+  border-radius: 4px;
+  padding: 2px 0;
 }
 
 .shareSection {
