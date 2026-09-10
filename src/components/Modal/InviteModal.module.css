@@ -65,33 +65,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-.statusBanner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.statusBannerProtected {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  color: #fbbf24;
-}
-
-.statusBannerOpen {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #34d399;
-}
-
-.statusBannerIcon {
-  flex-shrink: 0;
+  gap: 16px;
 }
 
 .linkCard {

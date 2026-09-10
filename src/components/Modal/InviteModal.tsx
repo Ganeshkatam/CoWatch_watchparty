@@ -13,7 +13,6 @@ import {
   IconShare,
   IconMessageShare,
   IconUsers,
-  IconLock,
   IconEye,
   IconEyeOff,
   IconLink,
@@ -140,22 +139,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       }
     >
       <div className={styles.container}>
-        {/* Room Status Banner */}
-        {resolvedPasscode ? (
-          <div className={`${styles.statusBanner} ${styles.statusBannerProtected}`}>
-            <IconLock size={18} className={styles.statusBannerIcon} />
-            <div>
-              <strong>Passcode Protected Room.</strong> Guests will join via the link and must enter the room passcode.
-            </div>
-          </div>
-        ) : (
-          <div className={`${styles.statusBanner} ${styles.statusBannerProtected}`}>
-            <IconLock size={18} className={styles.statusBannerIcon} />
-            <div>
-              <strong>Passcode Required.</strong> Every room requires a passcode. Enter the room passcode below to include it in all invite messages.
-            </div>
-          </div>
-        )}
+
 
         {!propPasscode && (
           <PasswordInput
