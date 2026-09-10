@@ -68,7 +68,7 @@ export const Signup = () => {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -131,11 +131,6 @@ export const Signup = () => {
 
     if (!isAllowedEmailDomain(email)) {
       setError(EMAIL_PROVIDER_ERROR);
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
       return;
     }
 
@@ -352,7 +347,7 @@ export const Signup = () => {
               </Text>
             </div>
             <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-            <PasswordInput label="Confirm Password" placeholder="Confirm password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+
             <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
           </form>
         )}
