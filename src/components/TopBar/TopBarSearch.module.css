@@ -9,18 +9,18 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 180px;
-  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 200px;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .searchWrapperExpanded {
-  width: 280px;
+  width: 320px;
 }
 
 .searchInput {
   width: 100%;
-  height: 36px;
-  padding: 0 48px 0 32px;
+  height: 38px;
+  padding: 0 56px 0 34px;
   border-radius: 9999px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -132,6 +132,7 @@
   width: 340px;
   max-height: 420px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
@@ -231,37 +232,191 @@
   color: var(--text-muted);
 }
 
+.mobileBackdrop {
+  display: none;
+}
+
+.mobileCloseButton {
+  display: none;
+}
+
+.inputInner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
+  .mobileBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1050;
+    animation: fadeIn 0.15s ease;
+  }
+
+  .kbdBadge {
+    display: none !important;
+  }
+
   .searchWrapper {
     display: none;
   }
+
   .searchWrapperMobileOpen {
     display: flex;
+    align-items: center;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: 60px;
-    padding: 10px 16px;
+    height: 52px;
+    padding: 8px 12px;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     z-index: 1100;
     box-sizing: border-box;
+    gap: 8px;
+    animation: slideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }
+
+  .searchWrapperMobileOpen .inputInner {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .searchWrapperMobileOpen .searchInput {
+    height: 36px;
+    padding: 0 32px 0 32px;
+    font-size: 13px;
+    border-radius: 9999px;
+    background: var(--bg-app);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .searchWrapperMobileOpen .searchInput:focus {
+    border-color: var(--color-violet);
+    box-shadow: 0 0 0 2px var(--color-violet-light, rgba(139, 92, 246, 0.2));
+  }
+
+  .searchWrapperMobileOpen .searchIcon {
+    left: 10px;
+  }
+
+  .searchWrapperMobileOpen .rightAdornment {
+    right: 8px;
+  }
+
   .mobileSearchButton {
     display: flex;
   }
+
+  .mobileCloseButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .mobileCloseButton:hover,
+  .mobileCloseButton:active {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+
   .dropdown {
-    width: calc(100vw - 32px);
+    width: calc(100vw - 24px);
     right: -50px;
   }
+
   .searchWrapperMobileOpen ~ .dropdown {
     position: fixed;
-    top: 64px;
-    left: 16px;
-    right: 16px;
+    top: 58px;
+    left: 12px;
+    right: 12px;
     width: auto;
+    max-height: calc(100vh - 120px);
+    border-radius: 14px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    z-index: 1150;
   }
 }
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Laptop screens (1024px - 1199px) */
+@media (min-width: 1024px) {
+  .searchWrapper {
+    width: 260px;
+  }
+  .searchWrapperExpanded {
+    width: 380px;
+  }
+  .dropdown {
+    width: 380px;
+  }
+}
+
+/* Standard laptop screens (1200px - 1439px e.g. 1366x768, 1440x900) */
+@media (min-width: 1200px) {
+  .searchWrapper {
+    width: 300px;
+  }
+  .searchWrapperExpanded {
+    width: 440px;
+  }
+  .dropdown {
+    width: 440px;
+  }
+}
+
+/* Large laptop and desktop displays (1440px+) */
+@media (min-width: 1440px) {
+  .searchWrapper {
+    width: 340px;
+  }
+  .searchWrapperExpanded {
+    width: 480px;
+  }
+  .dropdown {
+    width: 480px;
+  }
+}
+

@@ -431,20 +431,24 @@
   .page {
     height: auto;
     min-height: calc(100vh - 52px);
+    max-height: none;
     overflow: visible;
-    padding: 20px 16px 60px;
+    padding: 16px 16px var(--mobile-bottom-nav-clearance, 76px);
   }
 
   .container {
     height: auto;
-    grid-template-columns: 1fr;
-    gap: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
 
   .sidebar {
     height: auto;
     position: static;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .navSections {
@@ -457,10 +461,20 @@
     gap: 6px;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
-    border-radius: 14px;
-    padding: 6px;
+    border-radius: 12px;
+    padding: 4px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    box-sizing: border-box;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: var(--shadow-sm);
+    margin: 0;
+    width: 100%;
+    flex-shrink: 0;
   }
 
   .mobileNav::-webkit-scrollbar {
@@ -468,28 +482,54 @@
   }
 
   .mobileNavItem {
-    flex: 1;
-    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 36px;
+    min-height: 36px;
+    max-height: 36px;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 10px 12px;
-    border-radius: 10px;
+    padding: 0 8px;
+    border-radius: 8px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.88rem;
+    font-size: 0.84rem;
     font-weight: 500;
+    line-height: 1;
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
-    min-height: 42px;
+    box-sizing: border-box;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+
+  .mobileNavItem span {
+    line-height: 1;
+    display: inline-block;
+  }
+
+  .mobileNavItem svg {
+    flex-shrink: 0;
+  }
+
+  .mobileNavItem:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
   }
 
   .activeMobileNavItem {
-    background: rgba(139, 92, 246, 0.12) !important;
+    background: var(--accent-primary-soft, rgba(139, 92, 246, 0.14)) !important;
     color: var(--color-violet) !important;
     font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  .activeMobileNavItem svg {
+    color: var(--color-violet) !important;
   }
 
   .mainCard {

@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   IconHome,
-  IconDatabase,
+  IconDeviceTv,
   IconPlus,
   IconUser,
   IconSun,
@@ -65,7 +65,7 @@ export const MobileBottomNav: React.FC = () => {
               >
                 {isActive && <span className={styles.activeDot} aria-hidden="true" />}
                 <div className={styles.iconWrapper}>
-                  <IconDatabase size={20} stroke={isActive ? 2.2 : 1.6} />
+                  <IconDeviceTv size={20} stroke={isActive ? 2.2 : 1.6} />
                 </div>
                 <span className={styles.navLabel}>Rooms</span>
               </Link>

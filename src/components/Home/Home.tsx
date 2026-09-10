@@ -45,10 +45,10 @@ export const Home = () => {
               )}
             </div>
           </div>
-          <div style={{ flex: "1 1 0", display: "flex", justifyContent: "flex-end" }}>
-             <img
+          <div className={styles.previewWrapper}>
+            <img
               alt="CoWatch interface preview"
-              style={{ width: "100%", maxWidth: "600px", borderRadius: "12px", boxShadow: "var(--shadow-hero)" }}
+              className={styles.previewImage}
               src="/screenshot_full.png"
             />
           </div>

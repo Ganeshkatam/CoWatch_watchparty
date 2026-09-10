@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   TextInput,
-  Select,
+  Menu,
   SegmentedControl,
   Center,
   Button,
@@ -17,6 +17,8 @@ import {
   IconCheck,
   IconX,
   IconLock,
+  IconArrowsSort,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import styles from "./MyRooms.module.css";
 
@@ -43,6 +45,22 @@ const accessOptions = [
   { id: "protected", label: "Passcode Protected" },
 ];
 
+const sortOptions = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "title-asc", label: "Title A–Z" },
+  { value: "title-desc", label: "Title Z–A" },
+  { value: "expiring", label: "Expiring Soon" },
+];
+
+const sortLabelMap: Record<string, string> = {
+  newest: "Newest",
+  oldest: "Oldest",
+  "title-asc": "Title A–Z",
+  "title-desc": "Title Z–A",
+  expiring: "Expiring",
+};
+
 export const RoomsToolbar = ({
   searchQuery,
   setSearchQuery,
@@ -68,18 +86,48 @@ export const RoomsToolbar = ({
     <div className={styles.toolbar}>
       <div className={styles.search}>
         <TextInput
-          placeholder="Search rooms by title or description..."
+          placeholder="Search..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          leftSection={<IconSearch size={16} color="var(--text-muted)" />}
-          size="sm"
-          radius="md"
+          leftSection={<IconSearch size={14} color="var(--text-muted)" />}
+          leftSectionWidth={28}
+          rightSection={
+            searchQuery ? (
+              <ActionIcon
+                size={18}
+                variant="transparent"
+                c="dimmed"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <IconX size={11} />
+              </ActionIcon>
+            ) : null
+          }
+          rightSectionWidth={26}
+          size="xs"
           styles={{
+            root: {
+              width: '100%',
+            },
+            wrapper: {
+              height: '32px',
+              minHeight: '32px',
+            },
             input: {
               background: 'var(--bg-surface)',
               borderColor: 'var(--border-subtle)',
               color: 'var(--text-primary)',
-              height: '38px',
+              height: '32px !important',
+              minHeight: '32px !important',
+              borderRadius: '8px',
+              fontSize: '12px',
+              paddingLeft: '28px !important',
+              paddingRight: searchQuery ? '26px !important' : '8px !important',
+              boxShadow: 'var(--shadow-sm)',
+            },
+            section: {
+              width: '28px',
             },
           }}
         />
@@ -89,7 +137,7 @@ export const RoomsToolbar = ({
         <Popover
           opened={filterOpened}
           onChange={setFilterOpened}
-          position="bottom-end"
+          position="bottom-start"
           shadow="lg"
           radius="md"
           width={290}
@@ -99,21 +147,26 @@ export const RoomsToolbar = ({
             <Button
               variant={filterOption !== "all" ? "light" : "default"}
               color="violet"
-              size="sm"
+              size="xs"
               radius="md"
-              leftSection={<IconAdjustmentsHorizontal size={15} />}
+              leftSection={<IconAdjustmentsHorizontal size={14} />}
               onClick={() => setFilterOpened((o) => !o)}
               styles={{
                 root: {
-                  height: '38px',
-                  borderColor: filterOption !== "all" ? 'var(--mantine-color-violet-6)' : 'var(--border-subtle)',
-                  backgroundColor: filterOption !== "all" ? 'rgba(139, 92, 246, 0.12)' : 'var(--bg-surface)',
-                  color: filterOption !== "all" ? 'var(--mantine-color-violet-4)' : 'var(--text-primary)',
+                  height: '32px',
+                  borderRadius: '8px',
+                  borderColor: filterOption !== "all" ? 'var(--color-violet)' : 'var(--border-subtle)',
+                  backgroundColor: filterOption !== "all" ? 'var(--accent-primary-soft)' : 'var(--bg-surface)',
+                  color: filterOption !== "all" ? 'var(--color-violet)' : 'var(--text-primary)',
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  padding: '0 8px',
+                  boxShadow: 'var(--shadow-sm)',
                 },
               }}
             >
-              <Group gap={6} wrap="nowrap">
-                <span>{filterOption === "all" ? "Filters" : `Filter: ${filterLabelMap[filterOption] || filterOption}`}</span>
+              <Group gap={4} wrap="nowrap">
+                <span>{filterOption === "all" ? "Filter" : `Filter: ${filterLabelMap[filterOption] || filterOption}`}</span>
                 {filterOption !== "all" && (
                   <ActionIcon
                     size="xs"
@@ -125,7 +178,7 @@ export const RoomsToolbar = ({
                     }}
                     aria-label="Clear filter"
                   >
-                    <IconX size={12} />
+                    <IconX size={11} />
                   </ActionIcon>
                 )}
               </Group>
@@ -188,27 +241,47 @@ export const RoomsToolbar = ({
         </Popover>
 
         <div className={styles.sort}>
-          <Select
-            value={sortOption}
-            onChange={(val) => setSortOption(val || "newest")}
-            data={[
-              { value: "newest", label: "Newest First" },
-              { value: "oldest", label: "Oldest First" },
-              { value: "title-asc", label: "Title A–Z" },
-              { value: "title-desc", label: "Title Z–A" },
-              { value: "expiring", label: "Expiring Soon" },
-            ]}
-            size="sm"
-            radius="md"
-            styles={{
-              input: {
-                background: 'var(--bg-surface)',
-                borderColor: 'var(--border-subtle)',
-                color: 'var(--text-primary)',
-                height: '38px',
-              },
-            }}
-          />
+          <Menu shadow="md" radius="md" position="bottom-start" width={180}>
+            <Menu.Target>
+              <Button
+                variant="default"
+                size="xs"
+                radius="md"
+                leftSection={<IconArrowsSort size={14} />}
+                rightSection={<IconChevronDown size={12} style={{ opacity: 0.6 }} />}
+                styles={{
+                  root: {
+                    height: '32px',
+                    borderRadius: '8px',
+                    borderColor: 'var(--border-subtle)',
+                    backgroundColor: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    padding: '0 8px',
+                    boxShadow: 'var(--shadow-sm)',
+                  },
+                }}
+              >
+                <span>{sortLabelMap[sortOption] || "Sort"}</span>
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {sortOptions.map((opt) => (
+                <Menu.Item
+                  key={opt.value}
+                  onClick={() => setSortOption(opt.value)}
+                  rightSection={sortOption === opt.value ? <IconCheck size={14} color="var(--color-violet)" /> : null}
+                  style={{
+                    fontWeight: sortOption === opt.value ? 600 : 400,
+                    color: sortOption === opt.value ? 'var(--color-violet)' : 'inherit',
+                  }}
+                >
+                  {opt.label}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
         </div>
 
         <div className={styles.viewToggle}>
@@ -219,23 +292,33 @@ export const RoomsToolbar = ({
               {
                 value: 'grid',
                 label: (
-                  <Center style={{ gap: 6 }}>
-                    <IconLayoutGrid size={15} />
+                  <Center style={{ gap: 4 }}>
+                    <IconLayoutGrid size={14} />
                   </Center>
                 ),
               },
               {
                 value: 'stack',
                 label: (
-                  <Center style={{ gap: 6 }}>
-                    <IconList size={15} />
+                  <Center style={{ gap: 4 }}>
+                    <IconList size={14} />
                   </Center>
                 ),
               },
             ]}
             color="violet"
-            size="sm"
+            size="xs"
             radius="md"
+            styles={{
+              root: {
+                height: '32px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                padding: '2px',
+                boxShadow: 'var(--shadow-sm)',
+              },
+            }}
           />
         </div>
       </div>

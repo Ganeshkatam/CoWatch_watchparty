@@ -450,8 +450,8 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("profile")}
             aria-current={isProfile ? "page" : undefined}
           >
-            <IconUser size={16} stroke={isProfile ? 2.2 : 1.8} />
-            <span>Your profile</span>
+            <IconUser size={15} stroke={isProfile ? 2.2 : 1.8} />
+            <span>Profile</span>
           </button>
 
           <button
@@ -460,7 +460,7 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("preferences")}
             aria-current={isPreferences ? "page" : undefined}
           >
-            <IconSettings size={16} stroke={isPreferences ? 2.2 : 1.8} />
+            <IconSettings size={15} stroke={isPreferences ? 2.2 : 1.8} />
             <span>Preferences</span>
           </button>
 
@@ -470,8 +470,8 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("security")}
             aria-current={isSecurity ? "page" : undefined}
           >
-            <IconLock size={16} stroke={isSecurity ? 2.2 : 1.8} />
-            <span>Login & security</span>
+            <IconLock size={15} stroke={isSecurity ? 2.2 : 1.8} />
+            <span>Security</span>
           </button>
         </nav>
 

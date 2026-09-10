@@ -828,6 +828,16 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       );
     }
 
+    items.push(
+      <Menu.Item
+        key="details"
+        leftSection={<IconInfoCircle size={14} />}
+        onClick={() => history.push(detailsPath)}
+      >
+        Room Details
+      </Menu.Item>
+    );
+
     if (computedState !== 'Expired' && computedState !== 'Ended') {
       if (room.currentPasscode) {
         items.push(<Menu.Divider key="div1" />);
@@ -1041,6 +1051,7 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
   const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
   const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const history = useHistory();
 
   return (
     <div className={styles.gridCard}>
@@ -1052,7 +1063,7 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         )}
         <div className={styles.coverOverlay} />
 
-        <div style={{ position: 'absolute', bottom: 10, right: 10, zIndex: 10 }}>
+        <div className={styles.statusBadgeContainer}>
           <RoomStatusBadge status={room.status} isPermanent={isPermanent} />
         </div>
 
@@ -1060,7 +1071,7 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
           <>
             <ActionIcon
               variant="filled" color="dark" size="sm" radius="xl" loading={actions.isUploading}
-              style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
+              className={styles.updateCoverBtn}
               onClick={(e) => { e.stopPropagation(); actions.fileInputRef.current?.click(); }}
               aria-label="Update cover image"
             >
@@ -1072,7 +1083,12 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
       </div>
 
       <div className={styles.gridCardBody}>
-        <h3 className={styles.roomTitle} title={room.roomTitle || "Watch Party Room"}>
+        <h3
+          className={styles.roomTitle}
+          title={room.roomTitle || "Watch Party Room"}
+          onClick={() => history.push(actions.detailsPath)}
+          style={{ cursor: 'pointer' }}
+        >
           {room.roomTitle || "Watch Party Room"}
         </h3>
         <div className={styles.roomDescription}>
@@ -1083,23 +1099,23 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
           <div className={styles.metaItemValue}>
             {room.isPasscodeProtected ? (
               <>
-                <IconLock size={14} />
+                <IconLock size={13} />
                 {room.currentPasscode ? (
-                  <span>Passcode: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong></span>
+                  <span>Pass: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong></span>
                 ) : (
                   'Protected'
                 )}
               </>
             ) : (
               <>
-                <IconLockOpen size={14} />
+                <IconLockOpen size={13} />
                 Public
               </>
             )}
           </div>
           <div className={styles.metaItemValue}>
-            <IconMessage size={14} />
-            {room.isChatDisabled ? 'Chat disabled' : 'Chat'}
+            <IconMessage size={13} />
+            {room.isChatDisabled ? 'Chat off' : 'Chat'}
           </div>
           <div className={styles.metaItemValue}>{creationDate}</div>
         </div>
@@ -1110,11 +1126,11 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
       </div>
 
       <div className={styles.roomActionsBar}>
-        <div className={styles.actionButtons}>
+        <div className={styles.primaryActionWrap}>
           {actions.renderPrimary()}
-          {actions.renderSecondary()}
         </div>
-        <Group gap={6} wrap="nowrap">
+        <div className={styles.cardActionsRow}>
+          {actions.renderSecondary()}
           <Tooltip label="Invite Friends" withArrow>
             <ActionIcon
               className={styles.actionIconBtn}
@@ -1136,7 +1152,7 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
               {actions.renderMenuItems()}
             </Menu.Dropdown>
           </Menu>
-        </Group>
+        </div>
       </div>
 
       <EditRoomModal

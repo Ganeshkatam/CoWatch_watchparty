@@ -16,6 +16,9 @@
   box-shadow: var(--shadow-sm);
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box;
+  transform: translateZ(0);
+  will-change: transform;
+  isolation: isolate;
 }
 
 .brandGroup {
@@ -156,6 +159,50 @@
 
 .hamburger:hover {
   transform: scale(1.08);
+}
+
+/* Desktop / Laptop Dropdown Menu */
+.menuContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.desktopMenuDropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 320px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.25));
+  padding: 16px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 1200;
+  box-sizing: border-box;
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menuContentWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Mobile Drawer Styles */

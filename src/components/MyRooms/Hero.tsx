@@ -10,8 +10,8 @@ export const Hero: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
   return (
     <div className={styles.hero}>
       <div className={styles.heroContent}>
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <div>
+        <div className={styles.heroHeader}>
+          <div className={styles.heroTitleBox}>
             <Title order={1} className={styles.heroTitle}>MY ROOMS</Title>
             <Text className={styles.heroSubtitle}>
               All the watch parties you create and manage.
@@ -20,21 +20,15 @@ export const Hero: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
           
           <Button
             size="sm"
-            variant="default"
+            variant="gradient"
+            gradient={{ from: 'violet', to: 'indigo', deg: 135 }}
             leftSection={<IconCirclePlusFilled size={16} />}
             onClick={() => history.push("/create")}
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.12)',
-              backdropFilter: 'blur(8px)',
-              color: '#ffffff',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              fontWeight: 600,
-              borderRadius: 'var(--radius-sm)',
-            }}
+            className={styles.heroNewRoomBtn}
           >
             New Room
           </Button>
-        </Group>
+        </div>
 
         <div className={styles.heroMetrics}>
           {children}

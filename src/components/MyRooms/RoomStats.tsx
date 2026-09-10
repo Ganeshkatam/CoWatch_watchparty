@@ -1,6 +1,7 @@
 import React from "react";
 import { Skeleton } from "@mantine/core";
 import { type RoomSummary } from "./MyRooms";
+import styles from "./MyRooms.module.css";
 
 interface RoomStatsProps {
   rooms: RoomSummary[];
@@ -34,41 +35,34 @@ export const RoomStats: React.FC<RoomStatsProps> = ({
       id: "all",
       label: "TOTAL ROOMS",
       value: total,
-      color: "var(--mantine-color-violet-3)",
+      color: "#A78BFA",
     },
     {
       id: "active",
       label: "ACTIVE",
       value: active,
-      color: "var(--mantine-color-green-4)",
+      color: "#4ADE80",
     },
     {
       id: "expiring",
       label: "EXPIRING SOON",
       value: expiring,
-      color: "var(--mantine-color-orange-4)",
+      color: "#FBBF24",
     },
     {
       id: "finished",
       label: "FINISHED",
       value: finished,
-      color: "rgba(255, 255, 255, 0.7)",
+      color: "rgba(255, 255, 255, 0.75)",
     },
   ];
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: "48px",
-        flexWrap: "wrap",
-        minHeight: "48px",
-        alignItems: "center",
-      }}
-    >
+    <div className={styles.statsMinimal}>
       {stats.map((stat) => {
         const isSelected = selectedStatus === stat.id;
         const isClickable = Boolean(onSelectStatus);
+        const isDimmed = Boolean(selectedStatus && selectedStatus !== "all" && !isSelected);
 
         return (
           <div
@@ -78,48 +72,20 @@ export const RoomStats: React.FC<RoomStatsProps> = ({
                 onSelectStatus(isSelected ? "all" : stat.id);
               }
             }}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              minWidth: "80px",
-              cursor: isClickable ? "pointer" : "default",
-              padding: "4px 8px",
-              borderRadius: "8px",
-              transition: "all 0.18s ease",
-              backgroundColor: isSelected ? "rgba(255, 255, 255, 0.12)" : "transparent",
-              outline: isSelected ? "1px solid rgba(255, 255, 255, 0.25)" : "none",
-            }}
+            className={`${styles.statItemMinimal} ${isSelected ? styles.statItemActive : ""} ${isDimmed ? styles.statItemDimmed : ""}`}
             title={isClickable ? `Filter by ${stat.label}` : undefined}
           >
             <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: stat.color,
-                opacity: selectedStatus && selectedStatus !== "all" && !isSelected ? 0.6 : 1,
-              }}
+              className={styles.statLabelMinimal}
+              style={{ color: stat.color }}
             >
               {stat.label}
             </div>
-            <div
-              style={{
-                fontSize: "24px",
-                fontWeight: 600,
-                color: "white",
-                lineHeight: 1,
-                height: "24px",
-                display: "flex",
-                alignItems: "center",
-                opacity: selectedStatus && selectedStatus !== "all" && !isSelected ? 0.6 : 1,
-              }}
-            >
+            <div className={styles.statValueMinimal}>
               {loading ? (
                 <Skeleton
-                  height={20}
-                  width={36}
+                  height={22}
+                  width={32}
                   radius="sm"
                   style={{ opacity: 0.5 }}
                 />

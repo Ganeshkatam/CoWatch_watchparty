@@ -76,46 +76,58 @@
     align-items: center;
     justify-content: center;
     position: relative;
-    width: 24px;
-    height: 24px;
-    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 46px;
+    height: 28px;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .navItem:hover .iconWrapper {
+    background: var(--surface-hover, rgba(139, 92, 246, 0.08));
   }
 
   .navLabel {
     font-size: 11px;
     line-height: 13px;
     font-weight: 500;
-    margin-top: 3px;
+    margin-top: 2px;
     letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
-    transition: font-weight 0.15s ease, color 0.15s ease;
+    transition: font-weight 0.18s ease, color 0.18s ease, transform 0.18s ease;
   }
 
-  /* Active State */
+  /* Active State - Premium Capsule & Luminous Highlight */
   .activeItem {
-    color: var(--mobile-nav-active);
+    color: var(--color-violet, #8b5cf6);
   }
 
   .activeItem .iconWrapper {
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(99, 102, 241, 0.12) 100%);
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    color: var(--color-violet, #8b5cf6);
+    transform: translateY(-1px) scale(1.05);
   }
 
   .activeItem .navLabel {
     font-weight: 700;
-    color: var(--mobile-nav-active);
+    color: var(--color-violet, #8b5cf6);
+    letter-spacing: 0.01em;
   }
 
   .activeDot {
     position: absolute;
-    top: 4px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background-color: var(--mobile-nav-active);
-    box-shadow: 0 0 6px var(--mobile-nav-active);
+    top: 0;
+    width: 28px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, #8b5cf6, #3b82f6);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.65), 0 0 4px rgba(139, 92, 246, 0.4);
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* Elevated Center CTA Button */

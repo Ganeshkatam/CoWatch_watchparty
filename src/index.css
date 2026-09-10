@@ -87,6 +87,8 @@
   --mobile-nav-cta: var(--gradient-brand);
   --mobile-nav-cta-shadow: 0 4px 16px rgba(20, 184, 166, 0.35);
   --mobile-bottom-nav-clearance: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 12px);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.25);
+  --scrollbar-thumb-hover: rgba(139, 92, 246, 0.65);
 }
 
 html[data-color-scheme="light"] {
@@ -173,6 +175,8 @@ html[data-color-scheme="light"] {
   --mobile-nav-cta: var(--gradient-brand);
   --mobile-nav-cta-shadow: 0 4px 16px rgba(12, 166, 120, 0.25);
   --mobile-bottom-nav-clearance: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 12px);
+  --scrollbar-thumb: rgba(100, 116, 139, 0.28);
+  --scrollbar-thumb-hover: rgba(112, 72, 232, 0.65);
 }
 
 html body {
@@ -182,8 +186,45 @@ html body {
   color: var(--text-primary);
 }
 
+/* Sleek Global Custom Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-violet);
+}
+
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
