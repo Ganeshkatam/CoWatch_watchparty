@@ -8,10 +8,10 @@
 
 .container {
   width: 100%;
-  max-width: 780px;
+  max-width: 720px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 /* Breadcrumb Navigation */
@@ -19,7 +19,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -28,18 +28,18 @@
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-weight: 500;
   transition: color 0.15s ease;
 }
 
 .breadcrumbLink:hover {
-  color: var(--color-violet, #a78bfa);
+  color: var(--color-violet, #8b5cf6);
 }
 
 .breadcrumbSeparator {
   color: var(--text-muted);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .breadcrumbCurrent {
@@ -47,107 +47,88 @@
   font-weight: 600;
 }
 
-/* Hero Cinema Banner Header */
-.hero {
-  position: relative;
-  border-radius: 16px;
-  background-color: var(--bg-surface);
-  background-image: 
-    linear-gradient(135deg, rgba(15, 15, 20, 0.88) 0%, rgba(20, 20, 30, 0.72) 50%, rgba(139, 92, 246, 0.15) 100%),
-    url('/hero_bg.png');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: cover;
+/* Flat Header */
+.header {
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  padding: 32px 36px;
-  overflow: hidden;
-  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.heroContent {
-  position: relative;
-  z-index: 2;
+.headerMeta {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
-.heroBadge {
-  display: inline-flex;
+.headerActions {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(139, 92, 246, 0.2);
-  border: 1px solid rgba(139, 92, 246, 0.35);
-  color: #c4b5fd;
-  font-size: 11.5px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  width: fit-content;
-  margin-bottom: 4px;
-}
-
-.heroTitle {
-  font-size: 26px;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
-.heroSubtitle {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.82);
-  max-width: 580px;
-  line-height: 1.5;
+.headerSubtitle {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
   margin: 0;
 }
 
-/* Form Sections */
+/* Form Layout */
 .form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
+/* Flat Clean Card */
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 12px;
+  padding: 22px 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(12px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  gap: 18px;
+  transition: border-color 0.15s ease;
 }
 
 .card:hover {
-  border-color: var(--border-focus, rgba(139, 92, 246, 0.25));
+  border-color: var(--border-strong);
 }
 
 .cardHeader {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-bottom: 16px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .cardIconBadge {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-hover, rgba(139, 92, 246, 0.08));
+  border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-violet, #a78bfa);
+  color: var(--color-violet, #8b5cf6);
   flex-shrink: 0;
 }
 
@@ -158,8 +139,8 @@
 }
 
 .cardTitle {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14.5px;
+  font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.2px;
 }
@@ -185,15 +166,14 @@
 }
 
 .coverPreview {
-  width: 160px;
-  height: 90px;
-  border-radius: 10px;
+  width: 140px;
+  height: 79px;
+  border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-surface-elevated, #1a1d26);
+  background: var(--bg-app);
   border: 1px solid var(--border-subtle);
   position: relative;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .coverImg {
@@ -208,7 +188,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -220,13 +200,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Passcode Row */
 .passcodeRow {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-end;
 }
 
@@ -245,20 +225,21 @@
   font-size: 13px;
   font-weight: 500;
   border-radius: 8px;
+  border: 1px solid var(--border-subtle);
 }
 
-/* Setting Cards */
+/* Setting Cards / Toggles */
 .togglesList {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .settingCard {
-  background: var(--bg-surface-elevated, var(--bg-elevated, rgba(255, 255, 255, 0.02)));
+  background: var(--bg-app);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -267,75 +248,91 @@
 }
 
 .settingCard:hover {
-  border-color: var(--border-focus, rgba(139, 92, 246, 0.3));
-  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
+  border-color: var(--border-strong);
 }
 
 .settingMeta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .settingLabel {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .settingDescription {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
-/* Actions Row */
+/* Actions Footer - Sticky at bottom */
 .actionsRow {
+  position: sticky;
+  bottom: 16px;
+  z-index: 30;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 14px 20px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.actionsRowMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionsRowButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .submitButton {
-  min-width: 170px;
-  height: 44px;
+  min-width: 150px;
+  height: 40px;
   font-weight: 600;
-  font-size: 14px;
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.submitButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45);
+  font-size: 13.5px;
+  border-radius: 8px;
 }
 
 @media (max-width: 650px) {
   .page {
-    padding: 16px 14px 64px;
+    padding: 16px 12px 64px;
   }
 
-  .hero {
-    padding: 24px 20px;
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px 14px;
+    gap: 12px;
   }
 
-  .heroTitle {
-    font-size: 22px;
+  .headerActions {
+    width: 100%;
+    justify-content: flex-end;
   }
 
-  .heroSubtitle {
-    font-size: 13px;
+  .headerActions button {
+    flex: 1;
+  }
+
+  .headerTitle {
+    font-size: 20px;
   }
 
   .card {
-    padding: 18px 16px;
+    padding: 16px 14px;
   }
 
   .coverContainer {
@@ -353,10 +350,26 @@
   }
 
   .actionsRow {
-    flex-direction: column-reverse;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 12px 16px;
+    justify-content: flex-end;
   }
 
-  .actionsRow button {
+  .actionsRowMeta {
+    display: none;
+  }
+
+  .actionsRowButtons {
     width: 100%;
+  }
+
+  .actionsRowButtons button {
+    flex: 1;
   }
 }

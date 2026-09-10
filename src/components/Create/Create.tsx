@@ -19,7 +19,6 @@ import {
   IconPhoto,
   IconCopy,
   IconCheck,
-  IconSparkles,
   IconShieldCheck,
   IconSettings,
 } from "@tabler/icons-react";
@@ -165,17 +164,41 @@ export const Create = () => {
           <span className={styles.breadcrumbCurrent}>Create Room</span>
         </nav>
 
-        {/* Hero Cinema Banner Header */}
-        <div className={styles.hero}>
-          <div className={styles.heroContent}>
-            <div className={styles.heroBadge}>
-              <IconSparkles size={13} />
-              <span>Host a Watch Party</span>
-            </div>
-            <h1 className={styles.heroTitle}>Create a New Room</h1>
-            <p className={styles.heroSubtitle}>
-              Set up your room details, upload a custom cover photo, configure secure access, and set participant permissions.
+        {/* Flat Header */}
+        <div className={styles.header}>
+          <div className={styles.headerMeta}>
+            <h1 className={styles.headerTitle}>Create a Room</h1>
+            <p className={styles.headerSubtitle}>
+              Set up your room details, passcode, and permissions.
             </p>
+          </div>
+          <div className={styles.headerActions}>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => history.goBack()}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="create-room-form"
+              size="sm"
+              color="violet"
+              disabled={loading}
+              loading={loading}
+              leftSection={
+                loading ? (
+                  <Loader size={14} color="white" />
+                ) : (
+                  <IconCirclePlusFilled size={16} />
+                )
+              }
+            >
+              {loading ? "Creating..." : "Create Room"}
+            </Button>
           </div>
         </div>
 
@@ -185,7 +208,7 @@ export const Create = () => {
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className={styles.form}>
+        <form onSubmit={handleSubmit} id="create-room-form" className={styles.form}>
           {/* Card 1: Room Details */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
@@ -195,17 +218,17 @@ export const Create = () => {
               <div className={styles.cardHeaderMeta}>
                 <span className={styles.cardTitle}>Room Details</span>
                 <span className={styles.cardSubtitle}>
-                  Basic information and visual cover shown to party participants.
+                  Enter a room name, optional description, and cover picture.
                 </span>
               </div>
             </div>
 
             <div className={styles.fieldsStack}>
               <TextInput
-                label="Room Title"
+                label="Room name"
                 required
                 withAsterisk
-                placeholder="e.g. Movie Night with Friends"
+                placeholder="e.g. Movie night with friends"
                 value={roomTitle}
                 onChange={(e) => setRoomTitle(e.target.value)}
                 maxLength={50}
@@ -213,8 +236,8 @@ export const Create = () => {
               />
 
               <TextInput
-                label="Room Description"
-                placeholder="e.g. Streaming movies, music videos, and browsing together"
+                label="Description"
+                placeholder="e.g. Watching movies, videos, and music together"
                 value={roomDescription}
                 onChange={(e) => setRoomDescription(e.target.value)}
                 maxLength={120}
@@ -223,14 +246,14 @@ export const Create = () => {
 
               <div>
                 <Text size="sm" fw={500} mb={6}>
-                  Cover Photo
+                  Cover picture
                 </Text>
                 <div className={styles.coverContainer}>
                   <div className={styles.coverPreview}>
                     {coverPreview ? (
                       <img
                         src={coverPreview}
-                        alt="Cover Preview"
+                        alt="Cover preview"
                         className={styles.coverImg}
                       />
                     ) : (
@@ -242,7 +265,7 @@ export const Create = () => {
                   </div>
                   <div className={styles.coverActions}>
                     <FileInput
-                      placeholder="Choose image (JPG, PNG, WebP)"
+                      placeholder="Choose picture (JPG, PNG, WebP)"
                       accept="image/jpeg,image/png,image/webp"
                       onChange={setCoverPhotoFile}
                       value={coverPhotoFile}
@@ -252,7 +275,7 @@ export const Create = () => {
                       styles={{ root: { width: "100%", maxWidth: 300 } }}
                     />
                     <Text size="xs" c="dimmed">
-                      Recommended aspect ratio 16:9, max file size 5MB.
+                      Recommended 16:9 ratio, max 5 MB.
                     </Text>
                   </div>
                 </div>
@@ -260,16 +283,16 @@ export const Create = () => {
             </div>
           </div>
 
-          {/* Card 2: Access & Security */}
+          {/* Card 2: Passcode & Access */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardIconBadge}>
                 <IconShieldCheck size={18} />
               </div>
               <div className={styles.cardHeaderMeta}>
-                <span className={styles.cardTitle}>Access & Security</span>
+                <span className={styles.cardTitle}>Passcode & Access</span>
                 <span className={styles.cardSubtitle}>
-                  Protect your room with a custom passcode so only invited friends can enter.
+                  Set a passcode to keep your room private for invited friends.
                 </span>
               </div>
             </div>
@@ -277,8 +300,8 @@ export const Create = () => {
             <div className={styles.passcodeRow}>
               <div className={styles.passcodeField}>
                 <PasswordInput
-                  label="Room Passcode"
-                  description="Participants must enter this passcode to join (minimum 8 characters)"
+                  label="Room passcode"
+                  description="Friends enter this passcode to join (at least 8 characters)"
                   placeholder="Passcode"
                   value={passcode}
                   required
@@ -309,24 +332,24 @@ export const Create = () => {
                   onClick={handleRegeneratePasscode}
                   leftSection={<IconRefresh size={15} />}
                   className={styles.regenerateButton}
-                  title="Generate a new random passcode"
+                  title="Make a new random passcode"
                 >
-                  Regenerate
+                  New passcode
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Controls & Permissions */}
+          {/* Card 3: Room Settings */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardIconBadge}>
                 <IconSettings size={18} />
               </div>
               <div className={styles.cardHeaderMeta}>
-                <span className={styles.cardTitle}>Controls & Permissions</span>
+                <span className={styles.cardTitle}>Room Settings</span>
                 <span className={styles.cardSubtitle}>
-                  Configure participant playback privileges, chat access, and room lifecycle.
+                  Choose who can control videos, chat, and room duration.
                 </span>
               </div>
             </div>
@@ -334,9 +357,9 @@ export const Create = () => {
             <div className={styles.togglesList}>
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Lock Room Controls</span>
+                  <span className={styles.settingLabel}>Lock video controls</span>
                   <span className={styles.settingDescription}>
-                    Only room hosts can control media playback and manage the playlist queue.
+                    Only room hosts can play, pause, or change videos.
                   </span>
                 </div>
                 <Switch
@@ -344,15 +367,15 @@ export const Create = () => {
                   onChange={(e) => setLock(e.currentTarget.checked)}
                   size="md"
                   color="violet"
-                  aria-label="Lock Room Controls"
+                  aria-label="Lock video controls"
                 />
               </div>
 
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Disable Chat</span>
+                  <span className={styles.settingLabel}>Turn off chat</span>
                   <span className={styles.settingDescription}>
-                    Turn off the live text chat sidebar for all participants in this room.
+                    Turn off the text chat sidebar for everyone in this room.
                   </span>
                 </div>
                 <Switch
@@ -360,15 +383,15 @@ export const Create = () => {
                   onChange={(e) => setIsChatDisabled(e.currentTarget.checked)}
                   size="md"
                   color="violet"
-                  aria-label="Disable Chat"
+                  aria-label="Turn off chat"
                 />
               </div>
 
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Permanent Room</span>
+                  <span className={styles.settingLabel}>Keep room permanent</span>
                   <span className={styles.settingDescription}>
-                    Keep this room active permanently instead of automatically expiring after 3 hours.
+                    Keep this room open permanently instead of closing after 3 hours.
                   </span>
                 </div>
                 <Switch
@@ -376,42 +399,47 @@ export const Create = () => {
                   onChange={(e) => setIsPermanent(e.currentTarget.checked)}
                   size="md"
                   color="violet"
-                  aria-label="Permanent Room"
+                  aria-label="Keep room permanent"
                 />
               </div>
             </div>
           </div>
 
-          {/* Actions Footer */}
+          {/* Sticky Actions Bar - Always accessible while scrolling */}
           <div className={styles.actionsRow}>
-            <Button
-              type="button"
-              variant="subtle"
-              color="gray"
-              size="md"
-              onClick={() => history.goBack()}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="md"
-              variant="gradient"
-              gradient={{ from: "violet", to: "indigo", deg: 135 }}
-              disabled={loading}
-              loading={loading}
-              leftSection={
-                loading ? (
-                  <Loader size={18} color="white" />
-                ) : (
-                  <IconCirclePlusFilled size={18} />
-                )
-              }
-              className={styles.submitButton}
-            >
-              {loading ? "Creating Room..." : "Create Room"}
-            </Button>
+            <div className={styles.actionsRowMeta}>
+              <Text size="xs" c="dimmed">
+                You can change room settings anytime.
+              </Text>
+            </div>
+            <div className={styles.actionsRowButtons}>
+              <Button
+                type="button"
+                variant="default"
+                size="md"
+                onClick={() => history.goBack()}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="md"
+                color="violet"
+                disabled={loading}
+                loading={loading}
+                leftSection={
+                  loading ? (
+                    <Loader size={18} color="white" />
+                  ) : (
+                    <IconCirclePlusFilled size={18} />
+                  )
+                }
+                className={styles.submitButton}
+              >
+                {loading ? "Creating Room..." : "Create Room"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
