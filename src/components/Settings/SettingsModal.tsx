@@ -15,6 +15,7 @@ import {
   Badge,
   ActionIcon,
   Tooltip,
+  Alert,
 } from "@mantine/core";
 import {
   IconLock,
@@ -23,6 +24,7 @@ import {
   IconEyeOff,
   IconCheck,
   IconCopy,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { Socket } from "socket.io-client";
@@ -164,86 +166,12 @@ export const SettingsModal = ({
       const token = await getAccessToken();
       if (!user) throw new Error("Not logged in");
 
-      const trimmedTitle = draftTitle.trim();
-      if (!trimmedTitle) throw new Error("Room title is required.");
-      if (trimmedTitle.length > 50) throw new Error("Room title must be under 50 characters.");
-      if (draftDescription.length > 500) throw new Error("Description must be under 500 characters.");
-      if (passwordAction === "change" && draftPassword !== draftPasswordConfirm) throw new Error("Passwords do not match.");
-      if (passwordAction === "change" && draftPassword.trim().length === 0) throw new Error("Password cannot be empty.");
-
-      // 1. Upload new cover if selected
-      let finalCoverUrl = originalCoverUrl;
-      if (coverFile) {
-        const fileExt = coverFile.name.split('.').pop();
-        const safeRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-        const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('room_covers')
-          .upload(filePath, coverFile, { upsert: true });
-        
-        if (uploadError) throw uploadError;
-        
-        const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
-        finalCoverUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
-      } else if (clearCover) {
-        finalCoverUrl = null;
+      // 1. Live Runtime Lock (in-memory control for active playback)
+      if (draftLock !== Boolean(roomLock)) {
+        await setRoomLock(draftLock);
       }
 
-      if (finalCoverUrl !== originalCoverUrl) {
-        await fetch(`${serverPath}/updateRoomCover`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid: user.id, token, roomId, coverPhoto: finalCoverUrl }),
-        });
-        
-        const { error: coverUpdateError } = await supabase
-          .from("rooms")
-          .update({ coverPhoto: finalCoverUrl })
-          .eq("roomId", roomId);
-        if (coverUpdateError) throw coverUpdateError;
-      }
-
-      // 2. Save Room Settings (only if owner)
-      if (owner === user.id) {
-        const isClearing = passwordAction === "clear";
-        const payloadPassword = passwordAction === "change" ? draftPassword.trim() : (isClearing ? "" : undefined);
-        const response = await fetch(`${serverPath}/updateRoomSettings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: user.id,
-            token,
-            roomId,
-            roomTitle: trimmedTitle,
-            roomDescription: draftDescription,
-            isPermanent: draftPermanent,
-            isChatDisabled: !draftChatEnabled,
-            removePassword: isClearing,
-            password: payloadPassword,
-          }),
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Failed to save room settings");
-
-        // Inform server/socket of title and chat changes instantly
-        if (trimmedTitle !== roomTitle) setRoomTitle(trimmedTitle);
-        if (draftDescription !== roomDescription) setRoomDescription(draftDescription);
-        if (!draftChatEnabled !== isChatDisabled) setIsChatDisabled(!draftChatEnabled);
-        
-        if (isClearing) {
-          setPasscode("");
-        } else if (passwordAction === "change") {
-          setPasscode(draftPassword.trim());
-        }
-
-        if (draftLock !== Boolean(roomLock)) {
-          setRoomLock(draftLock);
-        }
-      }
-
-      // 3. Save Local Settings
+      // 2. Save Local Settings
       updateSettings(
         JSON.stringify({
           ...getCurrentSettings(),
@@ -302,8 +230,18 @@ export const SettingsModal = ({
       }}
     >
       <div style={{ padding: "24px 24px" }}>
-        <Text size="sm" c="dimmed" mb="xl">Manage your room and personal preferences</Text>
+        <Text size="sm" c="dimmed" mb="md">Manage your room and personal preferences</Text>
         
+        <Alert
+          color="yellow"
+          variant="light"
+          mb="xl"
+          icon={<IconAlertTriangle size={18} />}
+          title="Room Details Locked"
+        >
+          Room details (title, description, cover photo, behavior, and password) cannot be modified while this watch party is actively running. You can manage live room lock and your personal local preferences below.
+        </Alert>
+
         {error && <Text color="red" size="sm" mb="md" fw={500}>{error}</Text>}
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={40}>
@@ -324,7 +262,7 @@ export const SettingsModal = ({
                 description="Room does not automatically expire."
                 checked={draftPermanent}
                 onChange={(e) => setDraftPermanent(e.currentTarget.checked)}
-                disabled={owner !== user?.id}
+                disabled={true}
                 size="md"
               />
               <Switch
@@ -332,7 +270,7 @@ export const SettingsModal = ({
                 description="Allow participants to send messages."
                 checked={draftChatEnabled}
                 onChange={(e) => setDraftChatEnabled(e.currentTarget.checked)}
-                disabled={owner !== user?.id}
+                disabled={true}
                 size="md"
               />
             </Stack>
@@ -373,14 +311,14 @@ export const SettingsModal = ({
                 label="Room Title"
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.currentTarget.value)}
-                disabled={owner !== user?.id}
+                disabled={true}
               />
               <TextInput
                 label="Description"
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.currentTarget.value)}
                 placeholder="No description set"
-                disabled={owner !== user?.id}
+                disabled={true}
               />
 
               <div>
@@ -400,11 +338,11 @@ export const SettingsModal = ({
                       </Group>
                       <Group>
                         {willHavePasscode && (
-                          <Button variant="subtle" color="red" size="xs" onClick={() => setPasswordAction("clear")} disabled={owner !== user?.id}>
+                          <Button variant="subtle" color="red" size="xs" onClick={() => setPasswordAction("clear")} disabled={true}>
                             Clear Password
                           </Button>
                         )}
-                        <Button variant="light" size="xs" onClick={() => setPasswordAction("change")} disabled={owner !== user?.id}>
+                        <Button variant="light" size="xs" onClick={() => setPasswordAction("change")} disabled={true}>
                           {willHavePasscode ? "Change Password" : "Set Password"}
                         </Button>
                       </Group>
@@ -462,11 +400,13 @@ export const SettingsModal = ({
                       placeholder="New Password"
                       value={draftPassword}
                       onChange={(e) => setDraftPassword(e.currentTarget.value)}
+                      disabled={true}
                     />
                     <PasswordInput
                       placeholder="Confirm Password"
                       value={draftPasswordConfirm}
                       onChange={(e) => setDraftPasswordConfirm(e.currentTarget.value)}
+                      disabled={true}
                     />
                     <Group justify="flex-end">
                       <Button variant="subtle" size="xs" onClick={() => setPasswordAction("keep")}>Cancel Password Change</Button>
@@ -500,10 +440,10 @@ export const SettingsModal = ({
               
               <Group>
                 <FileButton onChange={handleFileChange} accept="image/png,image/jpeg,image/webp">
-                  {(props) => <Button {...props} variant="light" size="xs" disabled={owner !== user?.id}>Change Cover</Button>}
+                  {(props) => <Button {...props} variant="light" size="xs" disabled={true}>Change Cover</Button>}
                 </FileButton>
                 {coverPreview && (
-                  <Button variant="subtle" color="red" size="xs" onClick={() => { setCoverFile(null); setCoverPreview(null); setClearCover(true); }} disabled={owner !== user?.id}>
+                  <Button variant="subtle" color="red" size="xs" onClick={() => { setCoverFile(null); setCoverPreview(null); setClearCover(true); }} disabled={true}>
                     Remove
                   </Button>
                 )}

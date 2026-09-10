@@ -361,14 +361,21 @@ export const RoomDetails = () => {
                   Join Room
                 </Button>
               )}
-              <Button
-                size="md"
-                className={styles.glassBtn}
-                onClick={() => setEditModalOpened(true)}
-                leftSection={<IconSettings size={16} />}
+              <Tooltip
+                label="Cannot edit room details while session is active"
+                disabled={room.status !== "active"}
+                withArrow
               >
-                Edit
-              </Button>
+                <Button
+                  size="md"
+                  className={styles.glassBtn}
+                  disabled={room.status === "active"}
+                  onClick={() => setEditModalOpened(true)}
+                  leftSection={<IconSettings size={16} />}
+                >
+                  Edit
+                </Button>
+              </Tooltip>
               <Button
                 size="md"
                 className={styles.glassBtn}
@@ -631,15 +638,22 @@ export const RoomDetails = () => {
                 </div>
                 <span>Room Settings</span>
               </div>
-              <Button
-                variant="subtle"
-                size="xs"
-                color="violet"
-                onClick={() => setEditModalOpened(true)}
-                leftSection={<IconSettings size={14} />}
+              <Tooltip
+                label="Cannot edit room details while session is active"
+                disabled={room.status !== "active"}
+                withArrow
               >
-                Edit
-              </Button>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  color="violet"
+                  disabled={room.status === "active"}
+                  onClick={() => setEditModalOpened(true)}
+                  leftSection={<IconSettings size={14} />}
+                >
+                  Edit
+                </Button>
+              </Tooltip>
             </div>
 
             <div className={styles.tileGrid}>

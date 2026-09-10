@@ -487,19 +487,46 @@ app.post("/updateRoomCover", async (req, res) => {
     return;
   }
 
-  if (postgres) {
-    const result = await postgres.query(
-      `UPDATE rooms SET "coverPhoto" = $1 WHERE "roomId" = $2 AND owner_id = $3 RETURNING "roomId"`,
-      [coverPhoto, roomId, decoded.uid]
-    );
-    if (result.rowCount === 0) {
-      res.status(404).json({ error: "Room not found or unauthorized" });
-      return;
-    }
-    res.json({ success: true });
-  } else {
+  if (!postgres) {
     res.status(500).json({ error: "Database not configured" });
+    return;
   }
+
+  const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+  const memRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+  const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
+
+  const roomCheck = await postgres.query(
+    `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    [roomId, decoded.uid]
+  );
+
+  if (roomCheck.rowCount === 0) {
+    res.status(404).json({ error: "Room not found or unauthorized" });
+    return;
+  }
+
+  const roomRow = roomCheck.rows[0];
+  const now = Date.now();
+  const isExpired = !roomRow.isPermanent && roomRow.expiresAt && new Date(roomRow.expiresAt).getTime() <= now;
+  const isDbActive = roomRow.status === 'active' && !isExpired;
+
+  if (isDbActive || isMemActive) {
+    res.status(403).json({
+      error: "Cannot change room cover while the room is active. Please end the watch session or wait until all participants leave.",
+    });
+    return;
+  }
+
+  const result = await postgres.query(
+    `UPDATE rooms SET "coverPhoto" = $1 WHERE "roomId" = $2 AND owner_id = $3 RETURNING "roomId"`,
+    [coverPhoto, roomId, decoded.uid]
+  );
+  if (result.rowCount === 0) {
+    res.status(404).json({ error: "Room not found or unauthorized" });
+    return;
+  }
+  res.json({ success: true });
 });
 
 app.post("/updateRoomSettings", async (req, res) => {
@@ -549,7 +576,10 @@ app.post("/updateRoomSettings", async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const existingRoom = await client.query(`SELECT "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`, [roomId, decoded.uid]);
+    const existingRoom = await client.query(
+      `SELECT status, "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`,
+      [roomId, decoded.uid]
+    );
 
     if (existingRoom.rowCount === 0) {
       await client.query('ROLLBACK');
@@ -558,6 +588,22 @@ app.post("/updateRoomSettings", async (req, res) => {
     }
 
     const room = existingRoom.rows[0];
+
+    const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+    const memRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+    const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
+    const now = Date.now();
+    const isExpired = !room.isPermanent && room.expiresAt && new Date(room.expiresAt).getTime() <= now;
+    const isDbActive = room.status === 'active' && !isExpired;
+
+    if (isDbActive || isMemActive) {
+      await client.query('ROLLBACK');
+      res.status(403).json({
+        error: "Cannot change room details while the room is active. Please end the watch session or wait until all participants leave.",
+      });
+      return;
+    }
+
     const currentlyPermanent = Boolean(room.isPermanent);
 
     let newExpiresAt = room.expiresAt;

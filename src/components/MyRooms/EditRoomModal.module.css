@@ -1,0 +1,210 @@
+.modalRoot :global(.mantine-Modal-content) {
+  background: var(--bg-surface, #12141a);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modalRoot :global(.mantine-Modal-header) {
+  background: var(--bg-surface, #12141a);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding: 18px 24px;
+}
+
+.modalRoot :global(.mantine-Modal-body) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.headerIconBadge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a78bfa;
+  flex-shrink: 0;
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.2);
+}
+
+.headerMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.headerTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary, #ffffff);
+  letter-spacing: -0.2px;
+}
+
+.headerSubtitle {
+  font-size: 13px;
+  color: var(--text-secondary, #9ca3af);
+  line-height: 1.3;
+}
+
+.modalBodyContent {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(80vh - 140px);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.modalBodyContent::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modalBodyContent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalBodyContent::-webkit-scrollbar-thumb {
+  background: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 9999px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionTitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted, #9ca3af);
+}
+
+.settingCard {
+  background: var(--bg-surface-elevated, var(--bg-elevated, rgba(255, 255, 255, 0.03)));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  transition: border-color 0.15s ease;
+}
+
+.settingCard:hover {
+  border-color: var(--border-focus, rgba(139, 92, 246, 0.3));
+}
+
+.settingMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settingLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+}
+
+.settingDescription {
+  font-size: 12.5px;
+  color: var(--text-secondary, #9ca3af);
+  line-height: 1.4;
+}
+
+.coverContainer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.coverPreview {
+  width: 150px;
+  height: 84px;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: var(--bg-surface-elevated, #1a1d26);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  position: relative;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.coverImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coverPlaceholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.coverActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.passwordBox {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--bg-surface-elevated, var(--bg-elevated, rgba(255, 255, 255, 0.03)));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modalFooter {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--bg-surface, #12141a);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .modalBodyContent {
+    padding: 16px;
+    max-height: calc(85vh - 130px);
+  }
+  .coverContainer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

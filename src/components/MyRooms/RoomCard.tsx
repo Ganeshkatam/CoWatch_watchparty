@@ -17,7 +17,9 @@ import {
   Box,
   FileButton,
   Tooltip,
+  Alert,
 } from "@mantine/core";
+import editModalStyles from "./EditRoomModal.module.css";
 import {
   IconTrash,
   IconCopy,
@@ -128,6 +130,7 @@ export const EditRoomModal = ({
 
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(room.coverPhoto || null);
+  const [removeCover, setRemoveCover] = useState(false);
 
   useEffect(() => {
     if (opened) {
@@ -145,6 +148,7 @@ export const EditRoomModal = ({
       setIsChatDisabled(room.isChatDisabled || false);
       setCoverPreview(room.coverPhoto || null);
       setCoverFile(null);
+      setRemoveCover(false);
     }
   }, [opened, room, cleanId]);
 
@@ -161,13 +165,20 @@ export const EditRoomModal = ({
         setError("Cover photo too large (max 5MB).");
         return;
       }
+      setRemoveCover(false);
       setCoverFile(payload);
       setCoverPreview(URL.createObjectURL(payload));
     }
   };
 
+  const isRoomActive = room.status === "active";
+
   const handleSave = async () => {
     setError("");
+    if (isRoomActive) {
+      setError("Cannot modify room details while the room is active. Please end the watch session or wait until all participants leave.");
+      return;
+    }
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError("Room title is required.");
@@ -238,12 +249,18 @@ export const EditRoomModal = ({
         setCurrentPassword(password.trim());
       }
 
-      if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
-         await fetch(`${serverPath}/updateRoomCover`, {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: finalCoverUrl }),
-         });
+      if (removeCover) {
+        await fetch(`${serverPath}/updateRoomCover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: null }),
+        });
+      } else if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
+        await fetch(`${serverPath}/updateRoomCover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: finalCoverUrl }),
+        });
       }
 
       onSuccess();
@@ -255,63 +272,165 @@ export const EditRoomModal = ({
     }
   };
 
+  const displayCover = removeCover ? null : coverPreview;
+
   return (
-    <Modal opened={opened} onClose={onClose} title="Edit Room" size="lg" radius="md">
-      <Stack gap="xl">
-        <Text size="sm" c="dimmed" mt="-md">Update how your room appears and behaves.</Text>
-        {error && <Text color="red" size="sm">{error}</Text>}
-        
-        <Box>
-          <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={1} mb="md">Room Identity</Text>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      centered
+      size="lg"
+      className={editModalStyles.modalRoot}
+      title={
+        <div className={editModalStyles.modalHeader}>
+          <div className={editModalStyles.headerIconBadge}>
+            <IconSettings size={22} stroke={1.8} />
+          </div>
+          <div className={editModalStyles.headerMeta}>
+            <span className={editModalStyles.headerTitle}>Edit Room</span>
+            <span className={editModalStyles.headerSubtitle}>
+              Update room identity, cover photo, behavior, and security
+            </span>
+          </div>
+        </div>
+      }
+    >
+      <div className={editModalStyles.modalBodyContent}>
+        {isRoomActive && (
+          <Alert
+            color="yellow"
+            variant="light"
+            icon={<IconAlertTriangle size={18} />}
+            title="Room is Currently Active"
+          >
+            Room details (title, description, cover photo, behavior, and passcode) cannot be changed while a watch session is actively running. Please end the session or wait until all participants leave before editing.
+          </Alert>
+        )}
+
+        {error && (
+          <Alert color="red" variant="light" title="Unable to save changes">
+            {error}
+          </Alert>
+        )}
+
+        {/* SECTION 1: IDENTITY */}
+        <div className={editModalStyles.section}>
+          <div className={editModalStyles.sectionHeader}>
+            <span className={editModalStyles.sectionTitle}>Room Identity</span>
+          </div>
           <Stack gap="md">
-            <TextInput label="Room Title" value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={50} required />
-            <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} maxLength={500} autosize minRows={2} />
-            
-            <Box>
-              <Text size="sm" fw={500} mb={4}>Cover Photo</Text>
-              <Group align="flex-end" gap="md">
-                <Box style={{ width: 160, height: 90, borderRadius: 8, overflow: 'hidden', backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-subtle)', position: 'relative' }}>
-                  {coverPreview ? (
-                    <img src={coverPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Cover Preview" />
+            <TextInput
+              label="Room Title"
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
+              maxLength={50}
+              required
+              disabled={isRoomActive || isSaving}
+              description={`${title.length}/50 characters`}
+            />
+            <Textarea
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.currentTarget.value)}
+              maxLength={500}
+              autosize
+              minRows={2}
+              disabled={isRoomActive || isSaving}
+              description={`${description.length}/500 characters`}
+            />
+
+            <div>
+              <Text size="sm" fw={500} mb={6}>Cover Photo</Text>
+              <div className={editModalStyles.coverContainer}>
+                <div className={editModalStyles.coverPreview}>
+                  {displayCover ? (
+                    <img src={displayCover} className={editModalStyles.coverImg} alt="Cover Preview" />
                   ) : (
-                    <Text size="xs" c="dimmed" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>No cover</Text>
+                    <span className={editModalStyles.coverPlaceholder}>No cover</span>
                   )}
-                </Box>
-                <FileButton onChange={handleFileChange} accept="image/png,image/jpeg,image/webp">
-                  {(props) => <Button variant="default" size="sm" {...props}>Change cover</Button>}
-                </FileButton>
-              </Group>
-            </Box>
+                </div>
+                <div className={editModalStyles.coverActions}>
+                  <Group gap="xs">
+                    <FileButton onChange={handleFileChange} accept="image/png,image/jpeg,image/webp" disabled={isRoomActive || isSaving}>
+                      {(props) => (
+                        <Button variant="default" size="xs" disabled={isRoomActive || isSaving} {...props}>
+                          Change cover
+                        </Button>
+                      )}
+                    </FileButton>
+                    {displayCover && (
+                      <Button
+                        variant="subtle"
+                        color="red"
+                        size="xs"
+                        disabled={isRoomActive || isSaving}
+                        onClick={() => {
+                          setCoverFile(null);
+                          setCoverPreview(null);
+                          setRemoveCover(true);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    JPG, PNG, or WEBP (max 5MB). 16:9 recommended.
+                  </Text>
+                </div>
+              </div>
+            </div>
           </Stack>
-        </Box>
+        </div>
 
         <Divider />
 
-        <Box>
-          <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={1} mb="md">Room Behavior</Text>
-          <Stack gap="md">
-            <Group justify="space-between" align="center">
-              <Box>
-                <Text fw={500}>Permanent Room</Text>
-                <Text size="sm" c="dimmed">No automatic expiration</Text>
-              </Box>
-              <Switch checked={isPermanent} onChange={(e) => setIsPermanent(e.currentTarget.checked)} color="violet" size="lg" />
-            </Group>
-            
-            <Group justify="space-between" align="center">
-              <Box>
-                <Text fw={500}>Chat Enabled</Text>
-              </Box>
-              <Switch checked={!isChatDisabled} onChange={(e) => setIsChatDisabled(!e.currentTarget.checked)} color="violet" size="lg" />
-            </Group>
+        {/* SECTION 2: BEHAVIOR */}
+        <div className={editModalStyles.section}>
+          <div className={editModalStyles.sectionHeader}>
+            <span className={editModalStyles.sectionTitle}>Room Behavior</span>
+          </div>
+          <Stack gap="sm">
+            <div className={editModalStyles.settingCard}>
+              <div className={editModalStyles.settingMeta}>
+                <span className={editModalStyles.settingLabel}>Permanent Room</span>
+                <span className={editModalStyles.settingDescription}>
+                  Keep this room active indefinitely without automatic expiration.
+                </span>
+              </div>
+              <Switch
+                checked={isPermanent}
+                onChange={(e) => setIsPermanent(e.currentTarget.checked)}
+                color="violet"
+                size="md"
+                disabled={isRoomActive || isSaving}
+              />
+            </div>
+
+            <div className={editModalStyles.settingCard}>
+              <div className={editModalStyles.settingMeta}>
+                <span className={editModalStyles.settingLabel}>Chat Enabled</span>
+                <span className={editModalStyles.settingDescription}>
+                  Allow room participants to exchange real-time messages and reactions.
+                </span>
+              </div>
+              <Switch
+                checked={!isChatDisabled}
+                onChange={(e) => setIsChatDisabled(!e.currentTarget.checked)}
+                color="violet"
+                size="md"
+                disabled={isRoomActive || isSaving}
+              />
+            </div>
           </Stack>
-        </Box>
+        </div>
 
         <Divider />
 
-        <Box>
-          <Group justify="space-between" align="center" mb="md">
-            <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={1}>Password Protection</Text>
+        {/* SECTION 3: ACCESS & SECURITY */}
+        <div className={editModalStyles.section}>
+          <div className={editModalStyles.sectionHeader}>
+            <span className={editModalStyles.sectionTitle}>Access & Security</span>
             {room.isPasscodeProtected && !removeProtection ? (
               <Badge color="violet" variant="light" leftSection={<IconLock size={12} />}>
                 Protected
@@ -325,26 +444,22 @@ export const EditRoomModal = ({
                 Unprotected
               </Badge>
             )}
-          </Group>
+          </div>
 
           <Stack gap="md">
             {room.isPasscodeProtected && (
-              <Box
-                style={{
-                  padding: "14px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-subtle)",
-                  backgroundColor: "var(--bg-surface)",
-                }}
-              >
+              <div className={editModalStyles.passwordBox}>
                 {currentPassword ? (
                   <Stack gap="xs">
                     <Group justify="space-between" align="center">
-                      <Text size="xs" fw={600} c="dimmed" tt="uppercase">Current Password</Text>
+                      <Text size="xs" fw={600} c="dimmed" tt="uppercase">
+                        Current Passcode
+                      </Text>
                       <Button
                         variant="subtle"
                         color={removeProtection ? "violet" : "red"}
                         size="xs"
+                        disabled={isRoomActive || isSaving}
                         onClick={() => {
                           setRemoveProtection(!removeProtection);
                           if (!removeProtection) {
@@ -362,7 +477,7 @@ export const EditRoomModal = ({
                       value={currentPassword}
                       rightSection={
                         <Group gap={4} pr={6}>
-                          <Tooltip label={showCurrentPassword ? "Hide password" : "Show password"} withArrow>
+                          <Tooltip label={showCurrentPassword ? "Hide passcode" : "Show passcode"} withArrow>
                             <ActionIcon
                               variant="subtle"
                               color="gray"
@@ -373,7 +488,7 @@ export const EditRoomModal = ({
                               {showCurrentPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                             </ActionIcon>
                           </Tooltip>
-                          <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy password"} withArrow>
+                          <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy passcode"} withArrow>
                             <ActionIcon
                               variant="subtle"
                               color={copiedCurrentPassword ? "green" : "gray"}
@@ -399,12 +514,13 @@ export const EditRoomModal = ({
                     <Group justify="space-between" align="center">
                       <Group gap={6}>
                         <IconLock size={16} color="var(--mantine-color-violet-6)" />
-                        <Text size="sm" fw={500}>Room is password-protected</Text>
+                        <Text size="sm" fw={500}>Room is passcode protected</Text>
                       </Group>
                       <Button
                         variant="subtle"
                         color={removeProtection ? "violet" : "red"}
                         size="xs"
+                        disabled={isRoomActive || isSaving}
                         onClick={() => {
                           setRemoveProtection(!removeProtection);
                           if (!removeProtection) {
@@ -423,7 +539,7 @@ export const EditRoomModal = ({
                     </Text>
                   </Stack>
                 )}
-              </Box>
+              </div>
             )}
 
             {removeProtection ? (
@@ -442,6 +558,7 @@ export const EditRoomModal = ({
                   placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter password (optional)"}
                   value={password}
                   onChange={(e) => setPassword(e.currentTarget.value)}
+                  disabled={isRoomActive || isSaving}
                 />
                 {password.length > 0 && (
                   <PasswordInput
@@ -449,18 +566,24 @@ export const EditRoomModal = ({
                     placeholder="Confirm new password"
                     value={passwordConfirm}
                     onChange={(e) => setPasswordConfirm(e.currentTarget.value)}
+                    disabled={isRoomActive || isSaving}
                   />
                 )}
               </Stack>
             )}
           </Stack>
-        </Box>
-        
-        <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={onClose} disabled={isSaving}>Cancel</Button>
-          <Button onClick={handleSave} loading={isSaving} color="violet">Save Changes</Button>
-        </Group>
-      </Stack>
+        </div>
+      </div>
+
+      {/* FIXED STICKY FOOTER */}
+      <div className={editModalStyles.modalFooter}>
+        <Button variant="default" onClick={onClose} disabled={isSaving}>
+          {isRoomActive ? "Close" : "Cancel"}
+        </Button>
+        <Button color="violet" onClick={handleSave} loading={isSaving} disabled={isSaving || isRoomActive}>
+          Save Changes
+        </Button>
+      </div>
     </Modal>
   );
 };
@@ -643,9 +766,20 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         );
       }
       items.push(
-        <Menu.Item key="settings" leftSection={<IconSettings size={14} />} onClick={() => setEditModalOpened(true)}>
-          Edit Room
-        </Menu.Item>
+        <Tooltip
+          key="settings"
+          label="Cannot edit room details while session is active"
+          disabled={room.status !== "active"}
+          withArrow
+        >
+          <Menu.Item
+            leftSection={<IconSettings size={14} />}
+            disabled={room.status === "active"}
+            onClick={() => setEditModalOpened(true)}
+          >
+            {room.status === "active" ? "Edit Room (Active)" : "Edit Room"}
+          </Menu.Item>
+        </Tooltip>
       );
       items.push(
         <Menu.Item key="end" leftSection={<IconPlayerStop size={14} />} onClick={() => handlePlaceholder('End Room')}>
