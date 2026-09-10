@@ -28,19 +28,7 @@ const MINIMUM_AGE = 13;
 
 const getTodayIsoDate = () => {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const getLatestAllowedBirthdate = () => {
-  const today = new Date();
-  today.setFullYear(today.getFullYear() - MINIMUM_AGE);
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 };
 
 const calculateAge = (birthdate: string) => {
@@ -60,9 +48,7 @@ const calculateAge = (birthdate: string) => {
   const today = new Date();
   let age = today.getFullYear() - year;
   const monthDelta = today.getMonth() - (month - 1);
-  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < day)) {
-    age -= 1;
-  }
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < day)) age -= 1;
   return age;
 };
 
@@ -123,18 +109,18 @@ export const Signup = () => {
       const redirect = params.get("redirect") || "/";
       const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
       const redirectTo = `${window.location.origin}${redirectTarget}`;
+      const queryParams: Record<string, string> = {};
+      if (email.trim()) queryParams.login_hint = email.trim();
 
-      // Supabase's browser OAuth flow does not provide a supported way to attach
-      // custom signup metadata to the auth.users INSERT. The database guard below
-      // therefore intentionally rejects brand-new OAuth accounts unless the
-      // provider flow is later upgraded to carry trusted age-verification data.
+      // The current Supabase browser OAuth API does not support attaching
+      // custom signup metadata to the auth.users INSERT. The database guard
+      // therefore permits existing OAuth users to sign in but rejects a new
+      // OAuth account until the OAuth flow has a trusted age-verification path.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
-          queryParams: {
-            login_hint: email.trim() || undefined,
-          },
+          ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
         },
       });
       if (error) throw error;
@@ -205,10 +191,7 @@ export const Signup = () => {
 
     setError(null);
     try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-      });
+      const { error } = await supabase.auth.resend({ type: "signup", email });
       if (error) throw error;
       setSuccess("Confirmation email resent. Please check your inbox.");
       setResendCooldown(60);
@@ -243,13 +226,11 @@ export const Signup = () => {
               <div className={styles.ageLockIcon} aria-hidden="true">
                 <IconLock size={28} />
               </div>
-              <Text fw={700} ta="center">
-                Account creation is unavailable
-              </Text>
+              <Text fw={700} ta="center">Account creation is unavailable</Text>
               <Text c="dimmed" size="sm" ta="center">
                 Sorry, you must be at least {MINIMUM_AGE} years old to create a CoWatch account.
               </Text>
-              <Button variant="default" fullWidth onClick={() => setBirthdate("")}> 
+              <Button variant="default" fullWidth onClick={() => { setBirthdate(""); setUnderage(false); }}>
                 Check another date
               </Button>
             </Stack>
@@ -267,14 +248,20 @@ export const Signup = () => {
                   type="date"
                   required
                   autoFocus
-                  max={getLatestAllowedBirthdate()}
+                  max={getTodayIsoDate()}
                   value={birthdate}
                   onChange={(e) => {
                     setBirthdate(e.target.value);
                     setAgeError(null);
                   }}
                   leftSection={<IconCalendar size={17} />}
-                  error={ageError ? <span><IconAlertCircle size={14} style={{ verticalAlign: "middle" }} /> {ageError}</span> : undefined}
+                  error={
+                    ageError ? (
+                      <span>
+                        <IconAlertCircle size={14} style={{ verticalAlign: "middle" }} /> {ageError}
+                      </span>
+                    ) : undefined
+                  }
                 />
 
                 <Button
@@ -287,7 +274,7 @@ export const Signup = () => {
                 </Button>
 
                 <Text size="xs" c="dimmed" ta="center">
-                  Your date of birth is used only for the account age requirement.
+                  Your date of birth is used for the account age requirement.
                 </Text>
               </Stack>
             </form>
@@ -323,26 +310,13 @@ export const Signup = () => {
       </Text>
 
       <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
-        {error && (
-          <Alert color="red" mb="md" title="Error">
-            {error}
-          </Alert>
-        )}
+        {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
 
         {success ? (
           <div>
-            <Alert color="green" title="Check your email" mb="md">
-              {success}
-            </Alert>
-            <Button
-              fullWidth
-              variant="default"
-              onClick={handleResend}
-              disabled={resendCooldown > 0}
-            >
-              {resendCooldown > 0
-                ? `Resend available in ${resendCooldown}s`
-                : "Resend confirmation email"}
+            <Alert color="green" title="Check your email" mb="md">{success}</Alert>
+            <Button fullWidth variant="default" onClick={handleResend} disabled={resendCooldown > 0}>
+              {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend confirmation email"}
             </Button>
           </div>
         ) : (
@@ -365,38 +339,11 @@ export const Signup = () => {
 
             {enabledOptions.includes("email") && (
               <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                <TextInput
-                  label="Username"
-                  placeholder="Username"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-                <TextInput
-                  label="Email"
-                  placeholder="your@email.com"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <PasswordInput
-                  label="Password"
-                  placeholder="Your password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <PasswordInput
-                  label="Confirm Password"
-                  placeholder="Confirm password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-                <Button fullWidth type="submit" mt="md" loading={submitting}>
-                  Create account
-                </Button>
+                <TextInput label="Username" placeholder="Username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+                <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <PasswordInput label="Confirm Password" placeholder="Confirm password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
               </form>
             )}
           </div>
