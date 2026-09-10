@@ -165,43 +165,6 @@ export const Create = () => {
           <span className={styles.breadcrumbCurrent}>Create Room</span>
         </nav>
 
-        {/* Flat Header */}
-        <div className={styles.header}>
-          <div className={styles.headerMeta}>
-            <h1 className={styles.headerTitle}>Create a Room</h1>
-            <p className={styles.headerSubtitle}>
-              Set up your room details, passcode, and permissions.
-            </p>
-          </div>
-          <div className={styles.headerActions}>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={() => history.goBack()}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              form="create-room-form"
-              size="sm"
-              color="violet"
-              disabled={loading}
-              loading={loading}
-              leftSection={
-                loading ? (
-                  <Loader size={14} color="white" />
-                ) : (
-                  <IconCirclePlusFilled size={16} />
-                )
-              }
-            >
-              {loading ? "Creating..." : "Create Room"}
-            </Button>
-          </div>
-        </div>
 
         {error && (
           <Alert color="red" title="Unable to create room">
