@@ -1,5 +1,5 @@
 import React, { useCallback, useContext } from "react";
-import { Link } from "react-router-dom";
+import { Link, useHistory } from "react-router-dom";
 import { serverPath } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import { Avatar, Button, Menu, Text, Tooltip } from "@mantine/core";
@@ -32,21 +32,33 @@ export const ThemeMenuItems = () => {
       <Menu.Item
         onClick={() => setAppearance("system")}
         leftSection={<IconDeviceDesktop size={16} stroke={1.5} />}
-        rightSection={appearance === "system" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
+        rightSection={
+          appearance === "system" ? (
+            <IconCheck size={14} stroke={2.5} color="var(--color-violet)" />
+          ) : null
+        }
       >
         System
       </Menu.Item>
       <Menu.Item
         onClick={() => setAppearance("light")}
         leftSection={<IconSun size={16} stroke={1.5} />}
-        rightSection={appearance === "light" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
+        rightSection={
+          appearance === "light" ? (
+            <IconCheck size={14} stroke={2.5} color="var(--color-violet)" />
+          ) : null
+        }
       >
         Light
       </Menu.Item>
       <Menu.Item
         onClick={() => setAppearance("mantine")}
         leftSection={<IconMoon size={16} stroke={1.5} />}
-        rightSection={appearance === "mantine" ? <IconCheck size={14} stroke={2.5} color="var(--color-violet)" /> : null}
+        rightSection={
+          appearance === "mantine" ? (
+            <IconCheck size={14} stroke={2.5} color="var(--color-violet)" />
+          ) : null
+        }
       >
         Dark
       </Menu.Item>
@@ -67,19 +79,25 @@ export const ThemeToggleQuickButton = () => {
   };
 
   return (
-    <Tooltip label={isDark ? "Switch to light theme" : "Switch to dark theme"} withArrow>
+    <Tooltip
+      label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      withArrow
+    >
       <button
         type="button"
         className={styles.themeToggleBtn}
         onClick={handleToggle}
         aria-label="Toggle theme"
       >
-        {isDark ? <IconSun size={18} stroke={1.5} /> : <IconMoon size={18} stroke={1.5} />}
+        {isDark ? (
+          <IconSun size={18} stroke={1.5} />
+        ) : (
+          <IconMoon size={18} stroke={1.5} />
+        )}
       </button>
     </Tooltip>
   );
 };
-
 
 export async function createRoom(
   user: User | null | undefined,
@@ -127,13 +145,10 @@ export async function createRoom(
   }
 }
 
-import { useHistory } from "react-router-dom";
-
 export const NewRoomButton = (props: {
   size?: string;
   openNewTab?: boolean;
 }) => {
-  const context = useContext(MetadataContext);
   const history = useHistory();
   const onClick = useCallback(async () => {
     history.push("/create");
@@ -150,9 +165,21 @@ export const NewRoomButton = (props: {
   );
 };
 
-type SignInButtonProps = {};
+export const JoinRoomButton = (props: { size?: string }) => {
+  return (
+    <Button
+      component={Link}
+      to="/join"
+      size={props.size || "sm"}
+      variant="default"
+      leftSection={<IconUsers size={16} />}
+    >
+      Join
+    </Button>
+  );
+};
 
-export class SignInButton extends React.Component<SignInButtonProps> {
+export class SignInButton extends React.Component<{}> {
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
   public state = { isLoginOpen: false };
@@ -219,6 +246,31 @@ export class SignInButton extends React.Component<SignInButtonProps> {
 
             <Menu.Divider />
 
+            <Menu.Label>Navigation</Menu.Label>
+            <Menu.Item
+              component={Link}
+              to="/rooms"
+              leftSection={<IconDatabase size={16} stroke={1.5} />}
+            >
+              My rooms
+            </Menu.Item>
+            <Menu.Item
+              component={Link}
+              to="/create"
+              leftSection={<IconCirclePlusFilled size={16} stroke={1.5} />}
+            >
+              Create room
+            </Menu.Item>
+            <Menu.Item
+              component={Link}
+              to="/join"
+              leftSection={<IconUsers size={16} stroke={1.5} />}
+            >
+              Join a room
+            </Menu.Item>
+
+            <Menu.Divider />
+
             <Menu.Label>Account</Menu.Label>
             <Menu.Item
               component={Link}
@@ -226,13 +278,6 @@ export class SignInButton extends React.Component<SignInButtonProps> {
               leftSection={<IconSettings size={16} stroke={1.5} />}
             >
               Settings
-            </Menu.Item>
-            <Menu.Item
-              component={Link}
-              to="/rooms"
-              leftSection={<IconDatabase size={16} stroke={1.5} />}
-            >
-              My rooms
             </Menu.Item>
 
             <Menu.Divider />
@@ -256,7 +301,7 @@ export class SignInButton extends React.Component<SignInButtonProps> {
     }
     return (
       <React.Fragment>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           <Button
             component={Link}
             to="/login"
@@ -318,6 +363,7 @@ export const TopBar = (props: {
   hideNewRoom?: boolean;
   hideSignin?: boolean;
   hideMyRooms?: boolean;
+  hideJoinRoom?: boolean;
   hideGetStarted?: boolean;
   showExit?: boolean;
   onOpenSettings?: () => void;
@@ -327,18 +373,16 @@ export const TopBar = (props: {
   const context = useContext(MetadataContext);
   return (
     <div className={styles.topBar}>
-      <a href="/" className={styles.brandGroup}>
+      <Link to="/" className={styles.brandGroup}>
         <img
           className={`cowatch-brand-logo ${styles.logo}`}
           src="/logo192.png"
           alt="CoWatch"
         />
         {!props.roomTitle && !props.roomDescription && (
-          <div className={styles.brandName}>
-            CoWatch
-          </div>
+          <div className={styles.brandName}>CoWatch</div>
         )}
-      </a>
+      </Link>
       {props.roomTitle || props.roomDescription ? (
         <div
           style={{
@@ -369,6 +413,7 @@ export const TopBar = (props: {
       ) : null}
       <div className={styles.actionsGroup}>
         {!props.hideMyRooms && context.user && <ListRoomsButton />}
+        {!props.hideJoinRoom && <JoinRoomButton size="sm" />}
         {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
         {props.showExit && (
           <Button
