@@ -3,18 +3,24 @@
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 16px;
   box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  overflow: hidden;
   backdrop-filter: blur(16px);
+  max-height: min(90vh, 760px);
+  display: flex;
+  flex-direction: column;
 }
 
 .modalRoot :global(.mantine-Modal-header) {
   background: var(--bg-surface, #12141a);
   border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  padding: 18px 24px;
+  padding: 16px 20px;
+  flex-shrink: 0;
 }
 
 .modalRoot :global(.mantine-Modal-body) {
-  padding: 24px;
+  padding: 18px 20px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .modalHeader {
@@ -283,14 +289,15 @@
 }
 
 .shareTwitter {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5e7eb;
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(125, 125, 125, 0.1);
+  color: var(--text-primary, #0f172a);
+  border-color: var(--border-strong, rgba(125, 125, 125, 0.25));
 }
 
 .shareTwitter:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(125, 125, 125, 0.18);
+  color: var(--text-primary, #0f172a);
+  border-color: rgba(139, 92, 246, 0.5);
 }
 
 .shareEmail {
@@ -309,32 +316,32 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 12px;
   background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 12px;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .qrFrame {
-  padding: 12px;
+  padding: 8px;
   background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .qrImage {
-  width: 160px;
-  height: 160px;
+  width: 120px;
+  height: 120px;
   display: block;
 }
 
 .qrCaption {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary, #9ca3af);
   text-align: center;
 }

@@ -312,7 +312,7 @@ export function getInviteMessage(roomId: string, passcode?: string): string {
   if (passcode) {
     return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: ${passcode}`;
   }
-  return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}`;
+  return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: [Passcode Required - Ask Host]`;
 }
 
 export async function getMediaPathResults(

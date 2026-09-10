@@ -365,46 +365,44 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               <span>Email</span>
             </a>
           </div>
+        </div>
+
+        {/* Quick Action Buttons: Native Share & QR Code */}
+        <div style={{ display: "grid", gridTemplateColumns: hasNativeShare ? "1fr 1fr" : "1fr", gap: "8px" }}>
           {hasNativeShare && (
             <Button
               onClick={handleNativeShare}
               variant="light"
               color="violet"
-              fullWidth
-              leftSection={<IconShare size={16} />}
-              style={{ marginTop: "4px" }}
+              leftSection={<IconShare size={15} />}
             >
-              Share via System / More Apps
+              System Share
             </Button>
           )}
-        </div>
-
-        {/* QR Code Section */}
-        <div>
           <Button
             onClick={() => setShowQr(!showQr)}
-            variant="default"
-            fullWidth
-            leftSection={<IconQrcode size={16} />}
+            variant={showQr ? "filled" : "default"}
+            color={showQr ? "violet" : undefined}
+            leftSection={<IconQrcode size={15} />}
           >
-            {showQr ? "Hide QR Code" : "Show QR Code for Mobile Scanning"}
+            {showQr ? "Hide QR Code" : "Show QR Code"}
           </Button>
-
-          {showQr && (
-            <div className={styles.qrContainer}>
-              <div className={styles.qrFrame}>
-                <img
-                  src={qrCodeUrl}
-                  alt="Watch party QR Code"
-                  className={styles.qrImage}
-                />
-              </div>
-              <span className={styles.qrCaption}>
-                Scan with your phone camera to join the room instantly
-              </span>
-            </div>
-          )}
         </div>
+
+        {showQr && (
+          <div className={styles.qrContainer}>
+            <div className={styles.qrFrame}>
+              <img
+                src={qrCodeUrl}
+                alt="Watch party QR Code"
+                className={styles.qrImage}
+              />
+            </div>
+            <span className={styles.qrCaption}>
+              Scan with phone camera to join instantly
+            </span>
+          </div>
+        )}
       </div>
     </Modal>
   );

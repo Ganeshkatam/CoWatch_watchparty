@@ -48,7 +48,10 @@ assert(
 console.log("Testing getInviteMessage...");
 
 const msgNoPass = getInviteMessage("test-room-1");
-assert(!msgNoPass.includes("Passcode:"), "Message without passcode must not include Passcode field");
+assert(
+  msgNoPass.includes("Passcode: [Passcode Required - Ask Host]"),
+  "Message without passcode must still include Passcode requirement line"
+);
 assert(msgNoPass.includes("Room ID: test-room-1"), "Message must include room ID");
 assert(msgNoPass.includes("https://cowatch.example.com/join/test-room-1"), "Message must include clean join link");
 
