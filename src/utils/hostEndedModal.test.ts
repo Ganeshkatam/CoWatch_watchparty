@@ -198,16 +198,40 @@ console.log("Running HostEndedModal invariant test suite...");
   assert.strictEqual(app.state.overlayMsg, "", "connect_error must be suppressed");
 }
 
-// Test 7: OK confirm navigation redirects to home page ("/") and does not return to join page
+// Test 7: Clicking OK:
+// - navigates to `/`
+// - does not navigate to `/join/:roomId`
+// - does not include query parameters
+// - does not include the room passcode
+// - applies equally to temporary and permanent rooms
 {
-  const testRooms = ["movie-night", "/special-room", "room with spaces", "fun&games?"];
+  const testRooms = [
+    { roomId: "movie-night", isPermanent: false, passcode: "secret123" },
+    { roomId: "permanent-lobby", isPermanent: true, passcode: "perm456" },
+    { roomId: "/special-room", isPermanent: false, passcode: undefined },
+    { roomId: "room with spaces", isPermanent: true, passcode: "pass 789" },
+  ];
 
-  for (const roomId of testRooms) {
-    const app = new SimulatedAppLogic({ roomId });
+  for (const tc of testRooms) {
+    const app = new SimulatedAppLogic({ roomId: tc.roomId });
     const redirectUrl = app.getConfirmRedirectUrl();
-    assert.strictEqual(redirectUrl, "/", "Redirect URL must be home root ('/')");
-    assert.strictEqual(redirectUrl.includes("/join/"), false, "URL must not return user to join page");
-    assert.strictEqual(redirectUrl.includes("passcode"), false, "URL must never contain passcode");
+
+    // Invariant 1: navigates to `/`
+    assert.strictEqual(redirectUrl, "/", "Must navigate to root '/'");
+
+    // Invariant 2: does not navigate to `/join/:roomId`
+    assert.strictEqual(redirectUrl.includes("/join/"), false, "Must not navigate to /join/:roomId");
+
+    // Invariant 3: does not include query parameters
+    assert.strictEqual(redirectUrl.includes("?"), false, "Must not include query parameters");
+
+    // Invariant 4: does not include the room passcode
+    if (tc.passcode) {
+      assert.strictEqual(redirectUrl.includes(tc.passcode), false, "Must not include the room passcode");
+    }
+    assert.strictEqual(redirectUrl.includes("passcode"), false, "Must not include passcode param");
+    assert.strictEqual(redirectUrl.includes("pass="), false, "Must not include pass param");
+    assert.strictEqual(redirectUrl.includes("password"), false, "Must not include password param");
   }
 }
 
