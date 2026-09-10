@@ -1,5 +1,5 @@
 -- Mandatory account age declaration / minimum-age enforcement.
--- Minimum age: 13 years.
+-- Minimum age: 18 years.
 --
 -- Important: raw_user_meta_data is user-editable after account creation in Supabase.
 -- This trigger therefore enforces the metadata requirement at INSERT time; it is
@@ -37,8 +37,8 @@ BEGIN
     RAISE EXCEPTION 'Age verification failed: Date of birth cannot be in the future.';
   END IF;
 
-  IF age(current_date::timestamp, user_birthdate::timestamp) < interval '13 years' THEN
-    RAISE EXCEPTION 'Age verification failed: You must be at least 13 years old to create an account.';
+  IF age(current_date::timestamp, user_birthdate::timestamp) < interval '18 years' THEN
+    RAISE EXCEPTION 'Age verification failed: You must be at least 18 years old to create an account.';
   END IF;
 
   RETURN new;

@@ -7,7 +7,7 @@ import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
-const MINIMUM_AGE = 13;
+const MINIMUM_AGE = 18;
 
 const getTodayIsoDate = () => {
   const today = new Date();

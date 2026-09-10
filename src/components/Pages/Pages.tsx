@@ -109,7 +109,7 @@ export const Terms = () => {
         
         <Text mb="md" c="var(--text-primary)" fw={500}>By using this service you agree to the following terms:</Text>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>You are over 13 years of age</List.Item>
+          <List.Item>You are over 18 years of age</List.Item>
           <List.Item>Your use of the service may be terminated if you are found to be sharing illegal or infringing content</List.Item>
           <List.Item>The service provides no guarantee of uptime or availability</List.Item>
           <List.Item>You use the service at your own risk of encountering objectionable content, as we do not actively moderate rooms unless content is found to be illegal or infringing</List.Item>
