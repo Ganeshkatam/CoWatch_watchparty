@@ -66,13 +66,11 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
   const cleanRoomId = (rawRoomId || "").trim();
 
-  // Retrieve passcode passed from Gateway (/join/:roomId) via route state or sessionStorage
-  const [passcode, setPasscode] = useState<string>(() => {
-    return (
-      location?.state?.passcode ||
-      sessionStorage.getItem(`cowatch_pass_${cleanRoomId}`) ||
-      ""
-    );
+  // INVARIANT: Passcode is strictly read from transient route state.
+  // It is NEVER persisted to or read from sessionStorage or localStorage.
+  // If the user refreshes /preflight/:roomId, they are safely returned to /join/:roomId.
+  const [passcode] = useState<string>(() => {
+    return location?.state?.passcode || "";
   });
 
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);

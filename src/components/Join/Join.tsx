@@ -98,17 +98,7 @@ export const Join: React.FC = () => {
     setRoomError("");
     setFormError("");
 
-    try {
-      const savedPass = sessionStorage.getItem(`cowatch_pass_${cleanRouteRoomId}`);
-      if (savedPass) {
-        setPasscode(savedPass);
-        sessionStorage.removeItem(`cowatch_pass_${cleanRouteRoomId}`);
-      } else {
-        setPasscode("");
-      }
-    } catch (_) {
-      setPasscode("");
-    }
+    setPasscode("");
 
     const fetchRoom = async () => {
       try {
@@ -191,14 +181,6 @@ export const Join: React.FC = () => {
     }
 
     if (!user) {
-      if (passcode.trim()) {
-        try {
-          sessionStorage.setItem(
-            `cowatch_pass_${cleanRouteRoomId}`,
-            passcode.trim()
-          );
-        } catch (_) { }
-      }
       history.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
       return;
     }
@@ -265,13 +247,9 @@ export const Join: React.FC = () => {
       }
 
       // Pre-navigation gate succeeded:
-      // Cache passcode for session resiliency and advance to Green Room (preflight).
-      // Device readiness is tested in preflight before final watch room entry.
+      // Advance to Green Room (preflight) passing passcode strictly via route state.
+      // Passcode is never written to sessionStorage or localStorage.
       // Socket.IO performs authoritative second verification against the database hash upon room entry.
-      try {
-        sessionStorage.setItem(`cowatch_pass_${cleanRouteRoomId}`, cleanPass);
-      } catch (_) {}
-
       history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`, {
         passcode: cleanPass,
       });
