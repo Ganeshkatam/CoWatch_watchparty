@@ -145,6 +145,9 @@
     padding: 8px 14px;
     min-height: 56px;
   }
+  .actionsGroup {
+    gap: 8px;
+  }
   .profileInfo,
   .chevron {
     display: none;

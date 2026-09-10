@@ -19,6 +19,7 @@ import {
   IconSun,
   IconMoon,
   IconChevronDown,
+  IconUsers,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 
@@ -113,11 +114,11 @@ export async function createRoom(
     throw new Error(data.error);
   }
   const { name } = data;
-  
+
   if (options?.noRedirect) {
     return name;
   }
-  
+
   const safeName = name.startsWith("/") ? name.substring(1) : name;
   if (openNewTab) {
     window.open(`/watch/${safeName}`);
