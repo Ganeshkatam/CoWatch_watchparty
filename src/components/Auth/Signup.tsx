@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useHistory, useLocation, Link } from "react-router-dom";
+import { useHistory, Link } from "react-router-dom";
 import { TextInput, PasswordInput, Button, Paper, Title, Text, Alert, Stack } from "@mantine/core";
 import { IconAlertCircle, IconArrowRight, IconCalendar, IconShieldCheck, IconLock } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
@@ -54,7 +54,6 @@ export const Signup = () => {
     description: "Create a free CoWatch account to host watch parties and connect with friends.",
   });
   const history = useHistory();
-  const location = useLocation();
   const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
   const googleSignupConfigured = enabledOptions.includes("google");
 
