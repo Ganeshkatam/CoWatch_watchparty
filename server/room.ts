@@ -140,6 +140,12 @@ export class Room {
   public expiresAt: Date | undefined = undefined;
   public startedAt: Date | undefined = undefined;
   public owner_id: string = '';
+  public currentHostClientId: string = '';
+  public currentHostUid: string = '';
+  private clientToUidMap: StringDict = {};
+  public roomTitle: string | undefined = undefined;
+  public roomDescription: string | undefined = undefined;
+  public mediaPath: string | undefined = undefined;
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
   private preventTSUpdate = false;
@@ -431,6 +437,17 @@ export class Room {
       // Preserve uid if already set by the middleware (owner auth bypass)
       if (!socket.uid) {
         socket.uid = "";
+      } else {
+        this.clientToUidMap[clientId] = socket.uid;
+      }
+
+      // Check if this socket is the room owner (creator) returning to the room
+      if (socket.uid && this.owner_id && socket.uid === this.owner_id) {
+        this.reclaimHostForOwner(socket);
+      } else if (!this.currentHostClientId && this.roster.length > 0) {
+        // Initial room participant or session reconstruction
+        this.currentHostClientId = this.roster[0].id;
+        this.currentHostUid = this.clientToUidMap[this.roster[0].id] || "";
       }
 
       redisCount("connectStarts");
@@ -442,10 +459,10 @@ export class Room {
         return;
       }
 
-      // Check if this socket matches this.lock UID or is the room owner
+      // Check if this socket matches this.lock UID or is the room host
       const validateLock = () => {
-        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
-        return !this.lock || socket.uid === this.lock || isOwner;
+        const isHost = this.isHost(socket);
+        return !this.lock || socket.uid === this.lock || isHost;
       };
 
       // Check if this room is expired
@@ -507,6 +524,10 @@ export class Room {
         if (decoded?.uid) {
           // This socket is now confirmed to be this UID
           socket.uid = decoded?.uid;
+          this.clientToUidMap[socket.clientId] = decoded.uid;
+          if (this.owner_id && decoded.uid === this.owner_id) {
+            this.reclaimHostForOwner(socket);
+          }
           if (postgres) {
             try {
               const profileRes = await postgres.query(
@@ -608,16 +629,23 @@ export class Room {
       });
       socket.on("CMD:lock", async (data: unknown) => {
         if (!validateNotExpired()) return;
-        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
+        const isHost = this.isHost(socket);
         const isCurrentLockHolder = Boolean(this.lock && socket.uid === this.lock);
-        if (!this.lock || isOwner || isCurrentLockHolder) {
+        if (!this.lock || isHost || isCurrentLockHolder) {
           await this.lockRoom(socket, data);
         } else {
-          socket.emit("errorMessage", "Only the room owner can change the lock");
+          socket.emit("errorMessage", "Only the room host can change the lock");
         }
       });
       socket.on("CMD:askHost", () => {
         validateNotExpired() && socket.emit("REC:host", this.getHostState());
+      });
+      socket.on("CMD:assignHost", (data: unknown) => {
+        if (!validateNotExpired()) return;
+        const req = data as { newHostClientId: string };
+        if (req && req.newHostClientId) {
+          this.assignHost(socket, String(req.newHostClientId));
+        }
       });
       socket.on("CMD:getRoomState", () => validateNotExpired() && this.getRoomState(socket));
       socket.on("CMD:setRoomState", async (data: unknown) => {
@@ -639,10 +667,18 @@ export class Room {
         validateLock() && validateNotExpired() && this.playlistDelete(Number(data));
       });
       socket.on("CMD:kickUser", async (data: unknown) => {
-        (await validateOwner()) && validateNotExpired() && this.kickUser(data);
+        if (this.isHost(socket) && validateNotExpired()) {
+          this.kickUser(data);
+        } else {
+          socket.emit("errorMessage", "Only the room host can kick participants");
+        }
       });
       socket.on("CMD:deleteChatMessages", async (data: unknown) => {
-        (await validateOwner()) && validateNotExpired() && this.deleteChatMessages(data);
+        if (this.isHost(socket) && validateNotExpired()) {
+          this.deleteChatMessages(data);
+        } else {
+          socket.emit("errorMessage", "Only the room host can delete chat messages");
+        }
       });
 
       socket.on("signal", (data: unknown) =>
@@ -660,6 +696,10 @@ export class Room {
           const decoded = await validateUserToken(authUid, authToken);
           if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
             socket.uid = decoded.uid;
+            this.clientToUidMap[clientId] = decoded.uid;
+            if (this.owner_id && decoded.uid === this.owner_id) {
+              this.reclaimHostForOwner(socket);
+            }
             if (postgres) {
               const profileRes = await postgres.query(
                 "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
@@ -684,6 +724,13 @@ export class Room {
 
       // Async initialization (must happen after registering synchronous listeners to avoid dropping immediate client emits)
       socket.emit("REC:host", this.getHostState());
+      socket.emit("REC:hostChange", {
+        hostId: this.currentHostUid || this.currentHostClientId,
+        hostClientId: this.currentHostClientId,
+        hostName: this.getHostDisplayName(),
+        isOwner: Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id),
+        reason: "initial",
+      });
       socket.emit("REC:nameMap", this.nameMap);
       socket.emit("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
@@ -842,6 +889,88 @@ export class Room {
     };
   };
 
+  public isHost = (socket: Socket | null | undefined): boolean => {
+    if (!socket) return false;
+    return Boolean(this.currentHostClientId && socket.clientId === this.currentHostClientId);
+  };
+
+  public getHostDisplayName = (): string => {
+    if (this.currentHostClientId && this.nameMap[this.currentHostClientId]) {
+      return this.nameMap[this.currentHostClientId];
+    }
+    return "Host";
+  };
+
+  public broadcastHostChange = (reason: "assigned" | "auto_assigned" | "owner_returned" | "initial" | "name_update") => {
+    const isOwner = Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id);
+    const hostPayload = {
+      hostId: this.currentHostUid || this.currentHostClientId,
+      hostClientId: this.currentHostClientId,
+      hostName: this.getHostDisplayName(),
+      isOwner,
+      reason,
+    };
+    this.io.of(this.roomId).emit("REC:hostChange", hostPayload);
+    this.io.of(this.roomId).emit("REC:getRoomState", {
+      owner: this.owner_id,
+      currentHostId: this.currentHostUid || this.currentHostClientId,
+      currentHostClientId: this.currentHostClientId,
+      hostName: this.getHostDisplayName(),
+      isHost: false, // Per-socket value evaluated in getRoomState()
+      isChatDisabled: this.isChatDisabled,
+      roomTitle: this.roomTitle,
+      roomDescription: this.roomDescription,
+      mediaPath: this.mediaPath,
+    });
+  };
+
+  public reclaimHostForOwner = (ownerSocket: Socket) => {
+    if (!this.owner_id || ownerSocket.uid !== this.owner_id) return;
+    const previousHostClientId = this.currentHostClientId;
+    this.currentHostClientId = ownerSocket.clientId;
+    this.currentHostUid = ownerSocket.uid;
+    this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
+
+    if (previousHostClientId !== ownerSocket.clientId) {
+      this.broadcastHostChange("owner_returned");
+      const chatMsg = {
+        id: ownerSocket.clientId,
+        cmd: "system",
+        msg: "The room creator has returned and resumed hosting.",
+      };
+      this.addChatMessage(ownerSocket, chatMsg);
+    }
+  };
+
+  public assignHost = (socket: Socket, newHostClientId: string): boolean => {
+    if (!this.isHost(socket)) {
+      socket.emit("errorMessage", "Only the current room host can assign a new host.");
+      return false;
+    }
+    const targetParticipant = this.roster.find((p) => p.id === newHostClientId);
+    if (!targetParticipant) {
+      socket.emit("errorMessage", "Selected participant is no longer in the room.");
+      return false;
+    }
+    if (newHostClientId === this.currentHostClientId) {
+      return true; // Already host
+    }
+
+    const previousHostName = this.getHostDisplayName();
+    this.currentHostClientId = newHostClientId;
+    this.currentHostUid = this.clientToUidMap[newHostClientId] || "";
+    const newHostName = this.getHostDisplayName();
+
+    this.broadcastHostChange("assigned");
+    const chatMsg = {
+      id: socket.clientId,
+      cmd: "system",
+      msg: `${previousHostName} assigned ${newHostName} as the room host.`,
+    };
+    this.addChatMessage(socket, chatMsg);
+    return true;
+  };
+
   public stopVBrowserInternal = async () => {
     const assignTime = this.vBrowser && this.vBrowser.assignTime;
     const id = this.vBrowser?.id;
@@ -992,6 +1121,15 @@ export class Room {
     }
     this.nameMap[socket.clientId] = data;
     this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
+    if (socket.clientId === this.currentHostClientId) {
+      this.io.of(this.roomId).emit("REC:hostChange", {
+        hostId: this.currentHostUid || this.currentHostClientId,
+        hostClientId: this.currentHostClientId,
+        hostName: data,
+        isOwner: Boolean(this.owner_id && this.currentHostUid === this.owner_id),
+        reason: "name_update",
+      });
+    }
   };
 
   private changeUserPicture = (socket: Socket, data: string) => {
@@ -1703,8 +1841,17 @@ export class Room {
     if (this.isChatDisabled === undefined) {
       this.isChatDisabled = Boolean(first?.isChatDisabled);
     }
+    if (first?.roomTitle !== undefined) this.roomTitle = first.roomTitle;
+    if (first?.roomDescription !== undefined) this.roomDescription = first.roomDescription;
+    if (first?.mediaPath !== undefined) this.mediaPath = first.mediaPath;
+    if (first?.owner_id) this.owner_id = first.owner_id;
+
     socket.emit("REC:getRoomState", {
-      owner: first?.owner_id,
+      owner: first?.owner_id || this.owner_id,
+      currentHostId: this.currentHostUid || this.currentHostClientId,
+      currentHostClientId: this.currentHostClientId,
+      hostName: this.getHostDisplayName(),
+      isHost: this.isHost(socket),
       isChatDisabled: first?.isChatDisabled,
       roomTitle: first?.roomTitle,
       roomDescription: first?.roomDescription,
@@ -1829,6 +1976,8 @@ export class Room {
     const { clientId } = socket;
     // Disconnecting socket is the current one
     if (socket.id === this.socketIdMap[clientId]) {
+      const wasHost = Boolean(this.currentHostClientId && this.currentHostClientId === clientId);
+
       let index = this.roster.findIndex((user) => user.id === clientId);
       if (index > -1) {
         this.roster.splice(index, 1);
@@ -1836,6 +1985,30 @@ export class Room {
       this.io.of(this.roomId).emit("roster", this.getRosterForApp());
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
+      delete this.clientToUidMap[clientId];
+
+      if (wasHost) {
+        if (this.roster.length > 0) {
+          // Deterministic auto-promotion: promote first remaining participant in active roster
+          const nextHost = this.roster[0];
+          const oldHostName = this.getHostDisplayName();
+          this.currentHostClientId = nextHost.id;
+          this.currentHostUid = this.clientToUidMap[nextHost.id] || "";
+          const newHostName = this.getHostDisplayName();
+
+          this.broadcastHostChange("auto_assigned");
+          const chatMsg = {
+            id: nextHost.id,
+            cmd: "system",
+            msg: `${oldHostName} left. ${newHostName} is now the room host.`,
+          };
+          this.addChatMessage(null, chatMsg);
+        } else {
+          // No participants remaining
+          this.currentHostClientId = "";
+          this.currentHostUid = "";
+        }
+      }
 
       if (this.roster.length === 0) {
         if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);

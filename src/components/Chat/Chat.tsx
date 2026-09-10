@@ -144,6 +144,7 @@ interface ChatProps {
   hide?: boolean;
   isChatDisabled?: boolean;
   owner: string | undefined;
+  isHost?: boolean;
   onEdit?: (messageId: string, newMessage: string) => void;
   clearChat?: () => void;
 }
@@ -435,6 +436,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
                 nameMap={this.props.nameMap}
                 formatMessage={this.formatMessage}
                 owner={this.props.owner}
+                isHost={this.props.isHost}
                 socket={this.props.socket}
                 isChatDisabled={this.props.isChatDisabled}
                 setReactionMenu={this.setReactionMenu}
@@ -605,6 +607,7 @@ const ChatMessage = ({
   formatMessage,
   socket,
   owner,
+  isHost,
   isChatDisabled,
   setReactionMenu,
   handleReactionClick,
@@ -618,6 +621,7 @@ const ChatMessage = ({
   formatMessage: (cmd: string, msg?: string) => React.ReactNode;
   socket: Socket;
   owner: string | undefined;
+  isHost?: boolean;
   isChatDisabled: boolean | undefined;
   setReactionMenu: (
     isOpen: boolean,
@@ -674,7 +678,8 @@ const ChatMessage = ({
             socket={socket}
             userToManage={id}
             isChatMessage
-            disabled={!Boolean(owner && owner === user?.id)}
+            isHost={isHost}
+            disabled={!Boolean(isHost)}
             trigger={
               <div
                 style={{ cursor: "pointer", fontWeight: 700 }}

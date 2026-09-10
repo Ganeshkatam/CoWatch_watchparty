@@ -53,6 +53,7 @@ import { RoomHeader } from "../TopBar/RoomHeader";
 import { MediaDock } from "./MediaDock";
 import { WaitingForHost } from "./WaitingForHost";
 import { HostEndedModal } from "../Modal/HostEndedModal";
+import { AssignHostModal } from "../Host/AssignHostModal";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -190,6 +191,11 @@ interface AppState {
   isWaitingForHost: boolean;
   isHostSessionEnded: boolean;
   isOwner: boolean;
+  currentHostId: string;
+  currentHostClientId: string;
+  isHost: boolean;
+  isAssignHostModalOpen: boolean;
+  infoMessage: string;
   initialCameraOn?: boolean;
   initialMicOn?: boolean;
   cameraDeviceId?: string;
@@ -285,6 +291,11 @@ export class App extends React.Component<AppProps, AppState> {
     isWaitingForHost: false,
     isHostSessionEnded: false,
     isOwner: false,
+    currentHostId: "",
+    currentHostClientId: "",
+    isHost: false,
+    isAssignHostModalOpen: false,
+    infoMessage: "",
   };
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
@@ -850,6 +861,44 @@ export class App extends React.Component<AppProps, AppState> {
         setTimeout(() => {
           this.setState({ successMessage: "" });
         }, 3000);
+      });
+      socket.on("REC:hostChange", (data: any) => {
+        if (!data) return;
+        const selfClientId = getOrCreateClientId();
+        const isSelfHost =
+          data.hostClientId === selfClientId ||
+          (this.context.user?.id && data.hostId === this.context.user.id);
+        const wasHost = this.state.isHost;
+
+        this.setState({
+          currentHostId: data.hostId || "",
+          currentHostClientId: data.hostClientId || "",
+          hostName: data.hostName || "Host",
+          isHost: Boolean(isSelfHost),
+        });
+
+        if (data.reason === "owner_returned") {
+          if (this.isRoomOwner()) {
+            this.setState({ successMessage: "Welcome back! Host privileges have been restored to you." });
+            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+          } else {
+            this.setState({ infoMessage: "The room creator has returned and resumed hosting." });
+            setTimeout(() => this.setState({ infoMessage: "" }), 4000);
+          }
+        } else if (data.reason === "assigned") {
+          if (isSelfHost && !wasHost) {
+            this.setState({ successMessage: "You are now the room host." });
+            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+          } else if (!isSelfHost && wasHost) {
+            this.setState({ infoMessage: `Host privileges were transferred to ${data.hostName || "a new host"}.` });
+            setTimeout(() => this.setState({ infoMessage: "" }), 4000);
+          }
+        } else if (data.reason === "auto_assigned") {
+          if (isSelfHost && !wasHost) {
+            this.setState({ successMessage: "The previous host left. You are now the room host." });
+            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+          }
+        }
       });
       socket.on("kicked", () => {
         window.location.assign("/");
@@ -1586,11 +1635,26 @@ export class App extends React.Component<AppProps, AppState> {
   handleRoomState = (data: any) => {
     this.setIsChatDisabled(data.isChatDisabled);
     this.setOwner(data.owner);
-    if (data.owner) {
+    const selfClientId = getOrCreateClientId();
+    const isSelfHost =
+      (data.currentHostClientId && data.currentHostClientId === selfClientId) ||
+      (this.context.user?.id && data.currentHostId && data.currentHostId === this.context.user.id) ||
+      Boolean(data.isHost);
+
+    if (data.currentHostClientId || data.currentHostId) {
+      this.setState({
+        currentHostId: data.currentHostId || "",
+        currentHostClientId: data.currentHostClientId || "",
+        isHost: Boolean(isSelfHost),
+      });
+    }
+    if (data.hostName) {
+      this.setState({ hostName: data.hostName });
+    } else if (data.owner) {
       this.resolveHostName(data.owner, data.ownerName);
-      if (this.context.user?.id === data.owner) {
-        this.setState({ isOwner: true });
-      }
+    }
+    if (data.owner && this.context.user?.id === data.owner) {
+      this.setState({ isOwner: true });
     }
     this.setPasscode(data.passcode);
     this.setRoomTitle(data.roomTitle);
@@ -2826,6 +2890,21 @@ export class App extends React.Component<AppProps, AppState> {
           mediaPath={this.state.mediaPath}
           setMediaPath={this.setMediaPath}
         />
+        <AssignHostModal
+          opened={this.state.isAssignHostModalOpen}
+          onClose={() => this.setState({ isAssignHostModalOpen: false })}
+          participants={this.state.participants}
+          nameMap={this.state.nameMap}
+          pictureMap={this.state.pictureMap}
+          currentClientId={getOrCreateClientId()}
+          onAssignAndLeave={(targetClientId: string) => {
+            this.socket.emit("CMD:assignHost", { newHostClientId: targetClientId });
+            window.location.href = "/";
+          }}
+          onLeaveDirectly={() => {
+            window.location.href = "/";
+          }}
+        />
         {this.state.errorMessage && (
           <Alert
             title="Error"
@@ -2852,6 +2931,20 @@ export class App extends React.Component<AppProps, AppState> {
             }}
           >
             {this.state.successMessage}
+          </Alert>
+        )}
+        {this.state.infoMessage && (
+          <Alert
+            title="Notice"
+            color="blue"
+            style={{
+              position: "fixed",
+              bottom: "10px",
+              right: "10px",
+              zIndex: 1000,
+            }}
+          >
+            {this.state.infoMessage}
           </Alert>
         )}
         {this.state.warningMessage && (
@@ -2884,7 +2977,11 @@ export class App extends React.Component<AppProps, AppState> {
             }}
             onOpenSettings={() => this.setSettingsModalOpen(true)}
             onExit={() => {
-              window.location.href = "/";
+              if (this.state.isHost && this.state.participants.length > 1) {
+                this.setState({ isAssignHostModalOpen: true });
+              } else {
+                window.location.href = "/";
+              }
             }}
             isLocked={Boolean(this.state.roomLock)}
             onToggleLock={this.toggleLock}
@@ -2896,7 +2993,7 @@ export class App extends React.Component<AppProps, AppState> {
             playlistAdd={this.roomPlaylistAdd}
             mediaPath={this.state.mediaPath}
             roomId={this.state.roomId}
-            hostName={this.state.hostName || (this.state.owner && this.context.user?.id === this.state.owner ? (this.context.displayName || "You") : undefined)}
+            hostName={this.state.hostName || (this.state.isHost ? (this.context.displayName || "You") : undefined)}
             passcode={this.state.passcode || ""}
             onSelectStream={this.onSelectStream}
           />
@@ -3314,6 +3411,8 @@ export class App extends React.Component<AppProps, AppState> {
                       tsMap={this.state.tsMap}
                       rosterUpdateTS={this.state.rosterUpdateTS}
                       owner={this.state.owner}
+                      isHost={this.state.isHost}
+                      currentHostClientId={this.state.currentHostClientId}
                       getLeaderTime={this.getLeaderTime}
                       roomId={this.state.roomId}
                       passcode={this.state.passcode}
@@ -3346,6 +3445,7 @@ export class App extends React.Component<AppProps, AppState> {
                     getMediaDisplayName={this.getMediaDisplayName}
                     isChatDisabled={this.state.isChatDisabled}
                     owner={this.state.owner}
+                    isHost={this.state.isHost}
                     ref={this.chatRef}
                     hide={!this.state.showChatColumn}
                     clearChat={this.clearChat}

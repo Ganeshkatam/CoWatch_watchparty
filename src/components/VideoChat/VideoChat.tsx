@@ -44,6 +44,8 @@ interface VideoChatProps {
   initialMicOn?: boolean;
   cameraDeviceId?: string;
   micDeviceId?: string;
+  isHost?: boolean;
+  currentHostClientId?: string;
 }
 
 export class VideoChatErrorBoundary extends React.Component<
@@ -606,16 +608,18 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
                 <UserMenu
                   displayName={displayName}
-                  disabled={!Boolean(owner && owner === this.context.user?.id)}
+                  disabled={!Boolean(this.props.isHost)}
                   socket={socket}
                   userToManage={p.id}
+                  isHost={this.props.isHost}
+                  isCurrentTargetHost={p.id === this.props.currentHostClientId}
                   trigger={
                     <button
                       type="button"
                       className={styles.menuTrigger}
                       title="User options"
                       style={{
-                        visibility: Boolean(owner && owner === this.context.user?.id)
+                        visibility: Boolean(this.props.isHost)
                           ? "visible"
                           : "hidden",
                       }}

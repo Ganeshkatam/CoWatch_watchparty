@@ -3,7 +3,7 @@ import { Menu } from "@mantine/core";
 import { Socket } from "socket.io-client";
 // import styles from './UserMenu.module.css';
 import { MetadataContext } from "../../MetadataContext";
-import { IconBan, IconTrashFilled, IconX } from "@tabler/icons-react";
+import { IconBan, IconCrown, IconTrashFilled, IconX } from "@tabler/icons-react";
 import { getOrCreateClientId } from "../../utils/utils";
 import { ThemeMenuItems } from "../TopBar/TopBar";
 
@@ -17,6 +17,8 @@ export const UserMenu = ({
   disabled,
   timestamp,
   isChatMessage,
+  isHost,
+  isCurrentTargetHost,
 }: {
   socket: Socket;
   userToManage: string;
@@ -26,6 +28,8 @@ export const UserMenu = ({
   disabled: boolean;
   timestamp?: string;
   isChatMessage?: boolean;
+  isHost?: boolean;
+  isCurrentTargetHost?: boolean;
 }) => {
   const { user } = useContext(MetadataContext);
   return (
@@ -70,6 +74,18 @@ export const UserMenu = ({
         >
           Delete User's Messages
         </Menu.Item>
+        {isHost && !isCurrentTargetHost && userToManage !== clientId && !isChatMessage && (
+          <Menu.Item
+            leftSection={<IconCrown size={16} />}
+            onClick={() => {
+              socket.emit("CMD:assignHost", {
+                newHostClientId: userToManage,
+              });
+            }}
+          >
+            Make Host
+          </Menu.Item>
+        )}
         <Menu.Item
           leftSection={<IconBan />}
           onClick={async () => {
