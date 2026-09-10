@@ -1,8 +1,8 @@
-import React, { useCallback, useContext } from "react";
-import { Link, useHistory } from "react-router-dom";
+import React, { useCallback, useContext, useEffect, useState } from "react";
+import { Link, useHistory, useLocation } from "react-router-dom";
 import { serverPath } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
-import { Avatar, Button, Menu, Text, Tooltip } from "@mantine/core";
+import { Avatar, Burger, Button, Drawer, Menu, Text, Tooltip } from "@mantine/core";
 import type { User } from "@supabase/supabase-js";
 import appStyles from "../App/App.module.css";
 import styles from "./TopBar.module.css";
@@ -20,6 +20,7 @@ import {
   IconMoon,
   IconChevronDown,
   IconUsers,
+  IconHome,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 
@@ -371,6 +372,14 @@ export const TopBar = (props: {
   roomDescription?: string;
 }) => {
   const context = useContext(MetadataContext);
+  const [drawerOpened, setDrawerOpened] = useState(false);
+  const location = useLocation();
+  const { appearance, setAppearance } = useAppearance();
+
+  useEffect(() => {
+    setDrawerOpened(false);
+  }, [location.pathname]);
+
   return (
     <div className={styles.topBar}>
       <Link to="/" className={styles.brandGroup}>
@@ -411,7 +420,9 @@ export const TopBar = (props: {
           )}
         </div>
       ) : null}
-      <div className={styles.actionsGroup}>
+
+      {/* Desktop Actions */}
+      <div className={styles.desktopActions}>
         {!props.hideMyRooms && context.user && <ListRoomsButton />}
         {!props.hideJoinRoom && <JoinRoomButton size="sm" />}
         {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
@@ -441,6 +452,245 @@ export const TopBar = (props: {
         {!props.hideGetStarted && !context.user && <GetStartedButton />}
         {!props.hideSignin && <SignInButton />}
       </div>
+
+      {/* Mobile Actions: Theme Toggle & Hamburger */}
+      <div className={styles.mobileActions}>
+        {props.showExit && (
+          <Button
+            color="red"
+            variant="light"
+            size="xs"
+            onClick={() => {
+              window.location.assign("/");
+            }}
+            leftSection={<IconX size={14} />}
+          >
+            Exit
+          </Button>
+        )}
+        <ThemeToggleQuickButton />
+        <Burger
+          opened={drawerOpened}
+          onClick={() => setDrawerOpened((o) => !o)}
+          size="sm"
+          color="var(--text-primary)"
+          aria-label="Toggle navigation menu"
+          className={styles.hamburger}
+        />
+      </div>
+
+      {/* Mobile Navigation Drawer */}
+      <Drawer
+        opened={drawerOpened}
+        onClose={() => setDrawerOpened(false)}
+        position="right"
+        size={310}
+        title={
+          <div className={styles.drawerBrand}>
+            <img src="/logo192.png" alt="CoWatch" className={styles.drawerLogo} />
+            <span className={styles.drawerBrandText}>CoWatch</span>
+          </div>
+        }
+        classNames={{
+          content: styles.drawerContent,
+          header: styles.drawerHeader,
+          body: styles.drawerBody,
+        }}
+      >
+        {/* User Card or Guest Welcome */}
+        {context.user ? (
+          <div className={styles.userCard}>
+            <Avatar src={context.avatarUrl} size={42} radius="xl" />
+            <div className={styles.userCardInfo}>
+              <div className={styles.userCardName}>
+                {context.displayName || "Account"}
+              </div>
+              <div className={styles.userCardEmail}>{context.user.email}</div>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.guestBanner}>
+            <div className={styles.guestTitle}>Welcome to CoWatch</div>
+            <div className={styles.guestSubtitle}>
+              Stream videos together in perfect real-time sync with friends.
+            </div>
+            <div className={styles.guestCtaGroup}>
+              <Button
+                component={Link}
+                to="/login"
+                variant="light"
+                color="violet"
+                fullWidth
+                size="xs"
+                onClick={() => setDrawerOpened(false)}
+              >
+                Sign in
+              </Button>
+              <Button
+                component={Link}
+                to="/signup"
+                variant="gradient"
+                fullWidth
+                size="xs"
+                onClick={() => setDrawerOpened(false)}
+              >
+                Get Started
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Navigation Section */}
+        <div className={styles.navSection}>
+          <div className={styles.navSectionTitle}>Navigation</div>
+          <Link
+            to="/"
+            className={styles.drawerNavLink}
+            onClick={() => setDrawerOpened(false)}
+          >
+            <IconHome size={18} stroke={1.5} />
+            <span>Home</span>
+          </Link>
+          <Link
+            to="/join"
+            className={styles.drawerNavLink}
+            onClick={() => setDrawerOpened(false)}
+          >
+            <IconUsers size={18} stroke={1.5} />
+            <span>Join a room</span>
+          </Link>
+          {context.user && (
+            <>
+              <Link
+                to="/create"
+                className={styles.drawerNavLink}
+                onClick={() => setDrawerOpened(false)}
+              >
+                <IconCirclePlusFilled size={18} stroke={1.5} />
+                <span>Create room</span>
+              </Link>
+              <Link
+                to="/rooms"
+                className={styles.drawerNavLink}
+                onClick={() => setDrawerOpened(false)}
+              >
+                <IconDatabase size={18} stroke={1.5} />
+                <span>My rooms</span>
+              </Link>
+              <Link
+                to="/profile"
+                className={styles.drawerNavLink}
+                onClick={() => setDrawerOpened(false)}
+              >
+                <IconSettings size={18} stroke={1.5} />
+                <span>Settings</span>
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* In-room actions if applicable */}
+        {(props.showExit || props.onOpenSettings) && (
+          <div className={styles.navSection}>
+            <div className={styles.navSectionTitle}>Room Controls</div>
+            {props.onOpenSettings && (
+              <button
+                type="button"
+                className={styles.drawerNavLink}
+                style={{
+                  background: "none",
+                  border: "none",
+                  width: "100%",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  setDrawerOpened(false);
+                  props.onOpenSettings?.();
+                }}
+              >
+                <IconSettings size={18} stroke={1.5} />
+                <span>Room Settings</span>
+              </button>
+            )}
+            {props.showExit && (
+              <button
+                type="button"
+                className={styles.drawerNavLink}
+                style={{
+                  background: "none",
+                  border: "none",
+                  width: "100%",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  color: "var(--color-danger, #ef4444)",
+                }}
+                onClick={() => {
+                  window.location.assign("/");
+                }}
+              >
+                <IconX size={18} stroke={1.5} />
+                <span>Exit Room</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Theme Appearance Section */}
+        <div className={styles.navSection}>
+          <div className={styles.navSectionTitle}>Appearance</div>
+          <div className={styles.themeOptionRow}>
+            <button
+              type="button"
+              className={`${styles.themeOptionBtn} ${
+                appearance === "system" ? styles.themeOptionBtnActive : ""
+              }`}
+              onClick={() => setAppearance("system")}
+            >
+              <IconDeviceDesktop size={18} stroke={1.5} />
+              <span>System</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.themeOptionBtn} ${
+                appearance === "light" ? styles.themeOptionBtnActive : ""
+              }`}
+              onClick={() => setAppearance("light")}
+            >
+              <IconSun size={18} stroke={1.5} />
+              <span>Light</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.themeOptionBtn} ${
+                appearance === "mantine" ? styles.themeOptionBtnActive : ""
+              }`}
+              onClick={() => setAppearance("mantine")}
+            >
+              <IconMoon size={18} stroke={1.5} />
+              <span>Dark</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sign Out (Authenticated) */}
+        {context.user && (
+          <div style={{ marginTop: "auto", paddingTop: "12px" }}>
+            <Button
+              variant="subtle"
+              color="red"
+              fullWidth
+              leftSection={<IconLogout size={16} stroke={1.5} />}
+              onClick={async () => {
+                setDrawerOpened(false);
+                await supabase.auth.signOut();
+              }}
+            >
+              Sign out
+            </Button>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };

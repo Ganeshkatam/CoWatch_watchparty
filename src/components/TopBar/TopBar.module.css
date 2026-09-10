@@ -140,6 +140,207 @@
   box-shadow: var(--shadow-accent);
 }
 
+.desktopActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobileActions {
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.hamburger {
+  color: var(--text-primary);
+}
+
+/* Mobile Drawer Styles */
+.drawerContent {
+  background: var(--bg-surface) !important;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.drawerHeader {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 16px 20px !important;
+}
+
+.drawerBody {
+  padding: 18px 20px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.drawerBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawerLogo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.drawerBrandText {
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-transform: uppercase;
+}
+
+/* User Card in Mobile Drawer */
+.userCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+}
+
+.userCardInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.userCardName {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userCardEmail {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Guest Banner */
+.guestBanner {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guestTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.guestSubtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.guestCtaGroup {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Drawer Nav Sections */
+.navSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navSectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 8px;
+}
+
+.drawerNavLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.drawerNavLink:hover {
+  background: var(--bg-app);
+  color: var(--color-violet);
+}
+
+/* Theme selector inside Drawer */
+.themeOptionRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.themeOptionBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.themeOptionBtn:hover {
+  border-color: var(--color-violet);
+  color: var(--color-violet);
+}
+
+.themeOptionBtnActive {
+  border-color: var(--color-violet);
+  background: var(--color-violet-light, rgba(139, 92, 246, 0.1));
+  color: var(--color-violet);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .desktopActions {
+    display: none;
+  }
+  .mobileActions {
+    display: flex;
+  }
+}
+
 @media (max-width: 640px) {
   .topBar {
     padding: 8px 14px;
@@ -156,3 +357,4 @@
     padding: 2px;
   }
 }
+
