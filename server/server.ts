@@ -771,13 +771,112 @@ app.get("/listRooms", async (req, res) => {
       res.status(503).json({ error: "Database unavailable" });
       return;
     }
-    const result = await postgres.query(
-      `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
-                "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-                status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
-         FROM rooms WHERE owner_id = $1 ORDER BY "creationTime" DESC`,
-      [decoded.uid],
-    );
+    const hasPagination = req.query.limit !== undefined || req.query.page !== undefined;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = hasPagination ? Math.max(1, Math.min(100, parseInt(String(req.query.limit || "12"), 10) || 12)) : 0;
+    const offset = (page - 1) * limit;
+
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    const access = typeof req.query.access === "string" ? req.query.access.trim() : "";
+    const chat = typeof req.query.chat === "string" ? req.query.chat.trim() : "";
+    const sort = typeof req.query.sort === "string" ? req.query.sort.trim() : "newest";
+
+    const whereClauses: string[] = [`owner_id = $1`];
+    const params: any[] = [decoded.uid];
+
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      const idx = params.length;
+      whereClauses.push(`(LOWER("roomTitle") LIKE $${idx} OR LOWER("roomDescription") LIKE $${idx} OR LOWER("roomId") LIKE $${idx})`);
+    }
+
+    if (status && status !== "all") {
+      if (status === "active") {
+        whereClauses.push(`status = 'active'`);
+      } else if (status === "inactive") {
+        whereClauses.push(`status = 'inactive'`);
+      } else if (status === "permanent") {
+        whereClauses.push(`"isPermanent" = true`);
+      } else if (status === "expiring") {
+        whereClauses.push(`(status = 'expiring' OR (status IN ('active', 'inactive') AND "isPermanent" IS NOT TRUE AND "expiresAt" IS NOT NULL AND "expiresAt" > NOW() AND "expiresAt" <= NOW() + INTERVAL '15 minutes'))`);
+      } else if (status === "finished") {
+        whereClauses.push(`(status IN ('expired', 'ended') OR (status IN ('active', 'inactive') AND "isPermanent" IS NOT TRUE AND "expiresAt" IS NOT NULL AND "expiresAt" <= NOW()))`);
+      }
+    }
+
+    if (access && access !== "all") {
+      if (access === "protected") {
+        whereClauses.push(`(passcode IS NOT NULL AND passcode <> '')`);
+      } else if (access === "public") {
+        whereClauses.push(`(passcode IS NULL OR passcode = '')`);
+      }
+    }
+
+    if (chat && chat !== "all") {
+      if (chat === "enabled") {
+        whereClauses.push(`"isChatDisabled" IS NOT TRUE`);
+      } else if (chat === "disabled") {
+        whereClauses.push(`"isChatDisabled" IS TRUE`);
+      }
+    }
+
+    let orderBy = `"creationTime" DESC`;
+    if (sort === "oldest") {
+      orderBy = `"creationTime" ASC`;
+    } else if (sort === "title-asc") {
+      orderBy = `LOWER(COALESCE("roomTitle", "roomId")) ASC`;
+    } else if (sort === "title-desc") {
+      orderBy = `LOWER(COALESCE("roomTitle", "roomId")) DESC`;
+    } else if (sort === "expiring") {
+      orderBy = `CASE WHEN status IN ('active', 'expiring') THEN 0 ELSE 1 END, "expiresAt" ASC NULLS LAST, "creationTime" DESC`;
+    }
+
+    const whereSql = whereClauses.join(" AND ");
+
+    let totalCount = 0;
+    let stats = { total: 0, active: 0, expiring: 0, finished: 0 };
+
+    if (hasPagination) {
+      const statsPromise = postgres.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(CASE WHEN status = 'active' THEN 1 END)::int AS active,
+           COUNT(CASE WHEN (status = 'expiring' OR (status IN ('active', 'inactive') AND "isPermanent" IS NOT TRUE AND "expiresAt" IS NOT NULL AND "expiresAt" > NOW() AND "expiresAt" <= NOW() + INTERVAL '15 minutes')) THEN 1 END)::int AS expiring,
+           COUNT(CASE WHEN (status IN ('expired', 'ended') OR (status IN ('active', 'inactive') AND "isPermanent" IS NOT TRUE AND "expiresAt" IS NOT NULL AND "expiresAt" <= NOW())) THEN 1 END)::int AS finished
+         FROM rooms WHERE owner_id = $1`,
+        [decoded.uid]
+      );
+
+      const countPromise = postgres.query(
+        `SELECT COUNT(*)::int AS count FROM rooms WHERE ${whereSql}`,
+        params
+      );
+
+      const [statsRes, countRes] = await Promise.all([statsPromise, countPromise]);
+      if (statsRes?.rows?.[0]) {
+        stats = {
+          total: Number(statsRes.rows[0].total) || 0,
+          active: Number(statsRes.rows[0].active) || 0,
+          expiring: Number(statsRes.rows[0].expiring) || 0,
+          finished: Number(statsRes.rows[0].finished) || 0,
+        };
+      }
+      totalCount = Number(countRes?.rows?.[0]?.count) || 0;
+    }
+
+    let querySql = `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+                           "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
+                           status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
+                    FROM rooms WHERE ${whereSql} ORDER BY ${orderBy}`;
+
+    const queryParams = [...params];
+    if (hasPagination) {
+      queryParams.push(limit, offset);
+      querySql += ` LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`;
+    }
+
+    const result = await postgres.query(querySql, queryParams);
 
     const now = Date.now();
     const warningWindow = 15 * 60 * 1000; // 15 minutes
@@ -800,7 +899,18 @@ app.get("/listRooms", async (req, res) => {
       };
     });
 
-    res.json(rows);
+    if (hasPagination) {
+      res.json({
+        rooms: rows,
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit),
+        stats,
+      });
+    } else {
+      res.json(rows);
+    }
   } catch (err: any) {
     console.error("Error in /listRooms:", err);
     res.status(500).json({ error: err?.message || "Failed to list rooms" });
@@ -980,6 +1090,81 @@ app.post("/extendRoom", async (req, res) => {
   }
 });
 
+app.post("/endRoom", async (req, res) => {
+  const decoded = await validateUserToken(
+    String(req.body?.uid),
+    String(req.body?.token),
+  );
+  if (decoded === "EMAIL_NOT_VERIFIED") {
+    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+    return;
+  }
+  if (!decoded) {
+    res.status(400).json({ error: "invalid user token" });
+    return;
+  }
+  const roomId = typeof req.body?.roomId === "string" ? req.body.roomId : "";
+  if (!roomId) {
+    res.status(400).json({ error: "missing roomId" });
+    return;
+  }
+
+  try {
+    if (!postgres) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const selectResult = await postgres.query(
+      `SELECT "roomId", "status", "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+      [roomId, decoded.uid]
+    );
+
+    if (!selectResult || selectResult.rows.length === 0) {
+      res.status(404).json({ error: "Room not found or unauthorized" });
+      return;
+    }
+
+    const roomRow = selectResult.rows[0];
+
+    // Only stops the room for this instance: sets status to 'inactive' (never 'ended')
+    await postgres.query(
+      `UPDATE rooms SET status = 'inactive' WHERE "roomId" = $1 AND owner_id = $2`,
+      [roomId, decoded.uid]
+    );
+
+    // Insert audit log
+    await postgres.query(
+      `INSERT INTO room_lifecycle_events 
+       ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [roomId, decoded.uid, 'room.stopped', roomRow.status, 'inactive', roomRow.expiresAt, roomRow.expiresAt, 'session instance stopped by owner']
+    ).catch(e => console.error("Failed to insert lifecycle event for stopped room:", e));
+
+    // Stop the in-memory active session for this instance
+    const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
+    const memoryRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+    if (memoryRoom) {
+      memoryRoom.status = 'inactive';
+      memoryRoom.addChatMessage(null, {
+        id: '',
+        system: true,
+        msg: 'This watch session has been stopped by the host. The room is now inactive and will reactivate when someone joins.',
+      });
+      if (memoryRoom.vBrowser) {
+        await memoryRoom.stopVBrowserInternal();
+      }
+      memoryRoom.disconnectAllSockets();
+    }
+
+    res.json({ success: true, status: 'inactive' });
+  } catch (error) {
+    console.error("Error stopping room session:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 app.delete("/deleteRoom", async (req, res) => {
   try {
     const decoded = await validateUserToken(
@@ -1002,6 +1187,20 @@ app.delete("/deleteRoom", async (req, res) => {
     const roomId = typeof req.query.roomId === "string" ? req.query.roomId : "";
     if (!roomId) {
       res.status(400).json({ error: "missing roomId" });
+      return;
+    }
+
+    // Guard: refuse to delete a room that is currently active.
+    const statusCheck = await postgres.query(
+      `SELECT status FROM rooms WHERE owner_id = $1 AND "roomId" = $2`,
+      [decoded.uid, roomId],
+    );
+    if (statusCheck.rowCount === 0) {
+      res.status(404).json({ error: "Room not found or unauthorized" });
+      return;
+    }
+    if (statusCheck.rows[0].status === "active") {
+      res.status(409).json({ error: "Cannot delete an active room. Stop the session first." });
       return;
     }
 

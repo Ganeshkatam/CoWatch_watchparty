@@ -37,7 +37,10 @@ import {
   IconCheck,
   IconAlertTriangle,
   IconKey,
+  IconInfoCircle,
+  IconUserPlus,
 } from "@tabler/icons-react";
+import { InviteModal } from "../Modal/InviteModal";
 import { type RoomSummary } from "./MyRooms";
 import {
   getRoomUrl,
@@ -70,7 +73,7 @@ const RoomStatusBadge = ({ status, isPermanent }: { status: RoomSummary["status"
 
 const formatTimeLeft = (expiresAt: string | null, status: string, isPermanent: boolean) => {
   if (status === "expired" || status === "ended") return <div className={styles.lifecycleText}>Room is no longer active</div>;
-  if (isPermanent) return <div className={styles.lifecycleText}>No expiration</div>;
+  if (isPermanent) return <div className={styles.lifecycleText}>Permanent</div>;
   if (status !== "active" && status !== "expiring") return <div className={styles.lifecycleText}>Reactivates when someone joins</div>;
 
   if (!expiresAt) return null;
@@ -211,15 +214,15 @@ export const EditRoomModal = ({
         const fileExt = coverFile.name.split('.').pop();
         const safeRoomId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
         const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
-        
+
         const { error: uploadError } = await supabase.storage
           .from('room_covers')
           .upload(filePath, coverFile, { upsert: true });
-        
+
         if (uploadError) {
           throw uploadError;
         }
-        
+
         const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
         finalCoverUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
       }
@@ -652,12 +655,31 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const [isUploading, setIsUploading] = useState(false);
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [inviteModalOpened, setInviteModalOpened] = useState(false);
+  const [stopModalOpened, setStopModalOpened] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [infoModalAction, setInfoModalAction] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedPasscode, setCopiedPasscode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const history = useHistory();
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(getRoomUrl(room.roomId)).catch(console.error);
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(getRoomUrl(room.roomId)).then(() => {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    }).catch(console.error);
   };
+
+  const handleCopyPasscode = () => {
+    if (!room.currentPasscode) return;
+    navigator.clipboard.writeText(room.currentPasscode).then(() => {
+      setCopiedPasscode(true);
+      setTimeout(() => setCopiedPasscode(false), 2000);
+    }).catch(console.error);
+  };
+
+  const handleCopy = handleCopyUrl;
 
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
@@ -671,14 +693,49 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     }
   };
 
+  const handleStopSession = async () => {
+    setIsStopping(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const token = await getAccessToken();
+      if (!user) throw new Error("Not logged in");
+
+      const response = await fetch(`${serverPath}/endRoom`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.id,
+          token,
+          roomId: room.roomId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to stop room session");
+      }
+
+      setStopModalOpened(false);
+      if (onRefresh) {
+        onRefresh();
+      } else {
+        window.location.reload();
+      }
+    } catch (e: any) {
+      console.error("Error stopping room session:", e);
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
   const handlePlaceholder = (action: string) => {
-    alert(`${action} is currently available in Room Details view.`);
+    setInfoModalAction(action);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !onUpdateCover) return;
-    
+
     setIsUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -688,10 +745,10 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       const fileExt = file.name.split('.').pop();
       const safeRoomId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
       const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
-      
+
       const { error: uploadError } = await supabase.storage.from('room_covers').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
-      
+
       const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
       onUpdateCover(room.roomId, `${publicUrlData.publicUrl}?t=${Date.now()}`);
     } catch (e: any) {
@@ -746,20 +803,13 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
 
   const renderMenuItems = () => {
     const items = [];
-    items.push(
-      <Menu.Item key="copy" leftSection={<IconCopy size={14} />} onClick={handleCopy}>
-        Copy Room Link
-      </Menu.Item>
-    );
 
     if (room.currentPasscode) {
       items.push(
         <Menu.Item
           key="copyPasscode"
           leftSection={<IconKey size={14} />}
-          onClick={() => {
-            navigator.clipboard.writeText(room.currentPasscode!);
-          }}
+          onClick={handleCopyPasscode}
         >
           Copy Passcode ({room.currentPasscode})
         </Menu.Item>
@@ -767,7 +817,9 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     }
 
     if (computedState !== 'Expired' && computedState !== 'Ended') {
-      items.push(<Menu.Divider key="div1" />);
+      if (room.currentPasscode) {
+        items.push(<Menu.Divider key="div1" />);
+      }
       if (computedState === 'Active' && !isPermanent) {
         items.push(
           <Menu.Item key="extend30" leftSection={<IconHourglassHigh size={14} />} onClick={() => handlePlaceholder('Extend +30 min')}>
@@ -797,17 +849,40 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         </Tooltip>
       );
       items.push(
-        <Menu.Item key="end" leftSection={<IconPlayerStop size={14} />} onClick={() => handlePlaceholder('End Room')}>
-          End Room
-        </Menu.Item>
+        <Tooltip
+          key="end"
+          label={room.status === "active" ? "Stop current watch session" : "No active session to stop"}
+          disabled={room.status === "active"}
+          withArrow
+        >
+          <Menu.Item
+            leftSection={<IconPlayerStop size={14} />}
+            disabled={room.status !== "active"}
+            onClick={() => setStopModalOpened(true)}
+          >
+            {room.status === "active" ? "Stop Session" : "Stop Session (Inactive)"}
+          </Menu.Item>
+        </Tooltip>
       );
     }
 
     items.push(<Menu.Divider key="div2" />);
     items.push(
-      <Menu.Item key="delete" color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleteModalOpened(true)}>
-        Delete Room
-      </Menu.Item>
+      <Tooltip
+        key="delete"
+        label="Active rooms cannot be deleted. Stop the session first."
+        disabled={room.status !== "active"}
+        withArrow
+      >
+        <Menu.Item
+          color={room.status === "active" ? undefined : "red"}
+          leftSection={<IconTrash size={14} />}
+          disabled={room.status === "active"}
+          onClick={() => setDeleteModalOpened(true)}
+        >
+          {room.status === "active" ? "Delete Room (Active)" : "Delete Room"}
+        </Menu.Item>
+      </Tooltip>
     );
     return items;
   };
@@ -815,6 +890,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   return {
     isUploading,
     isDeleting,
+    isStopping,
     fileInputRef,
     handleFileUpload,
     renderPrimary,
@@ -824,9 +900,128 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     setEditModalOpened,
     deleteModalOpened,
     setDeleteModalOpened,
+    inviteModalOpened,
+    setInviteModalOpened,
+    stopModalOpened,
+    setStopModalOpened,
     handleConfirmDelete,
+    handleStopSession,
+    copiedUrl,
+    handleCopyUrl,
+    copiedPasscode,
+    handleCopyPasscode,
+    infoModalAction,
+    setInfoModalAction,
+    handlePlaceholder,
+    computedState,
+    isPermanent,
+    detailsPath,
+    urlPath,
   };
 };
+
+const StopRoomConfirmModal = ({
+  room,
+  opened,
+  onClose,
+  onConfirm,
+  isStopping,
+}: {
+  room: RoomSummary;
+  opened: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  isStopping: boolean;
+}) => {
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconPlayerStop size={18} color="var(--mantine-color-orange-6)" />
+          <Text fw={600} size="md">Stop Watch Session</Text>
+        </Group>
+      }
+      centered
+      radius="md"
+      size="sm"
+    >
+      <Stack gap="md">
+        <Text size="sm">
+          Are you sure you want to stop the current watch session for <Text span fw={600}>"{room.roomTitle || room.roomId}"</Text>?
+        </Text>
+        <Text size="xs" c="dimmed">
+          This will stop the running session and disconnect active viewers. The room will remain saved and will be set to Inactive, so you can start a new session whenever you or your friends join again.
+        </Text>
+        <Group justify="flex-end" mt="md" gap="sm">
+          <Button variant="default" onClick={onClose} disabled={isStopping} size="sm">
+            Cancel
+          </Button>
+          <Button
+            color="orange"
+            onClick={onConfirm}
+            loading={isStopping}
+            size="sm"
+            leftSection={<IconPlayerStop size={15} />}
+          >
+            Stop Session
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+};
+
+
+const InfoActionModal = ({
+  action,
+  detailsPath,
+  onClose,
+}: {
+  action: string | null;
+  detailsPath: string;
+  onClose: () => void;
+}) => {
+  const history = useHistory();
+  return (
+    <Modal
+      opened={Boolean(action)}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconInfoCircle size={18} color="var(--mantine-color-violet-6)" />
+          <Text fw={600} size="md">{action}</Text>
+        </Group>
+      }
+      centered
+      radius="md"
+      size="sm"
+    >
+      <Stack gap="md">
+        <Text size="sm">
+          {action} is available from the Room Details page.
+        </Text>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            color="violet"
+            size="sm"
+            onClick={() => {
+              onClose();
+              history.push(detailsPath);
+            }}
+          >
+            Go to Details
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+};
+
 
 // --- View Components ---
 
@@ -907,23 +1102,36 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
           {actions.renderPrimary()}
           {actions.renderSecondary()}
         </div>
-        <Menu shadow="md" width={220} position="bottom-end">
-          <Menu.Target>
-            <ActionIcon className={styles.moreBtn} size="sm" radius="md">
-              <IconDots size={16} />
+        <Group gap={6} wrap="nowrap">
+          <Tooltip label="Invite Friends" withArrow>
+            <ActionIcon
+              className={styles.actionIconBtn}
+              size="sm"
+              radius="xl"
+              onClick={() => actions.setInviteModalOpened(true)}
+              aria-label="Invite Friends"
+            >
+              <IconUserPlus size={16} />
             </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {actions.renderMenuItems()}
-          </Menu.Dropdown>
-        </Menu>
+          </Tooltip>
+          <Menu shadow="md" width={220} position="bottom-end">
+            <Menu.Target>
+              <ActionIcon className={styles.moreBtn} size="sm" radius="md">
+                <IconDots size={16} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {actions.renderMenuItems()}
+            </Menu.Dropdown>
+          </Menu>
+        </Group>
       </div>
 
-      <EditRoomModal 
+      <EditRoomModal
         room={room}
-        opened={actions.editModalOpened} 
-        onClose={() => actions.setEditModalOpened(false)} 
-        onSuccess={() => window.location.reload()} 
+        opened={actions.editModalOpened}
+        onClose={() => actions.setEditModalOpened(false)}
+        onSuccess={() => window.location.reload()}
       />
 
       <DeleteConfirmModal
@@ -933,14 +1141,38 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         onConfirm={actions.handleConfirmDelete}
         isDeleting={actions.isDeleting}
       />
+
+      <StopRoomConfirmModal
+        room={room}
+        opened={actions.stopModalOpened}
+        onClose={() => actions.setStopModalOpened(false)}
+        onConfirm={actions.handleStopSession}
+        isStopping={actions.isStopping}
+      />
+
+      <InfoActionModal
+        action={actions.infoModalAction}
+        detailsPath={actions.detailsPath}
+        onClose={() => actions.setInfoModalAction(null)}
+      />
+
+      {actions.inviteModalOpened && (
+        <InviteModal
+          roomId={room.roomId}
+          passcode={room.currentPasscode || undefined}
+          closeInviteModal={() => actions.setInviteModalOpened(false)}
+        />
+      )}
     </div>
   );
+
 };
 
 const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, onDelete: (id: string) => void, onUpdateCover?: (id: string, url: string) => void }) => {
   const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
   const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const isRoomActive = room.status === "active";
 
   return (
     <div className={styles.stackCard}>
@@ -970,10 +1202,10 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
       <div className={styles.stackCardContent}>
         <div className={styles.stackCardHeader}>
           <div className={styles.stackCardTitleBox}>
-            <h3 className={styles.roomTitle} title={room.roomTitle || "Watch Party Room"}>
+            <h3 className={styles.stackRoomTitle} title={room.roomTitle || "Watch Party Room"}>
               {room.roomTitle || "Watch Party Room"}
             </h3>
-            <div className={styles.roomDescription}>
+            <div className={styles.stackRoomDescription}>
               {room.roomDescription || "No description provided."}
             </div>
           </div>
@@ -985,23 +1217,44 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         </div>
 
         <div className={styles.stackCardBottom}>
-          <div className={styles.roomMetadata} style={{ marginBottom: 0 }}>
-            <div className={styles.metaItemValue}>
-              {room.isPasscodeProtected ? (
-                <>
+          <div className={styles.stackMetadata}>
+            {room.isPasscodeProtected ? (
+              <Tooltip
+                label={
+                  actions.copiedPasscode
+                    ? "Passcode Copied!"
+                    : room.currentPasscode
+                      ? `Click to copy passcode (${room.currentPasscode})`
+                      : "Passcode protected"
+                }
+                withArrow
+              >
+                <div
+                  className={`${styles.metaItemValue} ${room.currentPasscode ? styles.metaItemClickable : ""}`}
+                  onClick={room.currentPasscode ? actions.handleCopyPasscode : undefined}
+                >
                   <IconLock size={14} />
                   {room.currentPasscode ? (
-                    <span>Passcode: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong></span>
+                    <span>
+                      Passcode: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong>
+                    </span>
                   ) : (
-                    'Protected'
+                    "Protected"
                   )}
-                </>
-              ) : (
-                <>
-                  <IconLockOpen size={14} /> Public
-                </>
-              )}
-            </div>
+                  {room.currentPasscode && (
+                    actions.copiedPasscode ? (
+                      <IconCheck size={13} color="var(--mantine-color-teal-5)" />
+                    ) : (
+                      <IconCopy size={13} style={{ opacity: 0.7 }} />
+                    )
+                  )}
+                </div>
+              </Tooltip>
+            ) : (
+              <div className={styles.metaItemValue}>
+                <IconLockOpen size={14} /> Public
+              </div>
+            )}
             <div className={styles.metaItemValue}>
               <IconMessage size={14} /> {room.isChatDisabled ? 'Chat disabled' : 'Chat enabled'}
             </div>
@@ -1013,25 +1266,116 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
           <div className={styles.actionButtons}>
             {actions.renderPrimary()}
             {actions.renderSecondary()}
-            <Menu shadow="md" width={220} position="bottom-end">
-              <Menu.Target>
-                <ActionIcon className={styles.moreBtn} size="sm" radius="md">
-                  <IconDots size={16} />
+
+            <Tooltip
+              label="Cannot edit room details while session is active"
+              disabled={!isRoomActive}
+              withArrow
+            >
+              <Button
+                size="xs"
+                className={styles.secondaryBtn}
+                leftSection={<IconSettings size={14} />}
+                disabled={isRoomActive}
+                onClick={() => actions.setEditModalOpened(true)}
+              >
+                Edit
+              </Button>
+            </Tooltip>
+
+            <Tooltip label="Invite Friends" withArrow>
+              <ActionIcon
+                className={styles.actionIconBtn}
+                size="sm"
+                radius="xl"
+                onClick={() => actions.setInviteModalOpened(true)}
+                aria-label="Invite Friends"
+              >
+                <IconUserPlus size={15} />
+              </ActionIcon>
+            </Tooltip>
+
+            {room.currentPasscode && (
+              <Tooltip
+                label={actions.copiedPasscode ? "Passcode Copied!" : `Copy Passcode (${room.currentPasscode})`}
+                withArrow
+              >
+                <ActionIcon
+                  className={styles.actionIconBtn}
+                  size="sm"
+                  radius="xl"
+                  onClick={actions.handleCopyPasscode}
+                  aria-label="Copy Passcode"
+                >
+                  {actions.copiedPasscode ? (
+                    <IconCheck size={15} color="var(--mantine-color-teal-5)" />
+                  ) : (
+                    <IconKey size={15} />
+                  )}
                 </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {actions.renderMenuItems()}
-              </Menu.Dropdown>
-            </Menu>
+              </Tooltip>
+            )}
+
+            {isRoomActive && !isPermanent && (
+              <Tooltip label="Extend +30 min" withArrow>
+                <ActionIcon
+                  className={styles.actionIconBtn}
+                  size="sm"
+                  radius="xl"
+                  onClick={() => actions.handlePlaceholder("Extend +30 min")}
+                  aria-label="Extend Room"
+                >
+                  <IconHourglassHigh size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+
+            {room.status !== "expired" && room.status !== "ended" && (
+              <Tooltip
+                label={
+                  isRoomActive
+                    ? "Stop current session (room remains saved as Inactive)"
+                    : "No active session running (room is Inactive)"
+                }
+                withArrow
+              >
+                <ActionIcon
+                  className={styles.actionIconBtn}
+                  size="sm"
+                  radius="xl"
+                  disabled={!isRoomActive}
+                  onClick={() => actions.setStopModalOpened(true)}
+                  aria-label="Stop Session"
+                >
+                  <IconPlayerStop size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+
+            <Tooltip
+              label={isRoomActive ? "Active rooms cannot be deleted. Stop the session first." : "Delete Room"}
+              withArrow
+            >
+              <ActionIcon
+                className={isRoomActive ? styles.actionIconBtn : styles.deleteActionIconBtn}
+                size="sm"
+                radius="xl"
+                disabled={isRoomActive}
+                onClick={() => actions.setDeleteModalOpened(true)}
+                aria-label="Delete Room"
+              >
+                <IconTrash size={15} />
+              </ActionIcon>
+            </Tooltip>
           </div>
         </div>
       </div>
 
-      <EditRoomModal 
+      <EditRoomModal
         room={room}
-        opened={actions.editModalOpened} 
-        onClose={() => actions.setEditModalOpened(false)} 
-        onSuccess={() => window.location.reload()} 
+        opened={actions.editModalOpened}
+        onClose={() => actions.setEditModalOpened(false)}
+        onSuccess={() => window.location.reload()}
       />
 
       <DeleteConfirmModal
@@ -1041,8 +1385,31 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         onConfirm={actions.handleConfirmDelete}
         isDeleting={actions.isDeleting}
       />
+
+      <StopRoomConfirmModal
+        room={room}
+        opened={actions.stopModalOpened}
+        onClose={() => actions.setStopModalOpened(false)}
+        onConfirm={actions.handleStopSession}
+        isStopping={actions.isStopping}
+      />
+
+      <InfoActionModal
+        action={actions.infoModalAction}
+        detailsPath={actions.detailsPath}
+        onClose={() => actions.setInfoModalAction(null)}
+      />
+
+      {actions.inviteModalOpened && (
+        <InviteModal
+          roomId={room.roomId}
+          passcode={room.currentPasscode || undefined}
+          closeInviteModal={() => actions.setInviteModalOpened(false)}
+        />
+      )}
     </div>
   );
+
 };
 
 // --- Main Wrapper ---

@@ -29,8 +29,24 @@ export interface RoomSummary {
   isPermanent?: boolean;
 }
 
-const useRooms = (user: any) => {
+interface RoomStatsData {
+  total: number;
+  active: number;
+  expiring: number;
+  finished: number;
+}
+
+const useRooms = (
+  user: any,
+  page: number,
+  pageSize: number,
+  searchQuery: string,
+  sortOption: string,
+  filterOption: string
+) => {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [stats, setStats] = useState<RoomStatsData>({ total: 0, active: 0, expiring: 0, finished: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,13 +60,27 @@ const useRooms = (user: any) => {
     }
     try {
       const token = await getAccessToken();
+      const params = new URLSearchParams({
+        uid: user.id,
+        token: token || "",
+        page: String(page),
+        limit: String(pageSize),
+        sort: sortOption,
+      });
+      if (searchQuery.trim()) params.append("search", searchQuery.trim());
+      if (filterOption === "protected") {
+        params.append("access", "protected");
+      } else if (filterOption !== "all") {
+        params.append("status", filterOption);
+      }
+
       let response: Response | undefined;
       const candidatesToTry = [serverPath, ...serverCandidates.filter((c: string) => c !== serverPath)];
 
       for (let i = 0; i < candidatesToTry.length; i++) {
         const candidate = candidatesToTry[i];
         try {
-          const res = await fetch(`${candidate}/listRooms?uid=${user.id}&token=${token}`);
+          const res = await fetch(`${candidate}/listRooms?${params.toString()}`);
           if (res.ok) {
             response = res;
             if (candidate !== serverPath) {
@@ -76,14 +106,21 @@ const useRooms = (user: any) => {
         throw new Error(errMsg);
       }
       const data = await response.json();
-      setRooms(data);
+      if (data && Array.isArray(data.rooms)) {
+        setRooms(data.rooms);
+        setTotalCount(data.total ?? data.rooms.length);
+        if (data.stats) setStats(data.stats);
+      } else if (Array.isArray(data)) {
+        setRooms(data);
+        setTotalCount(data.length);
+      }
       setError(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, page, pageSize, searchQuery, sortOption, filterOption]);
 
   useEffect(() => {
     fetchRooms(false);
@@ -99,6 +136,8 @@ const useRooms = (user: any) => {
       });
       if (response.ok) {
         setRooms(prev => prev.filter(r => r.roomId !== roomId));
+        setTotalCount(prev => Math.max(0, prev - 1));
+        fetchRooms(true);
         return true;
       }
       return false;
@@ -127,12 +166,11 @@ const useRooms = (user: any) => {
     }
   };
 
-  return { rooms, loading, error, deleteRoom, updateRoomCover, refresh: fetchRooms };
+  return { rooms, totalCount, stats, loading, error, deleteRoom, updateRoomCover, refresh: fetchRooms };
 };
 
 export const MyRooms = () => {
   const { user } = useContext(MetadataContext);
-  const { rooms, loading, error, deleteRoom, updateRoomCover } = useRooms(user);
   
   useDocumentMetadata({
     title: "My Rooms",
@@ -140,8 +178,37 @@ export const MyRooms = () => {
   });
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortOption, setSortOption] = useState("newest");
-  
+  const [filterOption, setFilterOption] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 12;
+
+  // Debounce search typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const {
+    rooms,
+    totalCount,
+    stats,
+    loading,
+    error,
+    deleteRoom,
+    updateRoomCover,
+  } = useRooms(
+    user,
+    currentPage,
+    PAGE_SIZE,
+    debouncedSearch,
+    sortOption,
+    filterOption
+  );
+
   const [viewMode, setViewModeState] = useState<'grid' | 'stack'>(() => {
     try {
       const stored = localStorage.getItem('cowatch-room-view-mode');
@@ -157,55 +224,21 @@ export const MyRooms = () => {
     } catch (e) {}
   }, []);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  
   const history = useHistory();
-  const PAGE_SIZE = 12;
 
-  // Reset to page 1 when search or sort changes
+  const handleClearAllFilters = useCallback(() => {
+    setFilterOption("all");
+    setSearchQuery("");
+  }, []);
+
+  const hasActiveFilters =
+    filterOption !== "all" ||
+    searchQuery.trim().length > 0;
+
+  // Reset to page 1 when search, sort, or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, sortOption]);
-
-  const filteredAndSortedRooms = useMemo(() => {
-    let result = rooms;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(r =>
-        r.roomTitle?.toLowerCase().includes(q) ||
-        r.roomDescription?.toLowerCase().includes(q)
-      );
-    }
-
-    result = [...result].sort((a, b) => {
-      if (sortOption === "newest") {
-        return new Date(b.creationTime).getTime() - new Date(a.creationTime).getTime();
-      } else if (sortOption === "oldest") {
-        return new Date(a.creationTime).getTime() - new Date(b.creationTime).getTime();
-      } else if (sortOption === "title-asc") {
-        return (a.roomTitle || "").localeCompare(b.roomTitle || "");
-      } else if (sortOption === "title-desc") {
-        return (b.roomTitle || "").localeCompare(a.roomTitle || "");
-      } else if (sortOption === "expiring") {
-        const aIsActive = a.status === "active" || a.status === "expiring";
-        const bIsActive = b.status === "active" || b.status === "expiring";
-        if (aIsActive && !bIsActive) return -1;
-        if (!aIsActive && bIsActive) return 1;
-        if (aIsActive && bIsActive && a.expiresAt && b.expiresAt) {
-          return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
-        }
-        return 0;
-      }
-      return 0;
-    });
-
-    return result;
-  }, [rooms, searchQuery, sortOption]);
-
-  const paginatedRooms = useMemo(() => {
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
-    return filteredAndSortedRooms.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [filteredAndSortedRooms, currentPage]);
+  }, [debouncedSearch, sortOption, filterOption]);
 
   if (!user && !loading) {
     return (
@@ -224,16 +257,19 @@ export const MyRooms = () => {
           {!error && (
             <RoomStats
               rooms={rooms}
-              loading={loading && rooms.length === 0}
+              loading={loading && totalCount === 0}
+              selectedStatus={filterOption}
+              onSelectStatus={setFilterOption}
+              statsOverride={stats}
             />
           )}
         </Hero>
 
-        {loading && rooms.length === 0 ? (
+        {loading && totalCount === 0 ? (
           <Center style={{ minHeight: "200px" }}><Loader size="lg" color="violet" /></Center>
         ) : error ? (
           <Center style={{ minHeight: "200px" }}><Text c="red">{error}</Text></Center>
-        ) : rooms.length === 0 ? (
+        ) : totalCount === 0 && !hasActiveFilters ? (
           <div style={{ textAlign: "center", padding: "64px 0", background: "var(--bg-surface)", borderRadius: "16px", border: "1px solid var(--border-subtle)", marginTop: "32px" }}>
             <Title order={3} mb="sm" style={{ color: "var(--text-primary)" }}>No rooms yet</Title>
             <Text c="dimmed" mb="lg">Create a room to start watching together.</Text>
@@ -250,11 +286,13 @@ export const MyRooms = () => {
               setSortOption={setSortOption}
               viewMode={viewMode}
               setViewMode={setViewMode}
+              filterOption={filterOption}
+              setFilterOption={setFilterOption}
             />
 
             <div className={styles.roomSection}>
               <div className={viewMode === 'grid' ? styles.roomGrid : styles.roomList}>
-                {paginatedRooms.map(room => (
+                {rooms.map(room => (
                   <RoomCard
                     key={room.roomId}
                     room={room}
@@ -265,16 +303,30 @@ export const MyRooms = () => {
                 ))}
               </div>
 
-              {filteredAndSortedRooms.length === 0 && (
-                <Center style={{ minHeight: "200px" }}>
-                  <Text c="dimmed">No rooms match your search.</Text>
+              {rooms.length === 0 && (
+                <Center style={{ minHeight: "200px", flexDirection: "column", gap: 12 }}>
+                  <Text c="dimmed">
+                    {hasActiveFilters
+                      ? "No rooms match your filter or search criteria."
+                      : "No rooms found."}
+                  </Text>
+                  {hasActiveFilters && (
+                    <Button
+                      variant="subtle"
+                      color="violet"
+                      size="xs"
+                      onClick={handleClearAllFilters}
+                    >
+                      Clear all filters
+                    </Button>
+                  )}
                 </Center>
               )}
 
               <RoomPagination 
                 currentPage={currentPage}
                 pageSize={PAGE_SIZE}
-                totalItems={filteredAndSortedRooms.length}
+                totalItems={totalCount}
                 onPageChange={setCurrentPage}
               />
             </div>
