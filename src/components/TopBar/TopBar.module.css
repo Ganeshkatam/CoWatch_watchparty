@@ -46,19 +46,18 @@
   color: transparent;
 }
 
-/* Centered Middle Navigation */
+/* Centered Flat Middle Navigation */
 .middleNav {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
-  border-radius: 9999px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 .middleNavLink {
@@ -66,24 +65,24 @@
   align-items: center;
   justify-content: center;
   padding: 6px 14px;
-  border-radius: 9999px;
-  font-size: 13.5px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.15s ease, background-color 0.15s ease;
   user-select: none;
   white-space: nowrap;
 }
 
 .middleNavLink:hover {
   color: var(--text-primary);
-  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.05));
+  background: var(--bg-surface, rgba(255, 255, 255, 0.06));
 }
 
 .middleNavLinkActive {
   color: var(--color-violet);
-  background: var(--color-violet-light, rgba(139, 92, 246, 0.12));
+  background: var(--color-violet-light, rgba(139, 92, 246, 0.1));
   font-weight: 600;
 }
 
