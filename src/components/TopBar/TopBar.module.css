@@ -52,70 +52,28 @@
   gap: 12px;
 }
 
-/* User Profile Pill */
-.profilePill {
-  display: inline-flex;
+/* User Avatar Button */
+.avatarButton {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 12px 4px 4px;
+  justify-content: center;
+  padding: 0;
   border-radius: 9999px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: 2px solid transparent;
   cursor: pointer;
-  user-select: none;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: var(--shadow-sm);
+  outline: none;
 }
 
-.profilePill:hover {
-  transform: translateY(-1px);
+.avatarButton:hover {
+  transform: scale(1.06);
   border-color: var(--color-violet);
   box-shadow: var(--shadow-accent);
 }
 
-.avatarWrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.statusDot {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--color-success);
-  border: 2px solid var(--bg-surface);
-  box-shadow: var(--shadow-success);
-}
-
-.profileInfo {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.profileName {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chevron {
-  color: var(--text-muted);
-  transition: transform 0.2s ease, color 0.2s ease;
-}
-
-.profilePill:hover .chevron {
-  color: var(--color-violet);
-  transform: translateY(1px);
+.avatarButton:focus-visible {
+  border-color: var(--color-violet);
 }
 
 /* Quick Theme Toggle Button */
@@ -140,20 +98,20 @@
   box-shadow: var(--shadow-accent);
 }
 
-.desktopActions {
+.desktopButtons {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.mobileActions {
-  display: none;
-  align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .hamburger {
   color: var(--text-primary);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.hamburger:hover {
+  transform: scale(1.08);
 }
 
 /* Mobile Drawer Styles */
@@ -333,11 +291,8 @@
 }
 
 @media (max-width: 768px) {
-  .desktopActions {
+  .desktopButtons {
     display: none;
-  }
-  .mobileActions {
-    display: flex;
   }
 }
 
@@ -348,13 +303,6 @@
   }
   .actionsGroup {
     gap: 8px;
-  }
-  .profileInfo,
-  .chevron {
-    display: none;
-  }
-  .profilePill {
-    padding: 2px;
   }
 }
 

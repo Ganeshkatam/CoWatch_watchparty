@@ -188,142 +188,31 @@ export class SignInButton extends React.Component<{}> {
   render() {
     if (this.context.user) {
       return (
-        <Menu shadow="xl" width={240} position="bottom-end" offset={8}>
-          <Menu.Target>
-            <div className={styles.profilePill}>
-              <div className={styles.avatarWrap}>
-                <Avatar
-                  src={this.context.avatarUrl}
-                  size={30}
-                  radius="xl"
-                />
-                <span className={styles.statusDot} />
-              </div>
-              <div className={styles.profileInfo}>
-                <span className={styles.profileName}>
-                  {this.context.displayName || "My Account"}
-                </span>
-              </div>
-              <IconChevronDown size={14} className={styles.chevron} />
-            </div>
-          </Menu.Target>
-
-          <Menu.Dropdown>
-            <div
-              style={{
-                padding: "8px 10px 10px 10px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <Avatar size={36} radius="xl" src={this.context.avatarUrl} />
-              <div style={{ overflow: "hidden", flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: "13.5px",
-                    color: "var(--text-primary)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {this.context.displayName}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11.5px",
-                    color: "var(--text-muted)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {this.context.user?.email}
-                </div>
-              </div>
-            </div>
-
-            <Menu.Divider />
-
-            <Menu.Label>Navigation</Menu.Label>
-            <Menu.Item
-              component={Link}
-              to="/rooms"
-              leftSection={<IconDatabase size={16} stroke={1.5} />}
-            >
-              My rooms
-            </Menu.Item>
-            <Menu.Item
-              component={Link}
-              to="/create"
-              leftSection={<IconCirclePlusFilled size={16} stroke={1.5} />}
-            >
-              Create room
-            </Menu.Item>
-            <Menu.Item
-              component={Link}
-              to="/join"
-              leftSection={<IconUsers size={16} stroke={1.5} />}
-            >
-              Join a room
-            </Menu.Item>
-
-            <Menu.Divider />
-
-            <Menu.Label>Account</Menu.Label>
-            <Menu.Item
-              component={Link}
-              to="/profile"
-              leftSection={<IconSettings size={16} stroke={1.5} />}
-            >
-              Settings
-            </Menu.Item>
-
-            <Menu.Divider />
-
-            <ThemeMenuItems />
-
-            <Menu.Divider />
-
-            <Menu.Item
-              color="red"
-              leftSection={<IconLogout size={16} stroke={1.5} />}
-              onClick={async () => {
-                await supabase.auth.signOut();
-              }}
-            >
-              Sign out
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        <Tooltip label="Settings" withArrow>
+          <Link
+            to="/profile"
+            className={styles.avatarButton}
+            aria-label="Settings"
+          >
+            <Avatar
+              src={this.context.avatarUrl}
+              size={34}
+              radius="xl"
+            />
+          </Link>
+        </Tooltip>
       );
     }
     return (
-      <React.Fragment>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <Button
-            component={Link}
-            to="/login"
-            variant="light"
-            color="violet"
-            leftSection={<IconLogin size={16} />}
-          >
-            Sign in
-          </Button>
-          <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <Button variant="subtle" px={8}>
-                <IconSettings size={20} />
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <ThemeMenuItems />
-            </Menu.Dropdown>
-          </Menu>
-        </div>
-      </React.Fragment>
+      <Button
+        component={Link}
+        to="/login"
+        variant="light"
+        color="violet"
+        leftSection={<IconLogin size={16} />}
+      >
+        Sign in
+      </Button>
     );
   }
 }
@@ -421,60 +310,52 @@ export const TopBar = (props: {
         </div>
       ) : null}
 
-      {/* Desktop Actions */}
-      <div className={styles.desktopActions}>
-        {!props.hideMyRooms && context.user && <ListRoomsButton />}
-        {!props.hideJoinRoom && <JoinRoomButton size="sm" />}
-        {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
-        {props.showExit && (
-          <Button
-            color="red"
-            variant="light"
-            onClick={() => {
-              window.location.assign("/");
-            }}
-            leftSection={<IconX size={16} />}
-          >
-            Exit
-          </Button>
-        )}
-        {props.onOpenSettings && (
-          <Button
-            color="violet"
-            variant="light"
-            onClick={props.onOpenSettings}
-            leftSection={<IconSettings size={16} />}
-          >
-            Settings
-          </Button>
-        )}
-        {!props.hideGetStarted && !context.user && <GetStartedButton />}
-        {!props.hideSignin && <SignInButton />}
-      </div>
+      {/* Actions Group */}
+      <div className={styles.actionsGroup}>
+        {/* Desktop Buttons */}
+        <div className={styles.desktopButtons}>
+          {!props.hideMyRooms && context.user && <ListRoomsButton />}
+          {!props.hideJoinRoom && <JoinRoomButton size="sm" />}
+          {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
+          {props.showExit && (
+            <Button
+              color="red"
+              variant="light"
+              onClick={() => {
+                window.location.assign("/");
+              }}
+              leftSection={<IconX size={16} />}
+            >
+              Exit
+            </Button>
+          )}
+          {props.onOpenSettings && (
+            <Button
+              color="violet"
+              variant="light"
+              onClick={props.onOpenSettings}
+              leftSection={<IconSettings size={16} />}
+            >
+              Settings
+            </Button>
+          )}
+          {!props.hideGetStarted && !context.user && <GetStartedButton />}
+        </div>
 
-      {/* Mobile Actions: Hamburger */}
-      <div className={styles.mobileActions}>
-        {props.showExit && (
-          <Button
-            color="red"
-            variant="light"
-            size="xs"
-            onClick={() => {
-              window.location.assign("/");
-            }}
-            leftSection={<IconX size={14} />}
-          >
-            Exit
-          </Button>
-        )}
-        <Burger
-          opened={drawerOpened}
-          onClick={() => setDrawerOpened((o) => !o)}
-          size="sm"
-          color="var(--text-primary)"
-          aria-label="Toggle navigation menu"
-          className={styles.hamburger}
-        />
+        {/* User Avatar linking to Settings or Sign in button */}
+        {!props.hideSignin && <SignInButton />}
+
+        {/* Separate Hamburger for remaining things */}
+        <Tooltip label="Menu" withArrow>
+          <Burger
+            opened={drawerOpened}
+            onClick={() => setDrawerOpened((o) => !o)}
+            size="sm"
+            color="var(--text-primary)"
+            aria-label="Toggle navigation menu"
+            className={styles.hamburger}
+          />
+        </Tooltip>
       </div>
 
       {/* Mobile Navigation Drawer */}
