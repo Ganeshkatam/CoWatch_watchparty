@@ -591,6 +591,28 @@ export const resolveProfile = (
     user.user_metadata?.picture ||
     null,
 });
+export const autoCreateUsername = (
+  name?: string | null,
+  email?: string | null,
+  suffix?: number
+): string => {
+  const normalized = (name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const emailPrefix = email
+    ? email.split("@")[0].toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+    : "";
+
+  const base = normalized || emailPrefix || "user";
+  const num = suffix ?? Math.floor(1000 + Math.random() * 9000);
+  return `${base.slice(0, 18)}_${num}`;
+};
+
 export const getFileName = (input: string) => {
   return input.split("/").slice(-1)[0];
 };

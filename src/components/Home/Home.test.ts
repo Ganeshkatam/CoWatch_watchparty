@@ -1,4 +1,4 @@
-import { parseRoomInput } from "../../utils/utils";
+import { parseRoomInput, autoCreateUsername } from "../../utils/utils";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -66,4 +66,30 @@ assert(parseRoomInput("   ") === null, "Whitespace should return null");
 assert(parseRoomInput("room code with spaces") === null, "Spaces in code should return null");
 assert(parseRoomInput("room!@#$%^&*()") === null, "Special characters should return null");
 
-console.log("All parseRoomInput tests passed successfully!");
+// 7. autoCreateUsername tests
+assert(
+  autoCreateUsername("Ganesh Katam", null, 1234) === "ganesh_katam_1234",
+  "multi-word name should convert to snake_case with suffix"
+);
+assert(
+  autoCreateUsername("Jane", null, 5555) === "jane_5555",
+  "single name should keep handle format"
+);
+assert(
+  autoCreateUsername("François Côté", null, 9999) === "francois_cote_9999",
+  "accents should be normalized"
+);
+assert(
+  autoCreateUsername("", "alex@example.com", 2026) === "alex_2026",
+  "empty name should fall back to email prefix"
+);
+assert(
+  autoCreateUsername("", "", 4040) === "user_4040",
+  "empty name and email should fall back to user prefix"
+);
+assert(
+  autoCreateUsername("A Very Long Profile Name Exceeding Eighteen Characters", null, 1111).startsWith("a_very_long_profil_1111"),
+  "long names should be cleanly truncated"
+);
+
+console.log("All parseRoomInput and autoCreateUsername tests passed successfully!");

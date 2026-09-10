@@ -20,12 +20,18 @@ for (const email of [
   "user@randommail.example",
   "user@gmail.com.evil.com",
   "user@sub.outlook.com",
+]) {
+  assert.equal(isAllowedEmailDomain(email), false, email);
+}
+
+for (const email of [
   "usergmail.com",
   "user@@gmail.com",
   "@gmail.com",
   "user@",
   "user @gmail.com",
   "user@gmail .com",
+  "",
 ]) {
   assert.equal(isAllowedEmailDomain(email), false, email);
   assert.equal(extractEmailDomain(email), null, email);

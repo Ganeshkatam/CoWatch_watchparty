@@ -1,4 +1,5 @@
 import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
 import "./index.css";
 
 import React, { lazy, Suspense } from "react";
@@ -12,7 +13,7 @@ import {
   getCachedSupabaseUser,
   safeGetSession,
 } from "./utils/supabaseClient";
-import { serverPath, resolveProfile } from "./utils/utils";
+import { serverPath, resolveProfile, autoCreateUsername } from "./utils/utils";
 import { TopBar } from "./components/TopBar/TopBar";
 import { Footer } from "./components/Footer/Footer";
 import { RequireGuest } from "./components/Auth/RequireGuest";
@@ -301,7 +302,9 @@ class CoWatch extends React.Component {
                     {
                       id: user.id,
                       display_name: defaultName,
-                      username: defaultName,
+                      username:
+                        user.user_metadata?.username?.trim() ||
+                        autoCreateUsername(defaultName, user.email),
                       avatar_url: defaultAvatar,
                     },
                     { onConflict: "id" }
@@ -444,7 +447,7 @@ class CoWatch extends React.Component {
             setTimeout(() => {
               handleSession(data.session);
             }, 0);
-          } else if (!hasCachedSupabaseToken()) {
+          } else {
             setTimeout(() => {
               handleSession(null);
             }, 0);

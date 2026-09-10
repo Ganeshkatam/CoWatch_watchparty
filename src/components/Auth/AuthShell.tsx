@@ -32,7 +32,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
     features = (
       <div className={styles.brandFeatures}>
         <div className={styles.featureItem}>
-          <span className={styles.featureCheck}>✓</span> Claim your custom username
+          <span className={styles.featureCheck}>✓</span> Personalized profile and rooms
         </div>
         <div className={styles.featureItem}>
           <span className={styles.featureCheck}>✓</span> Save and manage permanent rooms
