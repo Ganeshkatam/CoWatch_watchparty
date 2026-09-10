@@ -315,6 +315,70 @@ export function getInviteMessage(roomId: string, passcode?: string): string {
   return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: [Passcode Required - Ask Host]`;
 }
 
+/**
+ * Parses user input into a canonical room ID / slug.
+ * Supports:
+ * - abc123
+ * - /abc123
+ * - https://<host>/join/abc123
+ * - https://<host>/join/abc123/...
+ * - https://<host>/watch/abc123
+ * - /join/abc123
+ * - /watch/abc123
+ * Rejects unrelated URLs and malformed inputs.
+ */
+export function parseRoomInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Handle absolute URLs
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const parsed = new URL(trimmed);
+      const pathname = parsed.pathname;
+
+      if (pathname.includes("/join/")) {
+        const afterJoin = pathname.split("/join/")[1] || "";
+        const segment = afterJoin.split("/")[0]?.split("?")[0];
+        return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+      }
+
+      if (pathname.includes("/watch/")) {
+        const afterWatch = pathname.split("/watch/")[1] || "";
+        const segment = afterWatch.split("/")[0]?.split("?")[0];
+        return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Handle path-based inputs
+  if (trimmed.startsWith("/join/")) {
+    const segment = trimmed.slice(6).split("/")[0]?.split("?")[0];
+    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+  }
+
+  if (trimmed.startsWith("/watch/")) {
+    const segment = trimmed.slice(7).split("/")[0]?.split("?")[0];
+    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+  }
+
+  if (trimmed.startsWith("/")) {
+    const segment = trimmed.slice(1).split("/")[0]?.split("?")[0];
+    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+  }
+
+  // Handle plain room code or slug
+  if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return null;
+}
+
 export async function getMediaPathResults(
   mediaPath: string,
   query: string,
