@@ -43,6 +43,7 @@ const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then(
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
 const Join = lazy(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
 const PostRoom = lazy(() => import("./components/PostRoom/PostRoom").then((m) => ({ default: m.PostRoom })));
+const MediaPreflight = lazy(() => import("./components/Preflight/MediaPreflight").then((m) => ({ default: m.MediaPreflight })));
 
 const RouteFallback = () => (
   <Center style={{ minHeight: "60vh", width: "100%" }}>
@@ -510,6 +511,17 @@ class CoWatch extends React.Component {
                           path={["/join", "/join/:roomId"]}
                           exact
                           component={Join}
+                        />
+                        <Route
+                          path="/preflight/:roomId"
+                          exact
+                          render={(props) => {
+                            return (
+                              <RequireVerifiedEmail>
+                                <MediaPreflight roomId={props.match.params.roomId} location={props.location} />
+                              </RequireVerifiedEmail>
+                            );
+                          }}
                         />
                         <Route
                           path="/create"

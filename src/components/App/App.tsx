@@ -190,6 +190,10 @@ interface AppState {
   isWaitingForHost: boolean;
   isHostSessionEnded: boolean;
   isOwner: boolean;
+  initialCameraOn?: boolean;
+  initialMicOn?: boolean;
+  cameraDeviceId?: string;
+  micDeviceId?: string;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -265,6 +269,10 @@ export class App extends React.Component<AppProps, AppState> {
     hostName: undefined,
 
     passcode: undefined,
+    initialCameraOn: undefined,
+    initialMicOn: undefined,
+    cameraDeviceId: undefined,
+    micDeviceId: undefined,
     inviteLink: "",
     roomTitle: "",
     roomDescription: "",
@@ -656,13 +664,32 @@ export class App extends React.Component<AppProps, AppState> {
       // INVARIANT: A URL can identify a room, but can NEVER authenticate a participant.
       // Any query credentials (?passcode=, ?pass=, ?password=) are strictly IGNORED and NEVER copied into state.
       // Passcode is strictly read from explicit invocation or untrusted route transport state.
-      const routePasscode =
-        (this.props.location?.state as any)?.passcode ||
-        (window.history?.state as any)?.usr?.passcode ||
-        (window.history?.state as any)?.passcode;
+      const routeLocationState =
+        (this.props.location?.state as any) ||
+        (window.history?.state as any)?.usr ||
+        (window.history?.state as any);
+      const routePasscode = routeLocationState?.passcode;
+      const initialCameraOn = routeLocationState?.initialCameraOn;
+      const initialMicOn = routeLocationState?.initialMicOn;
+      const cameraDeviceId = routeLocationState?.cameraDeviceId;
+      const micDeviceId = routeLocationState?.micDeviceId;
+
       const passcode = explicitPasscode || this.state.passcode || routePasscode || "";
       if (passcode && passcode !== this.state.passcode) {
-        this.setState({ passcode });
+        this.setState({
+          passcode,
+          initialCameraOn: initialCameraOn ?? this.state.initialCameraOn,
+          initialMicOn: initialMicOn ?? this.state.initialMicOn,
+          cameraDeviceId: cameraDeviceId ?? this.state.cameraDeviceId,
+          micDeviceId: micDeviceId ?? this.state.micDeviceId,
+        });
+      } else if (initialCameraOn !== undefined || initialMicOn !== undefined) {
+        this.setState({
+          initialCameraOn: initialCameraOn ?? this.state.initialCameraOn,
+          initialMicOn: initialMicOn ?? this.state.initialMicOn,
+          cameraDeviceId: cameraDeviceId ?? this.state.cameraDeviceId,
+          micDeviceId: micDeviceId ?? this.state.micDeviceId,
+        });
       }
 
       try {
@@ -3290,6 +3317,10 @@ export class App extends React.Component<AppProps, AppState> {
                       getLeaderTime={this.getLeaderTime}
                       roomId={this.state.roomId}
                       passcode={this.state.passcode}
+                      initialCameraOn={this.state.initialCameraOn}
+                      initialMicOn={this.state.initialMicOn}
+                      cameraDeviceId={this.state.cameraDeviceId}
+                      micDeviceId={this.state.micDeviceId}
                     />
                   </VideoChatErrorBoundary>
                 </Tabs.Panel>

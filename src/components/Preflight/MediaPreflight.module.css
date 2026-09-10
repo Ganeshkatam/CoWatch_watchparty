@@ -1,0 +1,379 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.header {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brandLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.brandName {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.headerRoomInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.roomTitleText {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomIdBadge {
+  font-family: var(--mantine-font-family-monospace, monospace);
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.studioContainer {
+  width: 100%;
+  max-width: 1040px;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+/* Left Column: Preview Stage */
+.stageCard {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.stageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stageTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.stageSubtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 2px 0 0 0;
+}
+
+.previewWrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #0b0c10;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+}
+
+.previewVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Mirrored for natural user framing */
+}
+
+.cameraOffState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.avatarFallback {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(99, 102, 241, 0.2) 100%);
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cameraOffLabel {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Floating Audio Meter Bar on Preview */
+.liveMeterContainer {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.meterTrack {
+  width: 50px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  background: #10b981;
+  transition: width 0.08s ease-out;
+  border-radius: 4px;
+}
+
+.meterMutedText {
+  color: #f87171;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+/* Controls Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.controlButton {
+  transition: all 0.2s ease;
+}
+
+/* Right Column: Room Gate & Summary */
+.infoCard {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.roomSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.roomHeadline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roomTitle {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.roomDescription {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.userPreview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.userPreviewInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.userLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.userName {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Diagnostics Matrix */
+.diagnosticsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diagnosticsHeader {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.diagnosticsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diagnosticItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.diagnosticLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.diagnosticStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Action Area */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.joinButton {
+  height: 46px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.backLink {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 6px;
+}
+
+.backLink:hover {
+  color: var(--text-primary);
+}
+
+/* Device Selector Popover Body */
+.deviceSelectGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 920px) {
+  .studioContainer {
+    grid-template-columns: 1fr;
+    max-width: 580px;
+    gap: 20px;
+  }
+}

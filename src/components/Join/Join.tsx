@@ -208,9 +208,9 @@ export const Join: React.FC = () => {
       return;
     }
 
-    // If caller is host, advance directly to watch
+    // If caller is host, advance directly to preflight green room
     if (roomInfo?.isOwner) {
-      history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+      history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`);
       return;
     }
 
@@ -265,9 +265,14 @@ export const Join: React.FC = () => {
       }
 
       // Pre-navigation gate succeeded:
-      // Navigate to /watch/:roomId with untrusted transport state.
-      // Socket.IO performs authoritative second verification against the database hash.
-      history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`, {
+      // Cache passcode for session resiliency and advance to Green Room (preflight).
+      // Device readiness is tested in preflight before final watch room entry.
+      // Socket.IO performs authoritative second verification against the database hash upon room entry.
+      try {
+        sessionStorage.setItem(`cowatch_pass_${cleanRouteRoomId}`, cleanPass);
+      } catch (_) {}
+
+      history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`, {
         passcode: cleanPass,
       });
     } catch (err) {

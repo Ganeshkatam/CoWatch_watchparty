@@ -40,6 +40,10 @@ interface VideoChatProps {
   roomId?: string;
   passcode?: string;
   onOpenInviteModal?: () => void;
+  initialCameraOn?: boolean;
+  initialMicOn?: boolean;
+  cameraDeviceId?: string;
+  micDeviceId?: string;
 }
 
 export class VideoChatErrorBoundary extends React.Component<
@@ -108,8 +112,14 @@ export class VideoChat extends React.Component<VideoChatProps> {
   private lastPrefMicOn: boolean = false;
 
   componentDidMount() {
-    this.lastPrefCameraOn = this.context.profile?.pref_camera_on ?? false;
-    this.lastPrefMicOn = this.context.profile?.pref_mic_on ?? false;
+    this.lastPrefCameraOn =
+      this.props.initialCameraOn !== undefined
+        ? this.props.initialCameraOn
+        : (this.context.profile?.pref_camera_on ?? false);
+    this.lastPrefMicOn =
+      this.props.initialMicOn !== undefined
+        ? this.props.initialMicOn
+        : (this.context.profile?.pref_mic_on ?? false);
     this.socket?.on("signal", this.handleSignal);
   }
 
@@ -224,15 +234,26 @@ export class VideoChat extends React.Component<VideoChatProps> {
     try {
       let stream = new MediaStream([]);
 
-      const prefCameraOn = this.context.profile?.pref_camera_on ?? true;
-      const prefMicOn = this.context.profile?.pref_mic_on ?? true;
+      const prefCameraOn =
+        this.props.initialCameraOn !== undefined
+          ? this.props.initialCameraOn
+          : (this.context.profile?.pref_camera_on ?? true);
+      const prefMicOn =
+        this.props.initialMicOn !== undefined
+          ? this.props.initialMicOn
+          : (this.context.profile?.pref_mic_on ?? true);
 
       if (prefCameraOn || prefMicOn) {
         try {
-          stream = await navigator?.mediaDevices?.getUserMedia({
-            audio: prefMicOn,
-            video: prefCameraOn,
-          });
+          const constraints: MediaStreamConstraints = {
+            audio: prefMicOn
+              ? (this.props.micDeviceId ? { deviceId: { exact: this.props.micDeviceId } } : true)
+              : false,
+            video: prefCameraOn
+              ? (this.props.cameraDeviceId ? { deviceId: { exact: this.props.cameraDeviceId } } : true)
+              : false,
+          };
+          stream = await navigator?.mediaDevices?.getUserMedia(constraints);
         } catch (e) {
           console.warn("Failed initial getUserMedia with audio+video, falling back:", e);
           try {
