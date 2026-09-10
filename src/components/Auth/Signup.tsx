@@ -9,14 +9,68 @@ import {
   Text,
   Alert,
   Divider,
+  Stack,
 } from "@mantine/core";
-import { IconBrandGoogleFilled } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconArrowRight,
+  IconBrandGoogleFilled,
+  IconCalendar,
+  IconShieldCheck,
+  IconLock,
+} from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
+const MINIMUM_AGE = 13;
+
+const getTodayIsoDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getLatestAllowedBirthdate = () => {
+  const today = new Date();
+  today.setFullYear(today.getFullYear() - MINIMUM_AGE);
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const calculateAge = (birthdate: string) => {
+  const [year, month, day] = birthdate.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  const dob = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(dob.getTime()) ||
+    dob.getFullYear() !== year ||
+    dob.getMonth() !== month - 1 ||
+    dob.getDate() !== day
+  ) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const monthDelta = today.getMonth() - (month - 1);
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < day)) {
+    age -= 1;
+  }
+  return age;
+};
+
 export const Signup = () => {
+  const [birthdate, setBirthdate] = useState("");
+  const [ageGateComplete, setAgeGateComplete] = useState(false);
+  const [underage, setUnderage] = useState(false);
+  const [ageError, setAgeError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +88,34 @@ export const Signup = () => {
   const history = useHistory();
   const location = useLocation();
 
+  const handleAgeVerification = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAgeError(null);
+    setUnderage(false);
+
+    if (!birthdate) {
+      setAgeError("Please enter your date of birth to continue.");
+      return;
+    }
+
+    const age = calculateAge(birthdate);
+    if (age === null || birthdate > getTodayIsoDate()) {
+      setAgeError("Please enter a valid date of birth.");
+      return;
+    }
+
+    if (age < MINIMUM_AGE) {
+      setUnderage(true);
+      return;
+    }
+
+    setAgeGateComplete(true);
+    setError(null);
+  };
+
   const handleGoogleSignIn = async () => {
+    if (!ageGateComplete) return;
+
     setError(null);
     setGoogleLoading(true);
     try {
@@ -43,10 +124,17 @@ export const Signup = () => {
       const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
       const redirectTo = `${window.location.origin}${redirectTarget}`;
 
+      // Supabase's browser OAuth flow does not provide a supported way to attach
+      // custom signup metadata to the auth.users INSERT. The database guard below
+      // therefore intentionally rejects brand-new OAuth accounts unless the
+      // provider flow is later upgraded to carry trusted age-verification data.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
+          queryParams: {
+            login_hint: email.trim() || undefined,
+          },
         },
       });
       if (error) throw error;
@@ -59,7 +147,6 @@ export const Signup = () => {
 
   const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
 
-  // Countdown timer for resend cooldown
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
@@ -68,9 +155,8 @@ export const Signup = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || !ageGateComplete) return;
 
-    // Clear previous states
     setError(null);
     setSuccess(null);
 
@@ -88,18 +174,18 @@ export const Signup = () => {
           data: {
             username: username.trim(),
             display_name: username.trim(),
+            birthdate,
+            age_verified: true,
           },
         },
       });
       if (error) throw error;
 
-      // If a session is returned, email confirmation is disabled -- auto-login
       if (data.session) {
         history.push("/");
         return;
       }
 
-      // Otherwise, email confirmation is required
       setError(null);
       setSuccess(
         "We've sent a confirmation link to your email address. Please confirm your email to sign in."
@@ -132,12 +218,98 @@ export const Signup = () => {
     }
   }, [email, resendCooldown]);
 
+  if (!ageGateComplete) {
+    return (
+      <div style={{ width: "100%" }}>
+        <Title
+          order={2}
+          ta="left"
+          fw={900}
+          style={{
+            background: "linear-gradient(45deg, var(--color-violet), var(--color-pink))",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          Age Verification Required
+        </Title>
+        <Text c="dimmed" size="sm" ta="left" mt={5}>
+          CoWatch requires age verification before you can create an account.
+        </Text>
+
+        <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
+          {underage ? (
+            <Stack gap="md" align="center">
+              <div className={styles.ageLockIcon} aria-hidden="true">
+                <IconLock size={28} />
+              </div>
+              <Text fw={700} ta="center">
+                Account creation is unavailable
+              </Text>
+              <Text c="dimmed" size="sm" ta="center">
+                Sorry, you must be at least {MINIMUM_AGE} years old to create a CoWatch account.
+              </Text>
+              <Button variant="default" fullWidth onClick={() => setBirthdate("")}> 
+                Check another date
+              </Button>
+            </Stack>
+          ) : (
+            <form onSubmit={handleAgeVerification}>
+              <Stack gap="md">
+                <div className={styles.ageBadge}>
+                  <IconShieldCheck size={18} />
+                  <span>Age verification</span>
+                </div>
+
+                <TextInput
+                  label="Date of birth"
+                  description={`You must be at least ${MINIMUM_AGE} years old to create an account.`}
+                  type="date"
+                  required
+                  autoFocus
+                  max={getLatestAllowedBirthdate()}
+                  value={birthdate}
+                  onChange={(e) => {
+                    setBirthdate(e.target.value);
+                    setAgeError(null);
+                  }}
+                  leftSection={<IconCalendar size={17} />}
+                  error={ageError ? <span><IconAlertCircle size={14} style={{ verticalAlign: "middle" }} /> {ageError}</span> : undefined}
+                />
+
+                <Button
+                  fullWidth
+                  type="submit"
+                  rightSection={<IconArrowRight size={18} />}
+                  disabled={!birthdate}
+                >
+                  Continue
+                </Button>
+
+                <Text size="xs" c="dimmed" ta="center">
+                  Your date of birth is used only for the account age requirement.
+                </Text>
+              </Stack>
+            </form>
+          )}
+        </Paper>
+
+        <Text size="sm" ta="center" mt="md" c="dimmed">
+          Already have an account?{" "}
+          <Link to="/login" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+            Sign in
+          </Link>
+        </Text>
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%" }}>
-      <Title 
-        order={2} 
-        ta="left" 
-        fw={900} 
+      <Title
+        order={2}
+        ta="left"
+        fw={900}
         style={{
           background: "linear-gradient(45deg, var(--color-violet), var(--color-pink))",
           WebkitBackgroundClip: "text",
@@ -147,16 +319,10 @@ export const Signup = () => {
         Create your account
       </Title>
       <Text c="dimmed" size="sm" ta="left" mt={5}>
-        Join CoWatch and watch together with friends.
+        Your age requirement has been verified. Join CoWatch and watch together with friends.
       </Text>
 
-      <Paper 
-        withBorder
-        p={30} 
-        mt={30} 
-        radius="lg" 
-        className={styles.authCard}
-      >
+      <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
         {error && (
           <Alert color="red" mb="md" title="Error">
             {error}
@@ -209,6 +375,7 @@ export const Signup = () => {
                 <TextInput
                   label="Email"
                   placeholder="your@email.com"
+                  type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
