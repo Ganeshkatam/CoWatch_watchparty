@@ -1,12 +1,11 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Redirect, useHistory, useLocation } from "react-router-dom";
+import { Link, Redirect, useHistory, useLocation } from "react-router-dom";
 import {
   Modal,
   Button,
   Avatar,
   Switch,
   Group,
-  Text,
   TextInput,
   SegmentedControl,
   Alert,
@@ -17,7 +16,7 @@ import { supabase } from "../../utils/supabaseClient";
 import { serverPath, openFileSelector } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import {
-  IconAlertTriangle,
+  IconArrowLeft,
   IconCircleCheckFilled,
   IconKeyFilled,
   IconLogout,
@@ -28,6 +27,8 @@ import {
   IconLock,
   IconPencil,
   IconCheck,
+  IconCamera,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -92,9 +93,9 @@ export const Profile: React.FC = () => {
   // Set document metadata based on active sub-route
   useEffect(() => {
     const titles: Record<string, string> = {
-      profile: "Profile | Account Settings",
-      preferences: "Preferences | Account Settings",
-      security: "Security | Account Settings",
+      profile: "Your profile | Settings",
+      preferences: "Preferences | Settings",
+      security: "Login & security | Settings",
     };
     const descriptions: Record<string, string> = {
       profile: "Manage your CoWatch profile identity and display name.",
@@ -103,7 +104,7 @@ export const Profile: React.FC = () => {
     };
 
     const cleanup = setDocumentMetadata({
-      title: titles[activeTab] || "Account Settings",
+      title: titles[activeTab] || "Settings",
       description: descriptions[activeTab] || "Manage your account settings.",
       noIndex: true,
     });
@@ -331,36 +332,17 @@ export const Profile: React.FC = () => {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
         <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 300, color: "var(--text-secondary)" }}>
-          Please sign in to view your account.
+          Please sign in to view your account settings.
         </h2>
       </div>
     );
   }
 
+  const effectiveDisplayName =
+    originalDisplayName || context.displayName || context.user?.email?.split("@")[0] || "User";
+
   return (
     <div className={styles.page}>
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .profile-btn {
-          transition: all 0.2s ease;
-        }
-        .profile-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-sm);
-        }
-        .glass-card {
-          background: var(--glass-bg);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          border: 1px solid var(--glass-border);
-          border-radius: 20px;
-          box-shadow: 0 8px 32px var(--glass-shadow);
-        }
-      `}</style>
-
       {/* Account Deletion Confirmation Modal */}
       <Modal
         opened={deleteConfirmOpen}
@@ -407,30 +389,60 @@ export const Profile: React.FC = () => {
         </div>
       </Modal>
 
-      <div className={`glass-card ${styles.card}`}>
-        {/* Decorative background glow */}
-        <div
-          style={{
-            position: "absolute",
-            top: "-50%",
-            left: "-50%",
-            width: "200%",
-            height: "200%",
-            background: "radial-gradient(circle at 40% 0%, rgba(139, 92, 246, 0.08) 0%, transparent 50%)",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
+      <div className={styles.container}>
+        {/* Left Sidebar Navigation */}
+        <aside className={styles.sidebar}>
+          <Link to="/" className={styles.backButton}>
+            <IconArrowLeft size={16} stroke={2} />
+            <span>Back to Home</span>
+          </Link>
 
-        {/* Page Header */}
-        <header className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>Account Settings</h1>
-          <p className={styles.pageSubtitle}>
-            Manage your personal profile, viewing preferences, and security settings.
-          </p>
-        </header>
+          <h1 className={styles.pageTitle}>Settings</h1>
 
-        {/* Mobile Navigation Tabs (visible only on mobile and small screens) */}
+          {/* Navigation Sections */}
+          <div className={styles.navSections}>
+            <div className={styles.navSection}>
+              <span className={styles.navSectionTitle}>ACCOUNT</span>
+              <button
+                type="button"
+                className={`${styles.navItem} ${isProfile ? styles.activeNavItem : ""}`}
+                onClick={() => handleTabChange("profile")}
+                aria-current={isProfile ? "page" : undefined}
+              >
+                <IconUser size={18} stroke={1.8} />
+                <span>Your profile</span>
+              </button>
+            </div>
+
+            <div className={styles.navSection}>
+              <span className={styles.navSectionTitle}>APP EXPERIENCE</span>
+              <button
+                type="button"
+                className={`${styles.navItem} ${isPreferences ? styles.activeNavItem : ""}`}
+                onClick={() => handleTabChange("preferences")}
+                aria-current={isPreferences ? "page" : undefined}
+              >
+                <IconSettings size={18} stroke={1.8} />
+                <span>Preferences</span>
+              </button>
+            </div>
+
+            <div className={styles.navSection}>
+              <span className={styles.navSectionTitle}>SECURITY & SIGN IN</span>
+              <button
+                type="button"
+                className={`${styles.navItem} ${isSecurity ? styles.activeNavItem : ""}`}
+                onClick={() => handleTabChange("security")}
+                aria-current={isSecurity ? "page" : undefined}
+              >
+                <IconLock size={18} stroke={1.8} />
+                <span>Login & security</span>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* Mobile Navigation Tabs (visible only on mobile/small screens) */}
         <nav className={styles.mobileNav} aria-label="Mobile account navigation">
           <button
             type="button"
@@ -438,8 +450,8 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("profile")}
             aria-current={isProfile ? "page" : undefined}
           >
-            <IconUser size={16} stroke={isProfile ? 2.2 : 1.6} />
-            <span>Profile</span>
+            <IconUser size={16} stroke={isProfile ? 2.2 : 1.8} />
+            <span>Your profile</span>
           </button>
 
           <button
@@ -448,7 +460,7 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("preferences")}
             aria-current={isPreferences ? "page" : undefined}
           >
-            <IconSettings size={16} stroke={isPreferences ? 2.2 : 1.6} />
+            <IconSettings size={16} stroke={isPreferences ? 2.2 : 1.8} />
             <span>Preferences</span>
           </button>
 
@@ -458,254 +470,176 @@ export const Profile: React.FC = () => {
             onClick={() => handleTabChange("security")}
             aria-current={isSecurity ? "page" : undefined}
           >
-            <IconLock size={16} stroke={isSecurity ? 2.2 : 1.6} />
-            <span>Security</span>
+            <IconLock size={16} stroke={isSecurity ? 2.2 : 1.8} />
+            <span>Login & security</span>
           </button>
         </nav>
 
-        {/* Side Panel Nav & Main Content Layout */}
-        <div className={styles.layout}>
-          {/* Left Side Panel Navigation (laptops, desktops, and large screens only) */}
-          <aside className={styles.sideNav} aria-label="Desktop account navigation">
-            {/* User Identity Snippet */}
-            <div className={styles.userBadge}>
-              <Avatar
-                src={context.avatarUrl}
-                size={38}
-                radius="xl"
-                className={styles.avatar}
-              />
-              <div className={styles.userBadgeDetails}>
-                <span className={styles.userBadgeName}>
-                  {originalDisplayName || context.displayName || context.user?.email?.split("@")[0]}
-                  {context.user?.user_metadata?.email_verified && (
-                    <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={15} />
-                  )}
-                </span>
-                <span className={styles.userBadgeEmail}>
-                  {context.user?.email}
-                </span>
-              </div>
-            </div>
+        {/* Main Content Card */}
+        <main className={styles.mainCard}>
+          {/* Header Banner */}
+          <div className={styles.cardHeader}>
+            <span className={styles.categoryTag}>
+              {isProfile ? "YOUR PROFILE" : isPreferences ? "APP EXPERIENCE" : "SECURITY & SIGN IN"}
+            </span>
+            <h2 className={styles.cardTitle}>
+              {isProfile ? "Your profile" : isPreferences ? "Preferences" : "Login & security"}
+            </h2>
+            <p className={styles.cardSubtitle}>
+              {isProfile
+                ? "Manage how you appear across CoWatch rooms and conversations."
+                : isPreferences
+                ? "Customize your playback, room interface, and appearance."
+                : "Manage your account password, sessions, and credentials."}
+            </p>
+          </div>
 
-            {/* Nav Item: Profile */}
-            <button
-              type="button"
-              className={`${styles.navItem} ${isProfile ? styles.activeNavItem : ""}`}
-              onClick={() => handleTabChange("profile")}
-              aria-current={isProfile ? "page" : undefined}
-            >
-              <div className={`${styles.navIconWrapper} ${isProfile ? styles.activeNavIconWrapper : ""}`}>
-                <IconUser size={18} stroke={isProfile ? 2.2 : 1.6} />
-              </div>
-              <div className={styles.navLabelWrapper}>
-                <span className={`${styles.navLabelTitle} ${isProfile ? styles.activeNavLabelTitle : ""}`}>
-                  Profile
-                </span>
-                <span className={styles.navLabelSubtitle}>Identity and photo</span>
-              </div>
-            </button>
-
-            {/* Nav Item: Preferences */}
-            <button
-              type="button"
-              className={`${styles.navItem} ${isPreferences ? styles.activeNavItem : ""}`}
-              onClick={() => handleTabChange("preferences")}
-              aria-current={isPreferences ? "page" : undefined}
-            >
-              <div className={`${styles.navIconWrapper} ${isPreferences ? styles.activeNavIconWrapper : ""}`}>
-                <IconSettings size={18} stroke={isPreferences ? 2.2 : 1.6} />
-              </div>
-              <div className={styles.navLabelWrapper}>
-                <span className={`${styles.navLabelTitle} ${isPreferences ? styles.activeNavLabelTitle : ""}`}>
-                  Preferences
-                </span>
-                <span className={styles.navLabelSubtitle}>Media, chat, theme</span>
-              </div>
-            </button>
-
-            {/* Nav Item: Security */}
-            <button
-              type="button"
-              className={`${styles.navItem} ${isSecurity ? styles.activeNavItem : ""}`}
-              onClick={() => handleTabChange("security")}
-              aria-current={isSecurity ? "page" : undefined}
-            >
-              <div className={`${styles.navIconWrapper} ${isSecurity ? styles.activeNavIconWrapper : ""}`}>
-                <IconLock size={18} stroke={isSecurity ? 2.2 : 1.6} />
-              </div>
-              <div className={styles.navLabelWrapper}>
-                <span className={`${styles.navLabelTitle} ${isSecurity ? styles.activeNavLabelTitle : ""}`}>
-                  Security
-                </span>
-                <span className={styles.navLabelSubtitle}>Password and session</span>
-              </div>
-            </button>
-
-            <div className={styles.sideNavDivider} />
-
-            <button
-              type="button"
-              className={styles.sideNavSignOut}
-              onClick={onSignOut}
-            >
-              <IconLogout size={16} stroke={1.6} />
-              <span>Sign Out</span>
-            </button>
-          </aside>
-
-          {/* Right Main Content Area */}
-          <main className={styles.mainPanel}>
+          <div className={styles.cardBody}>
             {/* View: Profile */}
             {isProfile && (
               <>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>Public Profile</h2>
-                  <p className={styles.sectionSubtitle}>
-                    Manage your display name, profile avatar, and account credentials.
-                  </p>
-                </div>
-
-                {/* Profile Photo Banner */}
-                <div className={styles.profileBanner}>
-                  <Avatar
-                    className={styles.avatar}
-                    size={90}
-                    src={context.avatarUrl}
-                  />
-                  <div className={styles.identity}>
-                    <div className={styles.identityName}>
-                      <span style={{ fontSize: "1.2rem", fontWeight: 600, color: "var(--text-primary)" }}>
-                        {originalDisplayName || context.displayName || context.user?.email?.split("@")[0]}
-                      </span>
-                      {context.user?.user_metadata?.email_verified && (
-                        <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={18} />
-                      )}
-                    </div>
-                    <span className={styles.identityEmail} style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                      {context.user?.email}
-                    </span>
+                {/* Profile Identity Card */}
+                <div className={styles.profileBox}>
+                  <div className={styles.profileBoxHeader}>
+                    <h3 className={styles.profileBoxTitle}>Your CoWatch profile</h3>
+                    <p className={styles.profileBoxSubtitle}>
+                      Your identity across watch rooms and conversations.
+                    </p>
                   </div>
 
-                  <Button
-                    leftSection={isUploadingAvatar ? <Loader size="xs" color="violet" /> : <IconUpload size={16} />}
-                    onClick={uploadAvatar}
-                    disabled={isUploadingAvatar}
-                    variant="light"
-                    color="violet"
-                    className={`profile-btn ${styles.uploadButton}`}
-                  >
-                    {isUploadingAvatar
-                      ? "Uploading..."
-                      : context.avatarUrl
-                      ? "Change Picture"
-                      : "Upload Picture"}
-                  </Button>
+                  <div className={styles.profileBoxContent}>
+                    <div className={styles.identityWrapper}>
+                      <div className={styles.avatarWrapper}>
+                        <Avatar
+                          className={styles.avatar}
+                          size={64}
+                          radius="xl"
+                          src={context.avatarUrl}
+                        />
+                        <button
+                          type="button"
+                          className={styles.avatarCameraBadge}
+                          onClick={uploadAvatar}
+                          aria-label="Upload profile picture"
+                        >
+                          <IconCamera size={12} stroke={2.2} />
+                        </button>
+                      </div>
+
+                      <div className={styles.identityInfo}>
+                        <div className={styles.identityName}>
+                          <span>{effectiveDisplayName}</span>
+                          {context.user?.user_metadata?.email_verified && (
+                            <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={16} />
+                          )}
+                        </div>
+                        <span className={styles.identityEmail}>{context.user?.email}</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      leftSection={isUploadingAvatar ? <Loader size="xs" color="violet" /> : <IconUpload size={14} />}
+                      onClick={uploadAvatar}
+                      disabled={isUploadingAvatar}
+                      variant="light"
+                      color="violet"
+                      className={styles.changePictureBtn}
+                    >
+                      {isUploadingAvatar ? "Uploading..." : "Change picture"}
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Display Name Card */}
-                <div className={styles.contentCard}>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}
-                  >
-                    Display Name
-                  </Text>
-                  <Text size="xs" c="dimmed" mb="xs">
-                    This is the name other participants will see in watch parties and live chats.
-                  </Text>
+                {/* Profile Settings Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle}>Profile</h3>
 
-                  {isEditingName ? (
-                    <Group align="flex-end" gap="sm">
-                      <TextInput
-                        autoFocus
-                        style={{ flex: 1 }}
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            saveDisplayName();
-                          } else if (e.key === "Escape") {
-                            setDisplayName(originalDisplayName);
-                            setIsEditingName(false);
-                          }
-                        }}
-                        maxLength={50}
-                        placeholder="Enter your display name"
-                        styles={{
-                          input: {
-                            backgroundColor: "var(--bg-elevated)",
-                            border: "1px solid var(--color-violet)",
-                            color: "var(--text-primary)",
-                            height: "45px",
-                          },
-                        }}
-                      />
-                      <Button
-                        leftSection={<IconCheck size={16} />}
-                        color="violet"
-                        style={{ height: "45px" }}
-                        onClick={saveDisplayName}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="subtle"
-                        color="gray"
-                        style={{ height: "45px" }}
-                        onClick={() => {
-                          setDisplayName(originalDisplayName);
-                          setIsEditingName(false);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </Group>
-                  ) : (
-                    <TextInput
-                      readOnly
-                      value={displayName || originalDisplayName || context.displayName || ""}
-                      placeholder="Enter a display name"
-                      onClick={() => setIsEditingName(true)}
-                      rightSection={<IconPencil size={16} stroke={1.5} color="var(--text-muted)" />}
-                      styles={{
-                        input: {
-                          backgroundColor: "var(--bg-elevated)",
-                          border: "1px solid var(--border-subtle)",
-                          color: "var(--text-primary)",
-                          height: "45px",
-                          cursor: "pointer",
-                        },
-                      }}
-                    />
-                  )}
-                </div>
+                  {/* Row: Display Name */}
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Display name</span>
+                      <span className={styles.settingDescription}>
+                        This name is visible to participants in watch rooms and chat.
+                      </span>
+                    </div>
 
-                {/* Account Details Card */}
-                <div className={styles.contentCard}>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}
-                  >
-                    Account Information
-                  </Text>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "8px" }}>
-                    <Group justify="space-between">
-                      <Text size="sm" c="var(--text-secondary)">Registered Email</Text>
-                      <Text size="sm" fw={500} c="var(--text-primary)">{context.user?.email}</Text>
-                    </Group>
-                    <Group justify="space-between">
-                      <Text size="sm" c="var(--text-secondary)">Email Verification Status</Text>
-                      <Badge color="green" variant="light">Verified</Badge>
-                    </Group>
-                    <Group justify="space-between">
-                      <Text size="sm" c="var(--text-secondary)">Account ID</Text>
-                      <Text size="xs" c="dimmed" style={{ fontFamily: "monospace" }}>{context.user?.id}</Text>
-                    </Group>
+                    <div className={styles.settingAction}>
+                      {isEditingName ? (
+                        <Group align="center" gap="xs">
+                          <TextInput
+                            autoFocus
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveDisplayName();
+                              } else if (e.key === "Escape") {
+                                setDisplayName(originalDisplayName);
+                                setIsEditingName(false);
+                              }
+                            }}
+                            maxLength={50}
+                            size="sm"
+                            placeholder="Enter your display name"
+                          />
+                          <Button
+                            size="sm"
+                            color="violet"
+                            onClick={saveDisplayName}
+                            className={styles.actionButton}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => {
+                              setDisplayName(originalDisplayName);
+                              setIsEditingName(false);
+                            }}
+                            className={styles.actionButton}
+                          >
+                            Cancel
+                          </Button>
+                        </Group>
+                      ) : (
+                        <>
+                          <span className={styles.settingValue}>{effectiveDisplayName}</span>
+                          <Button
+                            variant="subtle"
+                            color="violet"
+                            size="sm"
+                            leftSection={<IconPencil size={14} stroke={1.8} />}
+                            onClick={() => setIsEditingName(true)}
+                            className={styles.actionButton}
+                          >
+                            Edit
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row: Email */}
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Email</span>
+                      <span className={styles.settingDescription}>
+                        Your primary email address for signing in and notifications.
+                      </span>
+                    </div>
+
+                    <div className={styles.settingAction}>
+                      <span className={styles.settingValue}>{context.user?.email}</span>
+                      <Badge
+                        color="green"
+                        variant="light"
+                        leftSection={<IconCircleCheckFilled size={12} />}
+                      >
+                        Verified
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               </>
@@ -714,141 +648,116 @@ export const Profile: React.FC = () => {
             {/* View: Preferences */}
             {isPreferences && (
               <>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>Preferences</h2>
-                  <p className={styles.sectionSubtitle}>
-                    Customize media defaults, room interfaces, and appearance themes.
-                  </p>
+                {/* Media Defaults Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle}>Media defaults</h3>
+
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Camera on by default</span>
+                      <span className={styles.settingDescription}>
+                        Start your video automatically when joining a watch party room.
+                      </span>
+                    </div>
+                    <div className={styles.settingAction}>
+                      <Switch
+                        size="md"
+                        color="violet"
+                        checked={prefCameraOn}
+                        onChange={(e) => updatePreference("pref_camera_on", e.currentTarget.checked)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Microphone on by default</span>
+                      <span className={styles.settingDescription}>
+                        Start your microphone automatically when joining a watch party room.
+                      </span>
+                    </div>
+                    <div className={styles.settingAction}>
+                      <Switch
+                        size="md"
+                        color="violet"
+                        checked={prefMicOn}
+                        onChange={(e) => updatePreference("pref_mic_on", e.currentTarget.checked)}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className={styles.contentCard}>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-4px" }}
-                  >
-                    Media Defaults
-                  </Text>
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Camera on by default
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Start your video automatically when joining a watch party room.
-                      </Text>
-                    </div>
-                    <Switch
-                      size="lg"
-                      className="custom-switch"
-                      color="violet"
-                      checked={prefCameraOn}
-                      onChange={(e) => updatePreference("pref_camera_on", e.currentTarget.checked)}
-                    />
-                  </Group>
+                {/* Room Interface Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle}>Room interface</h3>
 
-                  <Group
-                    className={styles.mobileStackRow}
-                    justify="space-between"
-                    wrap="nowrap"
-                    style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}
-                  >
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Microphone on by default
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Start your microphone automatically when joining a watch party room.
-                      </Text>
-                    </div>
-                    <Switch
-                      size="lg"
-                      className="custom-switch"
-                      color="violet"
-                      checked={prefMicOn}
-                      onChange={(e) => updatePreference("pref_mic_on", e.currentTarget.checked)}
-                    />
-                  </Group>
-
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-4px", marginTop: "8px" }}
-                  >
-                    Room Interface
-                  </Text>
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Show Chat Column
-                      </Text>
-                      <Text size="xs" c="dimmed">
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Show chat column</span>
+                      <span className={styles.settingDescription}>
                         Display the room chat sidebar by default.
-                      </Text>
+                      </span>
                     </div>
-                    <Switch
-                      size="lg"
-                      className="custom-switch"
-                      color="violet"
-                      checked={prefShowChatColumn}
-                      onChange={(e) => updatePreference("pref_show_chat_column", e.currentTarget.checked)}
-                    />
-                  </Group>
+                    <div className={styles.settingAction}>
+                      <Switch
+                        size="md"
+                        color="violet"
+                        checked={prefShowChatColumn}
+                        onChange={(e) => updatePreference("pref_show_chat_column", e.currentTarget.checked)}
+                      />
+                    </div>
+                  </div>
 
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Show People Column
-                      </Text>
-                      <Text size="xs" c="dimmed">
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Show people column</span>
+                      <span className={styles.settingDescription}>
                         Display the room participant list by default.
-                      </Text>
+                      </span>
                     </div>
-                    <Switch
-                      size="lg"
-                      className="custom-switch"
-                      color="violet"
-                      checked={prefShowPeopleColumn}
-                      onChange={(e) => updatePreference("pref_show_people_column", e.currentTarget.checked)}
-                    />
-                  </Group>
+                    <div className={styles.settingAction}>
+                      <Switch
+                        size="md"
+                        color="violet"
+                        checked={prefShowPeopleColumn}
+                        onChange={(e) => updatePreference("pref_show_people_column", e.currentTarget.checked)}
+                      />
+                    </div>
+                  </div>
 
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Disable Chat Sound
-                      </Text>
-                      <Text size="xs" c="dimmed">
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Disable chat sound</span>
+                      <span className={styles.settingDescription}>
                         Mute sound notifications when new chat messages arrive.
-                      </Text>
+                      </span>
                     </div>
-                    <Switch
-                      size="lg"
-                      className="custom-switch"
-                      color="violet"
-                      checked={prefDisableChatSound}
-                      onChange={(e) => updatePreference("pref_disable_chat_sound", e.currentTarget.checked)}
-                    />
-                  </Group>
+                    <div className={styles.settingAction}>
+                      <Switch
+                        size="md"
+                        color="violet"
+                        checked={prefDisableChatSound}
+                        onChange={(e) => updatePreference("pref_disable_chat_sound", e.currentTarget.checked)}
+                      />
+                    </div>
+                  </div>
+                </div>
 
-                  <Group
-                    className={styles.mobileStackRow}
-                    justify="space-between"
-                    wrap="nowrap"
-                    style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginTop: "8px" }}
-                  >
-                    <div>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Appearance Theme
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Select your preferred visual interface theme.
-                      </Text>
+                {/* Appearance Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle}>Appearance theme</h3>
+
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Theme mode</span>
+                      <span className={styles.settingDescription}>
+                        Select your preferred visual interface appearance.
+                      </span>
                     </div>
-                    <AppearanceSelector />
-                  </Group>
+                    <div className={styles.settingAction}>
+                      <AppearanceSelector />
+                    </div>
+                  </div>
                 </div>
               </>
             )}
@@ -856,13 +765,6 @@ export const Profile: React.FC = () => {
             {/* View: Security */}
             {isSecurity && (
               <>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>Security & Login</h2>
-                  <p className={styles.sectionSubtitle}>
-                    Manage your credentials, active browser session, and account deletion.
-                  </p>
-                </div>
-
                 {resetSuccessMessage && (
                   <Alert
                     icon={<IconCheck size={16} />}
@@ -875,127 +777,85 @@ export const Profile: React.FC = () => {
                   </Alert>
                 )}
 
-                {/* Authentication & Session Card */}
-                <div className={styles.contentCard}>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="dimmed"
-                    style={{
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      marginBottom: "-4px",
-                    }}
-                  >
-                    Authentication & Session
-                  </Text>
+                {/* Authentication Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle}>Authentication</h3>
 
-                  <Group
-                    className={styles.mobileStackRow}
-                    justify="space-between"
-                    wrap="nowrap"
-                    style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Password
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Send a secure password reset link to {context.user?.email || "your registered email"}.
-                      </Text>
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Password</span>
+                      <span className={styles.settingDescription}>
+                        Send a secure password reset link to {context.user?.email || "your email"}.
+                      </span>
                     </div>
-                    <Button
-                      disabled={resetDisabled}
-                      leftSection={<IconKeyFilled size={15} />}
-                      variant="light"
-                      color="violet"
-                      size="sm"
-                      style={{ flexShrink: 0 }}
-                      onClick={resetPassword}
-                    >
-                      {resetDisabled ? "Link Sent" : "Reset Password"}
-                    </Button>
-                  </Group>
-
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Active Browser Session
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Sign out of your active CoWatch account on this browser.
-                      </Text>
+                    <div className={styles.settingAction}>
+                      <Button
+                        disabled={resetDisabled}
+                        leftSection={<IconKeyFilled size={14} />}
+                        variant="light"
+                        color="violet"
+                        size="sm"
+                        onClick={resetPassword}
+                        className={styles.actionButton}
+                      >
+                        {resetDisabled ? "Link Sent" : "Reset Password"}
+                      </Button>
                     </div>
-                    <Button
-                      leftSection={<IconLogout size={15} stroke={1.5} />}
-                      variant="outline"
-                      color="gray"
-                      size="sm"
-                      style={{
-                        flexShrink: 0,
-                        borderColor: "var(--border-strong)",
-                        color: "var(--text-secondary)",
-                      }}
-                      onClick={onSignOut}
-                    >
-                      Sign Out
-                    </Button>
-                  </Group>
-                </div>
-
-                {/* Danger Zone Card */}
-                <div
-                  style={{
-                    background: "rgba(239, 68, 68, 0.04)",
-                    border: "1px solid rgba(239, 68, 68, 0.22)",
-                    borderRadius: "16px",
-                    padding: "24px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "14px",
-                    boxShadow: "var(--shadow-sm)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "-4px" }}>
-                    <IconAlertTriangle size={16} color="var(--color-danger)" />
-                    <Text
-                      size="sm"
-                      fw={600}
-                      c="var(--color-danger)"
-                      style={{
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                      }}
-                    >
-                      Danger Zone
-                    </Text>
                   </div>
 
-                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
-                      <Text size="md" fw={500} c="var(--text-primary)">
-                        Delete Account
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Permanently delete your account, saved preferences, rooms, and profile picture. This action cannot be undone.
-                      </Text>
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Active browser session</span>
+                      <span className={styles.settingDescription}>
+                        Sign out of your active CoWatch account on this browser.
+                      </span>
                     </div>
-                    <Button
-                      leftSection={<IconTrashFilled size={15} />}
-                      color="red"
-                      variant="filled"
-                      size="sm"
-                      style={{ flexShrink: 0 }}
-                      onClick={() => setDeleteConfirmOpen(true)}
-                    >
-                      Delete Account
-                    </Button>
-                  </Group>
+                    <div className={styles.settingAction}>
+                      <Button
+                        leftSection={<IconLogout size={14} stroke={1.8} />}
+                        variant="outline"
+                        color="gray"
+                        size="sm"
+                        onClick={onSignOut}
+                        className={styles.actionButton}
+                      >
+                        Sign Out
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Danger Zone Section */}
+                <div className={styles.settingsSection}>
+                  <h3 className={styles.settingsSectionTitle} style={{ color: "var(--color-danger)" }}>
+                    Danger zone
+                  </h3>
+
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingInfo}>
+                      <span className={styles.settingLabel}>Delete account</span>
+                      <span className={styles.settingDescription}>
+                        Permanently delete your account, saved preferences, rooms, and profile picture.
+                      </span>
+                    </div>
+                    <div className={styles.settingAction}>
+                      <Button
+                        leftSection={<IconTrashFilled size={14} />}
+                        color="red"
+                        variant="filled"
+                        size="sm"
+                        onClick={() => setDeleteConfirmOpen(true)}
+                        className={styles.actionButton}
+                      >
+                        Delete Account
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     </div>
   );
