@@ -52,6 +52,7 @@ import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
 import { RoomHeader } from "../TopBar/RoomHeader";
 import { MediaDock } from "./MediaDock";
 import { WaitingForHost } from "./WaitingForHost";
+import { HostEndedModal } from "../Modal/HostEndedModal";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -187,6 +188,8 @@ interface AppState {
   uploadController: AbortController | undefined;
   pipState: PiPState;
   isWaitingForHost: boolean;
+  isHostSessionEnded: boolean;
+  isOwner: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -272,6 +275,8 @@ export class App extends React.Component<AppProps, AppState> {
     uploadController: undefined,
     pipState: pipManager.getState(),
     isWaitingForHost: false,
+    isHostSessionEnded: false,
+    isOwner: false,
   };
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
@@ -302,12 +307,13 @@ export class App extends React.Component<AppProps, AppState> {
 
   startWaitingPoll = (roomId: string) => {
     this.stopWaitingPoll();
+    if (this.state.isHostSessionEnded) return;
     const cleanId = (roomId || "").trim();
     if (!cleanId) return;
 
     this.waitingPollTimer = window.setInterval(async () => {
       // Guard: Ensure we are still waiting and this room is still the active room
-      if (!this.state.isWaitingForHost || this.state.roomId !== cleanId) {
+      if (this.state.isHostSessionEnded || !this.state.isWaitingForHost || this.state.roomId !== cleanId) {
         this.stopWaitingPoll();
         return;
       }
@@ -581,6 +587,9 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ roomTitle: info.roomTitle });
           }
           const isOwner = Boolean(info.isOwner);
+          if (isOwner) {
+            this.setState({ isOwner: true });
+          }
           const requiresPasscode = Boolean(info.requiresPasscode);
           const isWaiting = !isOwner && info.status !== "active";
           return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting };
@@ -611,6 +620,9 @@ export class App extends React.Component<AppProps, AppState> {
       }
 
       const isOwner = Boolean(user && data.owner_id === user.id);
+      if (isOwner) {
+        this.setState({ isOwner: true });
+      }
       const requiresPasscode = Boolean(data.passcode);
       const isWaiting = !isOwner && data.status !== "active";
 
@@ -627,6 +639,8 @@ export class App extends React.Component<AppProps, AppState> {
       this.setState({ state: "connected", overlayMsg: "Invalid room identifier." });
       return;
     }
+
+    this.setState({ isHostSessionEnded: false });
 
     if (this.startingTimer) {
       window.clearTimeout(this.startingTimer);
@@ -751,6 +765,9 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("connect_error", (err: any) => {
+        if (this.state.isHostSessionEnded) {
+          return;
+        }
         console.error("Socket connect_error:", err);
         if (this.startingTimer) {
           window.clearTimeout(this.startingTimer);
@@ -770,12 +787,20 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("ROOM_SESSION_STOPPED", () => {
-        this.setState({ isWaitingForHost: true, overlayMsg: "" });
-        this.startWaitingPoll(cleanRoomId);
+        if (this.state.isHostSessionEnded || this.isRoomOwner()) {
+          return;
+        }
+        this.stopWaitingPoll();
+        this.socket?.disconnect();
+        this.setState({
+          isHostSessionEnded: true,
+          isWaitingForHost: false,
+          overlayMsg: "",
+        });
       });
       socket.on("disconnect", (reason) => {
-        if (this.state.isWaitingForHost) {
-          // Suppress generic disconnect message if already waiting for host
+        if (this.state.isHostSessionEnded || this.state.isWaitingForHost) {
+          // Suppress generic disconnect message if room was ended by host or waiting for host
           return;
         }
         if (reason === "io server disconnect") {
@@ -1536,6 +1561,9 @@ export class App extends React.Component<AppProps, AppState> {
     this.setOwner(data.owner);
     if (data.owner) {
       this.resolveHostName(data.owner, data.ownerName);
+      if (this.context.user?.id === data.owner) {
+        this.setState({ isOwner: true });
+      }
     }
     this.setPasscode(data.passcode);
     this.setRoomTitle(data.roomTitle);
@@ -1568,12 +1596,15 @@ export class App extends React.Component<AppProps, AppState> {
     this.socket.emit("CMD:lock", { locked });
   };
 
+  isRoomOwner = () => {
+    return Boolean(this.state.isOwner || (this.state.owner && this.context.user?.id === this.state.owner));
+  };
+
   haveLock = () => {
     if (!this.state.roomLock) {
       return true;
     }
-    const isOwner = Boolean(this.state.owner && this.context.user?.id === this.state.owner);
-    return this.context.user?.id === this.state.roomLock || isOwner;
+    return this.context.user?.id === this.state.roomLock || this.isRoomOwner();
   };
 
   toggleLock = () => {
@@ -2726,7 +2757,15 @@ export class App extends React.Component<AppProps, AppState> {
           </Overlay>
         )}
 
-        {this.state.isWaitingForHost && (
+        <HostEndedModal
+          opened={this.state.isHostSessionEnded}
+          onConfirm={() => {
+            const cleanRoomId = (this.state.roomId || "").trim().replace(/^\//, "");
+            window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          }}
+        />
+
+        {!this.state.isHostSessionEnded && this.state.isWaitingForHost && (
           <WaitingForHost
             roomId={this.state.roomId}
             roomTitle={this.state.roomTitle}
@@ -2734,7 +2773,7 @@ export class App extends React.Component<AppProps, AppState> {
             onCheckStatus={this.handleManualStatusCheck}
           />
         )}
-        {!this.state.isWaitingForHost && this.state.overlayMsg && (
+        {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && this.state.overlayMsg && (
           <ErrorModal error={this.state.overlayMsg} />
         )}
         <SettingsModal
