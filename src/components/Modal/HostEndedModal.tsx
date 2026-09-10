@@ -29,7 +29,7 @@ export const HostEndedModal: React.FC<HostEndedModalProps> = ({
       }}
     >
       <Text className={styles.description}>
-        The host has ended this watch party session. Click OK to return to the room gateway.
+        The host has ended this watch party session. Click OK to return to the home page.
       </Text>
       <div className={styles.actionRow}>
         <Button

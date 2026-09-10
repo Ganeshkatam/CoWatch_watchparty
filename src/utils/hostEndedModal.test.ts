@@ -88,9 +88,8 @@ class SimulatedAppLogic {
     this.state.overlayMsg = err.message;
   };
 
-  getJoinRedirectUrl = (): string => {
-    const cleanRoomId = (this.state.roomId || "").trim().replace(/^\//, "");
-    return `/join/${encodeURIComponent(cleanRoomId)}`;
+  getConfirmRedirectUrl = (): string => {
+    return "/";
   };
 }
 
@@ -199,22 +198,16 @@ console.log("Running HostEndedModal invariant test suite...");
   assert.strictEqual(app.state.overlayMsg, "", "connect_error must be suppressed");
 }
 
-// Test 7: OK confirm navigation produces clean /join/:roomId without credentials
+// Test 7: OK confirm navigation redirects to home page ("/") and does not return to join page
 {
-  const testCases = [
-    { roomId: "movie-night", expected: "/join/movie-night" },
-    { roomId: "/special-room", expected: "/join/special-room" },
-    { roomId: "room with spaces", expected: "/join/room%20with%20spaces" },
-    { roomId: "fun&games?", expected: "/join/fun%26games%3F" },
-  ];
+  const testRooms = ["movie-night", "/special-room", "room with spaces", "fun&games?"];
 
-  for (const tc of testCases) {
-    const app = new SimulatedAppLogic({ roomId: tc.roomId });
-    const redirectUrl = app.getJoinRedirectUrl();
-    assert.strictEqual(redirectUrl, tc.expected, `Redirect URL for ${tc.roomId} should match`);
+  for (const roomId of testRooms) {
+    const app = new SimulatedAppLogic({ roomId });
+    const redirectUrl = app.getConfirmRedirectUrl();
+    assert.strictEqual(redirectUrl, "/", "Redirect URL must be home root ('/')");
+    assert.strictEqual(redirectUrl.includes("/join/"), false, "URL must not return user to join page");
     assert.strictEqual(redirectUrl.includes("passcode"), false, "URL must never contain passcode");
-    assert.strictEqual(redirectUrl.includes("pass="), false, "URL must never contain pass=");
-    assert.strictEqual(redirectUrl.includes("password"), false, "URL must never contain password");
   }
 }
 

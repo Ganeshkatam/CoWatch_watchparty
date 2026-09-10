@@ -2760,8 +2760,7 @@ export class App extends React.Component<AppProps, AppState> {
         <HostEndedModal
           opened={this.state.isHostSessionEnded}
           onConfirm={() => {
-            const cleanRoomId = (this.state.roomId || "").trim().replace(/^\//, "");
-            window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+            window.location.replace("/");
           }}
         />
 
