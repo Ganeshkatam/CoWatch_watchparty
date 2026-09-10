@@ -47,6 +47,7 @@ export const Create = () => {
   const generatePasscode = () =>
     Math.random().toString(36).substring(2, 10).padEnd(8, "0");
   const [passcode, setPasscode] = useState(generatePasscode());
+  const [showPasscode, setShowPasscode] = useState(true);
   const [copiedPasscode, setCopiedPasscode] = useState(false);
 
   const [isChatDisabled, setIsChatDisabled] = useState(false);
@@ -309,6 +310,8 @@ export const Create = () => {
                   minLength={8}
                   onChange={(e) => setPasscode(e.target.value)}
                   size="md"
+                  visible={showPasscode}
+                  onVisibilityChange={setShowPasscode}
                 />
               </div>
               <div className={styles.passcodeControls}>

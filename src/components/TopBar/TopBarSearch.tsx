@@ -135,15 +135,15 @@ export const TopBarSearch: React.FC = () => {
     if (rooms.length > 0) {
       const matchedRooms = cleanQuery
         ? rooms.filter((r) => {
-            const title = (r.roomTitle || "").toLowerCase();
-            const id = (r.roomId || "").toLowerCase();
-            const desc = (r.roomDescription || "").toLowerCase();
-            return (
-              title.includes(cleanQuery) ||
-              id.includes(cleanQuery) ||
-              desc.includes(cleanQuery)
-            );
-          })
+          const title = (r.roomTitle || "").toLowerCase();
+          const id = (r.roomId || "").toLowerCase();
+          const desc = (r.roomDescription || "").toLowerCase();
+          return (
+            title.includes(cleanQuery) ||
+            id.includes(cleanQuery) ||
+            desc.includes(cleanQuery)
+          );
+        })
         : rooms.slice(0, 4);
 
       matchedRooms.forEach((r) => {
@@ -197,7 +197,7 @@ export const TopBarSearch: React.FC = () => {
         type: "page",
         title: "Settings",
         subtitle: "Manage your profile and preferences",
-        path: "/profile",
+        path: "/account/profile",
         icon: <IconSettings size={16} stroke={1.5} />,
       },
       {
@@ -212,11 +212,11 @@ export const TopBarSearch: React.FC = () => {
 
     const matchedPages = cleanQuery
       ? pages.filter((p) => {
-          return (
-            p.title.toLowerCase().includes(cleanQuery) ||
-            p.subtitle?.toLowerCase().includes(cleanQuery)
-          );
-        })
+        return (
+          p.title.toLowerCase().includes(cleanQuery) ||
+          p.subtitle?.toLowerCase().includes(cleanQuery)
+        );
+      })
       : pages.slice(0, 4);
 
     resultList.push(...matchedPages);
@@ -286,9 +286,8 @@ export const TopBarSearch: React.FC = () => {
 
       {/* Expandable Input Bar */}
       <div
-        className={`${styles.searchWrapper} ${
-          isExpanded ? styles.searchWrapperExpanded : ""
-        } ${mobileOpen ? styles.searchWrapperMobileOpen : ""}`}
+        className={`${styles.searchWrapper} ${isExpanded ? styles.searchWrapperExpanded : ""
+          } ${mobileOpen ? styles.searchWrapperMobileOpen : ""}`}
       >
         <span className={styles.searchIcon}>
           <IconSearch size={16} stroke={1.8} />
@@ -337,9 +336,8 @@ export const TopBarSearch: React.FC = () => {
               <button
                 key={item.id}
                 type="button"
-                className={`${styles.resultItem} ${
-                  isSelected ? styles.resultItemActive : ""
-                }`}
+                className={`${styles.resultItem} ${isSelected ? styles.resultItemActive : ""
+                  }`}
                 onClick={() => handleSelect(item)}
                 onMouseEnter={() => setSelectedIndex(index)}
               >

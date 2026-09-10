@@ -135,7 +135,7 @@ export const RoomDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedRoomId, setCopiedRoomId] = useState(false);

@@ -36,7 +36,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const [inviteMsgCopied, setInviteMsgCopied] = useState(false);
   const [passcodeCopied, setPasscodeCopied] = useState(false);
   const [roomIdCopied, setRoomIdCopied] = useState(false);
-  const [showPasscode, setShowPasscode] = useState(false);
+  const [showPasscode, setShowPasscode] = useState(true);
   const [showQr, setShowQr] = useState(false);
 
   const pathParts = window.location.pathname.split("/");

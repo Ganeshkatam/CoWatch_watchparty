@@ -34,7 +34,7 @@ assert(!isRouteActive("/rooms", "/"), "Root should not be active on /rooms");
 assert(isRouteActive("/rooms", "/rooms"), "/rooms should be active on /rooms");
 assert(!isRouteActive("/rooms/detail-123", "/rooms"), "/rooms should NOT be active on /rooms/:roomId");
 assert(isRouteActive("/create", "/create"), "/create should be active on /create");
-assert(isRouteActive("/profile", "/profile"), "/profile should be active on /profile");
+assert(isRouteActive("/account/profile", "/account/profile"), "/account/profile should be active on /account/profile");
 assert(isRouteActive("/faq", "/faq"), "/faq should be active on /faq");
 
 console.log("All navigationPolicy tests passed successfully!");

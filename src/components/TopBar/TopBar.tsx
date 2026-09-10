@@ -191,7 +191,7 @@ export class SignInButton extends React.Component<{}> {
       return (
         <Tooltip label="Settings" withArrow>
           <Link
-            to="/profile"
+            to="/account/profile"
             className={styles.avatarButton}
             aria-label="Settings"
           >
@@ -316,18 +316,16 @@ export const TopBar = (props: {
         <nav className={styles.middleNav} aria-label="Main navigation">
           <Link
             to="/"
-            className={`${styles.middleNavLink} ${
-              location.pathname === "/" ? styles.middleNavLinkActive : ""
-            }`}
+            className={`${styles.middleNavLink} ${location.pathname === "/" ? styles.middleNavLinkActive : ""
+              }`}
           >
             Home
           </Link>
           {!props.hideMyRooms && context.user && (
             <Link
               to="/rooms"
-              className={`${styles.middleNavLink} ${
-                location.pathname === "/rooms" ? styles.middleNavLinkActive : ""
-              }`}
+              className={`${styles.middleNavLink} ${location.pathname === "/rooms" ? styles.middleNavLinkActive : ""
+                }`}
             >
               My rooms
             </Link>
@@ -335,9 +333,8 @@ export const TopBar = (props: {
           {!props.hideNewRoom && context.user && (
             <Link
               to="/create"
-              className={`${styles.middleNavLink} ${
-                location.pathname === "/create" ? styles.middleNavLinkActive : ""
-              }`}
+              className={`${styles.middleNavLink} ${location.pathname === "/create" ? styles.middleNavLinkActive : ""
+                }`}
             >
               Create
             </Link>
@@ -345,11 +342,10 @@ export const TopBar = (props: {
           {!props.hideJoinRoom && (
             <Link
               to="/join"
-              className={`${styles.middleNavLink} ${
-                location.pathname.startsWith("/join")
+              className={`${styles.middleNavLink} ${location.pathname.startsWith("/join")
                   ? styles.middleNavLinkActive
                   : ""
-              }`}
+                }`}
             >
               Join
             </Link>
@@ -501,7 +497,7 @@ export const TopBar = (props: {
                 <span>My rooms</span>
               </Link>
               <Link
-                to="/profile"
+                to="/account/profile"
                 className={styles.drawerNavLink}
                 onClick={() => setDrawerOpened(false)}
               >
@@ -565,9 +561,8 @@ export const TopBar = (props: {
           <div className={styles.themeOptionRow}>
             <button
               type="button"
-              className={`${styles.themeOptionBtn} ${
-                appearance === "system" ? styles.themeOptionBtnActive : ""
-              }`}
+              className={`${styles.themeOptionBtn} ${appearance === "system" ? styles.themeOptionBtnActive : ""
+                }`}
               onClick={() => setAppearance("system")}
             >
               <IconDeviceDesktop size={18} stroke={1.5} />
@@ -575,9 +570,8 @@ export const TopBar = (props: {
             </button>
             <button
               type="button"
-              className={`${styles.themeOptionBtn} ${
-                appearance === "light" ? styles.themeOptionBtnActive : ""
-              }`}
+              className={`${styles.themeOptionBtn} ${appearance === "light" ? styles.themeOptionBtnActive : ""
+                }`}
               onClick={() => setAppearance("light")}
             >
               <IconSun size={18} stroke={1.5} />
@@ -585,9 +579,8 @@ export const TopBar = (props: {
             </button>
             <button
               type="button"
-              className={`${styles.themeOptionBtn} ${
-                appearance === "mantine" ? styles.themeOptionBtnActive : ""
-              }`}
+              className={`${styles.themeOptionBtn} ${appearance === "mantine" ? styles.themeOptionBtnActive : ""
+                }`}
               onClick={() => setAppearance("mantine")}
             >
               <IconMoon size={18} stroke={1.5} />

@@ -36,6 +36,7 @@ import {
   IconEyeOff,
   IconCheck,
   IconAlertTriangle,
+  IconKey,
 } from "@tabler/icons-react";
 import { type RoomSummary } from "./MyRooms";
 import {
@@ -119,7 +120,7 @@ export const EditRoomModal = ({
 
   // Password management
   const [currentPassword, setCurrentPassword] = useState(initialPasscode);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(true);
   const [copiedCurrentPassword, setCopiedCurrentPassword] = useState(false);
   const [removeProtection, setRemoveProtection] = useState(false);
 
@@ -136,7 +137,7 @@ export const EditRoomModal = ({
     if (opened) {
       const saved = room.currentPasscode || "";
       setCurrentPassword(saved);
-      setShowCurrentPassword(false);
+      setShowCurrentPassword(true);
       setCopiedCurrentPassword(false);
       setRemoveProtection(false);
       setPassword("");
@@ -751,6 +752,20 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       </Menu.Item>
     );
 
+    if (room.currentPasscode) {
+      items.push(
+        <Menu.Item
+          key="copyPasscode"
+          leftSection={<IconKey size={14} />}
+          onClick={() => {
+            navigator.clipboard.writeText(room.currentPasscode!);
+          }}
+        >
+          Copy Passcode ({room.currentPasscode})
+        </Menu.Item>
+      );
+    }
+
     if (computedState !== 'Expired' && computedState !== 'Ended') {
       items.push(<Menu.Divider key="div1" />);
       if (computedState === 'Active' && !isPermanent) {
@@ -860,7 +875,11 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
             {room.isPasscodeProtected ? (
               <>
                 <IconLock size={14} />
-                Protected
+                {room.currentPasscode ? (
+                  <span>Passcode: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong></span>
+                ) : (
+                  'Protected'
+                )}
               </>
             ) : (
               <>
@@ -966,7 +985,12 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
             <div className={styles.metaItemValue}>
               {room.isPasscodeProtected ? (
                 <>
-                  <IconLock size={14} /> Protected
+                  <IconLock size={14} />
+                  {room.currentPasscode ? (
+                    <span>Passcode: <strong style={{ letterSpacing: '0.5px' }}>{room.currentPasscode}</strong></span>
+                  ) : (
+                    'Protected'
+                  )}
                 </>
               ) : (
                 <>
