@@ -310,37 +310,77 @@ export const TopBar = (props: {
         </div>
       ) : null}
 
+      {/* Middle Navigation */}
+      {!props.roomTitle && !props.roomDescription && (
+        <nav className={styles.middleNav} aria-label="Main navigation">
+          <Link
+            to="/"
+            className={`${styles.middleNavLink} ${
+              location.pathname === "/" ? styles.middleNavLinkActive : ""
+            }`}
+          >
+            Home
+          </Link>
+          {!props.hideMyRooms && context.user && (
+            <Link
+              to="/rooms"
+              className={`${styles.middleNavLink} ${
+                location.pathname === "/rooms" ? styles.middleNavLinkActive : ""
+              }`}
+            >
+              My rooms
+            </Link>
+          )}
+          {!props.hideNewRoom && context.user && (
+            <Link
+              to="/create"
+              className={`${styles.middleNavLink} ${
+                location.pathname === "/create" ? styles.middleNavLinkActive : ""
+              }`}
+            >
+              Create
+            </Link>
+          )}
+          {!props.hideJoinRoom && (
+            <Link
+              to="/join"
+              className={`${styles.middleNavLink} ${
+                location.pathname.startsWith("/join")
+                  ? styles.middleNavLinkActive
+                  : ""
+              }`}
+            >
+              Join
+            </Link>
+          )}
+        </nav>
+      )}
+
       {/* Actions Group */}
       <div className={styles.actionsGroup}>
-        {/* Desktop Buttons */}
-        <div className={styles.desktopButtons}>
-          {!props.hideMyRooms && context.user && <ListRoomsButton />}
-          {!props.hideJoinRoom && <JoinRoomButton size="sm" />}
-          {!props.hideNewRoom && context.user && <NewRoomButton size="sm" />}
-          {props.showExit && (
-            <Button
-              color="red"
-              variant="light"
-              onClick={() => {
-                window.location.assign("/");
-              }}
-              leftSection={<IconX size={16} />}
-            >
-              Exit
-            </Button>
-          )}
-          {props.onOpenSettings && (
-            <Button
-              color="violet"
-              variant="light"
-              onClick={props.onOpenSettings}
-              leftSection={<IconSettings size={16} />}
-            >
-              Settings
-            </Button>
-          )}
-          {!props.hideGetStarted && !context.user && <GetStartedButton />}
-        </div>
+        {props.showExit && (
+          <Button
+            color="red"
+            variant="light"
+            onClick={() => {
+              window.location.assign("/");
+            }}
+            leftSection={<IconX size={16} />}
+          >
+            Exit
+          </Button>
+        )}
+        {props.onOpenSettings && (
+          <Button
+            color="violet"
+            variant="light"
+            onClick={props.onOpenSettings}
+            leftSection={<IconSettings size={16} />}
+          >
+            Settings
+          </Button>
+        )}
+        {!props.hideGetStarted && !context.user && <GetStartedButton />}
 
         {/* User Avatar linking to Settings or Sign in button */}
         {!props.hideSignin && <SignInButton />}

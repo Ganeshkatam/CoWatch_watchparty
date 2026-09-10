@@ -46,6 +46,47 @@
   color: transparent;
 }
 
+/* Centered Middle Navigation */
+.middleNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.middleNavLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.middleNavLink:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.05));
+}
+
+.middleNavLinkActive {
+  color: var(--color-violet);
+  background: var(--color-violet-light, rgba(139, 92, 246, 0.12));
+  font-weight: 600;
+}
+
 .actionsGroup {
   display: flex;
   align-items: center;
@@ -291,6 +332,9 @@
 }
 
 @media (max-width: 768px) {
+  .middleNav {
+    display: none;
+  }
   .desktopButtons {
     display: none;
   }
