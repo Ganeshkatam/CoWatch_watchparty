@@ -141,11 +141,11 @@
    ========================================================================== */
 .actionDockWrapper {
   width: 100%;
-  max-width: 780px;
+  max-width: 820px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .actionDock {
@@ -155,21 +155,24 @@
   gap: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 8px 10px;
-  box-shadow: var(--shadow-md);
+  border-radius: 9999px;
+  padding: 6px 8px 6px 6px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border-subtle);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .actionDock:focus-within {
   border-color: var(--color-violet);
-  box-shadow: 0 8px 30px rgba(139, 92, 246, 0.22);
+  box-shadow: 0 12px 36px -5px rgba(139, 92, 246, 0.25), 0 0 0 1px var(--color-violet);
 }
 
 .startPartyButton {
   flex-shrink: 0;
+  height: 48px !important;
+  border-radius: 9999px !important;
   font-weight: 700 !important;
   font-size: 15px !important;
+  padding: 0 24px !important;
   box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35) !important;
 }
 
@@ -178,6 +181,7 @@
   height: 28px;
   background: var(--border-strong);
   flex-shrink: 0;
+  margin: 0 4px;
 }
 
 .quickJoinForm {
@@ -185,10 +189,12 @@
   align-items: center;
   gap: 8px;
   flex: 1;
+  min-width: 0;
 }
 
 .quickJoinInput {
   flex: 1;
+  min-width: 0;
 }
 
 .quickJoinInput input {
@@ -196,7 +202,8 @@
   border: none !important;
   font-size: 14px;
   color: var(--text-primary);
-  padding-left: 0;
+  height: 48px !important;
+  padding-left: 38px !important;
 }
 
 .quickJoinInput input:focus {
@@ -206,7 +213,10 @@
 
 .joinPartyButton {
   flex-shrink: 0;
+  height: 44px !important;
+  border-radius: 9999px !important;
   font-weight: 700 !important;
+  padding: 0 20px !important;
 }
 
 .quickJoinError {

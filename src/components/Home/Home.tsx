@@ -111,6 +111,7 @@ export const Home: React.FC = () => {
 
               <form className={styles.quickJoinForm} onSubmit={handleQuickJoinSubmit}>
                 <TextInput
+                  size="md"
                   className={styles.quickJoinInput}
                   placeholder="Paste room link or code..."
                   value={quickJoinInput}
@@ -123,6 +124,7 @@ export const Home: React.FC = () => {
                 />
                 <Button
                   type="submit"
+                  size="md"
                   variant="default"
                   rightSection={<IconArrowRight size={16} />}
                   id="hero-quick-join-btn"
@@ -142,8 +144,6 @@ export const Home: React.FC = () => {
 
             <div className={styles.heroTrustLine}>
               <span>Free forever</span>
-              <span className={styles.trustDot}>•</span>
-              <span>No account required for guests</span>
               <span className={styles.trustDot}>•</span>
               <span>Works on web & mobile</span>
             </div>
