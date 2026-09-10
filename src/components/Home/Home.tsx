@@ -143,9 +143,11 @@ export const Home: React.FC = () => {
             )}
 
             <div className={styles.heroTrustLine}>
-              <span>Free forever</span>
+              <span>Completely browser-based</span>
               <span className={styles.trustDot}>•</span>
-              <span>Works on web & mobile</span>
+              <span>No downloads or extensions</span>
+              <span className={styles.trustDot}>•</span>
+              <span>Free for everyone</span>
             </div>
           </div>
         </div>
@@ -224,12 +226,12 @@ export const Home: React.FC = () => {
 
           <div className={styles.proofItem}>
             <div className={styles.proofIconBox}>
-              <IconDeviceDesktop size={20} />
+              <IconBrowser size={20} />
             </div>
             <div>
-              <div className={styles.proofTitle}>Join in Seconds</div>
+              <div className={styles.proofTitle}>Completely Browser-Based</div>
               <div className={styles.proofText}>
-                No downloads or browser extensions needed. Friends join directly in any modern browser.
+                No apps to download and no browser extensions to install. Open any room link and start watching immediately.
               </div>
             </div>
           </div>
@@ -587,32 +589,31 @@ export const Home: React.FC = () => {
               </div>
             </div>
 
-            {/* Bento 4: Universal Device Support (Large) */}
+            {/* Bento 4: Completely Browser-Based (Large) */}
             <div className={`${styles.bentoCard} ${styles.bentoLarge}`}>
               <div>
                 <div className={styles.bentoIconWrapper}>
-                  <IconDeviceMobile size={22} />
+                  <IconBrowser size={22} />
                 </div>
                 <div className={styles.bentoTitle} style={{ marginTop: 14 }}>
-                  Works Wherever You Hang Out
+                  Completely Browser-Based. Zero Installs.
                 </div>
                 <div className={styles.bentoText}>
-                  No browser extensions, apps, or downloads needed. Friends can join on iPhone, Android, iPad, Mac,
-                  Windows, or Linux browsers.
+                  CoWatch runs 100% inside your web browser. No desktop software, mobile app downloads, or browser extensions required. Friends just click the link on phone, tablet, or computer and join the party instantly.
                 </div>
               </div>
               <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-secondary)" }}>
                   <IconCheck size={16} color="var(--color-success)" />
-                  <span>iOS Safari</span>
+                  <span>Chrome, Safari, Firefox & Edge</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-secondary)" }}>
                   <IconCheck size={16} color="var(--color-success)" />
-                  <span>Android Chrome</span>
+                  <span>Mobile & Desktop Web</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-secondary)" }}>
                   <IconCheck size={16} color="var(--color-success)" />
-                  <span>Windows, macOS & Linux</span>
+                  <span>No Extensions Needed</span>
                 </div>
               </div>
             </div>
@@ -645,15 +646,15 @@ export const Home: React.FC = () => {
               </thead>
               <tbody>
                 <tr>
-                  <td>No Browser Extension Required</td>
+                  <td>Completely Browser-Based (No Downloads)</td>
                   <td className={styles.highlightColumn}>
-                    <IconCheck size={18} className={styles.checkIcon} /> Yes
+                    <IconCheck size={18} className={styles.checkIcon} /> 100% in browser
                   </td>
                   <td>
-                    <IconCheck size={18} className={styles.checkIcon} /> Yes
+                    <IconX size={18} className={styles.crossIcon} /> App recommended
                   </td>
                   <td>
-                    <IconX size={18} className={styles.crossIcon} /> Requires Extension
+                    <IconX size={18} className={styles.crossIcon} /> Extension required
                   </td>
                 </tr>
                 <tr>
@@ -669,12 +670,12 @@ export const Home: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td>Responsive Mobile Browser Support</td>
+                  <td>Mobile Web Browser Support</td>
                   <td className={styles.highlightColumn}>
-                    <IconCheck size={18} className={styles.checkIcon} /> Yes (Native web)
+                    <IconCheck size={18} className={styles.checkIcon} /> Yes (Direct in browser)
                   </td>
                   <td>
-                    <IconCheck size={18} className={styles.checkIcon} /> Requires App
+                    <IconCheck size={18} className={styles.checkIcon} /> Requires mobile app
                   </td>
                   <td>
                     <IconX size={18} className={styles.crossIcon} /> Desktop only
@@ -746,13 +747,24 @@ export const Home: React.FC = () => {
                 </Accordion.Panel>
               </Accordion.Item>
 
+              <Accordion.Item value="installs" className={styles.faqItem}>
+                <Accordion.Control className={styles.faqControl}>
+                  Do I or my guests need to install any app or browser extension?
+                </Accordion.Control>
+                <Accordion.Panel className={styles.faqPanel}>
+                  No. CoWatch is completely browser-based. Neither hosts nor guests need to install software,
+                  mobile apps, or browser extensions. Simply open the room link in any modern browser on your
+                  phone, tablet, or computer.
+                </Accordion.Panel>
+              </Accordion.Item>
+
               <Accordion.Item value="mobile" className={styles.faqItem}>
                 <Accordion.Control className={styles.faqControl}>
                   Can I use CoWatch on mobile devices?
                 </Accordion.Control>
                 <Accordion.Panel className={styles.faqPanel}>
-                  Yes. CoWatch is built for modern mobile and desktop browsers with responsive playback, chat, and
-                  room controls. No separate mobile application is required.
+                  Yes. CoWatch works directly in modern mobile browsers like Safari and Chrome with full playback,
+                  voice, video, and chat. No mobile app download required.
                 </Accordion.Panel>
               </Accordion.Item>
 
