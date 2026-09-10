@@ -134,7 +134,15 @@ const supabaseUrl = config.VITE_SUPABASE_URL;
 
 // Redirect old-style URLs, but ignore Supabase auth hashes
 if (window.location.hash && window.location.pathname === "/") {
-  if (!window.location.hash.startsWith("#access_token=") && !window.location.hash.startsWith("#error=")) {
+  if (window.location.hash.startsWith("#error=")) {
+    try {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const errorDesc = hashParams.get("error_description") || "";
+      if (errorDesc.includes("Email provider is not supported") || errorDesc.includes("Database error saving new user")) {
+        window.location.href = "/login?error=unsupported_email";
+      }
+    } catch(e) {}
+  } else if (!window.location.hash.startsWith("#access_token=")) {
     const hashRoomId = window.location.hash.substring(1).replace(/^\//, '');
     window.location.href = "/join/" + hashRoomId;
   }

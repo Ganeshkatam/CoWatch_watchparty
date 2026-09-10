@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useHistory, useLocation, Link } from "react-router-dom";
 import {
   TextInput,
@@ -30,6 +30,14 @@ export const Login = () => {
     title: "Sign In",
     description: "Sign in to your CoWatch account to create and join watch parties.",
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("error") === "unsupported_email") {
+      setError("Email provider is not supported. Please use an approved provider.");
+      history.replace(location.pathname);
+    }
+  }, [location.search, location.pathname, history]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

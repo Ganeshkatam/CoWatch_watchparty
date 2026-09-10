@@ -34,6 +34,7 @@ import {
 } from "./utils/rateLimit.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
+import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -276,6 +277,20 @@ app.get("/stats", async (req, res) => {
   } else {
     res.status(403).json({ error: "Access Denied" });
   }
+});
+
+app.post("/api/auth/validate-email", async (req, res) => {
+  const email = req.body?.email;
+  if (!email || typeof email !== "string") {
+    res.status(400).json({ error: "Email is required" });
+    return;
+  }
+  const isAllowed = isAllowedEmailDomain(email);
+  if (!isAllowed) {
+    res.status(400).json({ error: "Email provider is not supported." });
+    return;
+  }
+  res.json({ valid: true });
 });
 
 app.post("/api/account/delete", async (req, res) => {
