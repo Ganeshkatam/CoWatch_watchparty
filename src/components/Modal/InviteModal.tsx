@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Modal, Button, Text, Tooltip, ActionIcon } from "@mantine/core";
+import { Modal, Button, Tooltip, ActionIcon, PasswordInput } from "@mantine/core";
 import {
   IconCopy,
   IconCheck,
@@ -14,7 +14,6 @@ import {
   IconMessageShare,
   IconUsers,
   IconLock,
-  IconShieldCheck,
   IconEye,
   IconEyeOff,
   IconLink,
@@ -38,19 +37,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const [roomIdCopied, setRoomIdCopied] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [showQr, setShowQr] = useState(false);
+  const [manualPasscode, setManualPasscode] = useState("");
+  const [passcodePrompt, setPasscodePrompt] = useState(false);
 
   const pathParts = window.location.pathname.split("/");
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
   const cleanId = roomIdOrVanity.replace(/^\//, "");
 
-  const resolvedPasscode = propPasscode || "";
+  const resolvedPasscode = (propPasscode || manualPasscode).trim();
 
   const baseUrl = `${window.location.origin}/join/${cleanId}`;
   const fullUrl = baseUrl;
 
-  const inviteMessage = resolvedPasscode
-    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
+  // Enforce passcode inclusion in every generated invite message
+  const inviteMessage = `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -59,6 +59,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const handleCopyInviteMessage = () => {
+    if (!resolvedPasscode) {
+      setPasscodePrompt(true);
+    }
     navigator.clipboard.writeText(inviteMessage);
     setInviteMsgCopied(true);
     setTimeout(() => setInviteMsgCopied(false), 2000);
@@ -77,21 +80,17 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     setTimeout(() => setRoomIdCopied(false), 2000);
   };
 
-  const whatsappText = resolvedPasscode
-    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}`;
+  const whatsappText = `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
 
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
 
-  const telegramText = resolvedPasscode
-    ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Join my watch party on CoWatch!`;
+  const telegramText = `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
 
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
     fullUrl
   )}&text=${encodeURIComponent(telegramText)}`;
 
-  const twitterText = "Join my watch party on CoWatch and let's stream together!";
+  const twitterText = `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     twitterText
   )}&url=${encodeURIComponent(fullUrl)}`;
@@ -112,12 +111,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     navigator
       .share({
         title: "Join my CoWatch Party",
-        text: resolvedPasscode
-          ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-          : "Join my watch party and let's stream together!",
+        text: `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`,
         url: fullUrl,
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   return (
@@ -151,12 +148,26 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             </div>
           </div>
         ) : (
-          <div className={`${styles.statusBanner} ${styles.statusBannerOpen}`}>
-            <IconShieldCheck size={18} className={styles.statusBannerIcon} />
+          <div className={`${styles.statusBanner} ${styles.statusBannerProtected}`}>
+            <IconLock size={18} className={styles.statusBannerIcon} />
             <div>
-              <strong>Room Access.</strong> Share this invite link with friends to watch together.
+              <strong>Passcode Required.</strong> Every room requires a passcode. Enter the room passcode below to include it in all invite messages.
             </div>
           </div>
+        )}
+
+        {!propPasscode && (
+          <PasswordInput
+            size="sm"
+            label="Room Passcode (Required for Invite)"
+            placeholder="Enter room passcode"
+            value={manualPasscode}
+            onChange={(e) => {
+              setManualPasscode(e.currentTarget.value);
+              setPasscodePrompt(false);
+            }}
+            error={passcodePrompt && !manualPasscode ? "Passcode is required for guests to enter" : undefined}
+          />
         )}
 
         {/* Primary Link Card */}
@@ -252,15 +263,15 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className={styles.credentialCard} style={{ cursor: "default", opacity: 0.8 }}>
+            <div className={styles.credentialCard} style={{ cursor: "default", opacity: 0.9 }}>
               <div className={styles.credentialHeader}>
                 <span className={styles.credentialTitle}>
                   <IconKey size={13} />
                   Room Passcode
                 </span>
               </div>
-              <div className={styles.credentialValue} style={{ color: "var(--text-secondary)" }}>
-                None (Open)
+              <div className={styles.credentialValue} style={{ color: "#fbbf24", fontSize: "12px" }}>
+                Required (Enter above)
               </div>
             </div>
           )}
