@@ -7,7 +7,6 @@ import {
   Switch,
   Group,
   Text,
-  Tabs,
   TextInput,
   SegmentedControl,
   Alert,
@@ -55,15 +54,14 @@ export const Profile: React.FC = () => {
   const location = useLocation();
   const history = useHistory();
 
-  // Tab routing determination
+  // Route determinations
   const pathname = location.pathname;
   const isPreferences = pathname === "/account/preferences";
   const isSecurity = pathname === "/account/security";
   const isProfile = pathname === "/account/profile";
 
   // Redirect invalid or root /account URLs to /account/profile
-  const shouldRedirectToProfile =
-    !isProfile && !isPreferences && !isSecurity;
+  const shouldRedirectToProfile = !isProfile && !isPreferences && !isSecurity;
 
   const activeTab = isPreferences
     ? "preferences"
@@ -136,8 +134,7 @@ export const Profile: React.FC = () => {
   }, [context.user, context.profile, context.displayName, hasLoadedProfile, displayName, originalDisplayName]);
 
   // Tab change pushes to router history for full URL navigation
-  const handleTabChange = (val: string | null) => {
-    if (!val) return;
+  const handleTabChange = (val: string) => {
     if (val !== activeTab) {
       history.push(`/account/${val}`);
     }
@@ -344,7 +341,7 @@ export const Profile: React.FC = () => {
     <div className={styles.page}>
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }
         }
         .profile-btn {
@@ -359,7 +356,7 @@ export const Profile: React.FC = () => {
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
           border: 1px solid var(--glass-border);
-          border-radius: 16px;
+          border-radius: 20px;
           box-shadow: 0 8px 32px var(--glass-shadow);
         }
       `}</style>
@@ -394,7 +391,7 @@ export const Profile: React.FC = () => {
       <Modal
         opened={Boolean(avatarError)}
         onClose={() => setAvatarError(null)}
-        title="Avatar Upload Notice"
+        title="Avatar Notice"
         centered
         overlayProps={{ blur: 5, color: "var(--overlay-scrim)", opacity: 1 }}
       >
@@ -419,106 +416,205 @@ export const Profile: React.FC = () => {
             left: "-50%",
             width: "200%",
             height: "200%",
-            background: "radial-gradient(circle at 50% 0%, rgba(66, 133, 244, 0.1) 0%, transparent 50%)",
+            background: "radial-gradient(circle at 40% 0%, rgba(139, 92, 246, 0.08) 0%, transparent 50%)",
             pointerEvents: "none",
             zIndex: 0,
           }}
         />
 
-        <div className={styles.content}>
-          <h1
-            style={{
-              margin: "0 0 8px 0",
-              fontFamily: "Inter, sans-serif",
-              fontWeight: 600,
-              fontSize: "1.8rem",
-              background: "linear-gradient(90deg, var(--text-primary), var(--text-muted))",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Account Settings
-          </h1>
-          <p style={{ margin: "0 0 28px 0", color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-            Manage your profile, watching preferences, and security settings.
+        {/* Page Header */}
+        <header className={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>Account Settings</h1>
+          <p className={styles.pageSubtitle}>
+            Manage your personal profile, viewing preferences, and security settings.
           </p>
+        </header>
 
-          {/* Profile Header Summary */}
-          <div className={styles.profileHeader}>
-            <Avatar
-              className={styles.avatar}
-              size={120}
-              src={context.avatarUrl}
-              style={{
-                border: "2px solid var(--border-subtle)",
-                boxShadow: "0 4px 15px rgba(0,0,0,0.3)",
-              }}
-            />
-            <div className={styles.identity}>
-              <div className={styles.identityName}>
-                <span style={{ fontSize: "1.2rem", fontWeight: 500, color: "var(--text-primary)" }}>
+        {/* Mobile Navigation Tabs (visible only on mobile and small screens) */}
+        <nav className={styles.mobileNav} aria-label="Mobile account navigation">
+          <button
+            type="button"
+            className={`${styles.mobileNavItem} ${isProfile ? styles.activeMobileNavItem : ""}`}
+            onClick={() => handleTabChange("profile")}
+            aria-current={isProfile ? "page" : undefined}
+          >
+            <IconUser size={16} stroke={isProfile ? 2.2 : 1.6} />
+            <span>Profile</span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.mobileNavItem} ${isPreferences ? styles.activeMobileNavItem : ""}`}
+            onClick={() => handleTabChange("preferences")}
+            aria-current={isPreferences ? "page" : undefined}
+          >
+            <IconSettings size={16} stroke={isPreferences ? 2.2 : 1.6} />
+            <span>Preferences</span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.mobileNavItem} ${isSecurity ? styles.activeMobileNavItem : ""}`}
+            onClick={() => handleTabChange("security")}
+            aria-current={isSecurity ? "page" : undefined}
+          >
+            <IconLock size={16} stroke={isSecurity ? 2.2 : 1.6} />
+            <span>Security</span>
+          </button>
+        </nav>
+
+        {/* Side Panel Nav & Main Content Layout */}
+        <div className={styles.layout}>
+          {/* Left Side Panel Navigation (laptops, desktops, and large screens only) */}
+          <aside className={styles.sideNav} aria-label="Desktop account navigation">
+            {/* User Identity Snippet */}
+            <div className={styles.userBadge}>
+              <Avatar
+                src={context.avatarUrl}
+                size={38}
+                radius="xl"
+                className={styles.avatar}
+              />
+              <div className={styles.userBadgeDetails}>
+                <span className={styles.userBadgeName}>
                   {originalDisplayName || context.displayName || context.user?.email?.split("@")[0]}
+                  {context.user?.user_metadata?.email_verified && (
+                    <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={15} />
+                  )}
                 </span>
-                {context.user?.user_metadata?.email_verified && (
-                  <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={18} />
-                )}
+                <span className={styles.userBadgeEmail}>
+                  {context.user?.email}
+                </span>
               </div>
-              <span className={styles.identityEmail} style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                {context.user?.email}
-              </span>
             </div>
 
-            <Button
-              leftSection={isUploadingAvatar ? <Loader size="xs" color="violet" /> : <IconUpload size={16} />}
-              onClick={uploadAvatar}
-              disabled={isUploadingAvatar}
-              variant="light"
-              color="violet"
-              className={`profile-btn ${styles.uploadButton}`}
+            {/* Nav Item: Profile */}
+            <button
+              type="button"
+              className={`${styles.navItem} ${isProfile ? styles.activeNavItem : ""}`}
+              onClick={() => handleTabChange("profile")}
+              aria-current={isProfile ? "page" : undefined}
             >
-              {isUploadingAvatar
-                ? "Uploading..."
-                : context.avatarUrl
-                ? "Change Picture"
-                : "Upload Picture"}
-            </Button>
-          </div>
+              <div className={`${styles.navIconWrapper} ${isProfile ? styles.activeNavIconWrapper : ""}`}>
+                <IconUser size={18} stroke={isProfile ? 2.2 : 1.6} />
+              </div>
+              <div className={styles.navLabelWrapper}>
+                <span className={`${styles.navLabelTitle} ${isProfile ? styles.activeNavLabelTitle : ""}`}>
+                  Profile
+                </span>
+                <span className={styles.navLabelSubtitle}>Identity and photo</span>
+              </div>
+            </button>
 
-          {/* Navigation Tabs with URL routing under /account/* */}
-          <Tabs value={activeTab} onChange={handleTabChange} color="violet">
-            <Tabs.List className={styles.tabsList} mb="xl">
-              <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
-                Profile
-              </Tabs.Tab>
-              <Tabs.Tab value="preferences" leftSection={<IconSettings size={16} />}>
-                Preferences
-              </Tabs.Tab>
-              <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
-                Security
-              </Tabs.Tab>
-            </Tabs.List>
+            {/* Nav Item: Preferences */}
+            <button
+              type="button"
+              className={`${styles.navItem} ${isPreferences ? styles.activeNavItem : ""}`}
+              onClick={() => handleTabChange("preferences")}
+              aria-current={isPreferences ? "page" : undefined}
+            >
+              <div className={`${styles.navIconWrapper} ${isPreferences ? styles.activeNavIconWrapper : ""}`}>
+                <IconSettings size={18} stroke={isPreferences ? 2.2 : 1.6} />
+              </div>
+              <div className={styles.navLabelWrapper}>
+                <span className={`${styles.navLabelTitle} ${isPreferences ? styles.activeNavLabelTitle : ""}`}>
+                  Preferences
+                </span>
+                <span className={styles.navLabelSubtitle}>Media, chat, theme</span>
+              </div>
+            </button>
 
-            {/* Profile Sub-navigation View (/account/profile) */}
-            <Tabs.Panel value="profile">
-              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                <div
-                  style={{
-                    padding: "20px",
-                    background: "var(--bg-elevated)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
+            {/* Nav Item: Security */}
+            <button
+              type="button"
+              className={`${styles.navItem} ${isSecurity ? styles.activeNavItem : ""}`}
+              onClick={() => handleTabChange("security")}
+              aria-current={isSecurity ? "page" : undefined}
+            >
+              <div className={`${styles.navIconWrapper} ${isSecurity ? styles.activeNavIconWrapper : ""}`}>
+                <IconLock size={18} stroke={isSecurity ? 2.2 : 1.6} />
+              </div>
+              <div className={styles.navLabelWrapper}>
+                <span className={`${styles.navLabelTitle} ${isSecurity ? styles.activeNavLabelTitle : ""}`}>
+                  Security
+                </span>
+                <span className={styles.navLabelSubtitle}>Password and session</span>
+              </div>
+            </button>
+
+            <div className={styles.sideNavDivider} />
+
+            <button
+              type="button"
+              className={styles.sideNavSignOut}
+              onClick={onSignOut}
+            >
+              <IconLogout size={16} stroke={1.6} />
+              <span>Sign Out</span>
+            </button>
+          </aside>
+
+          {/* Right Main Content Area */}
+          <main className={styles.mainPanel}>
+            {/* View: Profile */}
+            {isProfile && (
+              <>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle}>Public Profile</h2>
+                  <p className={styles.sectionSubtitle}>
+                    Manage your display name, profile avatar, and account credentials.
+                  </p>
+                </div>
+
+                {/* Profile Photo Banner */}
+                <div className={styles.profileBanner}>
+                  <Avatar
+                    className={styles.avatar}
+                    size={90}
+                    src={context.avatarUrl}
+                  />
+                  <div className={styles.identity}>
+                    <div className={styles.identityName}>
+                      <span style={{ fontSize: "1.2rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                        {originalDisplayName || context.displayName || context.user?.email?.split("@")[0]}
+                      </span>
+                      {context.user?.user_metadata?.email_verified && (
+                        <IconCircleCheckFilled title="Verified" color="var(--color-success)" size={18} />
+                      )}
+                    </div>
+                    <span className={styles.identityEmail} style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                      {context.user?.email}
+                    </span>
+                  </div>
+
+                  <Button
+                    leftSection={isUploadingAvatar ? <Loader size="xs" color="violet" /> : <IconUpload size={16} />}
+                    onClick={uploadAvatar}
+                    disabled={isUploadingAvatar}
+                    variant="light"
+                    color="violet"
+                    className={`profile-btn ${styles.uploadButton}`}
+                  >
+                    {isUploadingAvatar
+                      ? "Uploading..."
+                      : context.avatarUrl
+                      ? "Change Picture"
+                      : "Upload Picture"}
+                  </Button>
+                </div>
+
+                {/* Display Name Card */}
+                <div className={styles.contentCard}>
                   <Text
                     size="sm"
                     fw={600}
                     c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}
+                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}
                   >
                     Display Name
                   </Text>
-                  <Text size="xs" c="dimmed" mb="md">
-                    This is the name other participants will see in watch parties and chats.
+                  <Text size="xs" c="dimmed" mb="xs">
+                    This is the name other participants will see in watch parties and live chats.
                   </Text>
 
                   {isEditingName ? (
@@ -540,7 +636,7 @@ export const Profile: React.FC = () => {
                         placeholder="Enter your display name"
                         styles={{
                           input: {
-                            backgroundColor: "var(--bg-surface)",
+                            backgroundColor: "var(--bg-elevated)",
                             border: "1px solid var(--color-violet)",
                             color: "var(--text-primary)",
                             height: "45px",
@@ -576,7 +672,7 @@ export const Profile: React.FC = () => {
                       rightSection={<IconPencil size={16} stroke={1.5} color="var(--text-muted)" />}
                       styles={{
                         input: {
-                          backgroundColor: "var(--bg-surface)",
+                          backgroundColor: "var(--bg-elevated)",
                           border: "1px solid var(--border-subtle)",
                           color: "var(--text-primary)",
                           height: "45px",
@@ -587,29 +683,23 @@ export const Profile: React.FC = () => {
                   )}
                 </div>
 
-                <div
-                  style={{
-                    padding: "20px",
-                    background: "var(--bg-elevated)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
+                {/* Account Details Card */}
+                <div className={styles.contentCard}>
                   <Text
                     size="sm"
                     fw={600}
                     c="dimmed"
-                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}
+                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}
                   >
-                    Account Details
+                    Account Information
                   </Text>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "8px" }}>
                     <Group justify="space-between">
                       <Text size="sm" c="var(--text-secondary)">Registered Email</Text>
                       <Text size="sm" fw={500} c="var(--text-primary)">{context.user?.email}</Text>
                     </Group>
                     <Group justify="space-between">
-                      <Text size="sm" c="var(--text-secondary)">Email Verification</Text>
+                      <Text size="sm" c="var(--text-secondary)">Email Verification Status</Text>
                       <Badge color="green" variant="light">Verified</Badge>
                     </Group>
                     <Group justify="space-between">
@@ -618,155 +708,161 @@ export const Profile: React.FC = () => {
                     </Group>
                   </div>
                 </div>
-              </div>
-            </Tabs.Panel>
+              </>
+            )}
 
-            {/* Preferences Sub-navigation View (/account/preferences) */}
-            <Tabs.Panel value="preferences">
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "16px",
-                  padding: "20px",
-                  background: "var(--bg-elevated)",
-                  borderRadius: "12px",
-                  border: "1px solid var(--border-subtle)",
-                }}
-              >
-                <Text
-                  size="sm"
-                  fw={600}
-                  c="dimmed"
-                  style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-8px" }}
-                >
-                  Media
-                </Text>
-                <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Camera on by default
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Start video automatically when joining a room.
-                    </Text>
-                  </div>
-                  <Switch
-                    size="lg"
-                    className="custom-switch"
-                    color="violet"
-                    checked={prefCameraOn}
-                    onChange={(e) => updatePreference("pref_camera_on", e.currentTarget.checked)}
-                  />
-                </Group>
+            {/* View: Preferences */}
+            {isPreferences && (
+              <>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle}>Preferences</h2>
+                  <p className={styles.sectionSubtitle}>
+                    Customize media defaults, room interfaces, and appearance themes.
+                  </p>
+                </div>
 
-                <Group
-                  className={styles.mobileStackRow}
-                  justify="space-between"
-                  wrap="nowrap"
-                  style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}
-                >
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Microphone on by default
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Start microphone automatically when joining a room.
-                    </Text>
-                  </div>
-                  <Switch
-                    size="lg"
-                    className="custom-switch"
-                    color="violet"
-                    checked={prefMicOn}
-                    onChange={(e) => updatePreference("pref_mic_on", e.currentTarget.checked)}
-                  />
-                </Group>
+                <div className={styles.contentCard}>
+                  <Text
+                    size="sm"
+                    fw={600}
+                    c="dimmed"
+                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-4px" }}
+                  >
+                    Media Defaults
+                  </Text>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Camera on by default
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Start your video automatically when joining a watch party room.
+                      </Text>
+                    </div>
+                    <Switch
+                      size="lg"
+                      className="custom-switch"
+                      color="violet"
+                      checked={prefCameraOn}
+                      onChange={(e) => updatePreference("pref_camera_on", e.currentTarget.checked)}
+                    />
+                  </Group>
 
-                <Text
-                  size="sm"
-                  fw={600}
-                  c="dimmed"
-                  style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-8px", marginTop: "8px" }}
-                >
-                  General
-                </Text>
-                <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Show Chat Column
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Display the chat sidebar by default when joining rooms.
-                    </Text>
-                  </div>
-                  <Switch
-                    size="lg"
-                    className="custom-switch"
-                    color="violet"
-                    checked={prefShowChatColumn}
-                    onChange={(e) => updatePreference("pref_show_chat_column", e.currentTarget.checked)}
-                  />
-                </Group>
+                  <Group
+                    className={styles.mobileStackRow}
+                    justify="space-between"
+                    wrap="nowrap"
+                    style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}
+                  >
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Microphone on by default
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Start your microphone automatically when joining a watch party room.
+                      </Text>
+                    </div>
+                    <Switch
+                      size="lg"
+                      className="custom-switch"
+                      color="violet"
+                      checked={prefMicOn}
+                      onChange={(e) => updatePreference("pref_mic_on", e.currentTarget.checked)}
+                    />
+                  </Group>
 
-                <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Show People Column
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Display the participant list by default.
-                    </Text>
-                  </div>
-                  <Switch
-                    size="lg"
-                    className="custom-switch"
-                    color="violet"
-                    checked={prefShowPeopleColumn}
-                    onChange={(e) => updatePreference("pref_show_people_column", e.currentTarget.checked)}
-                  />
-                </Group>
+                  <Text
+                    size="sm"
+                    fw={600}
+                    c="dimmed"
+                    style={{ textTransform: "uppercase", letterSpacing: "1px", marginBottom: "-4px", marginTop: "8px" }}
+                  >
+                    Room Interface
+                  </Text>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Show Chat Column
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Display the room chat sidebar by default.
+                      </Text>
+                    </div>
+                    <Switch
+                      size="lg"
+                      className="custom-switch"
+                      color="violet"
+                      checked={prefShowChatColumn}
+                      onChange={(e) => updatePreference("pref_show_chat_column", e.currentTarget.checked)}
+                    />
+                  </Group>
 
-                <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Disable Chat Sound
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Mute notification sounds for new chat messages.
-                    </Text>
-                  </div>
-                  <Switch
-                    size="lg"
-                    className="custom-switch"
-                    color="violet"
-                    checked={prefDisableChatSound}
-                    onChange={(e) => updatePreference("pref_disable_chat_sound", e.currentTarget.checked)}
-                  />
-                </Group>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Show People Column
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Display the room participant list by default.
+                      </Text>
+                    </div>
+                    <Switch
+                      size="lg"
+                      className="custom-switch"
+                      color="violet"
+                      checked={prefShowPeopleColumn}
+                      onChange={(e) => updatePreference("pref_show_people_column", e.currentTarget.checked)}
+                    />
+                  </Group>
 
-                <Group
-                  className={styles.mobileStackRow}
-                  justify="space-between"
-                  wrap="nowrap"
-                  style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginTop: "8px" }}
-                >
-                  <div>
-                    <Text size="md" fw={500} c="var(--text-primary)">
-                      Appearance
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Customize your visual interface theme.
-                    </Text>
-                  </div>
-                  <AppearanceSelector />
-                </Group>
-              </div>
-            </Tabs.Panel>
+                  <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Disable Chat Sound
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Mute sound notifications when new chat messages arrive.
+                      </Text>
+                    </div>
+                    <Switch
+                      size="lg"
+                      className="custom-switch"
+                      color="violet"
+                      checked={prefDisableChatSound}
+                      onChange={(e) => updatePreference("pref_disable_chat_sound", e.currentTarget.checked)}
+                    />
+                  </Group>
 
-            {/* Security Sub-navigation View (/account/security) */}
-            <Tabs.Panel value="security">
-              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  <Group
+                    className={styles.mobileStackRow}
+                    justify="space-between"
+                    wrap="nowrap"
+                    style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginTop: "8px" }}
+                  >
+                    <div>
+                      <Text size="md" fw={500} c="var(--text-primary)">
+                        Appearance Theme
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Select your preferred visual interface theme.
+                      </Text>
+                    </div>
+                    <AppearanceSelector />
+                  </Group>
+                </div>
+              </>
+            )}
+
+            {/* View: Security */}
+            {isSecurity && (
+              <>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle}>Security & Login</h2>
+                  <p className={styles.sectionSubtitle}>
+                    Manage your credentials, active browser session, and account deletion.
+                  </p>
+                </div>
+
                 {resetSuccessMessage && (
                   <Alert
                     icon={<IconCheck size={16} />}
@@ -780,17 +876,7 @@ export const Profile: React.FC = () => {
                 )}
 
                 {/* Authentication & Session Card */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "16px",
-                    padding: "20px",
-                    background: "var(--bg-elevated)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
+                <div className={styles.contentCard}>
                   <Text
                     size="sm"
                     fw={600}
@@ -798,7 +884,7 @@ export const Profile: React.FC = () => {
                     style={{
                       textTransform: "uppercase",
                       letterSpacing: "1px",
-                      marginBottom: "-8px",
+                      marginBottom: "-4px",
                     }}
                   >
                     Authentication & Session
@@ -834,7 +920,7 @@ export const Profile: React.FC = () => {
                   <Group className={styles.mobileStackRow} justify="space-between" wrap="nowrap">
                     <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
                       <Text size="md" fw={500} c="var(--text-primary)">
-                        Active Session
+                        Active Browser Session
                       </Text>
                       <Text size="xs" c="dimmed">
                         Sign out of your active CoWatch account on this browser.
@@ -862,11 +948,12 @@ export const Profile: React.FC = () => {
                   style={{
                     background: "rgba(239, 68, 68, 0.04)",
                     border: "1px solid rgba(239, 68, 68, 0.22)",
-                    borderRadius: "12px",
-                    padding: "20px",
+                    borderRadius: "16px",
+                    padding: "24px",
                     display: "flex",
                     flexDirection: "column",
                     gap: "14px",
+                    boxShadow: "var(--shadow-sm)",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "-4px" }}>
@@ -905,9 +992,9 @@ export const Profile: React.FC = () => {
                     </Button>
                   </Group>
                 </div>
-              </div>
-            </Tabs.Panel>
-          </Tabs>
+              </>
+            )}
+          </main>
         </div>
       </div>
     </div>
