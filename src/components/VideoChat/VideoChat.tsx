@@ -559,6 +559,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       onClick={this.setupWebRTC}
                       leftSection={<IconVideo size={14} />}
                       style={{ marginTop: "4px" }}
+                      className={styles.joinCallBtn}
                     >
                       Join Video Call
                     </Button>
@@ -697,7 +698,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         })}
 
         <div
-          className={styles.inviteCard}
+          className={`${styles.inviteCard} ${participants.length === 1 ? styles.inviteCardSlot : ""}`}
           onClick={this.handleOpenInvite}
           role="button"
           tabIndex={0}
@@ -720,7 +721,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
               Share a link to bring friends into the room
             </span>
           </div>
-          <IconChevronRight size={16} color="var(--text-muted)" />
+          <IconChevronRight size={16} color="var(--text-muted)" className={styles.inviteChevron} />
         </div>
 
         {this.state.isInviteModalOpen && (

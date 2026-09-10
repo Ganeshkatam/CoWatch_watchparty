@@ -93,36 +93,14 @@
   margin: 0 0 24px 0;
 }
 
-.addMediaCtaBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border-radius: 999px;
-  background: var(--color-violet);
-  color: #FFFFFF;
-  font-size: 14px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+.playIconBox[role="button"]:hover {
+  transform: scale(1.06);
+  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 14px 36px rgba(139, 92, 246, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-.addMediaCtaBtn:hover:not(:disabled) {
-  background: #7C3AED;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(139, 92, 246, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
-
-.addMediaCtaBtn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.addMediaCtaBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  box-shadow: none;
+.playIconBox[role="button"]:active {
+  transform: scale(0.98);
 }
 
 .lockNotice {
@@ -200,11 +178,6 @@
 
   .emptySecondary {
     display: none;
-  }
-
-  .addMediaCtaBtn {
-    padding: 6px 14px;
-    font-size: 12.5px;
   }
 
   .lockNotice {

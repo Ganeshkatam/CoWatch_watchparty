@@ -3,7 +3,6 @@ import {
   IconAlertCircle,
   IconLock,
   IconPlayerPlayFilled,
-  IconPlus,
 } from "@tabler/icons-react";
 import styles from "./EmptyWatchState.module.css";
 
@@ -23,7 +22,14 @@ export const EmptyWatchState: React.FC<EmptyWatchStateProps> = ({
       <div className={styles.emptyContainer}>
         <div className={styles.playIconWrapper}>
           <div className={styles.playIconGlow} />
-          <div className={styles.playIconBox}>
+          <div
+            className={styles.playIconBox}
+            onClick={haveLock ? onOpenAddMedia : undefined}
+            role={haveLock ? "button" : undefined}
+            tabIndex={haveLock ? 0 : undefined}
+            title={haveLock ? "Add media to room" : undefined}
+            style={{ cursor: haveLock ? "pointer" : "default" }}
+          >
             <IconPlayerPlayFilled size={30} />
           </div>
         </div>
@@ -35,17 +41,6 @@ export const EmptyWatchState: React.FC<EmptyWatchStateProps> = ({
         <p className={styles.emptySecondary}>
           Add a video, share your screen, or browse together.
         </p>
-
-        <button
-          type="button"
-          className={styles.addMediaCtaBtn}
-          onClick={onOpenAddMedia}
-          disabled={!haveLock}
-          title={haveLock ? "Add something to watch" : "Controls are locked"}
-        >
-          <IconPlus size={16} stroke={2.5} />
-          <span>Add something to watch</span>
-        </button>
 
         {!haveLock && (
           <div className={styles.lockNotice}>
