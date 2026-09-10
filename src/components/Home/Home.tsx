@@ -145,9 +145,9 @@ export const Home: React.FC = () => {
             <div className={styles.heroTrustLine}>
               <span>Completely browser-based</span>
               <span className={styles.trustDot}>•</span>
-              <span>No downloads or extensions</span>
+              <span>Zero downloads or extensions</span>
               <span className={styles.trustDot}>•</span>
-              <span>Free for everyone</span>
+              <span>Free account to start</span>
             </div>
           </div>
         </div>
@@ -480,10 +480,10 @@ export const Home: React.FC = () => {
 
             <div className={styles.stepCard}>
               <div className={styles.stepNumber}>03</div>
-              <div className={styles.stepTitle}>Watch, Talk & React</div>
+              <div className={styles.stepTitle}>Sign In & Watch Together</div>
               <div className={styles.stepDescription}>
-                Guests enter the passcode at the gateway to join immediately in their browser. Talk, react, and
-                hang out together.
+                Sign in with your CoWatch account, enter the room passcode at the gateway, and start watching,
+                talking, and reacting together.
               </div>
             </div>
           </div>
@@ -726,13 +726,13 @@ export const Home: React.FC = () => {
 
           <div className={styles.faqWrapper}>
             <Accordion variant="separated" radius="md">
-              <Accordion.Item value="guests" className={styles.faqItem}>
+              <Accordion.Item value="account" className={styles.faqItem}>
                 <Accordion.Control className={styles.faqControl}>
-                  Do guests need to create an account to join?
+                  Is an account compulsory to join a watch party?
                 </Accordion.Control>
                 <Accordion.Panel className={styles.faqPanel}>
-                  No. Guests can join watch parties without an account using the room link and room passcode
-                  provided by the host. Hosts create an account to manage and persist rooms.
+                  Yes. An account is compulsory for all participants to ensure verified identities,
+                  room security, profile avatars, and a safe community experience. Sign up is fast and 100% free.
                 </Accordion.Panel>
               </Accordion.Item>
 
@@ -782,7 +782,7 @@ export const Home: React.FC = () => {
                   How do room passcodes protect my session?
                 </Accordion.Control>
                 <Accordion.Panel className={styles.faqPanel}>
-                  Protected rooms require non-host guests to enter the room passcode upon arrival at the gateway
+                  Protected rooms require members to enter the room passcode upon arrival at the gateway
                   before gaining access to the stream and chat.
                 </Accordion.Panel>
               </Accordion.Item>
