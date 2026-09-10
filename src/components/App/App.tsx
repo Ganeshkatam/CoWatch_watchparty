@@ -45,6 +45,7 @@ import { FileShareModal } from "../Modal/FileShareModal";
 import type { User } from "@supabase/supabase-js";
 import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
+import { QuickAdd } from "./QuickAdd";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
@@ -164,6 +165,7 @@ interface AppState {
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
+  isQuickAddModalOpen: boolean;
   copiedRoomLink: boolean;
   roomLock: string;
   controller?: string;
@@ -248,6 +250,7 @@ export class App extends React.Component<AppProps, AppState> {
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
+    isQuickAddModalOpen: false,
     copiedRoomLink: false,
     roomLock: "",
     controller: "",
@@ -1702,10 +1705,22 @@ export class App extends React.Component<AppProps, AppState> {
     this.setRoomLock(!Boolean(this.state.roomLock));
   };
 
+  openQuickAdd = () => {
+    this.setState({ isQuickAddModalOpen: true });
+  };
+
+  closeQuickAdd = () => {
+    this.setState({ isQuickAddModalOpen: false });
+  };
+
   focusHeaderSearch = () => {
     window.dispatchEvent(new CustomEvent("cowatch:focus-search"));
     const el = document.getElementById("cowatch-header-search");
-    el?.focus();
+    if (el) {
+      el.focus();
+    } else {
+      this.openQuickAdd();
+    }
   };
 
   handleCopyRoomLink = () => {
@@ -2814,6 +2829,16 @@ export class App extends React.Component<AppProps, AppState> {
             getSubtitleMode={this.Player().getSubtitleMode}
           />
         )}
+        <QuickAdd
+          isOpen={this.state.isQuickAddModalOpen}
+          onOpenChange={(open) => this.setState({ isQuickAddModalOpen: open })}
+          roomSetMedia={this.roomSetMedia}
+          playlistAdd={this.roomPlaylistAdd}
+          roomMedia={this.state.roomMedia}
+          getMediaDisplayName={this.getMediaDisplayName}
+          mediaPath={this.state.mediaPath}
+          disabled={!this.haveLock()}
+        />
 
         {this.state.state === "starting" && (
           <Overlay
@@ -2988,7 +3013,7 @@ export class App extends React.Component<AppProps, AppState> {
             haveLock={this.haveLock()}
             currentMedia={this.state.roomMedia}
             mediaDisplayName={this.getMediaDisplayName(this.state.roomMedia)}
-            onOpenQuickAdd={this.focusHeaderSearch}
+            onOpenQuickAdd={this.openQuickAdd}
             roomSetMedia={this.roomSetMedia}
             playlistAdd={this.roomPlaylistAdd}
             mediaPath={this.state.mediaPath}
@@ -3180,7 +3205,7 @@ export class App extends React.Component<AppProps, AppState> {
                           {!this.state.roomMedia && (
                             <EmptyWatchState
                               haveLock={this.haveLock()}
-                              onOpenAddMedia={this.focusHeaderSearch}
+                              onOpenAddMedia={this.openQuickAdd}
                             />
                           )}
                           {!this.state.loading &&
@@ -3300,7 +3325,7 @@ export class App extends React.Component<AppProps, AppState> {
                       onOpenFileShare={() =>
                         this.setState({ isFileShareModalOpen: true })
                       }
-                      onOpenQuickAdd={this.focusHeaderSearch}
+                      onOpenQuickAdd={this.openQuickAdd}
                       playlist={playlist}
                       onPlayPlaylistItem={this.roomPlaylistPlay}
                       onDeletePlaylistItem={this.roomPlaylistDelete}
