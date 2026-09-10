@@ -448,12 +448,11 @@ export const TopBar = (props: {
             Settings
           </Button>
         )}
-        <ThemeToggleQuickButton />
         {!props.hideGetStarted && !context.user && <GetStartedButton />}
         {!props.hideSignin && <SignInButton />}
       </div>
 
-      {/* Mobile Actions: Theme Toggle & Hamburger */}
+      {/* Mobile Actions: Hamburger */}
       <div className={styles.mobileActions}>
         {props.showExit && (
           <Button
@@ -468,7 +467,6 @@ export const TopBar = (props: {
             Exit
           </Button>
         )}
-        <ThemeToggleQuickButton />
         <Burger
           opened={drawerOpened}
           onClick={() => setDrawerOpened((o) => !o)}
