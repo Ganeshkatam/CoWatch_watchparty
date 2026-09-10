@@ -403,7 +403,7 @@ export const TopBar = (props: {
         opened={drawerOpened}
         onClose={() => setDrawerOpened(false)}
         position="right"
-        size={440}
+        size={360}
         title={
           <div className={styles.drawerBrand}>
             <img src="/logo192.png" alt="CoWatch" className={styles.drawerLogo} />

@@ -161,9 +161,13 @@
 /* Mobile Drawer Styles */
 .drawerContent {
   background: var(--bg-surface) !important;
-  border-left: 1px solid var(--border-subtle);
-  border-top-left-radius: 44px !important;
-  border-bottom-left-radius: 44px !important;
+  border-left: 1px solid var(--border-subtle) !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-top-left-radius: 56px !important;
+  border-bottom-left-radius: 56px !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
   overflow: hidden !important;
   box-shadow: -28px 0 80px rgba(0, 0, 0, 0.45), -1px 0 0 rgba(139, 92, 246, 0.25) !important;
 }
@@ -171,7 +175,7 @@
 .drawerHeader {
   background: transparent !important;
   border-bottom: 1px solid var(--border-subtle);
-  padding: 18px 24px !important;
+  padding: 18px 24px 18px 32px !important;
 }
 
 .drawerBody {
