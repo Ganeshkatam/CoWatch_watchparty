@@ -550,7 +550,7 @@ class CoWatch extends React.Component {
                         </Route>
                         <Route path={["/account", "/account/:tab*"]}>
                           <RequireVerifiedEmail>
-                            <TopBar hideNewRoom />
+                            <TopBar />
                             <Profile />
                           </RequireVerifiedEmail>
                         </Route>
@@ -559,7 +559,7 @@ class CoWatch extends React.Component {
                         </Route>
                         <Route path="/rooms" exact>
                           <RequireVerifiedEmail>
-                            <TopBar hideMyRooms />
+                            <TopBar />
                             <MyRooms />
                           </RequireVerifiedEmail>
                         </Route>

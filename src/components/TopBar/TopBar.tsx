@@ -330,7 +330,7 @@ export const TopBar = (props: {
               My rooms
             </Link>
           )}
-          {!props.hideNewRoom && context.user && (
+          {!props.hideNewRoom && (
             <Link
               to="/create"
               className={`${styles.middleNavLink} ${location.pathname === "/create" ? styles.middleNavLinkActive : ""
