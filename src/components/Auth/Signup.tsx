@@ -1,24 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useHistory, useLocation, Link } from "react-router-dom";
-import {
-  TextInput,
-  PasswordInput,
-  Button,
-  Paper,
-  Title,
-  Text,
-  Alert,
-  Divider,
-  Stack,
-} from "@mantine/core";
-import {
-  IconAlertCircle,
-  IconArrowRight,
-  IconBrandGoogleFilled,
-  IconCalendar,
-  IconShieldCheck,
-  IconLock,
-} from "@tabler/icons-react";
+import { TextInput, PasswordInput, Button, Paper, Title, Text, Alert, Stack } from "@mantine/core";
+import { IconAlertCircle, IconArrowRight, IconCalendar, IconShieldCheck, IconLock } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
@@ -64,7 +47,6 @@ export const Signup = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
   useDocumentMetadata({
@@ -73,6 +55,8 @@ export const Signup = () => {
   });
   const history = useHistory();
   const location = useLocation();
+  const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
+  const googleSignupConfigured = enabledOptions.includes("google");
 
   const handleAgeVerification = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,40 +82,6 @@ export const Signup = () => {
     setAgeGateComplete(true);
     setError(null);
   };
-
-  const handleGoogleSignIn = async () => {
-    if (!ageGateComplete) return;
-
-    setError(null);
-    setGoogleLoading(true);
-    try {
-      const params = new URLSearchParams(location.search);
-      const redirect = params.get("redirect") || "/";
-      const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
-      const redirectTo = `${window.location.origin}${redirectTarget}`;
-      const queryParams: Record<string, string> = {};
-      if (email.trim()) queryParams.login_hint = email.trim();
-
-      // The current Supabase browser OAuth API does not support attaching
-      // custom signup metadata to the auth.users INSERT. The database guard
-      // therefore permits existing OAuth users to sign in but rejects a new
-      // OAuth account until the OAuth flow has a trusted age-verification path.
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
-        },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      console.error("Google Auth error:", err);
-      setError(err.message);
-      setGoogleLoading(false);
-    }
-  };
-
-  const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -172,10 +122,7 @@ export const Signup = () => {
         return;
       }
 
-      setError(null);
-      setSuccess(
-        "We've sent a confirmation link to your email address. Please confirm your email to sign in."
-      );
+      setSuccess("We've sent a confirmation link to your email address. Please confirm your email to sign in.");
       setResendCooldown(60);
     } catch (err: any) {
       console.error("Signup error:", err);
@@ -223,14 +170,19 @@ export const Signup = () => {
         <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
           {underage ? (
             <Stack gap="md" align="center">
-              <div className={styles.ageLockIcon} aria-hidden="true">
-                <IconLock size={28} />
-              </div>
+              <div className={styles.ageLockIcon} aria-hidden="true"><IconLock size={28} /></div>
               <Text fw={700} ta="center">Account creation is unavailable</Text>
               <Text c="dimmed" size="sm" ta="center">
                 Sorry, you must be at least {MINIMUM_AGE} years old to create a CoWatch account.
               </Text>
-              <Button variant="default" fullWidth onClick={() => { setBirthdate(""); setUnderage(false); }}>
+              <Button
+                variant="default"
+                fullWidth
+                onClick={() => {
+                  setBirthdate("");
+                  setUnderage(false);
+                }}
+              >
                 Check another date
               </Button>
             </Stack>
@@ -264,12 +216,7 @@ export const Signup = () => {
                   }
                 />
 
-                <Button
-                  fullWidth
-                  type="submit"
-                  rightSection={<IconArrowRight size={18} />}
-                  disabled={!birthdate}
-                >
+                <Button fullWidth type="submit" rightSection={<IconArrowRight size={18} />} disabled={!birthdate}>
                   Continue
                 </Button>
 
@@ -320,33 +267,19 @@ export const Signup = () => {
             </Button>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {enabledOptions.includes("google") && (
-              <Button
-                leftSection={<IconBrandGoogleFilled />}
-                onClick={handleGoogleSignIn}
-                variant="default"
-                fullWidth
-                loading={googleLoading}
-              >
-                Continue with Google
-              </Button>
-            )}
+          <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            <TextInput label="Username" placeholder="Username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+            <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput label="Confirm Password" placeholder="Confirm password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
+          </form>
+        )}
 
-            {enabledOptions.includes("email") && enabledOptions.includes("google") && (
-              <Divider label="Or sign up with email" labelPosition="center" my="xs" />
-            )}
-
-            {enabledOptions.includes("email") && (
-              <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                <TextInput label="Username" placeholder="Username" required value={username} onChange={(e) => setUsername(e.target.value)} />
-                <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-                <PasswordInput label="Confirm Password" placeholder="Confirm password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
-              </form>
-            )}
-          </div>
+        {googleSignupConfigured && !success && (
+          <Text size="xs" c="dimmed" ta="center" mt="md">
+            Google account creation is temporarily unavailable while mandatory age verification is enforced server-side. Use email sign-up to create a new account.
+          </Text>
         )}
       </Paper>
       <Text size="sm" ta="center" mt="md" c="dimmed">
