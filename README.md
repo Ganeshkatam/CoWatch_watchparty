@@ -16,17 +16,27 @@ CoWatch is a private, proprietary synchronized video streaming and watch party p
   - **Screen Sharing**: Low-latency screen and tab sharing via peer-to-peer WebRTC or relay server streaming.
   - **Virtual Browsers (VBrowser)**: Cloud-hosted interactive Chromium sessions inside the room via Neko containers.
   - **File Sharing & Auto-Transcoding**: Stream local video files directly or transcode on-the-fly.
+- **Host Session Management & Delegation**:
+  - **Dynamic Host Delegation**: When the active host leaves a room with remaining participants, the host can explicitly designate a successor before leaving or exit directly, triggering deterministic promotion of the next participant in the active roster.
+  - **Automatic Owner Reclaim**: When the original room creator/owner returns to the room, hosting privileges automatically revert to the owner immediately, demoting interim hosts with real-time UI synchronization and notifications.
+  - **In-Room Host Transfer**: Hosts can transfer host authority to any participant at any time via the participant user options menu.
+  - **Separation of Ownership & Session Hosting**: Permanent room ownership (`owner_id` in PostgreSQL) governs database settings and room configuration, while session hosting controls live playback locks, kicking, and chat moderation.
+- **Media Preflight (Green Room)**:
+  - Pre-join hardware and device setup screen (`/preflight/:roomId`) enabling camera and microphone selection, audio level monitoring, local video preview, and speaker testing.
+  - Diagnostic readiness checks verifying device availability, browser autoplay permissions, and audio output.
 - **Security & Room Access**:
   - **Mandatory Room Passcodes**: Every room is protected with a secure passcode.
   - **Shareable Invites**: One-click invite modal with auto-generated links, room ID, and passcode sharing.
-  - **Room Lock Controls**: Hosts can lock controls to prevent unauthorized media changes or pause/seek interruptions.
+  - **Room Lock Controls**: Hosts can lock controls to prevent unauthorized media changes or playback interruptions.
+  - **Host Start Gate**: Rooms require the host to start the session before non-hosts can join the live stage.
+  - **Dedicated Post-Room Destination**: Clean post-session landing page (`/room-ended`) when sessions conclude.
 - **Modern User Interface**:
   - Built with Mantine v8 component library and curated semantic design tokens.
   - Dark and light theme modes with instant switching.
   - Mobile-optimized responsive layout with a dedicated bottom navigation bar for handheld devices.
   - Picture-in-Picture (PiP) and MediaSession API integration for OS-level lock screen and notification controls.
 - **Authentication & Persistence**:
-  - User accounts and email verification powered by Supabase.
+  - User accounts, age verification, and email verification powered by Supabase.
   - Persistent room management with custom room titles, descriptions, and cover photos.
   - Room lifecycle management tracking scheduled, active, and completed watch sessions.
 
@@ -129,6 +139,23 @@ Access the client at `http://localhost:5173` (or the URL displayed by Vite).
 | `npm run typecheckServer` | Runs TypeScript static analysis on server source code (`server/`). |
 | `npm run start` | Runs the production backend entrypoint. |
 | `npm run pm2` | Starts clustered backend shards using PM2. |
+
+---
+
+## Automated Test Suites
+
+Run isolated invariant and unit test suites:
+
+```bash
+# Host delegation, deterministic disconnect promotion, and owner reclaim tests
+npx tsx src/utils/hostDelegation.test.ts
+
+# Host ended modal navigation and room-ended redirect tests
+npx tsx src/utils/hostEndedModal.test.ts
+
+# Media preflight and green room diagnostic tests
+npx tsx src/utils/mediaPreflight.test.ts
+```
 
 ---
 
