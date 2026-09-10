@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useHistory, Link } from "react-router-dom";
-import { TextInput, PasswordInput, Button, Paper, Title, Text, Alert, Stack } from "@mantine/core";
+import { TextInput, PasswordInput, Button, Paper, Title, Text, Alert, Stack, Select, Group } from "@mantine/core";
 import { IconAlertCircle, IconArrowRight, IconCalendar, IconShieldCheck, IconLock } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
@@ -8,6 +8,34 @@ import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
 const MINIMUM_AGE = 18;
+
+const MONTHS = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: currentYear - 1910 + 1 }, (_, i) => {
+  const y = String(currentYear - i);
+  return { value: y, label: y };
+});
+
+const getDaysInMonth = (yearStr: string | null, monthStr: string | null) => {
+  if (!monthStr) return 31;
+  const month = parseInt(monthStr, 10);
+  const year = yearStr ? parseInt(yearStr, 10) : 2000;
+  return new Date(year, month, 0).getDate();
+};
 
 const getTodayIsoDate = () => {
   const today = new Date();
@@ -36,7 +64,37 @@ const calculateAge = (birthdate: string) => {
 };
 
 export const Signup = () => {
+  const [birthMonth, setBirthMonth] = useState<string | null>(null);
+  const [birthDay, setBirthDay] = useState<string | null>(null);
+  const [birthYear, setBirthYear] = useState<string | null>(null);
   const [birthdate, setBirthdate] = useState("");
+
+  const maxDays = useMemo(
+    () => getDaysInMonth(birthYear, birthMonth),
+    [birthYear, birthMonth]
+  );
+
+  const daysData = useMemo(() => {
+    return Array.from({ length: maxDays }, (_, i) => {
+      const d = String(i + 1).padStart(2, "0");
+      return { value: d, label: String(i + 1) };
+    });
+  }, [maxDays]);
+
+  useEffect(() => {
+    if (birthDay && parseInt(birthDay, 10) > maxDays) {
+      setBirthDay(String(maxDays).padStart(2, "0"));
+    }
+  }, [maxDays, birthDay]);
+
+  useEffect(() => {
+    if (birthYear && birthMonth && birthDay) {
+      setBirthdate(`${birthYear}-${birthMonth}-${birthDay}`);
+      setAgeError(null);
+    } else {
+      setBirthdate("");
+    }
+  }, [birthYear, birthMonth, birthDay]);
   const [ageGateComplete, setAgeGateComplete] = useState(false);
   const [underage, setUnderage] = useState(false);
   const [ageError, setAgeError] = useState<string | null>(null);
@@ -178,6 +236,9 @@ export const Signup = () => {
                 variant="default"
                 fullWidth
                 onClick={() => {
+                  setBirthMonth(null);
+                  setBirthDay(null);
+                  setBirthYear(null);
                   setBirthdate("");
                   setUnderage(false);
                 }}
@@ -193,27 +254,58 @@ export const Signup = () => {
                   <span>Age verification</span>
                 </div>
 
-                <TextInput
-                  label="Date of birth"
-                  description={`You must be at least ${MINIMUM_AGE} years old to create an account.`}
-                  type="date"
-                  required
-                  autoFocus
-                  max={getTodayIsoDate()}
-                  value={birthdate}
-                  onChange={(e) => {
-                    setBirthdate(e.target.value);
-                    setAgeError(null);
-                  }}
-                  leftSection={<IconCalendar size={17} />}
-                  error={
-                    ageError ? (
-                      <span>
-                        <IconAlertCircle size={14} style={{ verticalAlign: "middle" }} /> {ageError}
-                      </span>
-                    ) : undefined
-                  }
-                />
+                <div>
+                  <Text size="sm" fw={500} mb={4}>
+                    Date of birth <span style={{ color: "var(--color-danger)" }}>*</span>
+                  </Text>
+                  <Text size="xs" c="dimmed" mb={10}>
+                    You must be at least {MINIMUM_AGE} years old to create an account.
+                  </Text>
+                  <Group grow gap="xs">
+                    <Select
+                      placeholder="Month"
+                      data={MONTHS}
+                      value={birthMonth}
+                      onChange={(val) => {
+                        setBirthMonth(val);
+                        setAgeError(null);
+                      }}
+                      searchable
+                      clearable
+                      aria-label="Birth month"
+                    />
+                    <Select
+                      placeholder="Day"
+                      data={daysData}
+                      value={birthDay}
+                      onChange={(val) => {
+                        setBirthDay(val);
+                        setAgeError(null);
+                      }}
+                      searchable
+                      clearable
+                      aria-label="Birth day"
+                    />
+                    <Select
+                      placeholder="Year"
+                      data={YEARS}
+                      value={birthYear}
+                      onChange={(val) => {
+                        setBirthYear(val);
+                        setAgeError(null);
+                      }}
+                      searchable
+                      clearable
+                      aria-label="Birth year"
+                    />
+                  </Group>
+                  {ageError && (
+                    <Text c="red" size="xs" mt={8} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <IconAlertCircle size={14} style={{ verticalAlign: "middle" }} />
+                      {ageError}
+                    </Text>
+                  )}
+                </div>
 
                 <Button fullWidth type="submit" rightSection={<IconArrowRight size={18} />} disabled={!birthdate}>
                   Continue
