@@ -2760,7 +2760,7 @@ export class App extends React.Component<AppProps, AppState> {
         <HostEndedModal
           opened={this.state.isHostSessionEnded}
           onConfirm={() => {
-            window.location.replace("/");
+            window.location.replace("/room-ended");
           }}
         />
 

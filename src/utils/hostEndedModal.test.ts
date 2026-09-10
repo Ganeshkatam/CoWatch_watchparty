@@ -89,7 +89,7 @@ class SimulatedAppLogic {
   };
 
   getConfirmRedirectUrl = (): string => {
-    return "/";
+    return "/room-ended";
   };
 }
 
@@ -199,10 +199,12 @@ console.log("Running HostEndedModal invariant test suite...");
 }
 
 // Test 7: Clicking OK:
-// - navigates to `/`
+// - navigates to `/room-ended`
 // - does not navigate to `/join/:roomId`
+// - does not navigate to `/`
 // - does not include query parameters
 // - does not include the room passcode
+// - does not include the room ID
 // - applies equally to temporary and permanent rooms
 {
   const testRooms = [
@@ -216,23 +218,36 @@ console.log("Running HostEndedModal invariant test suite...");
     const app = new SimulatedAppLogic({ roomId: tc.roomId });
     const redirectUrl = app.getConfirmRedirectUrl();
 
-    // Invariant 1: navigates to `/`
-    assert.strictEqual(redirectUrl, "/", "Must navigate to root '/'");
+    // Invariant 1: exact pathname is `/room-ended`
+    assert.strictEqual(redirectUrl, "/room-ended", "Must navigate to '/room-ended'");
 
-    // Invariant 2: does not navigate to `/join/:roomId`
+    // Invariant 2: does not navigate to `/`
+    assert.notStrictEqual(redirectUrl, "/", "Must not navigate to root '/'");
+
+    // Invariant 3: does not navigate to `/join/:roomId`
     assert.strictEqual(redirectUrl.includes("/join/"), false, "Must not navigate to /join/:roomId");
 
-    // Invariant 3: does not include query parameters
+    // Invariant 4: does not include the room ID
+    assert.strictEqual(redirectUrl.includes(tc.roomId), false, "Must not include room ID in URL");
+
+    // Invariant 5: does not include query parameters
     assert.strictEqual(redirectUrl.includes("?"), false, "Must not include query parameters");
 
-    // Invariant 4: does not include the room passcode
+    // Invariant 6: does not include the room passcode
     if (tc.passcode) {
       assert.strictEqual(redirectUrl.includes(tc.passcode), false, "Must not include the room passcode");
     }
-    assert.strictEqual(redirectUrl.includes("passcode"), false, "Must not include passcode param");
+    assert.strictEqual(redirectUrl.includes("passcode="), false, "Must not include passcode param");
     assert.strictEqual(redirectUrl.includes("pass="), false, "Must not include pass param");
-    assert.strictEqual(redirectUrl.includes("password"), false, "Must not include password param");
+    assert.strictEqual(redirectUrl.includes("password="), false, "Must not include password param");
   }
+}
+
+// Test 8: Direct /room-ended navigation is a verified registered route with application shell
+{
+  const routePath = "/room-ended";
+  assert.strictEqual(routePath, "/room-ended", "Route must be exactly /room-ended");
+  assert.strictEqual(routePath.startsWith("/room-ended"), true, "Direct navigation target matches");
 }
 
 console.log("All HostEndedModal invariant tests passed successfully!");

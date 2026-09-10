@@ -42,6 +42,7 @@ const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").the
 const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
 const Join = lazy(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
+const PostRoom = lazy(() => import("./components/PostRoom/PostRoom").then((m) => ({ default: m.PostRoom })));
 
 const RouteFallback = () => (
   <Center style={{ minHeight: "60vh", width: "100%" }}>
@@ -527,6 +528,20 @@ class CoWatch extends React.Component {
                           exact
                           render={(props) => {
                             return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} /></RequireVerifiedEmail>;
+                          }}
+                        />
+
+                        <Route
+                          path="/room-ended"
+                          exact
+                          render={() => {
+                            return (
+                              <React.Fragment>
+                                <TopBar />
+                                <PostRoom />
+                                <Footer />
+                              </React.Fragment>
+                            );
                           }}
                         />
 
