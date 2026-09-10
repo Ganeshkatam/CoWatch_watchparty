@@ -3,7 +3,7 @@ import "./index.css";
 
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route } from "react-router-dom";
+import { BrowserRouter, Route, Redirect } from "react-router-dom";
 
 import type { User } from "@supabase/supabase-js";
 import {
@@ -402,32 +402,55 @@ class CoWatch extends React.Component {
         }
       };
 
-      // Failsafe timeout: if auth takes longer than 1.2s, immediately fall back to guest so the page NEVER hangs
+      // Failsafe timeout: if auth takes longer than 4s, fall back safely without hanging
       this.authTimeout = setTimeout(() => {
         if (this.state.user === undefined) {
-          console.warn("Auth initialization timed out, falling back to unauthenticated guest mode.");
-          this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+          if (hasCachedSupabaseToken() && cachedUser) {
+            this.setState({ user: cachedUser });
+          } else {
+            console.warn("Auth initialization timed out, falling back to unauthenticated guest mode.");
+            this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
+          }
         }
-      }, 1200);
+      }, 4000);
 
       // Listen for changes. Defer handleSession via setTimeout(0) to prevent GoTrue mutex deadlock.
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_OUT") {
+          setTimeout(() => {
+            handleSession(null);
+          }, 0);
+          return;
+        }
         setTimeout(() => {
           handleSession(session);
         }, 0);
       });
       this.authSubscription = subscription;
 
-      // Fetch initial session with fallback
-      safeGetSession(1200)
-        .then(({ data: { session } }) => {
-          setTimeout(() => {
-            handleSession(session);
-          }, 0);
+      // Fetch initial session with safe fallback that preserves cached session on refresh
+      safeGetSession(4000)
+        .then(({ data, error }: any) => {
+          if (error) {
+            console.warn("Initial session check warning:", error);
+            // Do not clear user if an authenticated token is present in localStorage
+            if (hasCachedSupabaseToken() && this.state.user) {
+              return;
+            }
+          }
+          if (data?.session) {
+            setTimeout(() => {
+              handleSession(data.session);
+            }, 0);
+          } else if (!hasCachedSupabaseToken()) {
+            setTimeout(() => {
+              handleSession(null);
+            }, 0);
+          }
         })
         .catch(err => {
           console.warn("Failed to get initial session:", err);
-          if (this.state.user === undefined) {
+          if (!hasCachedSupabaseToken() && this.state.user === undefined) {
             this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
           }
         });
@@ -525,11 +548,14 @@ class CoWatch extends React.Component {
                             <FAQ />
                           </>
                         </Route>
-                        <Route path="/account/profile">
+                        <Route path={["/account", "/account/:tab*"]}>
                           <RequireVerifiedEmail>
                             <TopBar hideNewRoom />
                             <Profile />
                           </RequireVerifiedEmail>
+                        </Route>
+                        <Route path="/profile" exact>
+                          <Redirect to="/account/profile" />
                         </Route>
                         <Route path="/rooms" exact>
                           <RequireVerifiedEmail>

@@ -66,7 +66,7 @@ export function hasCachedSupabaseToken(): boolean {
   return Boolean(getCachedSupabaseToken());
 }
 
-export async function safeGetSession(timeoutMs = 2000) {
+export async function safeGetSession(timeoutMs = 4000) {
   try {
     const sessionPromise = supabase.auth.getSession();
     const timeoutPromise = new Promise<{ data: { session: null }; error: Error }>((resolve) =>

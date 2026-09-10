@@ -30,7 +30,7 @@ export const Join = () => {
   useDocumentMetadata({
     title: "Join a Watch Party",
     description:
-      "Enter a CoWatch room code or invite link to join a watch party.",
+      "Enter a CoWatch room id or invite link to join a watch party.",
   });
 
   useEffect(() => {
@@ -49,12 +49,12 @@ export const Join = () => {
 
     const normalized = normalizeRoomId(roomId);
     if (!normalized) {
-      setError("Enter a room code or room link to continue.");
+      setError("Enter a room id or room link to continue.");
       return;
     }
 
     if (normalized.length > 200) {
-      setError("That room code is too long.");
+      setError("That room id is too long.");
       return;
     }
 

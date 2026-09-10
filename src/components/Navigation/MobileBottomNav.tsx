@@ -120,7 +120,7 @@ export const MobileBottomNav: React.FC = () => {
         {/* Item 4: Profile (Authenticated) or Sign In (Guest) */}
         {user ? (
           (() => {
-            const isActive = isRouteActive(location.pathname, "/account/profile", true);
+            const isActive = location.pathname.startsWith("/account") || isRouteActive(location.pathname, "/profile", true);
             return (
               <Link
                 to="/account/profile"

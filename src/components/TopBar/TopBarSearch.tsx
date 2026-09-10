@@ -20,6 +20,8 @@ import {
   IconSettings,
   IconHelpCircle,
   IconPlayerPlay,
+  IconUser,
+  IconLock,
 } from "@tabler/icons-react";
 import styles from "./TopBarSearch.module.css";
 
@@ -193,12 +195,28 @@ export const TopBarSearch: React.FC = () => {
         icon: <IconDatabase size={16} stroke={1.5} />,
       },
       {
-        id: "page-settings",
+        id: "page-profile",
         type: "page",
-        title: "Settings",
-        subtitle: "Manage your profile and preferences",
+        title: "Profile",
+        subtitle: "Manage your display name and avatar",
         path: "/account/profile",
+        icon: <IconUser size={16} stroke={1.5} />,
+      },
+      {
+        id: "page-preferences",
+        type: "page",
+        title: "Preferences",
+        subtitle: "Manage media, appearance, and room options",
+        path: "/account/preferences",
         icon: <IconSettings size={16} stroke={1.5} />,
+      },
+      {
+        id: "page-security",
+        type: "page",
+        title: "Security",
+        subtitle: "Password reset and active session management",
+        path: "/account/security",
+        icon: <IconLock size={16} stroke={1.5} />,
       },
       {
         id: "page-faq",
