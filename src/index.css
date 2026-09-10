@@ -177,8 +177,7 @@ html[data-color-scheme="light"] {
 
 html body {
   margin: 0;
-  /* fix for scrollbar popping in and out at certain widths, but adds a permanent scrollbar */
-  overflow-y: scroll;
+  overflow-y: auto;
   background-color: var(--bg-app);
   color: var(--text-primary);
 }

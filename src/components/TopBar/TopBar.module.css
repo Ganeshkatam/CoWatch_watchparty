@@ -3,7 +3,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 24px;
+  height: 64px;
   min-height: 64px;
+  max-height: 64px;
   position: sticky;
   top: 0;
   z-index: 100;

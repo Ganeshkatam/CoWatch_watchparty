@@ -1,8 +1,9 @@
 .page {
-  height: calc(100vh - 60px);
-  min-height: calc(100vh - 60px);
+  height: calc(100vh - 64px);
+  min-height: calc(100vh - 64px);
+  max-height: calc(100vh - 64px);
   overflow: hidden;
-  padding: 18px 24px 12px 24px;
+  padding: 16px 24px 12px 24px;
   background: var(--bg-app);
   display: flex;
   justify-content: center;
