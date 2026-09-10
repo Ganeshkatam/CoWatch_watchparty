@@ -90,7 +90,7 @@ const getStatusConfig = (status: RoomDetailsData["status"]) => {
         label: "Inactive",
         color: "yellow",
         dotClass: styles.inactive,
-        description: "Empty right now. Starts when someone joins.",
+        description: "Session inactive. Starts when the host opens the room.",
         badgeColor: "yellow",
       };
     case "expiring":
@@ -179,7 +179,7 @@ export const RoomDetails = () => {
 
   const handleCopyUrl = () => {
     if (!room) return;
-    const url = getRoomUrl(room.roomId, currentPasscode);
+    const url = getRoomUrl(room.roomId);
     navigator.clipboard.writeText(url).then(() => {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
@@ -358,7 +358,7 @@ export const RoomDetails = () => {
                   onClick={() => history.push(urlPath)}
                   leftSection={<IconPlayerPlayFilled size={16} />}
                 >
-                  Join Room
+                  {room.status === "inactive" ? "Start Session" : "Join Room"}
                 </Button>
               )}
               <Tooltip
@@ -809,8 +809,8 @@ export const RoomDetails = () => {
               </div>
 
               <div className={styles.tile}>
-                <span className={styles.tileLabel}>Auto-Start</span>
-                <span className={styles.tileValue}>Starts when someone joins</span>
+                <span className={styles.tileLabel}>Session Start</span>
+                <span className={styles.tileValue}>Host begins session</span>
               </div>
             </div>
           </div>

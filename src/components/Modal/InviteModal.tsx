@@ -43,19 +43,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
   const cleanId = roomIdOrVanity.replace(/^\//, "");
 
-  const urlPass =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("passcode") ||
-        new URLSearchParams(window.location.search).get("pass") ||
-        new URLSearchParams(window.location.search).get("password")
-      : null;
+  const resolvedPasscode = propPasscode || "";
 
-  const resolvedPasscode = propPasscode || urlPass || "";
-
-  const baseUrl = `${window.location.origin}/watch/${cleanId}`;
-  const fullUrl = resolvedPasscode
-    ? `${baseUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
-    : baseUrl;
+  const baseUrl = `${window.location.origin}/join/${cleanId}`;
+  const fullUrl = baseUrl;
 
   const inviteMessage = resolvedPasscode
     ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
@@ -156,14 +147,14 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           <div className={`${styles.statusBanner} ${styles.statusBannerProtected}`}>
             <IconLock size={18} className={styles.statusBannerIcon} />
             <div>
-              <strong>Passcode Protected Room.</strong> The invite link below automatically includes the access token for seamless one-click joining.
+              <strong>Passcode Protected Room.</strong> Guests will join via the link and must enter the room passcode.
             </div>
           </div>
         ) : (
           <div className={`${styles.statusBanner} ${styles.statusBannerOpen}`}>
             <IconShieldCheck size={18} className={styles.statusBannerIcon} />
             <div>
-              <strong>Public Room.</strong> Anyone with the link can join the watch party directly.
+              <strong>Room Access.</strong> Share this invite link with friends to watch together.
             </div>
           </div>
         )}

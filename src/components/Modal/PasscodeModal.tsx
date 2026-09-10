@@ -26,7 +26,7 @@ export const PasscodeModal: React.FC<PasscodeModalProps> = ({
       onSubmit(trimmed);
     } else {
       const cleanId = roomId.replace(/^\//, "");
-      window.location.assign(`/watch/${cleanId}?passcode=${encodeURIComponent(trimmed)}`);
+      window.location.assign(`/join/${encodeURIComponent(cleanId)}`);
     }
   }, [passcode, onSubmit, roomId]);
 

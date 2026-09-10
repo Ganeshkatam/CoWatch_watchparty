@@ -51,6 +51,7 @@ import styles from "./App.module.css";
 import { EmptyWatchState, NonPlayableMediaState } from "./EmptyWatchState";
 import { RoomHeader } from "../TopBar/RoomHeader";
 import { MediaDock } from "./MediaDock";
+import { WaitingForHost } from "./WaitingForHost";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -110,8 +111,8 @@ window.cowatch = {
 const clientId = getOrCreateClientId();
 
 interface AppProps {
-
   urlRoomId?: string;
+  location?: any;
 }
 
 interface AppState {
@@ -185,6 +186,7 @@ interface AppState {
   settingsModalOpen: boolean;
   uploadController: AbortController | undefined;
   pipState: PiPState;
+  isWaitingForHost: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -269,6 +271,7 @@ export class App extends React.Component<AppProps, AppState> {
     settingsModalOpen: false,
     uploadController: undefined,
     pipState: pipManager.getState(),
+    isWaitingForHost: false,
   };
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
@@ -295,6 +298,66 @@ export class App extends React.Component<AppProps, AppState> {
   metadataCleanup?: () => void;
   mediaSessionInterval?: number;
   pipUnsubscribe?: () => void;
+  waitingPollTimer: number | null = null;
+
+  startWaitingPoll = (roomId: string) => {
+    this.stopWaitingPoll();
+    const cleanId = (roomId || "").trim();
+    if (!cleanId) return;
+
+    this.waitingPollTimer = window.setInterval(async () => {
+      // Guard: Ensure we are still waiting and this room is still the active room
+      if (!this.state.isWaitingForHost || this.state.roomId !== cleanId) {
+        this.stopWaitingPoll();
+        return;
+      }
+      try {
+        // Query ONLY status field during polling as required
+        const { data } = await supabase
+          .from("rooms")
+          .select("status")
+          .eq("roomId", cleanId)
+          .maybeSingle();
+
+        if (data?.status === "active" && this.state.roomId === cleanId) {
+          this.stopWaitingPoll();
+          this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+            this.join(cleanId);
+          });
+        }
+      } catch (e) {
+        console.warn("Waiting poll check error:", e);
+      }
+    }, 3000);
+  };
+
+  stopWaitingPoll = () => {
+    if (this.waitingPollTimer) {
+      window.clearInterval(this.waitingPollTimer);
+      this.waitingPollTimer = null;
+    }
+  };
+
+  handleManualStatusCheck = async () => {
+    const cleanId = (this.state.roomId || "").trim();
+    if (!cleanId) return;
+    try {
+      const { data } = await supabase
+        .from("rooms")
+        .select("status")
+        .eq("roomId", cleanId)
+        .maybeSingle();
+
+      if (data?.status === "active" && this.state.roomId === cleanId) {
+        this.stopWaitingPoll();
+        this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+          this.join(cleanId);
+        });
+      }
+    } catch (e) {
+      console.warn("Manual status check error:", e);
+    }
+  };
 
   syncDocumentMetadata = () => {
     if (this.metadataCleanup) {
@@ -471,6 +534,7 @@ export class App extends React.Component<AppProps, AppState> {
       window.clearInterval(this.mediaSessionInterval);
       this.mediaSessionInterval = undefined;
     }
+    this.stopWaitingPoll();
     if (this.metadataCleanup) {
       this.metadataCleanup();
       this.metadataCleanup = undefined;
@@ -498,10 +562,37 @@ export class App extends React.Component<AppProps, AppState> {
     try {
       const sessionData = await safeGetSession(1200);
       const user = sessionData?.data?.session?.user;
+      const token = sessionData?.data?.session?.access_token;
 
+      // Primary check: Query server endpoint /roomInfo/:roomId (server derives isOwner safely)
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (user?.id) headers["x-user-id"] = user.id;
+
+        const infoResp = await fetch(`${serverPath}/roomInfo/${encodeURIComponent(roomId)}`, {
+          headers,
+          signal: AbortSignal.timeout(1500),
+        });
+
+        if (infoResp.ok) {
+          const info = await infoResp.json();
+          if (info.roomTitle) {
+            this.setState({ roomTitle: info.roomTitle });
+          }
+          const isOwner = Boolean(info.isOwner);
+          const requiresPasscode = Boolean(info.requiresPasscode);
+          const isWaiting = !isOwner && info.status !== "active";
+          return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting };
+        }
+      } catch (e) {
+        console.warn("/roomInfo fetch failed, falling back to Supabase client:", e);
+      }
+
+      // Fallback check: Direct Supabase client query
       const roomPromise = supabase
         .from("rooms")
-        .select("passcode, owner_id")
+        .select("passcode, owner_id, status, roomTitle")
         .eq("roomId", roomId)
         .maybeSingle();
 
@@ -510,19 +601,23 @@ export class App extends React.Component<AppProps, AppState> {
       );
 
       const { data } = await Promise.race([roomPromise, timeoutPromise]);
-      if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+      if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
 
       if (data.owner_id) {
         this.resolveHostName(data.owner_id);
       }
+      if (data.roomTitle) {
+        this.setState({ roomTitle: data.roomTitle });
+      }
 
       const isOwner = Boolean(user && data.owner_id === user.id);
       const requiresPasscode = Boolean(data.passcode);
+      const isWaiting = !isOwner && data.status !== "active";
 
-      return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null };
+      return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null, isWaiting };
     } catch (e) {
       console.warn("checkRoomAccess error:", e);
-      return { isOwner: false, requiresPasscode: false, owner_id: null as string | null };
+      return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
     }
   };
 
@@ -544,9 +639,14 @@ export class App extends React.Component<AppProps, AppState> {
     }, 2500);
 
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlPass = urlParams.get("pass") || urlParams.get("passcode") || urlParams.get("password");
-      const passcode = explicitPasscode || this.state.passcode || urlPass || "";
+      // INVARIANT: A URL can identify a room, but can NEVER authenticate a participant.
+      // Any query credentials (?passcode=, ?pass=, ?password=) are strictly IGNORED and NEVER copied into state.
+      // Passcode is strictly read from explicit invocation or untrusted route transport state.
+      const routePasscode =
+        (this.props.location?.state as any)?.passcode ||
+        (window.history?.state as any)?.usr?.passcode ||
+        (window.history?.state as any)?.passcode;
+      const passcode = explicitPasscode || this.state.passcode || routePasscode || "";
       if (passcode && passcode !== this.state.passcode) {
         this.setState({ passcode });
       }
@@ -554,6 +654,9 @@ export class App extends React.Component<AppProps, AppState> {
       try {
         const access = await this.checkRoomAccess(cleanRoomId);
 
+        // Direct navigation protection:
+        // A non-owner without valid transport credentials must never advance into /watch/:roomId.
+        // Immediately redirect to /join/:roomId where they must manually enter the passcode.
         if (access.requiresPasscode && !passcode && !access.isOwner) {
           // Double-check: wait for auth to settle in case session was still loading
           const retrySession = await safeGetSession(1000);
@@ -564,9 +667,19 @@ export class App extends React.Component<AppProps, AppState> {
               window.clearTimeout(this.startingTimer);
               this.startingTimer = null;
             }
-            this.setState({ isErrorAuth: true, state: "connected" });
+            window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
             return;
           }
+        }
+
+        if (access.isWaiting) {
+          if (this.startingTimer) {
+            window.clearTimeout(this.startingTimer);
+            this.startingTimer = null;
+          }
+          this.setState({ isWaitingForHost: true, state: "connected", overlayMsg: "" });
+          this.startWaitingPoll(cleanRoomId);
+          return;
         }
       } catch (e) {
         console.warn("Room access verification error:", e);
@@ -615,8 +728,10 @@ export class App extends React.Component<AppProps, AppState> {
           window.clearTimeout(this.startingTimer);
           this.startingTimer = null;
         }
+        this.stopWaitingPoll();
         this.setState({
           state: "connected",
+          isWaitingForHost: false,
           overlayMsg: "",
           errorMessage: "",
           successMessage: "",
@@ -642,15 +757,27 @@ export class App extends React.Component<AppProps, AppState> {
           this.startingTimer = null;
         }
         this.setState({ state: "connected" });
-        if (err.message === "Invalid namespace") {
+        if (err.message === "ROOM_NOT_STARTED") {
+          this.setState({ isWaitingForHost: true, overlayMsg: "" });
+          this.startWaitingPoll(cleanRoomId);
+        } else if (err.message === "Invalid namespace") {
           this.setState({ overlayMsg: "Couldn't load this room." });
         } else if (err.message === "passcode" || err.message === "password") {
-          this.setState({ isErrorAuth: true });
+          // Authoritative server check rejected passcode: redirect back to /join/:roomId
+          window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
         } else {
           this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
         }
       });
+      socket.on("ROOM_SESSION_STOPPED", () => {
+        this.setState({ isWaitingForHost: true, overlayMsg: "" });
+        this.startWaitingPoll(cleanRoomId);
+      });
       socket.on("disconnect", (reason) => {
+        if (this.state.isWaitingForHost) {
+          // Suppress generic disconnect message if already waiting for host
+          return;
+        }
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
           this.setState({ overlayMsg: "Disconnected from server." });
@@ -2599,7 +2726,17 @@ export class App extends React.Component<AppProps, AppState> {
           </Overlay>
         )}
 
-        {this.state.overlayMsg && <ErrorModal error={this.state.overlayMsg} />}
+        {this.state.isWaitingForHost && (
+          <WaitingForHost
+            roomId={this.state.roomId}
+            roomTitle={this.state.roomTitle}
+            hostName={this.state.hostName}
+            onCheckStatus={this.handleManualStatusCheck}
+          />
+        )}
+        {!this.state.isWaitingForHost && this.state.overlayMsg && (
+          <ErrorModal error={this.state.overlayMsg} />
+        )}
         <SettingsModal
           modalOpen={this.state.settingsModalOpen}
           setModalOpen={this.setSettingsModalOpen}

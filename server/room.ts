@@ -138,6 +138,7 @@ export class Room {
   public isChatDisabled: boolean | undefined = undefined;
   public status: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired' = 'active';
   public expiresAt: Date | undefined = undefined;
+  public startedAt: Date | undefined = undefined;
   public owner_id: string = '';
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
@@ -185,14 +186,25 @@ export class Room {
     io.of(roomId).use(async (socket, next) => {
       if (postgres) {
         const result = await postgres.query(
-          `SELECT passcode, owner_id, "isSubRoom" FROM rooms where "roomId" = $1`,
+          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt" FROM rooms where "roomId" = $1`,
           [this.roomId],
         );
+        const roomRow = result.rows[0];
         const passcode = (socket.handshake.query?.passcode as string) || "";
-        const roomPasscode = result.rows[0]?.passcode;
-        const owner_id = result.rows[0]?.owner_id;
+        const roomPasscode = roomRow?.passcode;
+        const owner_id = roomRow?.owner_id;
+        const dbStatus = roomRow?.status;
+        const isPermanent = Boolean(roomRow?.isPermanent);
+
         if (owner_id) {
           this.owner_id = owner_id;
+        }
+        this.isPermanent = isPermanent;
+        if (roomRow?.expiresAt) {
+          this.expiresAt = new Date(roomRow.expiresAt);
+        }
+        if (roomRow?.startedAt) {
+          this.startedAt = new Date(roomRow.startedAt);
         }
 
         const uid = socket.handshake.auth?.uid;
@@ -205,14 +217,28 @@ export class Room {
             const decoded = await validateUserToken(uid, token);
             if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
               socket.uid = uid;
-              isOwner = owner_id === uid;
+              isOwner = Boolean(owner_id && owner_id === uid);
             }
           } catch (e) {
             console.error("Token validation failed in socket connect", e);
           }
         }
 
+        const currentDbStatus = dbStatus || this.status;
+
+        // Expired or ended rooms cannot be joined by anyone
+        if (currentDbStatus === "expired" || currentDbStatus === "ended") {
+          this.status = currentDbStatus;
+          next(new Error("This room has ended or expired."));
+          return;
+        }
+
+        // Passcode validation (authoritative security boundary for non-owners)
         if (roomPasscode && !isOwner) {
+          if (!passcode) {
+            next(new Error("passcode"));
+            return;
+          }
           if (isBcryptHash(roomPasscode)) {
             const valid = await verifyRoomPasscode(passcode, roomPasscode);
             if (!valid) {
@@ -239,8 +265,75 @@ export class Room {
             }
           }
         }
+
+        // Host-initiated room access control:
+        // When room is not active (inactive or scheduled), non-owners with valid passcode are held in waiting state
+        if (currentDbStatus !== "active") {
+          if (!isOwner) {
+            next(new Error("ROOM_NOT_STARTED"));
+            return;
+          }
+
+          // Authenticated owner connecting to an inactive room: atomically activate
+          if (currentDbStatus === "inactive") {
+            try {
+              const activateResult = await postgres.query(
+                `UPDATE rooms
+                 SET
+                   status = 'active',
+                   "lastActiveAt" = NOW(),
+                   "startedAt" = NOW(),
+                   "expiresAt" = CASE WHEN "isPermanent" = true THEN NULL ELSE NOW() + INTERVAL '3 hours' END
+                 WHERE "roomId" = $1
+                   AND owner_id = $2
+                   AND status = 'inactive'
+                 RETURNING status, "startedAt", "expiresAt", "lastActiveAt", "isPermanent"`,
+                [this.roomId, uid]
+              );
+
+              if (activateResult.rowCount && activateResult.rowCount > 0) {
+                const row = activateResult.rows[0];
+                this.status = "active";
+                this.startedAt = new Date(row.startedAt);
+                this.expiresAt = row.expiresAt ? new Date(row.expiresAt) : undefined;
+                this.lastUpdateTime = new Date();
+
+                // Idempotent audit logging for session activation
+                await postgres.query(
+                  `INSERT INTO room_lifecycle_events 
+                   ("roomId", actor, event, "previousStatus", "newStatus", "newExpiresAt", reason)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                  [this.roomId, uid, "room.started", "inactive", "active", row.expiresAt, "host joined and started room"]
+                ).catch((e) => console.error("Failed to insert lifecycle event for started room:", e));
+              } else {
+                // Recheck if another concurrent owner socket already activated the room
+                const recheck = await postgres.query(
+                  `SELECT status, "startedAt", "expiresAt" FROM rooms WHERE "roomId" = $1`,
+                  [this.roomId]
+                );
+                const recheckStatus = recheck.rows[0]?.status;
+                if (recheckStatus === "active") {
+                  this.status = "active";
+                  if (recheck.rows[0]?.startedAt) this.startedAt = new Date(recheck.rows[0].startedAt);
+                  if (recheck.rows[0]?.expiresAt) this.expiresAt = new Date(recheck.rows[0].expiresAt);
+                } else {
+                  next(new Error("ROOM_NOT_STARTED"));
+                  return;
+                }
+              }
+            } catch (err) {
+              console.error("Failed atomic room activation:", err);
+              next(new Error("Failed to activate room."));
+              return;
+            }
+          } else if (currentDbStatus === "scheduled") {
+            this.status = "scheduled";
+          }
+        } else {
+          this.status = "active";
+        }
         // Check if room is at capacity
-        const isSubRoom = result.rows[0]?.isSubRoom;
+        const isSubRoom = roomRow?.isSubRoom;
         const roomCapacity = isSubRoom
           ? config.ROOM_CAPACITY_SUB
           : config.ROOM_CAPACITY;
@@ -330,14 +423,6 @@ export class Room {
       if (this.inactivityTimeout) {
         clearTimeout(this.inactivityTimeout);
         this.inactivityTimeout = undefined;
-      }
-
-      if (this.status === 'inactive') {
-        this.status = 'active';
-        this.lastUpdateTime = new Date();
-        if (postgres) {
-          updateObject(postgres, "rooms", { status: 'active', "lastActiveAt": new Date() }, { "roomId": this.roomId }).catch(console.error);
-        }
       }
       
       socket.on("disconnect", () => this.onDisconnect(socket));

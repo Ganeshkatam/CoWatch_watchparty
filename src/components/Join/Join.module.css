@@ -14,8 +14,8 @@
   top: 25%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 500px;
-  height: 400px;
+  width: 540px;
+  height: 440px;
   background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
@@ -86,12 +86,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 40px 20px;
 }
 
 .contentWrapper {
   width: 100%;
-  max-width: 480px;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -108,15 +108,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .title {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   line-height: 1.2;
 }
 
@@ -124,8 +124,118 @@
   font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
-  margin-bottom: 28px;
-  max-width: 380px;
+  margin-bottom: 24px;
+  max-width: 420px;
+}
+
+/* Room Preview Card */
+.roomPreviewCard {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+  text-align: left;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.roomCover {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(236, 72, 153, 0.25) 100%);
+}
+
+.roomCoverFallback {
+  width: 100%;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.15) 100%);
+  color: var(--color-violet, #8b5cf6);
+}
+
+.roomCardContent {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.roomCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roomTitleRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.roomTitle {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.roomIdBadge {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.roomDescription {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* User Identity Preview Pill */
+.identityPreview {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.identityTextGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.identityLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.identityName {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Form Styles */
@@ -164,6 +274,54 @@
 .submitBtn:not(:disabled):hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+}
+
+.ownerNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  color: var(--text-primary);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.ownerNoticeIcon {
+  color: var(--color-violet, #8b5cf6);
+  flex-shrink: 0;
+}
+
+.errorCard {
+  width: 100%;
+  padding: 24px;
+  border-radius: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.errorIcon {
+  color: var(--color-danger, #ef4444);
+}
+
+.errorTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.errorDesc {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .legalText {
@@ -227,11 +385,11 @@
   }
 
   .main {
-    padding: 36px 20px;
+    padding: 30px 16px;
   }
 
   .title {
-    font-size: 26px;
+    font-size: 24px;
   }
 
   .footer {

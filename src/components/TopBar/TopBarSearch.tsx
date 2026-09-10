@@ -126,7 +126,7 @@ export const TopBarSearch: React.FC = () => {
           type: "jump",
           title: `Jump to room: ${extractedId}`,
           subtitle: "Press Enter to join this room directly",
-          path: `/watch/${extractedId}`,
+          path: `/join/${extractedId}`,
           icon: <IconPlayerPlay size={16} stroke={2} />,
         });
       }
@@ -269,7 +269,7 @@ export const TopBarSearch: React.FC = () => {
       } else if (query.trim().length > 0) {
         // Direct jump fallback
         const clean = query.trim().replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\//, "");
-        history.push(`/watch/${clean}`);
+        history.push(`/join/${clean}`);
         setIsFocused(false);
         setMobileOpen(false);
         setQuery("");

@@ -1,92 +1,272 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { useHistory, useParams, Link } from "react-router-dom";
-import { Button, Text, TextInput } from "@mantine/core";
+import {
+  Button,
+  Text,
+  TextInput,
+  PasswordInput,
+  Badge,
+  Avatar,
+  Loader,
+  Center,
+} from "@mantine/core";
 import {
   IconArrowRight,
   IconUsers,
   IconLink,
   IconAlertCircle,
+  IconLock,
+  IconShieldCheck,
+  IconShield,
+  IconVideo,
+  IconPlayerPlay,
 } from "@tabler/icons-react";
 import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { safeGetSession } from "../../utils/supabaseClient";
+import { serverPath } from "../../utils/utils";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
   roomId?: string;
 }
 
-const normalizeRoomId = (value: string) =>
-  value.trim().replace(/^\/+|\/+$/g, "");
+interface RoomInfo {
+  roomId: string;
+  roomTitle: string;
+  roomDescription?: string;
+  coverPhoto?: string | null;
+  status: "active" | "inactive" | "expired" | string;
+  requiresPasscode: boolean;
+  isOwner: boolean;
+}
 
-export const Join = () => {
+const normalizeRoomId = (value: string): string => {
+  let clean = value.trim();
+  if (clean.includes("/watch/")) {
+    clean = clean.split("/watch/")[1]?.split("?")[0] || clean;
+  } else if (clean.includes("/join/")) {
+    clean = clean.split("/join/")[1]?.split("?")[0] || clean;
+  }
+  return clean.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\/+|\/+$/g, "").split("?")[0];
+};
+
+export const Join: React.FC = () => {
   const history = useHistory();
   const { roomId: routeRoomId } = useParams<JoinRouteParams>();
   const { user } = useContext(MetadataContext);
-  const [roomId, setRoomId] = useState(() =>
-    normalizeRoomId(routeRoomId || "")
+
+  const cleanRouteRoomId = useMemo(
+    () => (routeRoomId ? normalizeRoomId(routeRoomId) : ""),
+    [routeRoomId]
   );
-  const [error, setError] = useState("");
+
+  // Generic room ID input for /join without route params
+  const [inputRoomId, setInputRoomId] = useState("");
+
+  // INVARIANT: Passcode state is STRICTLY initialized to empty string.
+  // Any passcode query parameters in the URL are completely ignored, never copied into state,
+  // never prefilled into fields, and never submitted automatically.
+  const [passcode, setPasscode] = useState("");
+
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
+  const [loadingRoom, setLoadingRoom] = useState(false);
+  const [roomError, setRoomError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [formError, setFormError] = useState("");
 
   useDocumentMetadata({
-    title: "Join a Watch Party",
-    description:
-      "Enter a CoWatch room id or invite link to join a watch party.",
+    title: roomInfo?.roomTitle
+      ? `Join ${roomInfo.roomTitle} | CoWatch`
+      : "Join a Watch Party | CoWatch",
+    description: "Enter room passcode to join a CoWatch synchronized watch party.",
   });
 
+  // Fetch room metadata when cleanRouteRoomId changes
   useEffect(() => {
-    setRoomId(normalizeRoomId(routeRoomId || ""));
-    setError("");
-  }, [routeRoomId]);
+    if (!cleanRouteRoomId) {
+      setRoomInfo(null);
+      setLoadingRoom(false);
+      setRoomError("");
+      return;
+    }
 
-  const target = useMemo(() => {
-    const normalized = normalizeRoomId(roomId);
-    return normalized ? `/watch/${encodeURIComponent(normalized)}` : "";
-  }, [roomId]);
+    let isCancelled = false;
+    setLoadingRoom(true);
+    setRoomError("");
+    setFormError("");
+    setPasscode("");
 
-  const handleJoin = (event: React.FormEvent) => {
+    const fetchRoom = async () => {
+      try {
+        const session = await safeGetSession(1000);
+        const token = session?.data?.session?.access_token;
+        const uid = session?.data?.session?.user?.id;
+
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (uid) headers["x-user-id"] = uid;
+
+        const res = await fetch(
+          `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
+          { headers }
+        );
+
+        if (isCancelled) return;
+
+        if (res.status === 404) {
+          setRoomError("This room does not exist or has expired.");
+          setLoadingRoom(false);
+          return;
+        }
+
+        if (!res.ok) {
+          setRoomError("Unable to retrieve room information.");
+          setLoadingRoom(false);
+          return;
+        }
+
+        const data: RoomInfo = await res.json();
+        if (isCancelled) return;
+
+        setRoomInfo(data);
+        setLoadingRoom(false);
+      } catch (err) {
+        if (isCancelled) return;
+        setRoomError("Network error while connecting to room gateway.");
+        setLoadingRoom(false);
+      }
+    };
+
+    fetchRoom();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [cleanRouteRoomId]);
+
+  // Handle submit for generic /join page (user enters room code / link)
+  const handleGenericSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    setError("");
+    setFormError("");
 
-    const normalized = normalizeRoomId(roomId);
+    const normalized = normalizeRoomId(inputRoomId);
     if (!normalized) {
-      setError("Enter a room id or room link to continue.");
+      setFormError("Enter a room ID or invite link to continue.");
       return;
     }
 
     if (normalized.length > 200) {
-      setError("That room id is too long.");
+      setFormError("That room ID is too long.");
       return;
     }
 
-    const watchPath = `/watch/${encodeURIComponent(normalized)}`;
+    history.push(`/join/${encodeURIComponent(normalized)}`);
+  };
 
+  // Handle submit on the specific room gateway (/join/:roomId)
+  const handleGatewaySubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError("");
+
+    if (!cleanRouteRoomId) return;
+
+    // Check user authentication
+    const joinPath = `/join/${encodeURIComponent(cleanRouteRoomId)}`;
     if (user === undefined) {
       return;
     }
 
     if (!user) {
-      history.push(`/login?redirect=${encodeURIComponent(watchPath)}`);
+      history.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
       return;
     }
 
     if (user.email_confirmed_at == null) {
-      history.push(`/verify-email?next=${encodeURIComponent(watchPath)}`);
+      history.push(`/verify-email?next=${encodeURIComponent(joinPath)}`);
       return;
     }
 
-    history.push(watchPath);
+    // If caller is host, advance directly to watch
+    if (roomInfo?.isOwner) {
+      history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+      return;
+    }
+
+    // Participant verification
+    const cleanPass = passcode.trim();
+    if (!cleanPass) {
+      setFormError("Passcode is required to enter this room.");
+      return;
+    }
+
+    if (cleanPass.length < 8) {
+      setFormError("Passcode must be at least 8 characters.");
+      return;
+    }
+
+    setVerifying(true);
+
+    try {
+      const session = await safeGetSession(1000);
+      const token = session?.data?.session?.access_token;
+      const uid = session?.data?.session?.user?.id;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (uid) headers["x-user-id"] = uid;
+
+      const resp = await fetch(`${serverPath}/verifyPasscode`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          roomId: cleanRouteRoomId,
+          passcode: cleanPass,
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      setVerifying(false);
+
+      if (resp.status === 429) {
+        setFormError(
+          data.error ||
+            "Too many passcode attempts. Please wait a few minutes before trying again."
+        );
+        return;
+      }
+
+      if (resp.status === 401 || !resp.ok || !data.valid) {
+        setFormError(data.error || "Incorrect room passcode. Please try again.");
+        return;
+      }
+
+      // Pre-navigation gate succeeded:
+      // Navigate to /watch/:roomId with untrusted transport state.
+      // Socket.IO performs authoritative second verification against the database hash.
+      history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`, {
+        passcode: cleanPass,
+      });
+    } catch (err) {
+      setVerifying(false);
+      setFormError("Network error verifying passcode. Please try again.");
+    }
   };
+
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split("@")[0] ||
+    "Guest Participant";
 
   return (
     <div className={styles.page}>
       {/* Minimal Header */}
       <header className={styles.header}>
         <Link to="/" className={styles.brandLink}>
-          <img
-            src="/logo192.png"
-            alt="CoWatch"
-            className={styles.logo}
-          />
+          <img src="/logo192.png" alt="CoWatch" className={styles.logo} />
           <span className={styles.brandName}>CoWatch</span>
         </Link>
         <div className={styles.headerActions}>
@@ -105,62 +285,239 @@ export const Join = () => {
         </div>
       </header>
 
-      {/* Main Form Section */}
+      {/* Main Content Area */}
       <main className={styles.main}>
         <div className={styles.contentWrapper}>
-          <div className={styles.iconWrap} aria-hidden="true">
-            <IconUsers size={26} stroke={1.8} />
-          </div>
-
-          <h1 className={styles.title}>Join a Room</h1>
-          <p className={styles.subtitle}>
-            Enter your room code or paste an invite link to jump in.
-          </p>
-
-          <form onSubmit={handleJoin} className={styles.form} noValidate>
-            <div className={styles.inputWrapper}>
-              <TextInput
-                label="Room Code or Invite Link"
-                placeholder="Enter room code or invite link"
-                value={roomId}
-                onChange={(event) => {
-                  setRoomId(event.currentTarget.value);
-                  if (error) setError("");
-                }}
-                autoFocus={!routeRoomId}
-                required
-                maxLength={300}
-                size="md"
-                leftSection={<IconLink size={18} stroke={1.5} />}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? "join-error-message" : undefined}
-              />
-              {error && (
-                <div
-                  id="join-error-message"
-                  className={styles.inlineError}
-                  role="alert"
-                >
-                  <IconAlertCircle size={15} stroke={1.8} />
-                  <span>{error}</span>
+          {cleanRouteRoomId ? (
+            /* Gateway Screen for Specific Room */
+            loadingRoom ? (
+              <Center style={{ minHeight: 280, flexDirection: "column", gap: 16 }}>
+                <Loader color="violet" size="lg" />
+                <Text size="sm" c="dimmed">
+                  Connecting to room gateway...
+                </Text>
+              </Center>
+            ) : roomError ? (
+              <div className={styles.errorCard}>
+                <IconAlertCircle size={38} className={styles.errorIcon} />
+                <h2 className={styles.errorTitle}>Room Unavailable</h2>
+                <p className={styles.errorDesc}>{roomError}</p>
+                <Button component={Link} to="/join" variant="default" size="sm">
+                  Try Another Room
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <IconShieldCheck size={26} stroke={1.8} />
                 </div>
-              )}
-            </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              fullWidth
-              variant="gradient"
-              gradient={{ from: "violet", to: "indigo", deg: 135 }}
-              rightSection={<IconArrowRight size={18} />}
-              disabled={!target || user === undefined}
-              loading={user === undefined}
-              className={styles.submitBtn}
-            >
-              {user === undefined ? "Joining..." : "Join Room"}
-            </Button>
-          </form>
+                <h1 className={styles.title}>Room Gateway</h1>
+                <p className={styles.subtitle}>
+                  Verify your credentials to enter this synchronized watch party.
+                </p>
+
+                {/* Room Preview Card */}
+                {roomInfo && (
+                  <div className={styles.roomPreviewCard}>
+                    {roomInfo.coverPhoto ? (
+                      <img
+                        src={roomInfo.coverPhoto}
+                        alt={roomInfo.roomTitle}
+                        className={styles.roomCover}
+                      />
+                    ) : (
+                      <div className={styles.roomCoverFallback}>
+                        <IconVideo size={36} stroke={1.5} />
+                      </div>
+                    )}
+                    <div className={styles.roomCardContent}>
+                      <div className={styles.roomCardHeader}>
+                        <div className={styles.roomTitleRow}>
+                          <h2 className={styles.roomTitle}>{roomInfo.roomTitle}</h2>
+                          <span className={styles.roomIdBadge}>
+                            ID: {roomInfo.roomId}
+                          </span>
+                        </div>
+                        <Badge
+                          color={
+                            roomInfo.status === "active"
+                              ? "green"
+                              : roomInfo.status === "expired"
+                              ? "red"
+                              : "yellow"
+                          }
+                          variant="light"
+                          size="md"
+                        >
+                          {roomInfo.status === "active"
+                            ? "Active Session"
+                            : roomInfo.status === "expired"
+                            ? "Expired"
+                            : "Waiting for Host"}
+                        </Badge>
+                      </div>
+                      {roomInfo.roomDescription && (
+                        <p className={styles.roomDescription}>
+                          {roomInfo.roomDescription}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* User Identity Preview */}
+                {user && (
+                  <div className={styles.identityPreview}>
+                    <Avatar
+                      src={user.user_metadata?.avatar_url}
+                      radius="xl"
+                      size="md"
+                      color="violet"
+                    >
+                      {displayName.charAt(0).toUpperCase()}
+                    </Avatar>
+                    <div className={styles.identityTextGroup}>
+                      <span className={styles.identityLabel}>Joining As</span>
+                      <span className={styles.identityName}>{displayName}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Host Direct Action or Participant Passcode Entry Form */}
+                <form
+                  onSubmit={handleGatewaySubmit}
+                  className={styles.form}
+                  noValidate
+                >
+                  {roomInfo?.isOwner ? (
+                    <div className={styles.ownerNotice}>
+                      <IconShield size={20} className={styles.ownerNoticeIcon} />
+                      <div>
+                        <strong>You are the host of this room.</strong> You have
+                        administrative access and can start or control this
+                        session.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.inputWrapper}>
+                      <PasswordInput
+                        label="Room Passcode"
+                        placeholder="Enter room passcode"
+                        value={passcode}
+                        onChange={(event) => {
+                          setPasscode(event.currentTarget.value);
+                          if (formError) setFormError("");
+                        }}
+                        autoFocus
+                        required
+                        size="md"
+                        leftSection={<IconLock size={18} stroke={1.5} />}
+                        aria-invalid={Boolean(formError)}
+                        aria-describedby={
+                          formError ? "join-error-message" : undefined
+                        }
+                      />
+                      {formError && (
+                        <div
+                          id="join-error-message"
+                          className={styles.inlineError}
+                          role="alert"
+                        >
+                          <IconAlertCircle size={15} stroke={1.8} />
+                          <span>{formError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    fullWidth
+                    variant="gradient"
+                    gradient={{ from: "violet", to: "indigo", deg: 135 }}
+                    rightSection={
+                      roomInfo?.isOwner ? (
+                        <IconPlayerPlay size={18} />
+                      ) : (
+                        <IconArrowRight size={18} />
+                      )
+                    }
+                    loading={verifying}
+                    className={styles.submitBtn}
+                  >
+                    {roomInfo?.isOwner
+                      ? "Enter Room (Host)"
+                      : verifying
+                      ? "Verifying Passcode..."
+                      : "Verify & Join Room"}
+                  </Button>
+                </form>
+              </>
+            )
+          ) : (
+            /* Generic /join screen to enter room code or paste link */
+            <>
+              <div className={styles.iconWrap} aria-hidden="true">
+                <IconUsers size={26} stroke={1.8} />
+              </div>
+
+              <h1 className={styles.title}>Join a Room</h1>
+              <p className={styles.subtitle}>
+                Enter your room code or paste an invite link to jump in.
+              </p>
+
+              <form
+                onSubmit={handleGenericSubmit}
+                className={styles.form}
+                noValidate
+              >
+                <div className={styles.inputWrapper}>
+                  <TextInput
+                    label="Room Code or Invite Link"
+                    placeholder="e.g. room-alpha-123 or https://cowatch.tv/join/..."
+                    value={inputRoomId}
+                    onChange={(event) => {
+                      setInputRoomId(event.currentTarget.value);
+                      if (formError) setFormError("");
+                    }}
+                    autoFocus
+                    required
+                    maxLength={300}
+                    size="md"
+                    leftSection={<IconLink size={18} stroke={1.5} />}
+                    aria-invalid={Boolean(formError)}
+                    aria-describedby={
+                      formError ? "generic-error-message" : undefined
+                    }
+                  />
+                  {formError && (
+                    <div
+                      id="generic-error-message"
+                      className={styles.inlineError}
+                      role="alert"
+                    >
+                      <IconAlertCircle size={15} stroke={1.8} />
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  fullWidth
+                  variant="gradient"
+                  gradient={{ from: "violet", to: "indigo", deg: 135 }}
+                  rightSection={<IconArrowRight size={18} />}
+                  className={styles.submitBtn}
+                >
+                  Continue to Room
+                </Button>
+              </form>
+            </>
+          )}
 
           <p className={styles.legalText}>
             By joining, you agree to CoWatch's{" "}

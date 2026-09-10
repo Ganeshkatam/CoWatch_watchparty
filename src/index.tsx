@@ -133,7 +133,7 @@ const supabaseUrl = config.VITE_SUPABASE_URL;
 if (window.location.hash && window.location.pathname === "/") {
   if (!window.location.hash.startsWith("#access_token=") && !window.location.hash.startsWith("#error=")) {
     const hashRoomId = window.location.hash.substring(1).replace(/^\//, '');
-    window.location.href = "/watch/" + hashRoomId;
+    window.location.href = "/join/" + hashRoomId;
   }
 }
 
@@ -526,7 +526,7 @@ class CoWatch extends React.Component {
                           path="/watch/:roomId"
                           exact
                           render={(props) => {
-                            return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} /></RequireVerifiedEmail>;
+                            return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} /></RequireVerifiedEmail>;
                           }}
                         />
 

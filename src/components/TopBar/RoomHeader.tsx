@@ -74,16 +74,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   };
 
   const cleanRoomId = getCleanRoomId();
-  const urlPass =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("passcode") ||
-      new URLSearchParams(window.location.search).get("pass") ||
-      new URLSearchParams(window.location.search).get("password")
-      : null;
+  const resolvedPasscode = propPasscode || "";
 
-  const resolvedPasscode = propPasscode || urlPass || "";
-
-  const roomUrl = getRoomUrl(cleanRoomId, resolvedPasscode);
+  const roomUrl = getRoomUrl(cleanRoomId);
   const hostDisplayName = hostName || "Host";
 
   const handleCopyLink = () => {

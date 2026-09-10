@@ -776,6 +776,18 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         </Button>
       );
     }
+    if (computedState === 'Inactive') {
+      return (
+        <Button
+          size="xs"
+          className={styles.primaryBtn}
+          onClick={() => history.push(urlPath)}
+          leftSection={<IconPlayerPlayFilled size={12} />}
+        >
+          Start Session
+        </Button>
+      );
+    }
     return (
       <Button
         size="xs"

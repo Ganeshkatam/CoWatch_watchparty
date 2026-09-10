@@ -297,22 +297,18 @@ if (typeof window !== "undefined" && serverCandidates.length > 1) {
   resolveFastestServer().catch(() => {});
 }
 
-export function getRoomUrl(roomId: string, passcode?: string): string {
+export function getRoomUrl(roomId: string): string {
   const cleanId = roomId.replace(/^\//, '');
   const origin =
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin
       : "";
-  const url = origin ? `${origin}/watch/${cleanId}` : `/watch/${cleanId}`;
-  if (passcode) {
-    return `${url}?passcode=${encodeURIComponent(passcode)}`;
-  }
-  return url;
+  return origin ? `${origin}/join/${cleanId}` : `/join/${cleanId}`;
 }
 
 export function getInviteMessage(roomId: string, passcode?: string): string {
   const cleanId = roomId.replace(/^\//, '');
-  const url = getRoomUrl(roomId, passcode);
+  const url = getRoomUrl(roomId);
   if (passcode) {
     return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: ${passcode}`;
   }

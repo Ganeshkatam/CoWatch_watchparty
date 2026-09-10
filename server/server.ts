@@ -22,9 +22,16 @@ import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { getStats } from "./utils/getStats.ts";
 import {
   hashRoomPasscode,
+  verifyRoomPasscode,
+  isBcryptHash,
   encryptPasscodeForOwner,
   decryptPasscodeForOwner,
 } from "./utils/roomPasscode.ts";
+import {
+  checkPasscodeRateLimits,
+  recordPasscodeFailure,
+  resetPasscodeLimits,
+} from "./utils/rateLimit.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 
 process.on("uncaughtException", (err) => {
@@ -86,17 +93,15 @@ io.engine.use(async (req: any, res: Response, next: () => void) => {
   )?.rows?.[0];
   // Don't await after this because we may have a race condition where 2 rquests both try to load the room
   if (isCorrectShard && !rooms.has(key)) {
-    const data = persistedRoom?.data
-      ? JSON.stringify(persistedRoom.data)
-      : undefined;
-    if (data) {
+    if (persistedRoom) {
+      const data = persistedRoom.data
+        ? JSON.stringify(persistedRoom.data)
+        : undefined;
       const room = new Room(io, key, data);
-      if (persistedRoom) {
-        room.status = persistedRoom.status || 'active';
-        room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
-        room.owner_id = persistedRoom.owner_id;
-        room.isPermanent = persistedRoom.isPermanent || false;
-      }
+      room.status = persistedRoom.status || 'active';
+      room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
+      room.owner_id = persistedRoom.owner_id;
+      room.isPermanent = persistedRoom.isPermanent || false;
       rooms.set(key, room);
       console.log(
         "loading room %s into memory on shard %s",
@@ -419,7 +424,7 @@ app.post("/createRoom", async (req, res) => {
   const now = new Date();
   const expiresAt = isPermanent ? undefined : new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
   newRoom.expiresAt = expiresAt;
-  newRoom.status = 'active';
+  newRoom.status = 'inactive';
   newRoom.owner_id = decoded.uid;
   newRoom.isPermanent = isPermanent;
 
@@ -437,7 +442,7 @@ app.post("/createRoom", async (req, res) => {
       roomDescription: req.body?.roomDescription || null,
       owner_id: decoded.uid,
       isSubRoom: isPermanent,
-      status: 'active',
+      status: 'inactive',
       startedAt: now,
       expiresAt: expiresAt ?? null,
       isPermanent: isPermanent,
@@ -448,7 +453,7 @@ app.post("/createRoom", async (req, res) => {
         INSERT INTO room_lifecycle_events 
         ("roomId", actor, event, "newStatus", "newExpiresAt", reason)
         VALUES ($1, $2, $3, $4, $5, $6)
-      `, [newRoom.roomId, decoded.uid, 'room.created', 'active', expiresAt ?? null, isPermanent ? 'permanent room creation' : 'temporary room creation']);
+      `, [newRoom.roomId, decoded.uid, 'room.created', 'inactive', expiresAt ?? null, isPermanent ? 'permanent room creation' : 'temporary room creation']);
     } catch (e) {
       redisCount("createRoomError");
       throw e;
@@ -746,6 +751,181 @@ app.get("/roomData/:roomId", async (req, res) => {
     [req.params.roomId],
   );
   res.json(result?.rows[0]?.data);
+});
+
+app.get("/roomInfo/:roomId", async (req, res) => {
+  const rawRoomId = req.params.roomId;
+  if (!rawRoomId || typeof rawRoomId !== "string") {
+    res.status(400).json({ error: "Missing room identifier" });
+    return;
+  }
+  const cleanRoomId = rawRoomId.trim();
+
+  // Attempt to decode caller token if provided (via Authorization header or query params)
+  let callerUid: string | undefined;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : (req.query?.token as string | undefined);
+  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+
+  if (token && uid) {
+    try {
+      const decoded = await validateUserToken(String(uid), String(token));
+      if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
+        callerUid = decoded.uid;
+      }
+    } catch {
+      // Best-effort session check
+    }
+  }
+
+  try {
+    const result = await postgres?.query(
+      `SELECT "roomId", "roomTitle", "roomDescription", "coverPhoto", status, "expiresAt", "isPermanent",
+              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id
+       FROM rooms WHERE "roomId" = $1`,
+      [cleanRoomId],
+    );
+
+    if (!result || result.rows.length === 0) {
+      res.status(404).json({ error: "Room not found" });
+      return;
+    }
+
+    const row = result.rows[0];
+
+    // Compute derived status if expired
+    let derivedStatus = row.status;
+    if ((row.status === "active" || row.status === "inactive") && !row.isPermanent && row.expiresAt) {
+      const expiresAt = new Date(row.expiresAt).getTime();
+      if (expiresAt <= Date.now()) {
+        derivedStatus = "expired";
+      }
+    }
+
+    const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
+
+    // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
+    res.json({
+      roomId: row.roomId,
+      roomTitle: row.roomTitle || row.roomId,
+      roomDescription: row.roomDescription || "",
+      coverPhoto: row.coverPhoto || null,
+      status: derivedStatus,
+      requiresPasscode: Boolean(row.requiresPasscode),
+      isOwner,
+    });
+  } catch (err) {
+    console.error("Error fetching roomInfo:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/verifyPasscode", async (req, res) => {
+  const { roomId, passcode } = req.body || {};
+  if (!roomId || typeof roomId !== "string") {
+    res.status(400).json({ valid: false, error: "Missing room identifier." });
+    return;
+  }
+  if (!passcode || typeof passcode !== "string") {
+    res.status(400).json({ valid: false, error: "Passcode is required." });
+    return;
+  }
+
+  const cleanRoomId = roomId.trim();
+  const cleanPasscode = passcode.trim();
+
+  if (cleanPasscode.length < 8) {
+    res.status(400).json({ valid: false, error: "Passcode must be at least 8 characters." });
+    return;
+  }
+
+  // Extract client IP and user identity for rate limiting
+  const ip =
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.socket.remoteAddress ||
+    "unknown";
+
+  // Optional user token
+  let callerUid: string | undefined;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : (req.query?.token as string | undefined);
+  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+
+  if (token && uid) {
+    try {
+      const decoded = await validateUserToken(String(uid), String(token));
+      if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
+        callerUid = decoded.uid;
+      }
+    } catch {}
+  }
+
+  const rateLimitTarget = { ip, roomId: cleanRoomId, userId: callerUid };
+
+  // Multi-dimensional rate limit check (IP, Room, User)
+  const rateLimitStatus = await checkPasscodeRateLimits(rateLimitTarget);
+  if (!rateLimitStatus.allowed) {
+    res.set("Retry-After", String(rateLimitStatus.retryAfterSeconds));
+    res.status(429).json({
+      valid: false,
+      error: "Too many passcode attempts. Please wait a few minutes before trying again.",
+      retryAfterSeconds: rateLimitStatus.retryAfterSeconds,
+    });
+    return;
+  }
+
+  try {
+    const result = await postgres?.query(
+      `SELECT passcode, status FROM rooms WHERE "roomId" = $1`,
+      [cleanRoomId],
+    );
+
+    // If room does not exist, return generic 401 failure to avoid enumeration attacks
+    if (!result || result.rows.length === 0) {
+      await recordPasscodeFailure(rateLimitTarget);
+      res.status(401).json({ valid: false, error: "Incorrect room passcode. Please try again." });
+      return;
+    }
+
+    const row = result.rows[0];
+    const roomPasscode = row.passcode;
+
+    // Expired or ended rooms cannot be joined
+    if (row.status === "expired" || row.status === "ended") {
+      res.status(401).json({ valid: false, error: "This room has ended or expired." });
+      return;
+    }
+
+    let isValid = false;
+    if (roomPasscode) {
+      if (isBcryptHash(roomPasscode)) {
+        isValid = await verifyRoomPasscode(cleanPasscode, roomPasscode);
+      } else {
+        isValid = cleanPasscode === roomPasscode;
+      }
+    } else {
+      // Room without passcode
+      isValid = true;
+    }
+
+    if (!isValid) {
+      await recordPasscodeFailure(rateLimitTarget);
+      res.status(401).json({ valid: false, error: "Incorrect room passcode. Please try again." });
+      return;
+    }
+
+    // Success: reset rate limit attempts for this target and return 200
+    // NOTE: This endpoint NEVER mutates room status (it never activates an inactive room).
+    await resetPasscodeLimits(rateLimitTarget);
+    res.json({ valid: true });
+  } catch (err) {
+    console.error("Error verifying passcode:", err);
+    res.status(500).json({ valid: false, error: "Server error verifying passcode." });
+  }
 });
 
 app.get("/resolveShard/:roomId", async (req, res) => {
@@ -1115,42 +1295,52 @@ app.post("/endRoom", async (req, res) => {
       return;
     }
 
-    const selectResult = await postgres.query(
-      `SELECT "roomId", "status", "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    // 1. Authoritative DB transition: verify caller is owner and current status is 'active' (or inactive fallback)
+    const updateResult = await postgres.query(
+      `UPDATE rooms 
+       SET status = 'inactive', "lastActiveAt" = NOW() 
+       WHERE "roomId" = $1 AND owner_id = $2 AND status = 'active'
+       RETURNING "roomId", "status", "expiresAt", "isPermanent"`,
       [roomId, decoded.uid]
     );
 
-    if (!selectResult || selectResult.rows.length === 0) {
-      res.status(404).json({ error: "Room not found or unauthorized" });
-      return;
+    let roomRow = updateResult.rows[0];
+    if (!roomRow) {
+      // Check if room exists and is already inactive
+      const checkResult = await postgres.query(
+        `SELECT "roomId", "status", "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+        [roomId, decoded.uid]
+      );
+      if (!checkResult || checkResult.rows.length === 0) {
+        res.status(404).json({ error: "Room not found or unauthorized" });
+        return;
+      }
+      roomRow = checkResult.rows[0];
+    } else {
+      // Insert audit log only if transition from active to inactive occurred
+      await postgres.query(
+        `INSERT INTO room_lifecycle_events 
+         ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [roomId, decoded.uid, 'room.stopped', 'active', 'inactive', roomRow.expiresAt, roomRow.expiresAt, 'session instance stopped by owner']
+      ).catch(e => console.error("Failed to insert lifecycle event for stopped room:", e));
     }
 
-    const roomRow = selectResult.rows[0];
-
-    // Only stops the room for this instance: sets status to 'inactive' (never 'ended')
-    await postgres.query(
-      `UPDATE rooms SET status = 'inactive' WHERE "roomId" = $1 AND owner_id = $2`,
-      [roomId, decoded.uid]
-    );
-
-    // Insert audit log
-    await postgres.query(
-      `INSERT INTO room_lifecycle_events 
-       ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [roomId, decoded.uid, 'room.stopped', roomRow.status, 'inactive', roomRow.expiresAt, roomRow.expiresAt, 'session instance stopped by owner']
-    ).catch(e => console.error("Failed to insert lifecycle event for stopped room:", e));
-
-    // Stop the in-memory active session for this instance
+    // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
     const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
     const memoryRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
     if (memoryRoom) {
       memoryRoom.status = 'inactive';
+      
+      // Explicit notification to all connected clients before disconnecting
+      io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED");
+
       memoryRoom.addChatMessage(null, {
         id: '',
         system: true,
-        msg: 'This watch session has been stopped by the host. The room is now inactive and will reactivate when someone joins.',
+        msg: 'This watch session has been stopped by the host. The room is now inactive until the host starts a new session.',
       });
+
       if (memoryRoom.vBrowser) {
         await memoryRoom.stopVBrowserInternal();
       }

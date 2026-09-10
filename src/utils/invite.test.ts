@@ -35,20 +35,14 @@ console.log("Testing getRoomUrl without stored passcodes...");
 
 const urlNoPasscode = getRoomUrl("test-room-1");
 assert(
-  urlNoPasscode === "https://cowatch.example.com/watch/test-room-1",
+  urlNoPasscode === "https://cowatch.example.com/join/test-room-1",
   `Expected url without passcode, got ${urlNoPasscode}`
 );
 
-const urlWithPasscode = getRoomUrl("test-room-1", "secret123");
+const urlWithCleanId = getRoomUrl("/test-room-2");
 assert(
-  urlWithPasscode === "https://cowatch.example.com/watch/test-room-1?passcode=secret123",
-  `Expected url with passcode, got ${urlWithPasscode}`
-);
-
-const urlWithSpecialChars = getRoomUrl("test-room-2", "pass@456#");
-assert(
-  urlWithSpecialChars === "https://cowatch.example.com/watch/test-room-2?passcode=pass%40456%23",
-  `Expected encoded passcode, got ${urlWithSpecialChars}`
+  urlWithCleanId === "https://cowatch.example.com/join/test-room-2",
+  `Expected normalized url without leading slash, got ${urlWithCleanId}`
 );
 
 console.log("Testing getInviteMessage...");
@@ -56,13 +50,18 @@ console.log("Testing getInviteMessage...");
 const msgNoPass = getInviteMessage("test-room-1");
 assert(!msgNoPass.includes("Passcode:"), "Message without passcode must not include Passcode field");
 assert(msgNoPass.includes("Room ID: test-room-1"), "Message must include room ID");
+assert(msgNoPass.includes("https://cowatch.example.com/join/test-room-1"), "Message must include clean join link");
 
 const msgWithPass = getInviteMessage("test-room-1", "secret123");
-assert(msgWithPass.includes("Passcode: secret123"), "Message must include passcode");
+assert(msgWithPass.includes("Passcode: secret123"), "Message must include passcode as separate line");
 assert(msgWithPass.includes("Room ID: test-room-1"), "Message must include room ID");
 assert(
-  msgWithPass.includes("https://cowatch.example.com/watch/test-room-1?passcode=secret123"),
-  "Message must include link with passcode"
+  msgWithPass.includes("https://cowatch.example.com/join/test-room-1"),
+  "Message must include clean join link"
+);
+assert(
+  !msgWithPass.includes("?passcode="),
+  "Message link must NEVER contain passcode query parameter"
 );
 
 console.log("Testing local storage verification (must NEVER store passcodes)...");
