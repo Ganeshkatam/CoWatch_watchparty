@@ -491,7 +491,12 @@ class CoWatch extends React.Component {
                           path="/create"
                           exact
                           render={() => {
-                            return <RequireVerifiedEmail><Create /></RequireVerifiedEmail>;
+                            return (
+                              <RequireVerifiedEmail>
+                                <TopBar />
+                                <Create />
+                              </RequireVerifiedEmail>
+                            );
                           }}
                         />
                         <Route

@@ -1,92 +1,173 @@
 .page {
-  min-height: calc(100vh - 120px);
+  min-height: calc(100vh - 80px);
   background-color: var(--bg-app);
-  padding: 40px 20px 80px;
+  padding: 24px 20px 80px;
   display: flex;
   justify-content: center;
 }
 
 .container {
   width: 100%;
-  max-width: 680px;
+  max-width: 780px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
 }
 
-.header {
+/* Breadcrumb Navigation */
+.breadcrumb {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13.5px;
+  color: var(--text-secondary);
 }
 
-.backButton {
+.breadcrumbLink {
+  color: var(--text-secondary);
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
-  padding: 4px 0;
-  margin-bottom: 8px;
   transition: color 0.15s ease;
-  width: fit-content;
 }
 
-.backButton:hover {
-  color: var(--text-primary);
-}
-
-.title {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--text-primary);
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 36px;
-}
-
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.sectionHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.sectionTitle {
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+.breadcrumbLink:hover {
   color: var(--color-violet, #a78bfa);
 }
 
-.sectionDescription {
-  font-size: 12px;
+.breadcrumbSeparator {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.breadcrumbCurrent {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Hero Cinema Banner Header */
+.hero {
+  position: relative;
+  border-radius: 16px;
+  background-color: var(--bg-surface);
+  background-image: 
+    linear-gradient(135deg, rgba(15, 15, 20, 0.88) 0%, rgba(20, 20, 30, 0.72) 50%, rgba(139, 92, 246, 0.15) 100%),
+    url('/hero_bg.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid var(--border-subtle);
+  padding: 32px 36px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.4);
+}
+
+.heroContent {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: #c4b5fd;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  width: fit-content;
+  margin-bottom: 4px;
+}
+
+.heroTitle {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.4px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.heroSubtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 580px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Form Sections */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--border-focus, rgba(139, 92, 246, 0.25));
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cardIconBadge {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-violet, #a78bfa);
+  flex-shrink: 0;
+}
+
+.cardHeaderMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.cardSubtitle {
+  font-size: 12.5px;
   color: var(--text-secondary);
+  line-height: 1.35;
 }
 
 .fieldsStack {
@@ -95,47 +176,54 @@
   gap: 16px;
 }
 
-.togglesList {
-  display: flex;
-  flex-direction: column;
-  divide-y: 1px solid var(--border-subtle);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--bg-surface);
-  overflow: hidden;
-}
-
-.toggleRow {
+/* Cover Photo Uploader */
+.coverContainer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
   gap: 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  margin-top: 4px;
 }
 
-.toggleRow:last-child {
-  border-bottom: none;
+.coverPreview {
+  width: 160px;
+  height: 90px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-surface-elevated, #1a1d26);
+  border: 1px solid var(--border-subtle);
+  position: relative;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.toggleMeta {
+.coverImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coverPlaceholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted);
+  font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.toggleTitle {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
+.coverActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-.toggleDescription {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.35;
-}
-
+/* Passcode Row */
 .passcodeRow {
   display: flex;
   gap: 12px;
@@ -146,33 +234,113 @@
   flex: 1;
 }
 
+.passcodeControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .regenerateButton {
-  height: 36px;
+  height: 38px;
   font-size: 13px;
   font-weight: 500;
   border-radius: 8px;
 }
 
+/* Setting Cards */
+.togglesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settingCard {
+  background: var(--bg-surface-elevated, var(--bg-elevated, rgba(255, 255, 255, 0.02)));
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.settingCard:hover {
+  border-color: var(--border-focus, rgba(139, 92, 246, 0.3));
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
+}
+
+.settingMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settingLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settingDescription {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Actions Row */
 .actionsRow {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 20px 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 .submitButton {
-  min-width: 160px;
+  min-width: 170px;
   height: 44px;
   font-weight: 600;
   font-size: 14px;
   border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-@media (max-width: 600px) {
+.submitButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45);
+}
+
+@media (max-width: 650px) {
   .page {
-    padding: 24px 16px 64px;
+    padding: 16px 14px 64px;
+  }
+
+  .hero {
+    padding: 24px 20px;
+  }
+
+  .heroTitle {
+    font-size: 22px;
+  }
+
+  .heroSubtitle {
+    font-size: 13px;
+  }
+
+  .card {
+    padding: 18px 16px;
+  }
+
+  .coverContainer {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .passcodeRow {
