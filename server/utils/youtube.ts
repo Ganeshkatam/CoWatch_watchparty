@@ -1,4 +1,5 @@
 import config from "../config.ts";
+import type { YoutubeResult } from "../index.d.ts";
 import {
   PT_HOURS_REGEX,
   PT_MINUTES_REGEX,
@@ -51,6 +52,39 @@ export const mapYoutubePlaylistResult = (
     channel: item.snippet?.channelTitle ?? "",
     duration: 0,
     // duration: getVideoDuration(video.contentDetails?.duration ?? ''),
+    type: "youtube",
+  };
+};
+
+/**
+ * Defensively maps a raw YouTube API result to a PlaylistVideo object with
+ * deterministic fallbacks for missing snippets, titles, channels, and thumbnails.
+ * Thumbnail fallback order: high -> medium -> standard -> default -> "".
+ */
+export const mapYoutubeResult = (
+  item?: YoutubeResult | null,
+  videoId?: string,
+): PlaylistVideo => {
+  const resolvedId =
+    videoId ||
+    (typeof item?.id === "string" ? item.id : item?.id?.videoId) ||
+    "";
+  const url = resolvedId ? `https://www.youtube.com/watch?v=${resolvedId}` : "";
+
+  const thumbnails = item?.snippet?.thumbnails;
+  const img =
+    thumbnails?.high?.url ||
+    thumbnails?.medium?.url ||
+    thumbnails?.standard?.url ||
+    thumbnails?.default?.url ||
+    "";
+
+  return {
+    url,
+    name: item?.snippet?.title || resolvedId || "YouTube Video",
+    img,
+    channel: item?.snippet?.channelTitle || "YouTube",
+    duration: 0,
     type: "youtube",
   };
 };

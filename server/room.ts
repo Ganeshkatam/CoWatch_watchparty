@@ -13,6 +13,8 @@ import {
   normalizeYouTubeUrl,
   isYouTube,
 } from "./utils/youtube.ts";
+import { sanitizeRoomId } from "./strip_slashes.ts";
+import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 //@ts-expect-error
 import twitch from "twitch-m3u8";
 import { type QueryResult } from "pg";
@@ -167,7 +169,7 @@ export class Room {
     roomId: string,
     roomData?: string | null | undefined,
   ) {
-    this.roomId = roomId;
+    this.roomId = sanitizeRoomId(roomId);
     this.io = io;
 
     if (roomData) {
@@ -1247,13 +1249,18 @@ export class Room {
       type: youtubeVideoId ? "youtube" : data.startsWith("magnet:") ? "magnet" : "file",
     };
     let video: PlaylistVideo | null = null;
-    try {
-      if (youtubeVideoId) {
-        video = await fetchYoutubeVideo(youtubeVideoId);
+    const existing = findPlaylistVideoByUrl(this.playlist, targetUrl);
+    if (existing) {
+      video = { ...existing };
+    } else {
+      try {
+        if (youtubeVideoId) {
+          video = await fetchYoutubeVideo(youtubeVideoId);
+        }
+      } catch (e) {
+        // Failed to fetch YouTube video info but can still add the URL
+        console.warn(e);
       }
-    } catch (e) {
-      // Failed to fetch YouTube video info but can still add the URL
-      console.warn(e);
     }
     if (video) {
       this.playlist.push(video);

@@ -33,6 +33,7 @@ import {
   resetPasscodeLimits,
 } from "./utils/rateLimit.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
+import { sanitizeRoomId } from "./strip_slashes.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -74,10 +75,12 @@ server?.on("error", (err: any) => {
 
 const io = new Server(server, { cors: {}, transports: ["websocket"] });
 io.engine.use(async (req: any, res: Response, next: () => void) => {
-  const roomId = req._query.roomId;
-  if (!roomId) {
+  const rawRoomId = req._query.roomId;
+  if (!rawRoomId) {
     return next();
   }
+  const roomId = sanitizeRoomId(rawRoomId);
+  req._query.roomId = roomId;
   // Attempt to ensure the room being connected to is loaded in memory
   // If it doesn't exist, we may fail later with "invalid namespace"
   const shard = resolveShard(roomId);
@@ -410,7 +413,7 @@ app.post("/createRoom", async (req, res) => {
 
 
   const genName = () => makeRoomName(config.SHARD);
-  let name = genName();
+  let name = sanitizeRoomId(genName());
   console.log("createRoom: ", name, "by user:", decoded.email);
   const newRoom = new Room(io, name);
 
@@ -484,10 +487,10 @@ app.post("/updateRoomCover", async (req, res) => {
     return;
   }
 
-  const roomId = req.body?.roomId;
+  const rawRoomId = req.body?.roomId;
   const coverPhoto = req.body?.coverPhoto;
 
-  if (!roomId || coverPhoto === undefined) {
+  if (!rawRoomId || coverPhoto === undefined) {
     res.status(400).json({ error: "missing roomId or coverPhoto" });
     return;
   }
@@ -497,13 +500,13 @@ app.post("/updateRoomCover", async (req, res) => {
     return;
   }
 
-  const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-  const memRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+  const cleanRoomId = sanitizeRoomId(rawRoomId);
+  const memRoom = rooms.get(cleanRoomId);
   const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
 
   const roomCheck = await postgres.query(
     `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
-    [roomId, decoded.uid]
+    [cleanRoomId, decoded.uid]
   );
 
   if (roomCheck.rowCount === 0) {
@@ -525,7 +528,7 @@ app.post("/updateRoomCover", async (req, res) => {
 
   const result = await postgres.query(
     `UPDATE rooms SET "coverPhoto" = $1 WHERE "roomId" = $2 AND owner_id = $3 RETURNING "roomId"`,
-    [coverPhoto, roomId, decoded.uid]
+    [coverPhoto, cleanRoomId, decoded.uid]
   );
   if (result.rowCount === 0) {
     res.status(404).json({ error: "Room not found or unauthorized" });
@@ -541,12 +544,14 @@ app.post("/updateRoomSettings", async (req, res) => {
     return;
   }
 
-  const { roomId, roomTitle, roomDescription, isPermanent, isChatDisabled, password, removePassword } = req.body;
+  const { roomId: rawRoomId, roomTitle, roomDescription, isPermanent, isChatDisabled, password, removePassword } = req.body;
 
-  if (!roomId || typeof roomTitle !== 'string' || typeof isPermanent !== 'boolean' || typeof isChatDisabled !== 'boolean') {
+  if (!rawRoomId || typeof roomTitle !== 'string' || typeof isPermanent !== 'boolean' || typeof isChatDisabled !== 'boolean') {
     res.status(400).json({ error: "Invalid payload" });
     return;
   }
+
+  const roomId = sanitizeRoomId(rawRoomId);
 
   const titleTrimmed = roomTitle.trim();
   if (titleTrimmed.length === 0 || titleTrimmed.length > 50) {
@@ -594,8 +599,8 @@ app.post("/updateRoomSettings", async (req, res) => {
 
     const room = existingRoom.rows[0];
 
-    const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-    const memRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+    const cleanRoomId = roomId;
+    const memRoom = rooms.get(cleanRoomId);
     const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
     const now = Date.now();
     const isExpired = !room.isPermanent && room.expiresAt && new Date(room.expiresAt).getTime() <= now;
@@ -810,9 +815,10 @@ app.get("/roomData/:roomId", async (req, res) => {
   // Returns the room data given a room ID
   // Only return data if the room doesn't have a passcode
   // If it does, we could accept it as a URL parameter but for now just don't support
+  const cleanRoomId = sanitizeRoomId(req.params.roomId);
   const result = await postgres?.query(
     `SELECT data from room WHERE "roomId" = $1 and passcode IS NULL`,
-    [req.params.roomId],
+    [cleanRoomId],
   );
   res.json(result?.rows[0]?.data);
 });
@@ -823,7 +829,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
     res.status(400).json({ error: "Missing room identifier" });
     return;
   }
-  const cleanRoomId = rawRoomId.trim();
+  const cleanRoomId = sanitizeRoomId(rawRoomId);
 
   // Attempt to decode caller token if provided (via Authorization header or query params)
   let callerUid: string | undefined;
@@ -897,7 +903,7 @@ app.post("/verifyPasscode", async (req, res) => {
     return;
   }
 
-  const cleanRoomId = roomId.trim();
+  const cleanRoomId = sanitizeRoomId(roomId);
   const cleanPasscode = passcode.trim();
 
   if (cleanPasscode.length < 8) {
@@ -993,7 +999,8 @@ app.post("/verifyPasscode", async (req, res) => {
 });
 
 app.get("/resolveShard/:roomId", async (req, res) => {
-  const shardNum = resolveShard(req.params.roomId);
+  const cleanRoomId = sanitizeRoomId(req.params.roomId);
+  const shardNum = resolveShard(cleanRoomId);
   res.send(String(config.SHARD ? shardNum : ""));
 });
 
@@ -1175,11 +1182,12 @@ app.get("/roomDetails", async (req, res) => {
     return;
   }
 
-  const roomId = req.query.roomId;
-  if (!roomId) {
+  const rawRoomId = req.query.roomId;
+  if (!rawRoomId || typeof rawRoomId !== "string") {
     res.status(400).json({ error: "missing roomId" });
     return;
   }
+  const roomId = sanitizeRoomId(rawRoomId);
 
   try {
     const roomResult = await postgres?.query(
@@ -1258,12 +1266,13 @@ app.post("/extendRoom", async (req, res) => {
     res.status(400).json({ error: "invalid user token" });
     return;
   }
-  const roomId = req.body?.roomId;
+  const rawRoomId = req.body?.roomId;
   const durationSeconds = Number(req.body?.durationSeconds);
-  if (!roomId || !durationSeconds) {
+  if (!rawRoomId || !durationSeconds) {
     res.status(400).json({ error: "missing parameters" });
     return;
   }
+  const roomId = sanitizeRoomId(rawRoomId);
 
   // max duration 3 hours = 10800s
   if (durationSeconds > 10800 || durationSeconds < 0) {
@@ -1347,11 +1356,12 @@ app.post("/endRoom", async (req, res) => {
     res.status(400).json({ error: "invalid user token" });
     return;
   }
-  const roomId = typeof req.body?.roomId === "string" ? req.body.roomId : "";
-  if (!roomId) {
+  const rawRoomId = typeof req.body?.roomId === "string" ? req.body.roomId : "";
+  if (!rawRoomId) {
     res.status(400).json({ error: "missing roomId" });
     return;
   }
+  const roomId = sanitizeRoomId(rawRoomId);
 
   try {
     if (!postgres) {
@@ -1391,8 +1401,8 @@ app.post("/endRoom", async (req, res) => {
     }
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
-    const cleanRoomId = roomId.startsWith("/") ? roomId.substring(1) : roomId;
-    const memoryRoom = rooms.get(roomId) || rooms.get(cleanRoomId) || rooms.get(`/${cleanRoomId}`);
+    const cleanRoomId = roomId;
+    const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
       memoryRoom.status = 'inactive';
       
@@ -1438,11 +1448,12 @@ app.delete("/deleteRoom", async (req, res) => {
       return;
     }
 
-    const roomId = typeof req.query.roomId === "string" ? req.query.roomId : "";
-    if (!roomId) {
+    const rawRoomId = typeof req.query.roomId === "string" ? req.query.roomId : "";
+    if (!rawRoomId) {
       res.status(400).json({ error: "missing roomId" });
       return;
     }
+    const roomId = sanitizeRoomId(rawRoomId);
 
     // Guard: refuse to delete a room that is currently active.
     const statusCheck = await postgres.query(
