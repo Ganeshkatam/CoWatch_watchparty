@@ -13,7 +13,10 @@ const globalForSupabase = globalThis as unknown as { __supabase?: SupabaseClient
 
 export const supabase: SupabaseClient =
   globalForSupabase.__supabase ??
-  createClient(supabaseUrl || "", supabaseKey || "");
+  createClient(
+    supabaseUrl || "https://placeholder.supabase.co",
+    supabaseKey || "placeholder-anon-key"
+  );
 
 globalForSupabase.__supabase = supabase;
 

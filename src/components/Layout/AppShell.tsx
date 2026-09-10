@@ -2,6 +2,7 @@ import React from "react";
 import { useLocation } from "react-router-dom";
 import { isBottomNavVisible } from "../Navigation/navigationPolicy";
 import { MobileBottomNav } from "../Navigation/MobileBottomNav";
+import { Announce } from "../Announce/Announce";
 import styles from "./AppShell.module.css";
 
 interface AppShellProps {
@@ -14,6 +15,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
   return (
     <div className={styles.appShell}>
+      <Announce />
       <main className={`${styles.mainContent} ${isNavVisible ? styles.hasBottomNav : ""}`}>
         {children}
       </main>
