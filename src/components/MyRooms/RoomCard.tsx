@@ -59,12 +59,13 @@ const getComputedState = (room: RoomSummary) => {
 };
 
 const RoomStatusBadge = ({ status, isPermanent }: { status: RoomSummary["status"], isPermanent: boolean }) => {
-  if (status === "active" && isPermanent) return <Badge color="green" variant="filled" size="sm">● PERMANENT</Badge>;
-  if (status === "active") return <Badge color="green" variant="filled" size="sm">● ACTIVE</Badge>;
-  if (status === "expiring") return <Badge color="orange" variant="filled" size="sm">● EXPIRING SOON</Badge>;
-  if (status === "expired" || status === "ended") return <Badge color="gray" variant="filled" size="sm">● ENDED</Badge>;
-  if (status === "scheduled") return <Badge color="blue" variant="filled" size="sm">● SCHEDULED</Badge>;
-  return <Badge color="yellow" variant="filled" size="sm">● INACTIVE</Badge>;
+  const badgeStyle = { fontWeight: 700, letterSpacing: '0.04em', backdropFilter: 'blur(8px)' };
+  if (status === "active" && isPermanent) return <Badge color="green" variant="filled" size="sm" radius="xl" style={badgeStyle}>● PERMANENT</Badge>;
+  if (status === "active") return <Badge color="green" variant="filled" size="sm" radius="xl" style={badgeStyle}>● ACTIVE</Badge>;
+  if (status === "expiring") return <Badge color="orange" variant="filled" size="sm" radius="xl" style={badgeStyle}>● EXPIRING SOON</Badge>;
+  if (status === "expired" || status === "ended") return <Badge color="gray" variant="filled" size="sm" radius="xl" style={badgeStyle}>● ENDED</Badge>;
+  if (status === "scheduled") return <Badge color="blue" variant="filled" size="sm" radius="xl" style={badgeStyle}>● SCHEDULED</Badge>;
+  return <Badge color="yellow" variant="filled" size="sm" radius="xl" style={badgeStyle}>● INACTIVE</Badge>;
 };
 
 const formatTimeLeft = (expiresAt: string | null, status: string, isPermanent: boolean) => {
@@ -695,7 +696,6 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       onUpdateCover(room.roomId, `${publicUrlData.publicUrl}?t=${Date.now()}`);
     } catch (e: any) {
       console.error("Failed to upload cover", e);
-      alert(e.message || "Failed to upload cover photo.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -843,17 +843,19 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         ) : (
           <div className={styles.coverPlaceholder}>WATCH PARTY</div>
         )}
+        <div className={styles.coverOverlay} />
 
-        <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}>
+        <div style={{ position: 'absolute', bottom: 10, right: 10, zIndex: 10 }}>
           <RoomStatusBadge status={room.status} isPermanent={isPermanent} />
         </div>
 
         {onUpdateCover && (
           <>
             <ActionIcon
-              variant="filled" color="dark" size="sm" radius="md" loading={actions.isUploading}
-              style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)' }}
+              variant="filled" color="dark" size="sm" radius="xl" loading={actions.isUploading}
+              style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
               onClick={(e) => { e.stopPropagation(); actions.fileInputRef.current?.click(); }}
+              aria-label="Update cover image"
             >
               <IconPhotoPlus size={14} color="white" />
             </ActionIcon>
@@ -948,13 +950,15 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         ) : (
           <div className={styles.coverPlaceholder}>WATCH PARTY</div>
         )}
+        <div className={styles.coverOverlay} />
 
         {onUpdateCover && (
           <>
             <ActionIcon
-              variant="filled" color="dark" size="sm" radius="md" loading={actions.isUploading}
-              style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)' }}
+              variant="filled" color="dark" size="sm" radius="xl" loading={actions.isUploading}
+              style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
               onClick={(e) => { e.stopPropagation(); actions.fileInputRef.current?.click(); }}
+              aria-label="Update cover image"
             >
               <IconPhotoPlus size={14} color="white" />
             </ActionIcon>
