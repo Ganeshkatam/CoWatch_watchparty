@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -73,7 +74,8 @@
   color: var(--text-primary);
 }
 
-.headerBtn {
+.headerBtn,
+.headerAuthBtn {
   font-size: 13px;
   font-weight: 600;
 }
@@ -276,22 +278,66 @@
   box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
 }
 
+.passcodeHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+.passcodeTitle {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.passcodeSubtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .ownerNotice {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.22);
   color: var(--text-primary);
-  font-size: 13px;
   margin-bottom: 8px;
 }
 
-.ownerNoticeIcon {
+.ownerNoticeIconBox {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(139, 92, 246, 0.16);
   color: var(--color-violet, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.ownerNoticeContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.ownerNoticeTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ownerNoticeDesc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.35;
 }
 
 .errorCard {
@@ -324,23 +370,32 @@
   margin: 0;
 }
 
-.legalText {
+.legalLinksRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.5;
-  margin-top: 24px;
+  margin-top: 16px;
   text-align: center;
 }
 
 .legalLink {
-  color: var(--text-secondary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12px;
   transition: color 0.15s ease;
 }
 
 .legalLink:hover {
   color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.legalDot {
+  color: var(--text-muted);
+  user-select: none;
 }
 
 /* Minimal Footer */
@@ -381,21 +436,157 @@
 /* Responsive adjustments */
 @media (max-width: 600px) {
   .header {
-    padding: 14px 20px;
+    padding: 12px 16px;
+  }
+
+  .headerBtn,
+  .headerAuthBtn {
+    display: none !important;
+  }
+
+  .headerActions {
+    gap: 12px;
   }
 
   .main {
-    padding: 30px 16px;
+    padding: 14px 14px 18px;
+  }
+
+  .contentWrapper {
+    max-width: 440px;
+  }
+
+  .iconWrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    margin-bottom: 8px;
   }
 
   .title {
-    font-size: 24px;
+    font-size: 21px;
+    margin-bottom: 2px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .roomPreviewCard {
+    margin-bottom: 10px;
+    border-radius: 13px;
+  }
+
+  .roomCover {
+    height: 120px;
+  }
+
+  .roomCoverFallback {
+    height: 90px;
+  }
+
+  .roomCardContent {
+    padding: 10px 12px;
+    gap: 4px;
+  }
+
+  .roomTitle {
+    font-size: 15px;
+  }
+
+  .roomIdBadge {
+    font-size: 11px;
+  }
+
+  .roomDescription {
+    font-size: 12.5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .identityPreview {
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    gap: 9px;
+    border-radius: 9px;
+  }
+
+  .identityLabel {
+    font-size: 10px;
+  }
+
+  .identityName {
+    font-size: 12.5px;
+  }
+
+  .ownerNotice {
+    padding: 9px 11px;
+    gap: 10px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+  }
+
+  .ownerNoticeIconBox {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .ownerNoticeTitle {
+    font-size: 12.5px;
+  }
+
+  .ownerNoticeDesc {
+    font-size: 11.5px;
+  }
+
+  .passcodeHeader {
+    margin-bottom: 3px;
+  }
+
+  .passcodeTitle {
+    font-size: 12.5px;
+  }
+
+  .passcodeSubtitle {
+    font-size: 11.5px;
+  }
+
+  .form {
+    gap: 10px;
+  }
+
+  .submitBtn {
+    height: 48px;
+    min-height: 48px;
+    font-size: 15px;
+    border-radius: 10px;
+  }
+
+  .legalLinksRow {
+    margin-top: 10px;
+    font-size: 11px;
   }
 
   .footer {
-    padding: 16px 20px;
-    flex-direction: column;
+    padding: 10px 16px;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .copyright {
+    font-size: 11px;
+  }
+
+  .footerLinks {
     gap: 12px;
-    align-items: center;
+  }
+
+  .footerLink {
+    font-size: 11px;
   }
 }

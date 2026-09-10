@@ -16,10 +16,12 @@ import {
   IconLink,
   IconAlertCircle,
   IconLock,
-  IconShieldCheck,
   IconShield,
   IconVideo,
   IconPlayerPlay,
+  IconLogin,
+  IconUser,
+  IconMail,
 } from "@tabler/icons-react";
 import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -95,7 +97,18 @@ export const Join: React.FC = () => {
     setLoadingRoom(true);
     setRoomError("");
     setFormError("");
-    setPasscode("");
+
+    try {
+      const savedPass = sessionStorage.getItem(`cowatch_pass_${cleanRouteRoomId}`);
+      if (savedPass) {
+        setPasscode(savedPass);
+        sessionStorage.removeItem(`cowatch_pass_${cleanRouteRoomId}`);
+      } else {
+        setPasscode("");
+      }
+    } catch (_) {
+      setPasscode("");
+    }
 
     const fetchRoom = async () => {
       try {
@@ -178,6 +191,14 @@ export const Join: React.FC = () => {
     }
 
     if (!user) {
+      if (passcode.trim()) {
+        try {
+          sessionStorage.setItem(
+            `cowatch_pass_${cleanRouteRoomId}`,
+            passcode.trim()
+          );
+        } catch (_) { }
+      }
       history.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
       return;
     }
@@ -233,7 +254,7 @@ export const Join: React.FC = () => {
       if (resp.status === 429) {
         setFormError(
           data.error ||
-            "Too many passcode attempts. Please wait a few minutes before trying again."
+          "Too many passcode attempts. Please wait a few minutes before trying again."
         );
         return;
       }
@@ -273,15 +294,29 @@ export const Join: React.FC = () => {
           <Link to="/faq" className={styles.headerLink}>
             Support
           </Link>
-          <Button
-            component={Link}
-            to="/create"
-            size="xs"
-            variant="default"
-            className={styles.headerBtn}
-          >
-            Create Room
-          </Button>
+          {user ? (
+            <Button
+              component={Link}
+              to="/create"
+              size="xs"
+              variant="default"
+              className={styles.headerBtn}
+            >
+              Create Room
+            </Button>
+          ) : (
+            <Button
+              component={Link}
+              to={`/login?redirect=${encodeURIComponent(
+                cleanRouteRoomId ? `/join/${encodeURIComponent(cleanRouteRoomId)}` : "/join"
+              )}`}
+              size="xs"
+              variant="default"
+              className={styles.headerAuthBtn}
+            >
+              Sign In
+            </Button>
+          )}
         </div>
       </header>
 
@@ -294,7 +329,7 @@ export const Join: React.FC = () => {
               <Center style={{ minHeight: 280, flexDirection: "column", gap: 16 }}>
                 <Loader color="violet" size="lg" />
                 <Text size="sm" c="dimmed">
-                  Connecting to room gateway...
+                  Connecting to room...
                 </Text>
               </Center>
             ) : roomError ? (
@@ -308,15 +343,6 @@ export const Join: React.FC = () => {
               </div>
             ) : (
               <>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <IconShieldCheck size={26} stroke={1.8} />
-                </div>
-
-                <h1 className={styles.title}>Room Gateway</h1>
-                <p className={styles.subtitle}>
-                  Verify your credentials to enter this synchronized watch party.
-                </p>
-
                 {/* Room Preview Card */}
                 {roomInfo && (
                   <div className={styles.roomPreviewCard}>
@@ -334,9 +360,9 @@ export const Join: React.FC = () => {
                     <div className={styles.roomCardContent}>
                       <div className={styles.roomCardHeader}>
                         <div className={styles.roomTitleRow}>
-                          <h2 className={styles.roomTitle}>{roomInfo.roomTitle}</h2>
+                          <h1 className={styles.roomTitle}>{roomInfo.roomTitle}</h1>
                           <span className={styles.roomIdBadge}>
-                            ID: {roomInfo.roomId}
+                            {roomInfo.roomId}
                           </span>
                         </div>
                         <Badge
@@ -344,17 +370,17 @@ export const Join: React.FC = () => {
                             roomInfo.status === "active"
                               ? "green"
                               : roomInfo.status === "expired"
-                              ? "red"
-                              : "yellow"
+                                ? "red"
+                                : "yellow"
                           }
                           variant="light"
-                          size="md"
+                          size="sm"
                         >
                           {roomInfo.status === "active"
-                            ? "Active Session"
+                            ? "ACTIVE"
                             : roomInfo.status === "expired"
-                            ? "Expired"
-                            : "Waiting for Host"}
+                              ? "EXPIRED"
+                              : "WAITING"}
                         </Badge>
                       </div>
                       {roomInfo.roomDescription && (
@@ -367,12 +393,12 @@ export const Join: React.FC = () => {
                 )}
 
                 {/* User Identity Preview */}
-                {user && (
+                {user ? (
                   <div className={styles.identityPreview}>
                     <Avatar
                       src={user.user_metadata?.avatar_url}
                       radius="xl"
-                      size="md"
+                      size="sm"
                       color="violet"
                     >
                       {displayName.charAt(0).toUpperCase()}
@@ -380,6 +406,18 @@ export const Join: React.FC = () => {
                     <div className={styles.identityTextGroup}>
                       <span className={styles.identityLabel}>Joining As</span>
                       <span className={styles.identityName}>{displayName}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.identityPreview}>
+                    <Avatar radius="xl" size="sm" color="gray">
+                      <IconUser size={15} />
+                    </Avatar>
+                    <div className={styles.identityTextGroup}>
+                      <span className={styles.identityLabel}>Account</span>
+                      <span className={styles.identityName}>
+                        Guest · Sign in required to enter
+                      </span>
                     </div>
                   </div>
                 )}
@@ -392,24 +430,35 @@ export const Join: React.FC = () => {
                 >
                   {roomInfo?.isOwner ? (
                     <div className={styles.ownerNotice}>
-                      <IconShield size={20} className={styles.ownerNoticeIcon} />
-                      <div>
-                        <strong>You are the host of this room.</strong> You have
-                        administrative access and can start or control this
-                        session.
+                      <div className={styles.ownerNoticeIconBox}>
+                        <IconShield size={18} />
+                      </div>
+                      <div className={styles.ownerNoticeContent}>
+                        <span className={styles.ownerNoticeTitle}>
+                          You're the host
+                        </span>
+                        <span className={styles.ownerNoticeDesc}>
+                          You can start and control this session.
+                        </span>
                       </div>
                     </div>
                   ) : (
                     <div className={styles.inputWrapper}>
+                      <div className={styles.passcodeHeader}>
+                        <span className={styles.passcodeTitle}>Room Passcode</span>
+                        <span className={styles.passcodeSubtitle}>
+                          {user
+                            ? "Enter the passcode shared by the host."
+                            : "Enter the room passcode to continue."}
+                        </span>
+                      </div>
                       <PasswordInput
-                        label="Room Passcode"
-                        placeholder="Enter room passcode"
+                        placeholder="Enter passcode"
                         value={passcode}
                         onChange={(event) => {
                           setPasscode(event.currentTarget.value);
                           if (formError) setFormError("");
                         }}
-                        autoFocus
                         required
                         size="md"
                         leftSection={<IconLock size={18} stroke={1.5} />}
@@ -433,13 +482,17 @@ export const Join: React.FC = () => {
 
                   <Button
                     type="submit"
-                    size="lg"
+                    size="md"
                     fullWidth
                     variant="gradient"
                     gradient={{ from: "violet", to: "indigo", deg: 135 }}
                     rightSection={
                       roomInfo?.isOwner ? (
                         <IconPlayerPlay size={18} />
+                      ) : !user ? (
+                        <IconLogin size={18} />
+                      ) : user.email_confirmed_at == null ? (
+                        <IconMail size={18} />
                       ) : (
                         <IconArrowRight size={18} />
                       )
@@ -448,10 +501,14 @@ export const Join: React.FC = () => {
                     className={styles.submitBtn}
                   >
                     {roomInfo?.isOwner
-                      ? "Enter Room (Host)"
-                      : verifying
-                      ? "Verifying Passcode..."
-                      : "Verify & Join Room"}
+                      ? "Enter Room as Host"
+                      : !user
+                        ? "Sign in to Join"
+                        : user.email_confirmed_at == null
+                          ? "Verify Email to Join"
+                          : verifying
+                            ? "Entering..."
+                            : "Enter Watch Room"}
                   </Button>
                 </form>
               </>
@@ -482,7 +539,6 @@ export const Join: React.FC = () => {
                       setInputRoomId(event.currentTarget.value);
                       if (formError) setFormError("");
                     }}
-                    autoFocus
                     required
                     maxLength={300}
                     size="md"
@@ -519,17 +575,15 @@ export const Join: React.FC = () => {
             </>
           )}
 
-          <p className={styles.legalText}>
-            By joining, you agree to CoWatch's{" "}
+          <div className={styles.legalLinksRow}>
             <Link to="/terms" className={styles.legalLink}>
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link to="/privacy" className={styles.legalLink}>
-              Privacy Policy
+              Terms
             </Link>
-            .
-          </p>
+            <span className={styles.legalDot}>·</span>
+            <Link to="/privacy" className={styles.legalLink}>
+              Privacy
+            </Link>
+          </div>
         </div>
       </main>
 
