@@ -9,18 +9,18 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 190px;
+  width: 180px;
   transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .searchWrapperExpanded {
-  width: 290px;
+  width: 280px;
 }
 
 .searchInput {
   width: 100%;
   height: 36px;
-  padding: 0 36px 0 34px;
+  padding: 0 48px 0 32px;
   border-radius: 9999px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -30,6 +30,7 @@
   outline: none;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
+  text-overflow: ellipsis;
 }
 
 .searchInput::placeholder {

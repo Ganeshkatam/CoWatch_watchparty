@@ -298,7 +298,7 @@ export const TopBarSearch: React.FC = () => {
           ref={inputRef}
           type="text"
           className={styles.searchInput}
-          placeholder="Search rooms, links... (⌘K)"
+          placeholder="Search..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
