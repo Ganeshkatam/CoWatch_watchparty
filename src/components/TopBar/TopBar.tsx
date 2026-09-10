@@ -23,6 +23,7 @@ import {
   IconHome,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
+import { TopBarSearch } from "./TopBarSearch";
 
 export const ThemeMenuItems = () => {
   const { appearance, setAppearance } = useAppearance();
@@ -358,6 +359,9 @@ export const TopBar = (props: {
 
       {/* Actions Group */}
       <div className={styles.actionsGroup}>
+        {/* Quick Search */}
+        <TopBarSearch />
+
         {props.showExit && (
           <Button
             color="red"
