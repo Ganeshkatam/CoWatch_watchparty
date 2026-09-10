@@ -184,6 +184,36 @@
   width: 100%;
 }
 
+.ageBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 7px 10px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--color-violet);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ageLockIcon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: var(--color-violet);
+  background: rgba(139, 92, 246, 0.10);
+  border: 1px solid rgba(139, 92, 246, 0.20);
+}
+
+:global([data-color-scheme="light"]) .ageBadge,
+:global(html[data-color-scheme="light"]) .ageBadge {
+  background: rgba(139, 92, 246, 0.06);
+}
+
 @media (max-width: 900px) {
   .authLayout {
     grid-template-columns: 1fr;
