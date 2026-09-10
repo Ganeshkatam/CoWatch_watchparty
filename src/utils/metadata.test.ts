@@ -56,8 +56,8 @@ class MockDocument {
   }
 
   querySelector(selector: string): MockElement | null {
-    // Basic attribute selector parser: meta[attr="val"]
-    const match = selector.match(/meta\[([a-zA-Z0-9_-]+)="([^"]+)"\]/);
+    // Basic attribute selector parser: (meta|link)[attr="val"]
+    const match = selector.match(/(?:meta|link)\[([a-zA-Z0-9_-]+)="([^"]+)"\]/);
     if (!match) return null;
     const [, attr, val] = match;
     for (const child of this.head.children) {
@@ -119,6 +119,17 @@ assert.equal(robotsMetaAfter, null); // restored to non-existent
 // Cleanup first metadata -> should restore initial document state
 cleanup1();
 assert.equal((global as any).document.title, "CoWatch Initial");
+
+// Test canonical URL management
+const cleanupCanonical = setDocumentMetadata({
+  canonicalUrl: "https://cowatch.tv/create",
+});
+const canonicalLink = (global as any).document.querySelector('link[rel="canonical"]');
+assert.ok(canonicalLink);
+assert.equal(canonicalLink.getAttribute("href"), "https://cowatch.tv/create");
+cleanupCanonical();
+const afterLink = (global as any).document.querySelector('link[rel="canonical"]');
+assert.equal(afterLink, null);
 
 // ----------------------------------------------------
 // Test 3: MediaSession unsupported environment

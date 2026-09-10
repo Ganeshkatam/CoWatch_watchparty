@@ -5,6 +5,7 @@ export interface DocumentMetadataOptions {
   description?: string;
   image?: string;
   url?: string;
+  canonicalUrl?: string;
   type?: string;
   siteName?: string;
   noIndex?: boolean;
@@ -23,6 +24,45 @@ export function formatDocumentTitle(title?: string): string {
     return trimmed;
   }
   return `${trimmed} | CoWatch`;
+}
+
+function setLinkTag(rel: string, href: string | undefined): () => void {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+
+  let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+  const prevHref = el ? el.getAttribute("href") : null;
+  const existedBefore = Boolean(el);
+
+  if (href !== undefined) {
+    if (!el) {
+      el = document.createElement("link");
+      el.setAttribute("rel", rel);
+      document.head.appendChild(el);
+    }
+    el.setAttribute("href", href);
+  } else if (el) {
+    el.remove();
+  }
+
+  return () => {
+    if (typeof document === "undefined") return;
+    const currentEl = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+
+    if (existedBefore && prevHref !== null) {
+      if (currentEl) {
+        currentEl.setAttribute("href", prevHref);
+      } else {
+        const restored = document.createElement("link");
+        restored.setAttribute("rel", rel);
+        restored.setAttribute("href", prevHref);
+        document.head.appendChild(restored);
+      }
+    } else if (currentEl) {
+      currentEl.remove();
+    }
+  };
 }
 
 function setMetaTag(
@@ -117,6 +157,11 @@ export function setDocumentMetadata(options: DocumentMetadataOptions): () => voi
   // OpenGraph URL
   if (options.url !== undefined) {
     cleanups.push(setMetaTag("property", "og:url", options.url));
+  }
+
+  // Canonical URL
+  if (options.canonicalUrl !== undefined) {
+    cleanups.push(setLinkTag("canonical", options.canonicalUrl));
   }
 
   // OpenGraph Type
