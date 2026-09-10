@@ -20,7 +20,12 @@ export function formatDocumentTitle(title?: string): string {
     return DEFAULT_TITLE;
   }
   const trimmed = title.trim();
-  if (trimmed.endsWith("CoWatch") || trimmed.endsWith("CoWatch | Watch Party")) {
+  if (
+    trimmed.startsWith("CoWatch") ||
+    trimmed.endsWith("CoWatch") ||
+    trimmed.endsWith("CoWatch | Watch Party") ||
+    trimmed.includes("| CoWatch")
+  ) {
     return trimmed;
   }
   return `${trimmed} | CoWatch`;

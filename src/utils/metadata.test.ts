@@ -77,6 +77,10 @@ assert.equal(formatDocumentTitle(""), "CoWatch - Watch Together with Friends");
 assert.equal(formatDocumentTitle("   "), "CoWatch - Watch Together with Friends");
 assert.equal(formatDocumentTitle("Home"), "Home | CoWatch");
 assert.equal(formatDocumentTitle("Movie • Room | CoWatch"), "Movie • Room | CoWatch");
+assert.equal(
+  formatDocumentTitle("CoWatch - Watch Party & Synchronized Streaming"),
+  "CoWatch - Watch Party & Synchronized Streaming"
+);
 
 // ----------------------------------------------------
 // Test 2: setDocumentMetadata creation, update, and restoration

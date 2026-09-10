@@ -20,9 +20,11 @@ import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 export const Home = () => {
   const { user } = useContext(MetadataContext);
   useDocumentMetadata({
-    title: "Watch Party & Synchronized Streaming",
+    title: "CoWatch - Watch Party & Synchronized Streaming",
     description:
       "Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser.",
+    canonicalUrl: "https://cowatch.tv/",
+    url: "https://cowatch.tv/",
   });
   return (
     <div className={styles.container}>
@@ -40,7 +42,7 @@ export const Home = () => {
               <NewRoomButton size="xl" />
               {!user && (
                 <div style={{ transform: "scale(1.2)" }}>
-                   <SignInButton />
+                  <SignInButton />
                 </div>
               )}
             </div>
@@ -84,9 +86,9 @@ export const Home = () => {
             text="Paste in a video URL for everyone to watch."
           />
           <Feature
-             Icon={IconUsers}
-             title="Together"
-             text="Invite friends instantly with a simple shareable link."
+            Icon={IconUsers}
+            title="Together"
+            text="Invite friends instantly with a simple shareable link."
           />
         </SimpleGrid>
       </Container>
@@ -94,8 +96,8 @@ export const Home = () => {
       {/* Secondary Hero Section */}
       <div className={styles.hero} style={{ background: "var(--bg-elevated)", padding: "80px 20px" }}>
         <Container size="xl" className={styles.heroInner}>
-           <div style={{ flex: "1 1 0", display: "flex", justifyContent: "flex-start", marginRight: "40px" }}>
-              <img
+          <div style={{ flex: "1 1 0", display: "flex", justifyContent: "flex-start", marginRight: "40px" }}>
+            <img
               alt="Reactions preview"
               style={{ width: "100%", maxWidth: "500px", borderRadius: "12px" }}
               src="/reactions_preview.png"
@@ -106,17 +108,17 @@ export const Home = () => {
             <Text size="lg" c="dimmed" mt="sm">
               Find moments of shared joy even when you're apart.
             </Text>
-            
+
             <SimpleGrid cols={2} spacing="lg" mt="xl">
-               <FeatureCompact Icon={IconRefresh} title="Synchronized Play" text="Play, pause, and seek are synced perfectly." />
-               <FeatureCompact Icon={IconMessageFilled} title="Live Chat" text="Memes and inside jokes encouraged." />
-               <FeatureCompact Icon={IconList} title="Playlists" text="Queue up videos and rearrange easily." />
-               <FeatureCompact Icon={IconVideo} title="Video Chat" text="Jump into video chat to see reactions face-to-face." />
+              <FeatureCompact Icon={IconRefresh} title="Synchronized Play" text="Play, pause, and seek are synced perfectly." />
+              <FeatureCompact Icon={IconMessageFilled} title="Live Chat" text="Memes and inside jokes encouraged." />
+              <FeatureCompact Icon={IconList} title="Playlists" text="Queue up videos and rearrange easily." />
+              <FeatureCompact Icon={IconVideo} title="Video Chat" text="Jump into video chat to see reactions face-to-face." />
             </SimpleGrid>
           </div>
         </Container>
       </div>
-      
+
     </div>
   );
 };
