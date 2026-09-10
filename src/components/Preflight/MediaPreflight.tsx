@@ -22,7 +22,6 @@ import {
   IconSettings,
   IconCheck,
   IconAlertTriangle,
-  IconWifi,
   IconPlayerPlay,
   IconChevronLeft,
 } from "@tabler/icons-react";
@@ -36,9 +35,7 @@ import {
   createMicVolumeMonitor,
   playSpeakerTestSound,
   testAutoplayDiagnostic,
-  probeWebRtcDiagnostic,
   type AutoplayDiagnosticResult,
-  type WebRtcDiagnosticResult,
 } from "../../utils/mediaPreflight";
 import styles from "./MediaPreflight.module.css";
 
@@ -103,7 +100,6 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
   // Diagnostics (Non-blocking)
   const [autoplayDiag, setAutoplayDiag] = useState<AutoplayDiagnosticResult | null>(null);
-  const [webrtcDiag, setWebrtcDiag] = useState<WebRtcDiagnosticResult | null>(null);
 
   useDocumentMetadata({
     title: roomInfo?.roomTitle
@@ -195,9 +191,6 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
     // Run diagnostics asynchronously without blocking UI
     testAutoplayDiagnostic().then((res) => {
       if (!isCancelled) setAutoplayDiag(res);
-    });
-    probeWebRtcDiagnostic().then((res) => {
-      if (!isCancelled) setWebrtcDiag(res);
     });
 
     if (navigator.mediaDevices?.addEventListener) {
@@ -685,31 +678,6 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
                         <Tooltip label={autoplayDiag.message} withArrow>
                           <Badge color="yellow" size="xs" variant="dot">
                             Restricted
-                          </Badge>
-                        </Tooltip>
-                      )
-                    ) : (
-                      <Loader size={10} color="gray" />
-                    )}
-                  </span>
-                </div>
-
-                {/* WebRTC connectivity diagnostic */}
-                <div className={styles.diagnosticItem}>
-                  <div className={styles.diagnosticLabel}>
-                    <IconWifi size={15} />
-                    <span>WebRTC Network</span>
-                  </div>
-                  <span className={styles.diagnosticStatus}>
-                    {webrtcDiag ? (
-                      webrtcDiag.status === "available" ? (
-                        <Badge color="green" size="xs" variant="dot">
-                          Online {webrtcDiag.rttMs ? `(${webrtcDiag.rttMs}ms)` : ""}
-                        </Badge>
-                      ) : (
-                        <Tooltip label={webrtcDiag.message} withArrow>
-                          <Badge color="yellow" size="xs" variant="dot">
-                            Advisory
                           </Badge>
                         </Tooltip>
                       )
