@@ -1738,7 +1738,13 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.roomLock) {
       return true;
     }
-    return this.context.user?.id === this.state.roomLock || this.isRoomOwner();
+    // Mirror the server's validateLock() predicate: the current active host and the
+    // room owner both have authority regardless of who holds the lock.
+    return (
+      this.context.user?.id === this.state.roomLock ||
+      this.state.isHost ||
+      this.isRoomOwner()
+    );
   };
 
   toggleLock = () => {

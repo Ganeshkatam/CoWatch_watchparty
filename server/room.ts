@@ -609,9 +609,17 @@ export class Room {
       });
       socket.on("CMD:lock", async (data: unknown) => {
         if (!validateNotExpired()) return;
+        // Guests (unauthenticated sockets) can never acquire or release the lock.
+        if (!socket.uid) {
+          socket.emit("errorMessage", "You must be signed in to change the room lock");
+          return;
+        }
         const isHost = this.isHost(socket);
+        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
         const isCurrentLockHolder = Boolean(this.lock && socket.uid === this.lock);
-        if (!this.lock || isHost || isCurrentLockHolder) {
+        // Only the active host, the room owner, or the current lock holder (to unlock
+        // their own lock) may change the lock state.
+        if (isHost || isOwner || isCurrentLockHolder) {
           await this.lockRoom(socket, data);
         } else {
           socket.emit("errorMessage", "Only the room host can change the lock");
@@ -1822,6 +1830,19 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
+
+      // Auto-release lock when the departing socket is the current lock holder.
+      // This prevents remaining participants from being frozen behind an orphaned lock.
+      if (socket.uid && this.lock && socket.uid === this.lock) {
+        this.lock = "";
+        this.io.of(this.roomId).emit("REC:lock", this.lock);
+        const unlockMsg = {
+          id: clientId,
+          cmd: "unlock",
+          msg: "",
+        };
+        this.addChatMessage(null, unlockMsg);
+      }
 
       if (wasHost) {
         if (this.roster.length > 0) {
