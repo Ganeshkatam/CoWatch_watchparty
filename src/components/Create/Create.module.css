@@ -117,23 +117,35 @@
   gap: 16px;
 }
 
-/* Cover Photo Uploader */
+/* Cover Photo & Avatar Selector */
 .coverContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.coverHeaderRow {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-top: 4px;
 }
 
 .coverPreview {
-  width: 140px;
-  height: 79px;
-  border-radius: 8px;
+  width: 120px;
+  height: 68px;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--bg-app);
   border: 1px solid var(--border-subtle);
   position: relative;
   flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.coverPreview:hover {
+  border-color: var(--border-focus);
 }
 
 .coverImg {
@@ -148,12 +160,114 @@
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 11px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   white-space: nowrap;
+}
+
+.coverMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coverSelectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.avatarPresetsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatarOptionBtn {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  padding: 0;
+  border: 2px solid transparent;
+  background: var(--bg-surface);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.avatarOptionBtn:hover {
+  transform: scale(1.08);
+  border-color: var(--color-violet-light, rgba(139, 92, 246, 0.4));
+}
+
+.avatarOptionBtnActive {
+  border-color: var(--color-violet);
+  box-shadow: 0 0 0 2px var(--color-violet-light, rgba(139, 92, 246, 0.3)), var(--shadow-accent);
+  transform: scale(1.06);
+}
+
+.avatarOptionImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarCheckBadge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-violet);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.avatarActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.ownAvatarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ownAvatarBtn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-focus);
+}
+
+.ownAvatarBtnActive {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: var(--color-violet);
+  color: var(--color-violet);
 }
 
 .coverActions {

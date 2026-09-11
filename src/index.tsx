@@ -500,7 +500,7 @@ class CoWatch extends React.Component {
                           render={(props) => {
                             return (
                               <React.Fragment>
-                                <TopBar hideNewRoom />
+                                <TopBar />
                                 <Home />
                                 <Footer />
                               </React.Fragment>

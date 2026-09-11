@@ -462,6 +462,7 @@ app.post("/createRoom", async (req, res) => {
       isChatDisabled: Boolean(req.body?.isChatDisabled),
       roomTitle: roomTitle,
       roomDescription: req.body?.roomDescription || null,
+      coverPhoto: typeof req.body?.coverPhoto === "string" ? req.body.coverPhoto : null,
       owner_id: decoded.uid,
       isSubRoom: isPermanent,
       status: 'inactive',

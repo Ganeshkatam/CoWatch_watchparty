@@ -106,6 +106,7 @@ export async function createRoom(
   options: {
     roomTitle: string;
     roomDescription?: string;
+    coverPhoto?: string;
     passcode?: string;
     isPermanent?: boolean;
     isChatDisabled?: boolean;
