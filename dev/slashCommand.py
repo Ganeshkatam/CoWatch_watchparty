@@ -6,7 +6,7 @@ url = "https://discord.com/api/v10/applications/1071394728513380372/commands"
 json = {
     "name": "watch",
     "type": 1,
-    "description": "Start a new WatchParty",
+    "description": "Start a new CoWatch session",
     "options": [
         {
             "name": "video",
