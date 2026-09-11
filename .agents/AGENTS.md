@@ -3,3 +3,4 @@
 - Never use window.confirm, window.alert, or native browser prompt dialogs. Always use custom Mantine modals or toasts/notifications for user confirmations and alerts.
 - Never auto-confirm users in the database or bypass email verification; users must always confirm their email through the proper verification flow.
 - Never delete any file in the repository; instead of deleting files, convert them to our configurations.
+- Always write detailed commit messages including a structured summary, architectural rationale, key changes, and verification notes.
