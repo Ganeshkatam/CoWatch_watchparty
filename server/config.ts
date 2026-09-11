@@ -44,6 +44,9 @@ const defaults = {
   VIRTUAL_BROWSER_PROVIDER: "auto", // Provider selection: "auto" | "local" | "hetzner" | "pooled"
   VBROWSER_SESSION_SECONDS: 10800, // Number of seconds to allow vbrowsers to run for
   VBROWSER_SESSION_SECONDS_LARGE: 86400, // Number of seconds to allow large vbrowsers to run for
+  VBROWSER_AUTOSCALING: false, // Gate provisioning behind an operator-controlled setting. Defaults to false.
+  VBROWSER_PROVIDER_LIMIT: 2147483647, // Config ceiling for provider capacity
+  VBROWSER_POOL_LIMIT: 2147483647, // Config ceiling for pool capacity
   VM_POOL_RAMP_DOWN_HOURS: "", // Comma separated start/end UTC hours of the ramp down period
   VM_POOL_RAMP_UP_HOURS: "", // Comma separated start/end UTC hours of the ramp up period
   VBROWSER_TAG: "", // Optional, tag to put on VBrowser VM instances
@@ -88,6 +91,18 @@ const resolvedConfig = {
   VIRTUAL_BROWSER_PROVIDER: (
     process.env.VIRTUAL_BROWSER_PROVIDER || defaults.VIRTUAL_BROWSER_PROVIDER
   ).toLowerCase(),
+  VBROWSER_AUTOSCALING:
+    process.env.VBROWSER_AUTOSCALING !== undefined
+      ? process.env.VBROWSER_AUTOSCALING === "true"
+      : defaults.VBROWSER_AUTOSCALING,
+  VBROWSER_PROVIDER_LIMIT:
+    process.env.VBROWSER_PROVIDER_LIMIT !== undefined
+      ? Number(process.env.VBROWSER_PROVIDER_LIMIT)
+      : defaults.VBROWSER_PROVIDER_LIMIT,
+  VBROWSER_POOL_LIMIT:
+    process.env.VBROWSER_POOL_LIMIT !== undefined
+      ? Number(process.env.VBROWSER_POOL_LIMIT)
+      : defaults.VBROWSER_POOL_LIMIT,
 };
 
 export default resolvedConfig;

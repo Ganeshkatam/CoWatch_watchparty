@@ -19,6 +19,7 @@ import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 import twitch from "twitch-m3u8";
 import { type QueryResult } from "pg";
 import { getVBrowserProvider, VBrowserDisabledError } from "./vm/provider.ts";
+import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -1004,6 +1005,7 @@ export class Room {
         console.warn("Failed to release VBrowser:", e);
       }
     }
+    await vBrowserPolicyService.releaseByRoom(this.roomId);
   };
 
   private cmdHost = (socket: Socket | null, data: string) => {
@@ -1678,20 +1680,36 @@ export class Room {
         this.vBrowserQueue;
       let assignment: AssignedVM | undefined = undefined;
       try {
-        assignment =
-          (await vBrowserProvider.assign({
-            isLarge,
-            region,
-            uid,
-            roomId,
-          })) || undefined;
+        const result = await vBrowserPolicyService.allocate({
+          roomId,
+          uid,
+          isLarge,
+          region,
+        });
+        assignment = result.assignment;
       } catch (e: any) {
+        this.vBrowserQueue = undefined;
+        if (e instanceof VBrowserPolicyError) {
+          let msg = "VBrowser is currently unavailable. Please try again later.";
+          if (e.code === "AUTHENTICATION_REQUIRED") {
+            msg = "An authenticated account is required to start a VBrowser.";
+          } else if (e.code === "VBROWSER_USER_LIMIT") {
+            msg = "You have reached the maximum number of active VBrowsers.";
+          } else if (e.code === "VBROWSER_ROOM_LIMIT") {
+            msg = "This room has reached the maximum number of active VBrowsers.";
+          } else if (e.code === "VBROWSER_DURATION_LIMIT") {
+            msg = "The requested session duration exceeds maximum allowed limit.";
+          }
+          socket.emit("errorMessage", msg);
+          return;
+        }
         if (e instanceof VBrowserDisabledError) {
           socket.emit("errorMessage", "Virtual Browser is disabled on this server.");
-          this.vBrowserQueue = undefined;
           return;
         }
         console.warn("VBrowser assignment failed:", e?.message || e);
+        socket.emit("errorMessage", "VBrowser is currently unavailable. Please try again later.");
+        return;
       }
       if (assignment) {
         this.vBrowser = assignment;
@@ -1713,7 +1731,7 @@ export class Room {
           "vbrowser://" + this.vBrowser.pass + "@" + this.vBrowser.host,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      this.vBrowserQueue = undefined;
     }
   };
 

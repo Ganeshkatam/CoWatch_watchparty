@@ -269,6 +269,9 @@ export abstract class VMManager {
   };
 
   public runBackgroundJobs = async () => {
+    if (!config.VBROWSER_AUTOSCALING) {
+      return;
+    }
     const resizeVMGroupIncr = async () => {
       const availableCount = await this.getAvailableCount();
       const stagingCount = await this.getStagingCount();
