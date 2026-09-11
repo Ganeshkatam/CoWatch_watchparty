@@ -1,3 +1,4 @@
 - Never create TS/JS files to inspect the database. Strictly use the Supabase MCP tools (e.g., execute_sql, list_tables) or plain SQL scripts for database operations.
 - Always keep the repository up to date with the remote origin after committing changes.
 - Never use window.confirm, window.alert, or native browser prompt dialogs. Always use custom Mantine modals or toasts/notifications for user confirmations and alerts.
+- Never auto-confirm users in the database or bypass email verification; users must always confirm their email through the proper verification flow.

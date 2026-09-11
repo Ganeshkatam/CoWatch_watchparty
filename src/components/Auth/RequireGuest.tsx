@@ -14,7 +14,7 @@ export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
   // Only redirect away from /login if user is already confirmed and logged in
   if (user && user.email_confirmed_at != null) {
     const params = new URLSearchParams(location.search);
-    let redirect = params.get("redirect") || "/rooms";
+    let redirect = params.get("redirect") || params.get("next") || "/myrooms";
     if (
       redirect.startsWith("/login") ||
       redirect.startsWith("/signup") ||
@@ -22,7 +22,7 @@ export const RequireGuest = ({ children }: { children: React.ReactNode }) => {
       redirect.startsWith("/reset-password") ||
       redirect.startsWith("/verify-email")
     ) {
-      redirect = "/rooms";
+      redirect = "/myrooms";
     }
     return <Redirect to={redirect.startsWith("/") ? redirect : `/${redirect}`} />;
   }

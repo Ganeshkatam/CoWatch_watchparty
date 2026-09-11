@@ -1174,29 +1174,45 @@
   .actionDock {
     flex-direction: column;
     align-items: stretch;
-    gap: 0;
-    padding: 8px;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--radius-lg, 16px);
   }
   .startPartyButton {
     width: 100%;
+    border-radius: var(--radius-md, 12px) !important;
   }
   .actionDockDivider {
-    width: 100%;
-    height: 1px;
-    background: var(--border-subtle);
-    margin: 8px 0;
+    display: none;
   }
   .quickJoinForm {
     width: 100%;
     display: flex;
     align-items: center;
     gap: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md, 12px);
+    padding: 2px 4px 2px 8px;
   }
   .quickJoinInput {
     flex: 1;
   }
+  .quickJoinInput input {
+    height: 42px !important;
+    padding-left: 32px !important;
+  }
   .joinPartyButton {
     flex-shrink: 0;
+    height: 38px !important;
+    border-radius: var(--radius-sm, 8px) !important;
+    padding: 0 16px !important;
+  }
+  .heroTrustLine {
+    gap: 6px 10px;
+    font-size: 12px;
+    padding: 0 12px;
+    text-align: center;
   }
   .floatingBadge {
     display: none !important;

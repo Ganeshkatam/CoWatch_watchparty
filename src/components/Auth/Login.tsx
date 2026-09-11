@@ -51,7 +51,7 @@ export const Login = () => {
       if (error) throw error;
       
       const params = new URLSearchParams(location.search);
-      const redirect = params.get("redirect") || "/";
+      const redirect = params.get("redirect") || params.get("next") || "/";
       history.push(redirect);
     } catch (err: any) {
       console.error("Login error:", err);
@@ -66,7 +66,7 @@ export const Login = () => {
     setGoogleLoading(true);
     try {
       const params = new URLSearchParams(location.search);
-      const redirect = params.get("redirect") || "/";
+      const redirect = params.get("redirect") || params.get("next") || "/";
       const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
       const redirectTo = `${window.location.origin}${redirectTarget}`;
 
@@ -155,7 +155,7 @@ export const Login = () => {
       </Paper>
       <Text size="sm" ta="center" mt="md" c="dimmed">
         Don't have an account?{" "}
-        <Link to="/signup" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+        <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
           Create account
         </Link>
       </Text>

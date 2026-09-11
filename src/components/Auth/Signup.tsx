@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useHistory, Link } from "react-router-dom";
+import { useHistory, useLocation, Link } from "react-router-dom";
 import { PasswordInput, Button, Paper, Title, Text, Alert, Stack, TextInput } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { IconAlertCircle, IconArrowRight, IconCalendar, IconShieldCheck, IconLock } from "@tabler/icons-react";
@@ -84,6 +84,7 @@ export const Signup = () => {
     description: "Create a free CoWatch account to host watch parties and connect with friends.",
   });
   const history = useHistory();
+  const location = useLocation();
   const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
   const googleSignupConfigured = enabledOptions.includes("google");
 
@@ -160,8 +161,11 @@ export const Signup = () => {
         throw error;
       }
 
+      const params = new URLSearchParams(location.search);
+      const redirect = params.get("redirect") || params.get("next") || "/";
+
       if (data.session) {
-        history.push("/");
+        history.push(redirect);
         return;
       }
 
@@ -299,7 +303,7 @@ export const Signup = () => {
 
         <Text size="sm" ta="center" mt="md" c="dimmed">
           Already have an account?{" "}
-          <Link to="/login" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+          <Link to={{ pathname: "/login", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
             Sign in
           </Link>
         </Text>
@@ -360,7 +364,7 @@ export const Signup = () => {
       </Paper>
       <Text size="sm" ta="center" mt="md" c="dimmed">
         Already have an account?{" "}
-        <Link to="/login" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+        <Link to={{ pathname: "/login", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
           Sign in
         </Link>
       </Text>

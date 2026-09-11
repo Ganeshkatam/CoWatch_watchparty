@@ -57,7 +57,7 @@ export const Home: React.FC = () => {
     if (user) {
       history.push("/create");
     } else {
-      history.push("/login?next=%2Fcreate");
+      history.push("/login?redirect=%2Fcreate");
     }
   };
 
