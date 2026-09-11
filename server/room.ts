@@ -153,6 +153,33 @@ export class Room {
   public mediaPath: string | undefined = undefined;
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
+  public participantsLocked: boolean = false;
+  private admittedParticipants: Map<
+    string,
+    { sessionId: string; uid?: string; admittedAt: number }
+  > = new Map();
+
+  public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string) => {
+    if (!clientId) return;
+    this.admittedParticipants.set(clientId, {
+      sessionId: sessionId || "",
+      uid: uid || undefined,
+      admittedAt: Date.now(),
+    });
+  };
+
+  public verifyAdmittedParticipant = (clientId: string, sessionId?: string): boolean => {
+    if (!clientId) return false;
+    const record = this.admittedParticipants.get(clientId);
+    if (!record) {
+      return false;
+    }
+    // Session matching validation: prevents impersonation of admitted clientId
+    if (record.sessionId && sessionId && record.sessionId !== sessionId) {
+      return false;
+    }
+    return true;
+  };
   private preventTSUpdate = false;
   // Not really a queue since there's no ordering, we just retry as long as this is set
   // If we want a real queue then we need external processing of the jobs and a way to update the room from outside
@@ -195,12 +222,16 @@ export class Room {
     }, 1000);
 
     io.of(roomId).use(async (socket, next) => {
+      let isOwner = false;
       if (postgres) {
         const result = await postgres.query(
-          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt" FROM rooms where "roomId" = $1`,
+          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked FROM rooms where "roomId" = $1`,
           [this.roomId],
         );
         const roomRow = result.rows[0];
+        if (roomRow?.participants_locked !== undefined) {
+          this.participantsLocked = Boolean(roomRow.participants_locked);
+        }
         const passcode = (socket.handshake.query?.passcode as string) || "";
         const roomPasscode = roomRow?.passcode;
         const owner_id = roomRow?.owner_id;
@@ -220,7 +251,6 @@ export class Room {
 
         const uid = socket.handshake.auth?.uid;
         const token = socket.handshake.auth?.token;
-        let isOwner = false;
 
         // Authenticate the user first, then check ownership
         if (uid && token) {
@@ -384,6 +414,23 @@ export class Room {
         }
       }
 
+      // LOCK-001 Invariant: Evaluate participants_locked at final server-side admission boundary.
+      // Flow: Creds -> Room/Passcode verify -> participants_locked?
+      // - False: admit.
+      // - True: admit ONLY IF owner OR authoritative server-side existing identity. Otherwise, reject PARTICIPANTS_LOCKED.
+      if (this.participantsLocked && !isOwner) {
+        const isAdmitted = this.verifyAdmittedParticipant(clientId, sessionId);
+        if (!isAdmitted) {
+          const err = new Error("PARTICIPANTS_LOCKED");
+          (err as any).data = {
+            code: "PARTICIPANTS_LOCKED",
+            message: "This room is currently locked to existing participants.",
+          };
+          next(err);
+          return;
+        }
+      }
+
       next();
     });
     io.of(roomId).on("connection", async (socket: Socket) => {
@@ -394,6 +441,8 @@ export class Room {
       }
 
       socket.clientId = clientId;
+      const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
+      this.recordAdmittedParticipant(clientId, handshakeSessionId, socket.uid);
       
       // -- Start socket state initialization --
       
@@ -625,6 +674,19 @@ export class Room {
           socket.emit("errorMessage", "Only the room host can change the lock");
         }
       });
+      socket.on("CMD:setParticipantsLock", async (data: unknown) => {
+        if (!validateNotExpired()) return;
+        const isHost = this.isHost(socket);
+        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
+        // Authorization: Owner or host EXCLUSIVELY. Playback lock holders and ordinary users denied.
+        if (!isOwner && !isHost) {
+          socket.emit("errorMessage", "Only the room owner or host can lock participants.");
+          return;
+        }
+
+        const locked = Boolean((data as any)?.locked);
+        await this.setParticipantsLock(socket, locked);
+      });
       socket.on("CMD:askHost", () => {
         validateNotExpired() && socket.emit("REC:host", this.getHostState());
       });
@@ -723,6 +785,7 @@ export class Room {
       socket.emit("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
       socket.emit("REC:lock", this.lock);
+      socket.emit("REC:participantsLock", this.participantsLocked);
       const recentMessages = await loadRoomMessages(this.roomId, 50);
       const formattedMessages = recentMessages.map((row: any) => ({
         id: row.metadata?.clientId || 'unknown',
@@ -909,6 +972,7 @@ export class Room {
       roomTitle: this.roomTitle,
       roomDescription: this.roomDescription,
       mediaPath: this.mediaPath,
+      participantsLocked: this.participantsLocked,
     });
   };
 
@@ -1758,6 +1822,32 @@ export class Room {
     this.addChatMessage(socket, chatMsg);
   };
 
+  public setParticipantsLock = async (socket: Socket | null, locked: boolean) => {
+    if (!postgres) return;
+    try {
+      await postgres.query(
+        "SELECT public.set_room_participants_lock_authoritative($1, $2, $3) AS result",
+        [this.owner_id, this.roomId, locked]
+      );
+      this.participantsLocked = locked;
+      this.lastUpdateTime = new Date();
+      this.io.of(this.roomId).emit("REC:participantsLock", locked);
+      const chatMsg = {
+        id: socket?.clientId || "system",
+        cmd: "system",
+        msg: locked
+          ? "Room participants have been locked. New participants cannot join."
+          : "Room participants have been unlocked. New participants may now join.",
+      };
+      this.addChatMessage(socket, chatMsg);
+    } catch (err: any) {
+      console.error("Failed to set participants lock:", err);
+      if (socket) {
+        socket.emit("errorMessage", "Failed to update participant lock.");
+      }
+    }
+  };
+
   private setRoomOwner = async (socket: Socket, _raw: unknown) => {
     socket.emit("errorMessage", "Room settings cannot be changed via socket.");
   };
@@ -1767,7 +1857,7 @@ export class Room {
       return;
     }
     const result = await postgres.query(
-      `SELECT passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath" FROM rooms where "roomId" = $1`,
+      `SELECT passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked FROM rooms where "roomId" = $1`,
       [this.roomId],
     );
     const first = result.rows[0];
@@ -1778,6 +1868,9 @@ export class Room {
     if (first?.roomDescription !== undefined) this.roomDescription = first.roomDescription;
     if (first?.mediaPath !== undefined) this.mediaPath = first.mediaPath;
     if (first?.owner_id) this.owner_id = first.owner_id;
+    if (first?.participants_locked !== undefined) {
+      this.participantsLocked = Boolean(first.participants_locked);
+    }
 
     socket.emit("REC:getRoomState", {
       owner: first?.owner_id || this.owner_id,
@@ -1789,6 +1882,7 @@ export class Room {
       roomTitle: first?.roomTitle,
       roomDescription: first?.roomDescription,
       mediaPath: first?.mediaPath,
+      participantsLocked: Boolean(first?.participants_locked ?? this.participantsLocked),
     });
   };
 
@@ -1892,6 +1986,9 @@ export class Room {
     const data = raw as { userToBeKicked: string };
     if (!data) {
       return;
+    }
+    if (data.userToBeKicked) {
+      this.admittedParticipants.delete(data.userToBeKicked);
     }
     const userToBeKickedSocket = this.io
       .of(this.roomId)

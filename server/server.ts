@@ -111,6 +111,7 @@ io.engine.use(async (req: any, res: Response, next: () => void) => {
       room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
       room.owner_id = persistedRoom.owner_id;
       room.isPermanent = persistedRoom.isPermanent || false;
+      room.participantsLocked = Boolean(persistedRoom.participants_locked);
       rooms.set(key, room);
       console.log(
         "loading room %s into memory on shard %s",
@@ -1008,7 +1009,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
   try {
     const result = await postgres?.query(
       `SELECT "roomId", "roomTitle", "roomDescription", "coverPhoto", status, "expiresAt", "isPermanent",
-              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id
+              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id, participants_locked
        FROM rooms WHERE "roomId" = $1`,
       [cleanRoomId],
     );
@@ -1039,6 +1040,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       coverPhoto: row.coverPhoto || null,
       status: derivedStatus,
       requiresPasscode: Boolean(row.requiresPasscode),
+      participantsLocked: Boolean(row.participants_locked),
       isOwner,
     });
   } catch (err) {
@@ -1105,7 +1107,7 @@ app.post("/verifyPasscode", async (req, res) => {
 
   try {
     const result = await postgres?.query(
-      `SELECT passcode, status FROM rooms WHERE "roomId" = $1`,
+      `SELECT passcode, status, owner_id, participants_locked FROM rooms WHERE "roomId" = $1`,
       [cleanRoomId],
     );
 
@@ -1140,6 +1142,17 @@ app.post("/verifyPasscode", async (req, res) => {
     if (!isValid) {
       await recordPasscodeFailure(rateLimitTarget);
       res.status(401).json({ valid: false, error: "Incorrect room passcode. Please try again." });
+      return;
+    }
+
+    // Participant admission lock check: non-owners cannot bypass participant lock via passcode verification
+    const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
+    if (row.participants_locked && !isOwner) {
+      res.status(403).json({
+        valid: false,
+        error: "This room is currently locked to existing participants.",
+        code: "PARTICIPANTS_LOCKED",
+      });
       return;
     }
 

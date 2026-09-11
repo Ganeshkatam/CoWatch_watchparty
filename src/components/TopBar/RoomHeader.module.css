@@ -242,6 +242,41 @@
   color: var(--text-primary);
 }
 
+.lockBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.lockBtn:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.lockBtnLocked {
+  background-color: rgba(245, 159, 0, 0.15);
+  border-color: rgba(245, 159, 0, 0.4);
+  color: var(--color-warning);
+}
+
+.lockBtnLocked:hover {
+  background-color: rgba(245, 159, 0, 0.25);
+  border-color: rgba(245, 159, 0, 0.6);
+  color: var(--color-warning);
+}
+
 .exitBtn {
   display: inline-flex;
   align-items: center;

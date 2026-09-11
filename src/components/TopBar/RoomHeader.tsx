@@ -41,6 +41,9 @@ interface RoomHeaderProps {
   hostName?: string;
   passcode?: string;
   onSelectStream?: (result: SearchResult) => Promise<void> | void;
+  participantsLocked?: boolean;
+  onToggleParticipantsLock?: () => void;
+  canManageParticipantsLock?: boolean;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
@@ -60,6 +63,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   hostName,
   passcode: propPasscode,
   onSelectStream,
+  participantsLocked,
+  onToggleParticipantsLock,
+  canManageParticipantsLock,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -279,6 +285,20 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 {isLocked ? "Unlock room controls" : "Lock room controls"}
               </Menu.Item>
             )}
+            {canManageParticipantsLock && onToggleParticipantsLock && (
+              <Menu.Item
+                leftSection={
+                  participantsLocked ? (
+                    <IconLock size={16} color="var(--color-warning)" />
+                  ) : (
+                    <IconLockOpen size={16} />
+                  )
+                }
+                onClick={onToggleParticipantsLock}
+              >
+                {participantsLocked ? "Participants Locked" : "Lock Participants"}
+              </Menu.Item>
+            )}
             <Menu.Item
               leftSection={<IconSettings size={16} />}
               onClick={onOpenSettings}
@@ -342,6 +362,33 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       )}
 
       <div className={styles.rightSection}>
+        {canManageParticipantsLock && onToggleParticipantsLock && (
+          <Tooltip
+            label={
+              participantsLocked
+                ? "Participants Locked (Click to unlock)"
+                : "Lock Participants (Click to lock)"
+            }
+            position="bottom"
+            withArrow
+          >
+            <button
+              type="button"
+              className={`${styles.lockBtn} ${participantsLocked ? styles.lockBtnLocked : ""}`}
+              onClick={onToggleParticipantsLock}
+              title={participantsLocked ? "Participants Locked" : "Lock Participants"}
+              aria-label={participantsLocked ? "Participants Locked" : "Lock Participants"}
+            >
+              {participantsLocked ? (
+                <IconLock size={15} color="var(--color-warning)" />
+              ) : (
+                <IconLockOpen size={15} />
+              )}
+              <span>{participantsLocked ? "Participants Locked" : "Lock Participants"}</span>
+            </button>
+          </Tooltip>
+        )}
+
         <button
           type="button"
           className={styles.iconOnlyBtn}

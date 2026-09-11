@@ -202,6 +202,7 @@ interface AppState {
   initialMicOn?: boolean;
   cameraDeviceId?: string;
   micDeviceId?: string;
+  participantsLocked: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -253,6 +254,7 @@ export class App extends React.Component<AppProps, AppState> {
     isQuickAddModalOpen: false,
     copiedRoomLink: false,
     roomLock: "",
+    participantsLocked: false,
     controller: "",
     roomId: "",
     savedPasscodes: {},
@@ -863,6 +865,12 @@ export class App extends React.Component<AppProps, AppState> {
         } else if (err.message === "passcode" || err.message === "password") {
           // Authoritative server check rejected passcode: redirect back to /join/:roomId
           window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+        } else if (
+          err.message === "PARTICIPANTS_LOCKED" ||
+          (err as any)?.data?.code === "PARTICIPANTS_LOCKED" ||
+          err.message?.includes("PARTICIPANTS_LOCKED")
+        ) {
+          this.setState({ overlayMsg: "This room is currently locked to existing participants." });
         } else {
           this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
         }
@@ -1359,6 +1367,9 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:lock", (data: string) => {
         this.setState({ roomLock: data });
       });
+      socket.on("REC:participantsLock", (data: boolean) => {
+        this.setState({ participantsLocked: Boolean(data) });
+      });
       socket.on("roster", (data: any[]) => {
         this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
           this.setupRTCConnections();
@@ -1699,6 +1710,9 @@ export class App extends React.Component<AppProps, AppState> {
     if (data.owner && this.context.user?.id === data.owner) {
       this.setState({ isOwner: true });
     }
+    if (typeof data.participantsLocked === "boolean") {
+      this.setState({ participantsLocked: data.participantsLocked });
+    }
     this.setPasscode(data.passcode);
     this.setRoomTitle(data.roomTitle);
     this.setRoomDescription(data.roomDescription);
@@ -1749,6 +1763,12 @@ export class App extends React.Component<AppProps, AppState> {
 
   toggleLock = () => {
     this.setRoomLock(!Boolean(this.state.roomLock));
+  };
+
+  toggleParticipantsLock = () => {
+    this.socket?.emit("CMD:setParticipantsLock", {
+      locked: !this.state.participantsLocked,
+    });
   };
 
   openQuickAdd = () => {
@@ -3067,6 +3087,9 @@ export class App extends React.Component<AppProps, AppState> {
             hostName={this.state.hostName || (this.state.isHost ? (this.context.displayName || "You") : undefined)}
             passcode={this.state.passcode || ""}
             onSelectStream={this.onSelectStream}
+            participantsLocked={this.state.participantsLocked}
+            onToggleParticipantsLock={this.toggleParticipantsLock}
+            canManageParticipantsLock={this.isRoomOwner() || this.state.isHost}
           />
         )}
         {
