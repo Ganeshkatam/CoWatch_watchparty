@@ -2,3 +2,4 @@
 - Always keep the repository up to date with the remote origin after committing changes.
 - Never use window.confirm, window.alert, or native browser prompt dialogs. Always use custom Mantine modals or toasts/notifications for user confirmations and alerts.
 - Never auto-confirm users in the database or bypass email verification; users must always confirm their email through the proper verification flow.
+- Never delete any file in the repository.
