@@ -73,6 +73,8 @@ CREATE TABLE public.room_lifecycle_events(
 CREATE INDEX idx_room_lifecycle_events_room_id ON room_lifecycle_events("roomId");
 CREATE INDEX idx_room_lifecycle_events_timestamp ON room_lifecycle_events(timestamp);
 
+ALTER TABLE public.room_lifecycle_events ENABLE ROW LEVEL SECURITY;
+
 CREATE TABLE public.room_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id text NOT NULL REFERENCES public.rooms("roomId") ON DELETE CASCADE,
@@ -95,6 +97,8 @@ CREATE TABLE public.room_messages (
 );
 CREATE INDEX room_messages_room_created_id_idx ON room_messages(room_id, created_at DESC, id DESC);
 
+ALTER TABLE public.room_messages ENABLE ROW LEVEL SECURITY;
+
 
 
 CREATE TABLE public.vbrowser(
@@ -116,6 +120,36 @@ CREATE UNIQUE INDEX vbrowser_pool_vmid_idx ON vbrowser(pool, vmid);
 CREATE INDEX vbrowser_pool_state_idx ON vbrowser(pool, state);
 CREATE INDEX "vbrowser_roomId_idx" ON vbrowser("roomId");
 CREATE INDEX vbrowser_uid_idx ON vbrowser(uid);
+
+CREATE TABLE public.vbrowser_providers(
+  id text PRIMARY KEY,
+  display_name text NOT NULL,
+  provider_type text NOT NULL CHECK (provider_type IN ('cloud', 'docker')),
+  enabled boolean NOT NULL DEFAULT true,
+  config jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT vbrowser_providers_id_not_empty CHECK (btrim(id) <> ''),
+  CONSTRAINT vbrowser_providers_display_name_not_empty CHECK (btrim(display_name) <> '')
+);
+
+CREATE TABLE public.vbrowser_pools(
+  id text PRIMARY KEY,
+  provider_id text NOT NULL REFERENCES public.vbrowser_providers(id) ON DELETE RESTRICT,
+  region text NOT NULL,
+  is_large boolean NOT NULL DEFAULT false,
+  min_size integer NOT NULL DEFAULT 0 CHECK (min_size >= 0),
+  limit_size integer CHECK (limit_size IS NULL OR limit_size >= min_size),
+  enabled boolean NOT NULL DEFAULT true,
+  config jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT vbrowser_pools_id_not_empty CHECK (btrim(id) <> '')
+);
+
+ALTER TABLE public.vbrowser ADD COLUMN provider_id text REFERENCES public.vbrowser_providers(id) ON DELETE RESTRICT;
+CREATE INDEX vbrowser_pools_provider_id_idx ON public.vbrowser_pools(provider_id);
+CREATE INDEX vbrowser_provider_id_idx ON public.vbrowser(provider_id);
 
 CREATE TABLE active_user(
   uid text PRIMARY KEY, -- Unique user identifier (session or auth uid)
@@ -185,12 +219,22 @@ CREATE TRIGGER profiles_set_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER vbrowser_providers_set_updated_at
+  BEFORE UPDATE ON public.vbrowser_providers
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER vbrowser_pools_set_updated_at
+  BEFORE UPDATE ON public.vbrowser_pools
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ==========================================
 -- ROW LEVEL SECURITY (RLS)
 -- ==========================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vbrowser ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser_providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser_pools ENABLE ROW LEVEL SECURITY;
 
 -- Profiles Policies
 CREATE POLICY "Profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
