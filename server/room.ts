@@ -18,7 +18,7 @@ import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 //@ts-expect-error
 import twitch from "twitch-m3u8";
 import { type QueryResult } from "pg";
-import { getVBrowserProvider, VBrowserDisabledError } from "./vm/provider.ts";
+import { providerRegistry } from "./vm/provider-registry.ts";
 import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 export interface RoomMessageRow {
   id: string;
@@ -125,6 +125,8 @@ export class Room {
   private nameMap: StringDict = {};
   private pictureMap: StringDict = {};
   public vBrowser: AssignedVM | undefined = undefined;
+  public vBrowserProviderId: string | undefined = undefined;
+  public vBrowserPoolId: string | undefined = undefined;
   public creator: string | undefined = undefined; // email of the user who created the room (just used for stats)
   public lock: string | undefined = undefined; // uid of the user who locked the room
   public playlist: PlaylistVideo[] = [];
@@ -977,11 +979,13 @@ export class Room {
   public stopVBrowserInternal = async () => {
     const assignTime = this.vBrowser && this.vBrowser.assignTime;
     const id = this.vBrowser?.id;
-    const provider = this.vBrowser?.provider;
     const isLarge = this.vBrowser?.large ?? false;
     const region = this.vBrowser?.region ?? "";
-    const uid = this.vBrowser?.creatorUID ?? "";
+    const providerId = this.vBrowserProviderId;
+    const poolId = this.vBrowserPoolId;
     this.vBrowser = undefined;
+    this.vBrowserProviderId = undefined;
+    this.vBrowserPoolId = undefined;
     this.cmdHost(null, "");
     // Force a save because this might change in unattended rooms
     this.lastUpdateTime = new Date();
@@ -991,20 +995,18 @@ export class Room {
       await redis.ltrim("vBrowserSessionMS", 0, 19);
     }
 
-    if (id) {
+    // Release VM via registry-resolved manager
+    if (id && providerId) {
       try {
-        const vBrowserProvider = getVBrowserProvider();
-        await vBrowserProvider.release({
-          id,
-          provider,
-          isLarge,
-          region,
-          roomId: this.roomId,
-        });
+        const manager = providerRegistry.resolve(providerId, isLarge, region);
+        if (manager) {
+          await manager.resetVM(id, this.roomId);
+        }
       } catch (e) {
-        console.warn("Failed to release VBrowser:", e);
+        console.warn("Failed to release VBrowser VM:", e);
       }
     }
+    // Release reservation in DB
     await vBrowserPolicyService.releaseByRoom(this.roomId);
   };
 
@@ -1657,12 +1659,6 @@ export class Room {
       }
     }
 
-    const vBrowserProvider = getVBrowserProvider();
-    if (!vBrowserProvider.isEnabled) {
-      socket.emit("errorMessage", "Virtual Browser is disabled on this server.");
-      return;
-    }
-
     redisCount("vBrowserStarts");
     this.cmdHost(socket, "vbrowser://");
     // Put the room in the vbrowser queue
@@ -1679,6 +1675,8 @@ export class Room {
       const { queueTime, isLarge, region, uid, roomId, clientId } =
         this.vBrowserQueue;
       let assignment: AssignedVM | undefined = undefined;
+      let allocatedProviderId: string | undefined;
+      let allocatedPoolId: string | undefined;
       try {
         const result = await vBrowserPolicyService.allocate({
           roomId,
@@ -1687,6 +1685,8 @@ export class Room {
           region,
         });
         assignment = result.assignment;
+        allocatedProviderId = result.providerId;
+        allocatedPoolId = result.poolId;
       } catch (e: any) {
         this.vBrowserQueue = undefined;
         if (e instanceof VBrowserPolicyError) {
@@ -1703,10 +1703,6 @@ export class Room {
           socket.emit("errorMessage", msg);
           return;
         }
-        if (e instanceof VBrowserDisabledError) {
-          socket.emit("errorMessage", "Virtual Browser is disabled on this server.");
-          return;
-        }
         console.warn("VBrowser assignment failed:", e?.message || e);
         socket.emit("errorMessage", "VBrowser is currently unavailable. Please try again later.");
         return;
@@ -1716,6 +1712,8 @@ export class Room {
         this.vBrowser.controllerClient = clientId;
         this.vBrowser.creatorUID = uid;
         this.vBrowser.creatorClientID = clientId;
+        this.vBrowserProviderId = allocatedProviderId;
+        this.vBrowserPoolId = allocatedPoolId;
         const assignEnd = Date.now();
         const assignElapsed = assignEnd - Number(queueTime);
         await redis?.lpush("vBrowserStartMS", assignElapsed);

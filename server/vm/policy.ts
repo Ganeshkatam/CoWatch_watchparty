@@ -1,7 +1,7 @@
 import config from "../config.ts";
 import { postgres } from "../utils/postgres.ts";
 import { getUser } from "../utils/supabase.ts";
-import { getVBrowserProvider, VBrowserDisabledError } from "./provider.ts";
+import { providerRegistry } from "./provider-registry.ts";
 import type { AssignedVM } from "./base.ts";
 
 export type VBrowserPolicyCode =
@@ -32,6 +32,8 @@ export interface AllocateResult {
   reservationId: string;
   assignment: AssignedVM;
   duration: number;
+  providerId: string;
+  poolId: string;
 }
 
 /** Server-only, fail-closed gate for all VBrowser allocations. */
@@ -262,17 +264,28 @@ export class VBrowserPolicyService {
 
   /**
    * Primary, authoritative application-facing allocation API.
-   * Guaranteed sequence: Authenticate -> Resolve -> Effective Limits -> Atomic Reserve -> Provider Assign.
+   * Guaranteed sequence: Authenticate -> Resolve -> Registry -> Reserve -> Assign.
    * Cleans up reservation upon adapter assignment failure.
    */
   async allocate(input: AllocateInput): Promise<AllocateResult> {
     // 1. Authenticate user
     await this.validateAuthentication(input.uid);
 
-    // 2. Resolve provider, pool, and calculate effective limits
+    // 2. Resolve provider, pool, and calculate effective limits from DB
     const resolved = await this.resolveAndCalculate(input);
 
-    // 3. Atomic reservation
+    // 3. Resolve adapter from registry BEFORE reservation
+    //    Never reserve capacity for a provider the server cannot execute.
+    const manager = providerRegistry.resolve(
+      resolved.providerId,
+      Boolean(input.isLarge),
+      input.region || ""
+    );
+    if (!manager) {
+      throw new VBrowserPolicyError("VBROWSER_UNAVAILABLE");
+    }
+
+    // 4. Atomic reservation
     const reservationId = await this.reserveCapacity({
       providerId: resolved.providerId,
       poolId: resolved.poolId,
@@ -282,31 +295,21 @@ export class VBrowserPolicyService {
       duration: resolved.effectiveDuration,
     });
 
-    // 4. Provider allocation
+    // 5. Provider assignment via resolved manager
     let assignment: AssignedVM | null = null;
     try {
-      const provider = getVBrowserProvider();
-      if (!provider.isEnabled) {
-        throw new VBrowserPolicyError("VBROWSER_UNAVAILABLE");
-      }
-      assignment = await provider.assign({
-        roomId: input.roomId,
-        uid: input.uid,
-        isLarge: Boolean(input.isLarge),
-        region: input.region,
-      });
+      assignment = await manager.assignVM(input.roomId, input.uid) || null;
       if (!assignment) {
-        throw new Error("Provider assignment returned null");
+        throw new Error("Manager assignVM returned null");
       }
     } catch (e) {
-      // 5. Rollback reservation on failure
+      // 6. Rollback reservation on failure
       await this.release(reservationId, "ADAPTER_FAILURE");
       if (e instanceof VBrowserPolicyError) throw e;
-      if (e instanceof VBrowserDisabledError) throw new VBrowserPolicyError("VBROWSER_UNAVAILABLE");
       throw new VBrowserPolicyError("VBROWSER_UNAVAILABLE");
     }
 
-    // 6. Confirm allocation in DB upon success
+    // 7. Confirm allocation in DB upon success
     if (postgres) {
       await postgres.query(
         `UPDATE vbrowser_reservations SET status = 'ALLOCATED' WHERE id = $1`,
@@ -318,6 +321,8 @@ export class VBrowserPolicyService {
       reservationId,
       assignment,
       duration: resolved.effectiveDuration,
+      providerId: resolved.providerId,
+      poolId: resolved.poolId,
     };
   }
 }
