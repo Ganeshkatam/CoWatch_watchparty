@@ -1,7 +1,7 @@
 import type { AssignedVM } from "../vm/base.ts";
 import { postgres } from "./postgres.ts";
 import os from "node:os";
-import { getRedisCountDay, getRedisCountDayDistinct, redis } from "./redis.ts";
+import { getRedisCountDay, getRedisCountDayDistinct, redis, redisCache, RedisMetrics } from "./redis.ts";
 import config from "../config.ts";
 import { apps } from "../ecosystem.config.js";
 
@@ -55,6 +55,9 @@ export async function getStats() {
     AND length(data->>'video') > 0
     ORDER BY "creationTime" DESC`,
   );
+  // Batch presence read: 1 single HGETALL command instead of 2 * N GET commands
+  const batchPresence = await redisCache.getRoomPresenceBatch().catch(() => ({} as Record<string, string>));
+
   const currentRoomData = await Promise.all(
     (result?.rows ?? []).map(async (dbRoom) => {
       const vBrowser = dbRoom.vBrowser;
@@ -64,17 +67,32 @@ export async function getStats() {
       if (vBrowser?.large) {
         currentVBrowserLarge += 1;
       }
-      const rosterLength = Number(
-        await redis?.get(`roomCounts:${dbRoom.roomId}`),
-      );
-      let roster = [];
+
+      let rosterLength = 0;
+      let roster: any[] = [];
+      const batchData = batchPresence[dbRoom.roomId];
+      if (batchData) {
+        try {
+          const parsed = JSON.parse(batchData);
+          rosterLength = Number(parsed.count) || 0;
+          roster = parsed.roster || [];
+        } catch {
+          rosterLength = Number(batchData) || 0;
+        }
+      } else if (redis) {
+        // Fallback to legacy keys if batch presence entry not found
+        rosterLength = Number(await redis.get(`roomCounts:${dbRoom.roomId}`)) || 0;
+        if (rosterLength) {
+          const resp = await redis.get(`roomRosters:${dbRoom.roomId}`);
+          if (resp) {
+            try { roster = JSON.parse(resp); } catch {}
+          }
+        }
+      }
+
       if (rosterLength) {
         currentRoomSizes[rosterLength] =
           (currentRoomSizes[rosterLength] ?? 0) + 1;
-        const resp = await redis?.get(`roomRosters:${dbRoom.roomId}`);
-        if (resp) {
-          roster = JSON.parse(resp);
-        }
       }
       const obj = {
         roomId: dbRoom.roomId,
@@ -295,6 +313,7 @@ export async function getStats() {
     vBrowserClientIDMinutes,
     vBrowserUIDs,
     vBrowserUIDMinutes,
+    redisMetrics: RedisMetrics.getSnapshot(),
   };
 }
 

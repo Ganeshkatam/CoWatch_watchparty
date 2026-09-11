@@ -9,11 +9,11 @@ import http from "node:http";
 import { Server } from "socket.io";
 import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
-import { redis, redisCount } from "./utils/redis.ts";
+import { redis, redisCount, redisCache, RedisMetrics } from "./utils/redis.ts";
 import { deleteUser, validateUserToken, supabaseAdmin } from "./utils/supabase.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { getSessionLimitSeconds } from "./vm/utils.ts";
-import { postgres, insertObject, upsertObject } from "./utils/postgres.ts";
+import { postgres, upsertObject } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -283,6 +283,14 @@ app.get("/stats", async (req, res) => {
   } else {
     res.status(403).json({ error: "Access Denied" });
   }
+});
+
+app.get("/stats/redis", (req, res) => {
+  if (config.STATS_KEY && req.headers["x-stats-key"] !== config.STATS_KEY && req.query.key !== config.STATS_KEY) {
+    res.status(403).json({ error: "Access Denied" });
+    return;
+  }
+  res.json(RedisMetrics.getSnapshot());
 });
 
 app.post("/api/auth/validate-email", async (req, res) => {
@@ -774,7 +782,7 @@ app.post("/updateRoomSettings", async (req, res) => {
   } catch (err: any) {
     try {
       await client.query('ROLLBACK');
-    } catch {}
+    } catch { }
     console.error("updateRoomSettings error:", err);
     if (err?.code === "23505" && err?.constraint === "rooms_passcode_fingerprint_key") {
       res.status(409).json({ error: "This passcode is already taken by another room. Each room passcode must be unique." });
@@ -1088,7 +1096,7 @@ app.post("/verifyPasscode", async (req, res) => {
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
-    } catch {}
+    } catch { }
   }
 
   const rateLimitTarget = { ip, roomId: cleanRoomId, userId: callerUid };
@@ -1547,7 +1555,7 @@ app.post("/endRoom", async (req, res) => {
     const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
       memoryRoom.status = 'ended';
-      
+
       // Explicit notification to all connected clients before disconnecting
       io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED");
 
@@ -1813,47 +1821,74 @@ async function release() {
   }
 }
 
+// Dirty presence snapshot tracking (Phase 4 Command Economics: dirty-set suppression)
+const lastPresenceSnapshot = new Map<string, string>();
+
 async function minuteMetrics() {
   const roomArr = Array.from(rooms.values());
   let vbWaiting = 0;
+  const dirtyPresenceBatch: Record<string, string> = {};
+  const emptyRoomsToClean: string[] = [];
+
   for (let room of roomArr) {
     if (room.vBrowser && room.vBrowser.id) {
-      // Update the heartbeat
+      // Update the heartbeat in postgres
       await postgres?.query(
         `UPDATE vbrowser SET "heartbeatTime" = NOW() WHERE "roomId" = $1 and vmid = $2`,
         [room.roomId, room.vBrowser.id],
       );
 
-      const expireTime = getStartOfDay() / 1000 + 86400;
-      if (room.vBrowser?.creatorClientID) {
-        await redis?.zincrby(
-          "vBrowserClientIDMinutes",
-          1,
-          room.vBrowser.creatorClientID,
-        );
-        await redis?.expireat("vBrowserClientIDMinutes", expireTime);
-      }
-      if (room.vBrowser?.creatorUID) {
-        await redis?.zincrby(
-          "vBrowserUIDMinutes",
-          1,
-          room.vBrowser?.creatorUID,
-        );
-        await redis?.expireat("vBrowserUIDMinutes", expireTime);
+      // Phase 8: In critical budget state, degrade non-essential analytics tracking
+      if (!RedisMetrics.isDegradedMode() && redis) {
+        const expireTime = getStartOfDay() / 1000 + 86400;
+        if (room.vBrowser?.creatorClientID) {
+          await redis.zincrby(
+            "vBrowserClientIDMinutes",
+            1,
+            room.vBrowser.creatorClientID,
+          );
+          await redis.expireat("vBrowserClientIDMinutes", expireTime);
+        }
+        if (room.vBrowser?.creatorUID) {
+          await redis.zincrby(
+            "vBrowserUIDMinutes",
+            1,
+            room.vBrowser?.creatorUID,
+          );
+          await redis.expireat("vBrowserUIDMinutes", expireTime);
+        }
       }
     }
+
     const users = room.roster.length;
-    if (users) {
-      await redis?.setex(`roomCounts:${room.roomId}`, 120, users);
-      await redis?.setex(
-        `roomRosters:${room.roomId}`,
-        120,
-        JSON.stringify(room.getRosterForStats()),
-      );
+    const rosterData = users > 0 ? room.getRosterForStats() : [];
+    const currentSignature = `${users}:${rosterData.map((u: any) => u.id).join(",")}`;
+    const previousSignature = lastPresenceSnapshot.get(room.roomId);
+
+    // Phase 4: Only write presence if changed (Dirty-set suppression)
+    if (currentSignature !== previousSignature) {
+      lastPresenceSnapshot.set(room.roomId, currentSignature);
+      if (users > 0) {
+        dirtyPresenceBatch[room.roomId] = JSON.stringify({
+          count: users,
+          roster: rosterData,
+        });
+      } else {
+        emptyRoomsToClean.push(room.roomId);
+      }
     }
     vbWaiting += room.vBrowserQueue ? 1 : 0;
   }
-  // Report shard metrics
+
+  // Flush dirty presence batch in single atomic operation (1 command for all changed rooms)
+  if (Object.keys(dirtyPresenceBatch).length > 0) {
+    await redisCache.updateRoomPresenceBatch(dirtyPresenceBatch).catch(() => { });
+  }
+  if (emptyRoomsToClean.length > 0) {
+    await redisCache.removeRoomPresenceBatch(emptyRoomsToClean).catch(() => { });
+  }
+
+  // Report shard metrics with atomic write-with-TTL
   const obj: ShardMetric = {
     uptime: process.uptime(),
     mem: process.memoryUsage().rss,

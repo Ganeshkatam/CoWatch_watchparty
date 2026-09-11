@@ -1,4 +1,4 @@
-import { redis } from "./redis.ts";
+import { redis, atomicIncrWithTtl } from "./redis.ts";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -6,28 +6,28 @@ export interface RateLimitResult {
   remainingAttempts: number;
 }
 
-// In-memory fallback map: key -> Array of millisecond timestamps
+// In-memory sliding window fallback store (key -> array of timestamps in ms)
 const inMemoryStore = new Map<string, number[]>();
 
-const CLEANUP_INTERVAL_MS = 60 * 1000;
+// Run sweep timer to prevent memory leaks in standalone mode
 let cleanupTimer: NodeJS.Timeout | null = null;
 
 function ensureCleanupTimer() {
-  if (!cleanupTimer) {
-    cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [key, timestamps] of inMemoryStore.entries()) {
-        const valid = timestamps.filter((t) => now - t < 10 * 60 * 1000);
-        if (valid.length === 0) {
-          inMemoryStore.delete(key);
-        } else {
-          inMemoryStore.set(key, valid);
-        }
+  if (cleanupTimer) return;
+  cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of inMemoryStore.entries()) {
+      // Keep entries up to 1 hour
+      const valid = timestamps.filter((t) => now - t < 3600 * 1000);
+      if (valid.length === 0) {
+        inMemoryStore.delete(key);
+      } else {
+        inMemoryStore.set(key, valid);
       }
-    }, CLEANUP_INTERVAL_MS);
-    if (cleanupTimer.unref) {
-      cleanupTimer.unref();
     }
+  }, 60 * 1000);
+  if (cleanupTimer.unref) {
+    cleanupTimer.unref();
   }
 }
 
@@ -97,10 +97,8 @@ export async function recordAttempt(
   if (redis) {
     try {
       const redisKey = `ratelimit:${key}`;
-      const multi = redis.multi();
-      multi.incr(redisKey);
-      multi.expire(redisKey, windowSeconds);
-      await multi.exec();
+      // Phase 3 Command Economics: Atomic INCR with TTL applied on creation only (no separate EXPIRE round-trip)
+      await atomicIncrWithTtl(redisKey, windowSeconds, "ratelimit");
       return;
     } catch (err) {
       console.warn("Redis rate limit record error, falling back to memory:", err);

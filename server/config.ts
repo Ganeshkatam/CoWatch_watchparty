@@ -14,7 +14,10 @@ const defaults = {
   // Core CoWatch Configuration
   // ==========================================
   NODE_ENV: "",
-  REDIS_URL: "", // Optional, for metrics and Redis connection
+  REDIS_URL: "", // Fallback single Redis URL
+  REDIS_CORE_URL: "", // Redis Core: distributed coordination (locks, leases, idempotency)
+  REDIS_EDGE_URL: "", // Redis Edge: high-volume cache (metadata, batched presence)
+  REDIS_METRICS_URL: "", // Redis Metrics: analytics buffer flush
   DATABASE_URL: "", // Optional, for permanent rooms and VBrowser management (PostgreSQL)
   SUPABASE_URL: "", // Optional, required for Supabase integration
   SUPABASE_SECRET_KEY: "", // Optional, required for Supabase integration
