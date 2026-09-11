@@ -120,15 +120,17 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
         <Button variant="subtle" color="gray" size="sm" onClick={onClose}>
           Cancel
         </Button>
-        <Button
-          variant="light"
-          color="red"
-          size="sm"
-          leftSection={<IconDoorExit size={15} />}
-          onClick={onLeaveDirectly}
-        >
-          Leave
-        </Button>
+        {candidates.length === 0 && (
+          <Button
+            variant="light"
+            color="red"
+            size="sm"
+            leftSection={<IconDoorExit size={15} />}
+            onClick={onLeaveDirectly}
+          >
+            Leave
+          </Button>
+        )}
         <Button
           variant="filled"
           color="violet"

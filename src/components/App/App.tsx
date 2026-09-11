@@ -204,6 +204,7 @@ interface AppState {
   micDeviceId?: string;
   participantsLocked: boolean;
   maxParticipants: number;
+  hostMode?: "owner" | "temporary" | "none";
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -300,6 +301,7 @@ export class App extends React.Component<AppProps, AppState> {
     isOwner: false,
     currentHostId: "",
     currentHostClientId: "",
+    hostMode: "none",
     isHost: false,
     isAssignHostModalOpen: false,
     infoMessage: "",
@@ -921,7 +923,7 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({ successMessage: "" });
         }, 3000);
       });
-      socket.on("REC:hostChange", (data: any) => {
+      const handleHostUpdate = (data: any) => {
         if (!data) return;
         const selfClientId = getOrCreateClientId();
         const isSelfHost =
@@ -933,10 +935,11 @@ export class App extends React.Component<AppProps, AppState> {
           currentHostId: data.hostId || "",
           currentHostClientId: data.hostClientId || "",
           hostName: data.hostName || "Host",
+          hostMode: data.mode || (data.isOwner ? "owner" : (data.hostClientId ? "temporary" : "none")),
           isHost: Boolean(isSelfHost),
         });
 
-        if (data.reason === "owner_returned") {
+        if (data.reason === "owner_regain" || data.reason === "owner_returned") {
           if (this.isRoomOwner()) {
             this.setState({ successMessage: "Welcome back! Host privileges have been restored to you." });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
@@ -944,7 +947,7 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ infoMessage: "The room creator has returned and resumed hosting." });
             setTimeout(() => this.setState({ infoMessage: "" }), 4000);
           }
-        } else if (data.reason === "assigned") {
+        } else if (data.reason === "explicit_transfer" || data.reason === "assigned") {
           if (isSelfHost && !wasHost) {
             this.setState({ successMessage: "You are now the room host." });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
@@ -952,13 +955,16 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ infoMessage: `Host privileges were transferred to ${data.hostName || "a new host"}.` });
             setTimeout(() => this.setState({ infoMessage: "" }), 4000);
           }
-        } else if (data.reason === "auto_assigned") {
+        } else if (data.reason === "failover" || data.reason === "auto_assigned") {
           if (isSelfHost && !wasHost) {
             this.setState({ successMessage: "The previous host left. You are now the room host." });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           }
         }
-      });
+      };
+
+      socket.on("REC:hostChange", handleHostUpdate);
+      socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", () => {
         window.location.assign("/");
       });
@@ -1707,6 +1713,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.setState({
         currentHostId: data.currentHostId || "",
         currentHostClientId: data.currentHostClientId || "",
+        hostMode: data.hostMode || (data.owner && data.currentHostId === data.owner ? "owner" : (data.currentHostClientId ? "temporary" : "none")),
         isHost: Boolean(isSelfHost),
       });
     }
@@ -3001,6 +3008,7 @@ export class App extends React.Component<AppProps, AppState> {
           pictureMap={this.state.pictureMap}
           currentClientId={getOrCreateClientId()}
           onAssignAndLeave={(targetClientId: string) => {
+            this.socket.emit("CMD:transferHost", { participantId: targetClientId });
             this.socket.emit("CMD:assignHost", { newHostClientId: targetClientId });
             window.location.href = "/";
           }}

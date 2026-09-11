@@ -2,7 +2,7 @@ import config from "./config.ts";
 import axios from "axios";
 import { Server, Socket } from "socket.io";
 import { getUser, validateUserToken } from "./utils/supabase.ts";
-import { redis, redisCount, redisCountDistinct } from "./utils/redis.ts";
+import { redis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
@@ -17,7 +17,6 @@ import { sanitizeRoomId } from "./strip_slashes.ts";
 import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 //@ts-expect-error
 import twitch from "twitch-m3u8";
-import { type QueryResult } from "pg";
 import { providerRegistry } from "./vm/provider-registry.ts";
 import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 export interface RoomMessageRow {
@@ -81,7 +80,7 @@ export async function loadRoomMessages(roomId: string, limit: number = 50, befor
       WHERE rm.room_id = $1
     `;
     const params: any[] = [roomId];
-    
+
     if (beforeCursor) {
       if (typeof beforeCursor === 'string') {
         query += ` AND rm.created_at < $2`;
@@ -92,10 +91,10 @@ export async function loadRoomMessages(roomId: string, limit: number = 50, befor
         params.push(beforeCursor.id);
       }
     }
-    
+
     query += ` ORDER BY rm.created_at DESC, rm.id DESC LIMIT $${params.length + 1}`;
     params.push(limit);
-    
+
     const result = await postgres.query(query, params);
     return result.rows.reverse(); // Return in chronological order
   } catch (e) {
@@ -113,6 +112,23 @@ declare module "socket.io" {
   }
 }
 
+export type HostMode = "owner" | "temporary" | "none";
+export type HostTransitionReason =
+  | "explicit_transfer"
+  | "failover"
+  | "owner_regain"
+  | "initial"
+  | "room_empty";
+
+export interface HostAuthorityPayload {
+  hostId: string;
+  hostClientId: string;
+  mode: HostMode;
+  reason: HostTransitionReason;
+  hostName?: string;
+  isOwner?: boolean;
+}
+
 export interface AdmittedParticipantRecord {
   sessionId: string;
   uid?: string;
@@ -120,6 +136,8 @@ export interface AdmittedParticipantRecord {
   lastConnectedAt: number;
   lastDisconnectedAt?: number;
   state: 'connected' | 'disconnected';
+  admissionSequence: number;
+  isKicked?: boolean;
 }
 
 export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
@@ -158,6 +176,8 @@ export class Room {
   public owner_id: string = '';
   public currentHostClientId: string = '';
   public currentHostUid: string = '';
+  public hostMode: HostMode = "none";
+  private nextAdmissionSequence: number = 1;
   private clientToUidMap: StringDict = {};
   public roomTitle: string | undefined = undefined;
   public roomDescription: string | undefined = undefined;
@@ -194,6 +214,7 @@ export class Room {
     if (!clientId || !sessionId) return;
     const now = Date.now();
     const existing = this.admittedParticipants.get(clientId);
+    const admissionSequence = existing?.admissionSequence || (this.nextAdmissionSequence++);
     this.admittedParticipants.set(clientId, {
       sessionId,
       uid: uid || existing?.uid || undefined,
@@ -201,8 +222,67 @@ export class Room {
       lastConnectedAt: now,
       lastDisconnectedAt: undefined,
       state: 'connected',
+      admissionSequence,
+      isKicked: existing?.isKicked || false,
     });
   };
+
+  public isParticipantEligibleForHost = (clientId: string): boolean => {
+    if (!clientId) return false;
+    const inRoster = this.roster.some((u) => u.id === clientId);
+    if (!inRoster) return false;
+    const rec = this.admittedParticipants.get(clientId);
+    if (!rec || rec.state !== 'connected') return false;
+    if (rec.isKicked) return false;
+    if (!rec.sessionId) return false;
+    return true;
+  };
+
+  public getEligibleParticipants = (excludeClientId?: string): { clientId: string; record: AdmittedParticipantRecord }[] => {
+    const eligible: { clientId: string; record: AdmittedParticipantRecord }[] = [];
+    for (const [cId, rec] of this.admittedParticipants.entries()) {
+      if (excludeClientId && cId === excludeClientId) continue;
+      if (this.isParticipantEligibleForHost(cId)) {
+        eligible.push({ clientId: cId, record: rec });
+      }
+    }
+    // Monotonically increasing admission sequence: lowest sequence ASC = highest failover priority
+    eligible.sort((a, b) => a.record.admissionSequence - b.record.admissionSequence);
+    return eligible;
+  };
+
+  public getHostMode = (): HostMode => {
+    if (!this.currentHostClientId) {
+      return "none";
+    }
+    const isOwner = Boolean(
+      (this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id) ||
+      (this.owner_id && this.clientToUidMap[this.currentHostClientId] === this.owner_id)
+    );
+    return isOwner ? "owner" : "temporary";
+  };
+
+  public withHostTransitionLease = async <T>(action: () => Promise<T>): Promise<T> => {
+    const isMultiInstance = Boolean(config.REDIS_CORE_URL || config.REDIS_URL);
+    if (isMultiInstance) {
+      if (!redisCore.isAvailable()) {
+        throw new Error("REDIS_CORE_UNAVAILABLE: Cannot serialize host transition.");
+      }
+      const leaseKey = `room:host:${this.roomId}`;
+      const leaseVal = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+      const acquired = await redisCore.setLease(leaseKey, leaseVal, 5);
+      if (!acquired) {
+        throw new Error("HOST_TRANSITION_CONFLICT: Concurrent host transition in progress.");
+      }
+      try {
+        return await action();
+      } finally {
+        await redisCore.delLease(leaseKey);
+      }
+    }
+    return await action();
+  };
+
 
   public verifyAdmittedParticipant = (clientId: string, sessionId?: string): boolean => {
     if (!clientId || !sessionId) return false;
@@ -500,9 +580,9 @@ export class Room {
       socket.clientId = clientId;
       const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
       this.recordAdmittedParticipant(clientId, handshakeSessionId, socket.uid);
-      
+
       // -- Start socket state initialization --
-      
+
       // Disconnect other sockets with this clientId
       if (this.socketIdMap[clientId]) {
         this.io.of(this.roomId).sockets.get(this.socketIdMap[clientId])?.disconnect(true);
@@ -517,7 +597,7 @@ export class Room {
         clearTimeout(this.inactivityTimeout);
         this.inactivityTimeout = undefined;
       }
-      
+
       socket.on("disconnect", () => this.onDisconnect(socket));
       // -- End socket state initialization --
 
@@ -749,10 +829,43 @@ export class Room {
       });
       socket.on("CMD:assignHost", (data: unknown) => {
         if (!validateNotExpired()) return;
-        const req = data as { newHostClientId: string };
-        if (req && req.newHostClientId) {
-          this.assignHost(socket, String(req.newHostClientId));
+        const req = data as { newHostClientId?: string; participantId?: string; targetClientId?: string };
+        const targetId = req?.participantId || req?.targetClientId || req?.newHostClientId;
+        if (targetId) {
+          this.assignHost(socket, String(targetId));
         }
+      });
+      socket.on("CMD:transferHost", async (data: unknown) => {
+        if (!validateNotExpired()) return;
+        const req = data as { participantId?: string; targetClientId?: string; newHostClientId?: string };
+        const targetId = req?.participantId || req?.targetClientId || req?.newHostClientId;
+        if (!targetId) {
+          socket.emit("errorMessage", "Target participant ID is required.");
+          return;
+        }
+        try {
+          const res = await this.transferHost(socket, String(targetId));
+          if (!res.success) {
+            socket.emit("errorMessage", res.error || "Failed to transfer host authority.");
+          }
+        } catch (err: any) {
+          socket.emit("errorMessage", err.message || "Failed to transfer host authority.");
+        }
+      });
+      socket.on("CMD:leaveRoom", (ack?: (res: { allowed: boolean; error?: string }) => void) => {
+        if (this.isHost(socket) && this.getEligibleParticipants(socket.clientId).length > 0) {
+          const msg = "Host must transfer host authority before leaving the room.";
+          socket.emit("errorMessage", msg);
+          if (typeof ack === "function") ack({ allowed: false, error: msg });
+          return;
+        }
+        if (typeof ack === "function") ack({ allowed: true });
+      });
+      socket.on("CMD:becomeHost", () => {
+        socket.emit("errorMessage", "Direct host claims are not permitted.");
+      });
+      socket.on("CMD:claimHost", () => {
+        socket.emit("errorMessage", "Direct host claims are not permitted.");
       });
       socket.on("CMD:getRoomState", () => validateNotExpired() && this.getRoomState(socket));
       socket.on("CMD:setRoomState", async (data: unknown) => {
@@ -837,6 +950,14 @@ export class Room {
         hostName: this.getHostDisplayName(),
         isOwner: Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id),
         reason: "initial",
+      });
+      socket.emit("REC:hostAuthority", {
+        hostId: this.currentHostUid || this.currentHostClientId,
+        hostClientId: this.currentHostClientId,
+        mode: this.getHostMode(),
+        reason: "initial",
+        hostName: this.getHostDisplayName(),
+        isOwner: this.getHostMode() === "owner",
       });
       socket.emit("REC:nameMap", this.nameMap);
       socket.emit("REC:pictureMap", this.pictureMap);
@@ -1009,21 +1130,27 @@ export class Room {
     return "Host";
   };
 
-  public broadcastHostChange = (reason: "assigned" | "auto_assigned" | "owner_returned" | "initial" | "name_update") => {
-    const isOwner = Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id);
-    const hostPayload = {
-      hostId: this.currentHostUid || this.currentHostClientId,
+  public broadcastHostChange = (reason: HostTransitionReason) => {
+    const mode = this.getHostMode();
+    this.hostMode = mode;
+    const isOwner = mode === "owner";
+    const hostId = this.currentHostUid || this.currentHostClientId;
+    const hostPayload: HostAuthorityPayload = {
+      hostId,
       hostClientId: this.currentHostClientId,
+      mode,
+      reason,
       hostName: this.getHostDisplayName(),
       isOwner,
-      reason,
     };
+    this.io.of(this.roomId).emit("REC:hostAuthority", hostPayload);
     this.io.of(this.roomId).emit("REC:hostChange", hostPayload);
     this.io.of(this.roomId).emit("REC:getRoomState", {
       owner: this.owner_id,
-      currentHostId: this.currentHostUid || this.currentHostClientId,
+      currentHostId: hostId,
       currentHostClientId: this.currentHostClientId,
       hostName: this.getHostDisplayName(),
+      hostMode: mode,
       isHost: false, // Per-socket value evaluated in getRoomState()
       isChatDisabled: this.isChatDisabled,
       roomTitle: this.roomTitle,
@@ -1034,50 +1161,79 @@ export class Room {
     });
   };
 
-  public reclaimHostForOwner = (ownerSocket: Socket) => {
-    if (!this.owner_id || ownerSocket.uid !== this.owner_id) return;
-    const previousHostClientId = this.currentHostClientId;
-    this.currentHostClientId = ownerSocket.clientId;
-    this.currentHostUid = ownerSocket.uid;
-    this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
-
-    if (previousHostClientId !== ownerSocket.clientId) {
-      this.broadcastHostChange("owner_returned");
-      const chatMsg = {
-        id: ownerSocket.clientId,
-        cmd: "system",
-        msg: "The room creator has returned and resumed hosting.",
-      };
-      this.addChatMessage(ownerSocket, chatMsg);
+  public reclaimHostForOwner = async (ownerSocket: Socket): Promise<boolean> => {
+    if (!this.owner_id || ownerSocket.uid !== this.owner_id) return false;
+    if (this.currentHostClientId === ownerSocket.clientId && this.hostMode === "owner") {
+      return true;
     }
+
+    return await this.withHostTransitionLease(async () => {
+      const previousHostClientId = this.currentHostClientId;
+      this.currentHostClientId = ownerSocket.clientId;
+      this.currentHostUid = ownerSocket.uid;
+      this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
+      this.hostMode = "owner";
+
+      this.broadcastHostChange("owner_regain");
+      if (previousHostClientId && previousHostClientId !== ownerSocket.clientId) {
+        const chatMsg = {
+          id: ownerSocket.clientId,
+          cmd: "system",
+          msg: "The room creator has returned and resumed hosting.",
+        };
+        this.addChatMessage(ownerSocket, chatMsg);
+      }
+      return true;
+    });
+  };
+
+  public transferHost = async (
+    socket: Socket,
+    targetClientId: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!this.isHost(socket)) {
+      return { success: false, error: "NOT_HOST" };
+    }
+    if (!targetClientId) {
+      return { success: false, error: "TARGET_REQUIRED" };
+    }
+    if (targetClientId === socket.clientId) {
+      return { success: false, error: "CANNOT_TRANSFER_TO_SELF" };
+    }
+    if (!this.isParticipantEligibleForHost(targetClientId)) {
+      return { success: false, error: "TARGET_NOT_ELIGIBLE" };
+    }
+
+    return await this.withHostTransitionLease(async () => {
+      // Re-verify under distributed lease
+      if (!this.isHost(socket)) {
+        return { success: false, error: "NOT_HOST" };
+      }
+      if (!this.isParticipantEligibleForHost(targetClientId)) {
+        return { success: false, error: "TARGET_NOT_ELIGIBLE" };
+      }
+
+      const previousHostName = this.getHostDisplayName();
+      this.currentHostClientId = targetClientId;
+      this.currentHostUid = this.clientToUidMap[targetClientId] || "";
+      this.hostMode = this.getHostMode();
+      const newHostName = this.getHostDisplayName();
+
+      this.broadcastHostChange("explicit_transfer");
+      const chatMsg = {
+        id: socket.clientId,
+        cmd: "system",
+        msg: `${previousHostName} transferred host authority to ${newHostName}.`,
+      };
+      this.addChatMessage(socket, chatMsg);
+      return { success: true };
+    });
   };
 
   public assignHost = (socket: Socket, newHostClientId: string): boolean => {
-    if (!this.isHost(socket)) {
-      socket.emit("errorMessage", "Only the current room host can assign a new host.");
-      return false;
-    }
-    const targetParticipant = this.roster.find((p) => p.id === newHostClientId);
-    if (!targetParticipant) {
-      socket.emit("errorMessage", "Selected participant is no longer in the room.");
-      return false;
-    }
-    if (newHostClientId === this.currentHostClientId) {
-      return true; // Already host
-    }
-
-    const previousHostName = this.getHostDisplayName();
-    this.currentHostClientId = newHostClientId;
-    this.currentHostUid = this.clientToUidMap[newHostClientId] || "";
-    const newHostName = this.getHostDisplayName();
-
-    this.broadcastHostChange("assigned");
-    const chatMsg = {
-      id: socket.clientId,
-      cmd: "system",
-      msg: `${previousHostName} assigned ${newHostName} as the room host.`,
-    };
-    this.addChatMessage(socket, chatMsg);
+    this.transferHost(socket, newHostClientId).catch((err) => {
+      socket.emit("errorMessage", err.message || "Failed to assign host.");
+    });
     return true;
   };
 
@@ -1178,7 +1334,7 @@ export class Room {
       name: socket?.clientId ? this.nameMap[socket.clientId] : undefined,
       picture: socket?.clientId ? this.pictureMap[socket.clientId] : undefined,
     };
-    
+
     // Determine persistence rules
     const isCmd = Boolean(chatMsg.cmd);
     const messageType = isCmd ? 'system' : 'user';
@@ -1198,7 +1354,7 @@ export class Room {
       this.io.of(this.roomId).emit("ROOM_MESSAGE", chatWithTime);
       return;
     }
-    
+
     const shouldPersist = !isCmd || (isCmd && ['room.inactive', 'room.reactivated', 'room.expired'].includes(chatMsg.cmd!));
 
     let dbId: string | undefined = undefined;
@@ -1935,6 +2091,7 @@ export class Room {
       currentHostId: this.currentHostUid || this.currentHostClientId,
       currentHostClientId: this.currentHostClientId,
       hostName: this.getHostDisplayName(),
+      hostMode: this.getHostMode(),
       isHost: this.isHost(socket),
       isChatDisabled: first?.isChatDisabled,
       roomTitle: first?.roomTitle,
@@ -2005,26 +2162,34 @@ export class Room {
       }
 
       if (wasHost) {
-        if (this.roster.length > 0) {
-          // Deterministic auto-promotion: promote first remaining participant in active roster
-          const nextHost = this.roster[0];
-          const oldHostName = this.getHostDisplayName();
-          this.currentHostClientId = nextHost.id;
-          this.currentHostUid = this.clientToUidMap[nextHost.id] || "";
-          const newHostName = this.getHostDisplayName();
+        this.withHostTransitionLease(async () => {
+          const eligible = this.getEligibleParticipants(clientId);
+          if (eligible.length > 0) {
+            // Deterministic lowest admissionSequence ASC
+            const nextHost = eligible[0];
+            const oldHostName = this.getHostDisplayName();
+            this.currentHostClientId = nextHost.clientId;
+            this.currentHostUid = this.clientToUidMap[nextHost.clientId] || "";
+            this.hostMode = this.getHostMode();
+            const newHostName = this.getHostDisplayName();
 
-          this.broadcastHostChange("auto_assigned");
-          const chatMsg = {
-            id: nextHost.id,
-            cmd: "system",
-            msg: `${oldHostName} left. ${newHostName} is now the room host.`,
-          };
-          this.addChatMessage(null, chatMsg);
-        } else {
-          // No participants remaining
-          this.currentHostClientId = "";
-          this.currentHostUid = "";
-        }
+            this.broadcastHostChange("failover");
+            const chatMsg = {
+              id: nextHost.clientId,
+              cmd: "system",
+              msg: `${oldHostName} disconnected. ${newHostName} is now the temporary room host.`,
+            };
+            this.addChatMessage(null, chatMsg);
+          } else {
+            // No eligible participants remaining
+            this.currentHostClientId = "";
+            this.currentHostUid = "";
+            this.hostMode = "none";
+            this.broadcastHostChange("room_empty");
+          }
+        }).catch((err) => {
+          console.error("Failed during host failover transition:", err);
+        });
       }
 
       if (this.roster.length === 0) {
