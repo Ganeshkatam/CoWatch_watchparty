@@ -93,6 +93,28 @@ async function runAzureAdapterTests() {
     await azureLargeManager.startVM("test-azure-vm-large");
     assert.strictEqual(vmCreatedWith.vmSize, "Standard_B4ms");
 
+    // Partial provisioning failure must trigger deleteVmWithDependencies rollback
+    let rollbackTriggeredFor = "";
+    mockClient.deleteVmWithDependencies = async (name) => {
+      rollbackTriggeredFor = name;
+    };
+    mockClient.createVm = async () => {
+      throw new Error("VM creation failed after PIP/NIC succeeded");
+    };
+
+    await assert.rejects(
+      async () => {
+        await azureManager.startVM("failing-vm");
+      },
+      /VM creation failed after PIP\/NIC succeeded/,
+      "startVM must rethrow error"
+    );
+    assert.strictEqual(
+      rollbackTriggeredFor,
+      "failing-vm",
+      "Partial provisioning failure must roll back created PIP and NIC"
+    );
+
     // -------------------------------------------------------------
     // Test 3: terminateVM delegates to deleteVmWithDependencies
     // -------------------------------------------------------------

@@ -37,32 +37,48 @@ export class Azure extends VMManager {
       [this.getTag()]: "1",
     };
 
-    // 1. Create Standard Static Public IP
-    const publicIp = await this.client.createPublicIp(name, this.location, tags);
+    try {
+      // 1. Create Standard Static Public IP
+      const publicIp = await this.client.createPublicIp(name, this.location, tags);
 
-    // 2. Create Network Interface Card attached to subnet and Public IP
-    const nic = await this.client.createNic(
-      name,
-      this.location,
-      config.AZURE_SUBNET_ID,
-      publicIp.id,
-      tags
-    );
+      // 2. Create Network Interface Card attached to subnet and Public IP
+      const nic = await this.client.createNic(
+        name,
+        this.location,
+        config.AZURE_SUBNET_ID,
+        publicIp.id,
+        tags
+      );
 
-    // 3. Create Virtual Machine using validated Managed Image
-    const vmSize = this.isLarge ? this.largeSize : this.size;
-    await this.client.createVm({
-      name,
-      location: this.location,
-      vmSize,
-      imageId: this.imageId,
-      adminUsername: config.AZURE_ADMIN_USERNAME || "azureuser",
-      sshPublicKey: config.AZURE_SSH_KEY,
-      nicId: nic.id,
-      tags,
-    });
+      // 3. Create Virtual Machine using validated Managed Image
+      const vmSize = this.isLarge ? this.largeSize : this.size;
+      await this.client.createVm({
+        name,
+        location: this.location,
+        vmSize,
+        imageId: this.imageId,
+        adminUsername: config.AZURE_ADMIN_USERNAME || "azureuser",
+        sshPublicKey: config.AZURE_SSH_KEY,
+        nicId: nic.id,
+        tags,
+      });
 
-    return name;
+      return name;
+    } catch (err) {
+      console.warn(
+        `[AZURE] Provisioning failed for ${name}, rolling back partially created resources:`,
+        (err as any)?.message || err
+      );
+      try {
+        await this.client.deleteVmWithDependencies(name);
+      } catch (cleanupErr) {
+        console.warn(
+          `[AZURE] Partial provisioning cleanup failed for ${name}:`,
+          (cleanupErr as any)?.message || cleanupErr
+        );
+      }
+      throw err;
+    }
   };
 
   /**
