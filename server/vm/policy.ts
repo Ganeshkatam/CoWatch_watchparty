@@ -276,11 +276,8 @@ export class VBrowserPolicyService {
 
     // 3. Resolve adapter from registry BEFORE reservation
     //    Never reserve capacity for a provider the server cannot execute.
-    const manager = providerRegistry.resolve(
-      resolved.providerId,
-      Boolean(input.isLarge),
-      input.region || ""
-    );
+    //    poolId is the canonical key matching BaseVMManager.getPoolName().
+    const manager = providerRegistry.resolve(resolved.poolId);
     if (!manager) {
       throw new VBrowserPolicyError("VBROWSER_UNAVAILABLE");
     }

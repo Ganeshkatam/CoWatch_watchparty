@@ -18,7 +18,7 @@ export type PoolConfig = {
   hostname: string | undefined;
 };
 
-function createVMManager(poolConfig: PoolConfig): VMManager {
+export function createVMManager(poolConfig: PoolConfig): VMManager {
   let vmManager: VMManager | null = null;
   if (
     config.SCW_SECRET_KEY &&

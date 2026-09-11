@@ -1,28 +1,30 @@
 import type { VMManager } from "./base.ts";
 
 /**
- * Bridges DB provider identity to concrete BaseVMManager instances.
+ * Bridges DB pool identity to concrete BaseVMManager instances.
  *
- * The DB `vbrowser_providers.id` is the canonical provider identity.
- * BaseVMManager subclasses carry infrastructure-specific lifecycle logic.
- * This registry maps one to the other without coupling policy to infrastructure.
+ * The canonical key is the pool name that BaseVMManager.getPoolName() produces:
+ *   managerId + (isLarge ? "Large" : "") + region
+ *
+ * This is the same key used by assignVM/resetVM to query the vbrowser table.
+ * The bootstrap layer constructs this key from explicit DB→adapter mapping
+ * so there is no implicit assumption that DB provider_id === manager.id.
  *
  * Invariants:
  * - No allocation logic.
  * - No DB reads.
  * - No adapter construction.
- * - Unknown provider → deterministic failure.
+ * - Unknown pool → deterministic failure.
  */
 export class ProviderRegistry {
   private managers = new Map<string, VMManager>();
 
   /**
-   * Register a VMManager for a given DB provider_id.
-   * The poolName is derived from (providerId, isLarge, region).
-   * Throws on duplicate registration for the same pool.
+   * Register a VMManager under an explicit pool name.
+   * The poolName MUST match what manager.getPoolName() returns.
+   * Throws on duplicate registration.
    */
-  register(providerId: string, manager: VMManager): void {
-    const poolName = this.buildPoolName(providerId, manager.getIsLarge(), manager.getRegion());
+  register(poolName: string, manager: VMManager): void {
     if (this.managers.has(poolName)) {
       throw new Error(`Provider pool already registered: ${poolName}`);
     }
@@ -30,19 +32,17 @@ export class ProviderRegistry {
   }
 
   /**
-   * Resolve a VMManager by DB provider_id, size, and region.
-   * Returns undefined for unknown/unregistered providers.
+   * Resolve a VMManager by pool name.
+   * Returns undefined for unknown/unregistered pools.
    */
-  resolve(providerId: string, isLarge: boolean, region: string): VMManager | undefined {
-    const poolName = this.buildPoolName(providerId, isLarge, region);
+  resolve(poolName: string): VMManager | undefined {
     return this.managers.get(poolName);
   }
 
   /**
-   * Check whether a provider pool is registered.
+   * Check whether a pool is registered.
    */
-  isRegistered(providerId: string, isLarge: boolean, region: string): boolean {
-    const poolName = this.buildPoolName(providerId, isLarge, region);
+  isRegistered(poolName: string): boolean {
     return this.managers.has(poolName);
   }
 
@@ -54,12 +54,10 @@ export class ProviderRegistry {
   }
 
   /**
-   * Builds the pool key from DB identity components.
-   * Matches the BaseVMManager.getPoolName() convention:
-   *   providerId + (isLarge ? "Large" : "") + region
+   * Clears all registered managers (useful for test resets).
    */
-  private buildPoolName(providerId: string, isLarge: boolean, region: string): string {
-    return providerId + (isLarge ? "Large" : "") + region;
+  clear(): void {
+    this.managers.clear();
   }
 }
 

@@ -35,6 +35,7 @@ import {
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
+import { bootstrapProviderRegistry } from "./vm/provider-bootstrap.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -42,6 +43,9 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled promise rejection at:", promise, "reason:", reason);
 });
+
+// Populate provider registry from VM_MANAGER_CONFIG before any allocation can occur.
+bootstrapProviderRegistry();
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(

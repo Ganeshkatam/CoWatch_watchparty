@@ -996,9 +996,9 @@ export class Room {
     }
 
     // Release VM via registry-resolved manager
-    if (id && providerId) {
+    if (id && poolId) {
       try {
-        const manager = providerRegistry.resolve(providerId, isLarge, region);
+        const manager = providerRegistry.resolve(poolId);
         if (manager) {
           await manager.resetVM(id, this.roomId);
         }
