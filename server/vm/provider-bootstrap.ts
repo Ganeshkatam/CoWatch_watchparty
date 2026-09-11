@@ -18,6 +18,7 @@ const PROVIDER_CLASS_MAP: Record<string, string> = {
   "docker": "Docker",
   "digitalocean": "DO",
   "scaleway": "Scaleway",
+  "azure": "Azure",
 };
 
 /**

@@ -4,6 +4,7 @@ import { Scaleway } from "./scaleway.ts";
 import { Hetzner } from "./hetzner.ts";
 import { DigitalOcean } from "./digitalocean.ts";
 import { Docker } from "./docker.ts";
+import { Azure } from "./azure.ts";
 
 // Chromium on ARM: ghcr.io/howardchung/vbrowser/arm-chromium
 export const imageName = "howardc93/vbrowser";
@@ -44,6 +45,18 @@ export function createVMManager(poolConfig: PoolConfig): VMManager {
     vmManager = new DigitalOcean(poolConfig);
   } else if (poolConfig.provider === "Docker") {
     vmManager = new Docker(poolConfig);
+  } else if (
+    config.AZURE_CLIENT_ID &&
+    config.AZURE_CLIENT_SECRET &&
+    config.AZURE_TENANT_ID &&
+    config.AZURE_SUBSCRIPTION_ID &&
+    config.AZURE_RESOURCE_GROUP &&
+    config.AZURE_IMAGE_ID &&
+    config.AZURE_SUBNET_ID &&
+    config.AZURE_GATEWAY &&
+    poolConfig.provider === "Azure"
+  ) {
+    vmManager = new Azure(poolConfig);
   }
   if (!vmManager) {
     throw new Error("failed to create vmManager");
