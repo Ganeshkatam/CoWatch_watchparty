@@ -402,19 +402,68 @@ async function runConcurrencyStressTest() {
   );
 
   // In-memory simulation of Room authoritative admission state
+  interface AdmittedRecord {
+    sessionId: string;
+    uid?: string;
+    admittedAt: number;
+    lastConnectedAt: number;
+    lastDisconnectedAt?: number;
+    state: 'connected' | 'disconnected';
+  }
+
   class MockRoomAdmissionAuthority {
     public participantsLocked = false;
     public ownerId = accountId;
-    public admittedParticipants = new Map<string, { sessionId: string }>();
+    public gracePeriodMs = 10 * 60 * 1000;
+    public admittedParticipants = new Map<string, AdmittedRecord>();
 
-    public recordAdmitted(clientId: string, sessionId: string) {
-      this.admittedParticipants.set(clientId, { sessionId });
+    public recordAdmitted(clientId: string, sessionId?: string, uid?: string) {
+      if (!clientId || !sessionId) return;
+      const now = Date.now();
+      const existing = this.admittedParticipants.get(clientId);
+      this.admittedParticipants.set(clientId, {
+        sessionId,
+        uid: uid || existing?.uid,
+        admittedAt: existing?.admittedAt || now,
+        lastConnectedAt: now,
+        lastDisconnectedAt: undefined,
+        state: 'connected',
+      });
     }
 
-    public evaluateAdmission(socket: { uid?: string; clientId: string; sessionId?: string; isOwner: boolean }) {
+    public disconnectParticipant(clientId: string, atTime?: number) {
+      const rec = this.admittedParticipants.get(clientId);
+      if (rec) {
+        rec.state = 'disconnected';
+        rec.lastDisconnectedAt = atTime || Date.now();
+      }
+    }
+
+    public pruneStaleAdmissions(now: number = Date.now()) {
+      for (const [cId, rec] of this.admittedParticipants.entries()) {
+        if (rec.state === 'disconnected' && rec.lastDisconnectedAt && (now - rec.lastDisconnectedAt > this.gracePeriodMs)) {
+          this.admittedParticipants.delete(cId);
+        }
+      }
+    }
+
+    public verifyAdmittedParticipant(clientId: string, sessionId?: string, now: number = Date.now()): boolean {
+      if (!clientId || !sessionId) return false;
+      const record = this.admittedParticipants.get(clientId);
+      if (!record) return false;
+      if (!record.sessionId || record.sessionId !== sessionId) return false;
+      if (record.state === 'disconnected' && record.lastDisconnectedAt) {
+        if (now - record.lastDisconnectedAt > this.gracePeriodMs) {
+          this.admittedParticipants.delete(clientId);
+          return false;
+        }
+      }
+      return true;
+    }
+
+    public evaluateAdmission(socket: { uid?: string; clientId: string; sessionId?: string; isOwner: boolean }, now: number = Date.now()) {
       if (this.participantsLocked && !socket.isOwner) {
-        const record = this.admittedParticipants.get(socket.clientId);
-        const isAdmitted = Boolean(record && (!record.sessionId || record.sessionId === socket.sessionId));
+        const isAdmitted = this.verifyAdmittedParticipant(socket.clientId, socket.sessionId, now);
         if (!isAdmitted) {
           return { allowed: false, error: "PARTICIPANTS_LOCKED" };
         }
@@ -464,12 +513,12 @@ async function runConcurrencyStressTest() {
   }
   console.log("TEST 7 Case A PASSED: Blocked new non-owner join with PARTICIPANTS_LOCKED; audit logged.");
 
-  // Test B: Existing admitted participant stays admitted and can reconnect
+  // Test B: Admitted participant lifecycle, disconnect grace period & token validation
   const existingClientId = "admitted-guest-456";
   const existingSessionId = "sess-admitted-456";
   roomAuthority.recordAdmitted(existingClientId, existingSessionId);
 
-  // Toggling lock never disconnects existing admitted participant
+  // B.1: Reconnect with valid token succeeds
   const reconnectAdmission = roomAuthority.evaluateAdmission({
     clientId: existingClientId,
     sessionId: existingSessionId,
@@ -478,7 +527,60 @@ async function runConcurrencyStressTest() {
   if (!reconnectAdmission.allowed) {
     throw new Error("TEST 7 Case B FAILED: Admitted participant reconnect was blocked while room is locked");
   }
-  console.log("TEST 7 Case B PASSED: Existing admitted participant remains authorized to connect across lock state.");
+
+  // B.2: Reconnect with missing or mismatched sessionId fails
+  const missingSession = roomAuthority.evaluateAdmission({
+    clientId: existingClientId,
+    sessionId: undefined,
+    isOwner: false,
+  });
+  const spoofedSession = roomAuthority.evaluateAdmission({
+    clientId: existingClientId,
+    sessionId: "spoofed-sess-999",
+    isOwner: false,
+  });
+  if (missingSession.allowed || spoofedSession.allowed) {
+    throw new Error("TEST 7 Case B FAILED: Reconnect with invalid sessionId was improperly permitted");
+  }
+
+  // B.3: Disconnect and reconnect within grace period succeeds
+  const disconnectTime = Date.now();
+  roomAuthority.disconnectParticipant(existingClientId, disconnectTime);
+  const reconnectWithinGrace = roomAuthority.evaluateAdmission(
+    { clientId: existingClientId, sessionId: existingSessionId, isOwner: false },
+    disconnectTime + (5 * 60 * 1000) // 5 minutes later (grace is 10 mins)
+  );
+  if (!reconnectWithinGrace.allowed) {
+    throw new Error("TEST 7 Case B FAILED: Reconnection within grace period was blocked");
+  }
+
+  // B.4: Reconnection after grace period expires fails and entry is pruned
+  const reconnectAfterGrace = roomAuthority.evaluateAdmission(
+    { clientId: existingClientId, sessionId: existingSessionId, isOwner: false },
+    disconnectTime + (15 * 60 * 1000) // 15 minutes later (grace expired)
+  );
+  if (reconnectAfterGrace.allowed || reconnectAfterGrace.error !== "PARTICIPANTS_LOCKED") {
+    throw new Error("TEST 7 Case B FAILED: Reconnection after grace period expiration was permitted");
+  }
+  if (roomAuthority.admittedParticipants.has(existingClientId)) {
+    throw new Error("TEST 7 Case B FAILED: Expired entry was not pruned from admitted participants map");
+  }
+
+  // B.5: Kicked participant is immediately purged
+  const kickedClientId = "admitted-kicked-789";
+  const kickedSessionId = "sess-kicked-789";
+  roomAuthority.recordAdmitted(kickedClientId, kickedSessionId);
+  roomAuthority.admittedParticipants.delete(kickedClientId);
+  const kickedReconnect = roomAuthority.evaluateAdmission({
+    clientId: kickedClientId,
+    sessionId: kickedSessionId,
+    isOwner: false,
+  });
+  if (kickedReconnect.allowed) {
+    throw new Error("TEST 7 Case B FAILED: Kicked participant was permitted to reconnect");
+  }
+
+  console.log("TEST 7 Case B PASSED: Strict session token, disconnect grace period, and stale eviction lifecycle verified.");
 
   // Test C: Unlock allows new participants to join
   const unlockResultC = await pool.query(

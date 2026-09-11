@@ -113,6 +113,17 @@ declare module "socket.io" {
   }
 }
 
+export interface AdmittedParticipantRecord {
+  sessionId: string;
+  uid?: string;
+  admittedAt: number;
+  lastConnectedAt: number;
+  lastDisconnectedAt?: number;
+  state: 'connected' | 'disconnected';
+}
+
+export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
+
 export class Room {
   // Serialized state
   public video: string | null = "";
@@ -154,29 +165,38 @@ export class Room {
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
   public participantsLocked: boolean = false;
-  private admittedParticipants: Map<
-    string,
-    { sessionId: string; uid?: string; admittedAt: number }
-  > = new Map();
+  private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
 
   public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string) => {
-    if (!clientId) return;
+    if (!clientId || !sessionId) return;
+    const now = Date.now();
+    const existing = this.admittedParticipants.get(clientId);
     this.admittedParticipants.set(clientId, {
-      sessionId: sessionId || "",
-      uid: uid || undefined,
-      admittedAt: Date.now(),
+      sessionId,
+      uid: uid || existing?.uid || undefined,
+      admittedAt: existing?.admittedAt || now,
+      lastConnectedAt: now,
+      lastDisconnectedAt: undefined,
+      state: 'connected',
     });
   };
 
   public verifyAdmittedParticipant = (clientId: string, sessionId?: string): boolean => {
-    if (!clientId) return false;
+    if (!clientId || !sessionId) return false;
     const record = this.admittedParticipants.get(clientId);
     if (!record) {
       return false;
     }
-    // Session matching validation: prevents impersonation of admitted clientId
-    if (record.sessionId && sessionId && record.sessionId !== sessionId) {
+    // Strict session token matching: prevents impersonation of admitted clientId
+    if (!record.sessionId || record.sessionId !== sessionId) {
       return false;
+    }
+    // Disconnect grace period validation: expired disconnected entries are invalidated
+    if (record.state === 'disconnected' && record.lastDisconnectedAt) {
+      if (Date.now() - record.lastDisconnectedAt > ADMISSION_DISCONNECT_GRACE_MS) {
+        this.admittedParticipants.delete(clientId);
+        return false;
+      }
     }
     return true;
   };
@@ -207,6 +227,13 @@ export class Room {
     }
 
     this.tsInterval = setInterval(async () => {
+      // Scavenge stale disconnected participant admissions beyond grace period
+      const now = Date.now();
+      for (const [cId, rec] of this.admittedParticipants.entries()) {
+        if (rec.state === 'disconnected' && rec.lastDisconnectedAt && (now - rec.lastDisconnectedAt > ADMISSION_DISCONNECT_GRACE_MS)) {
+          this.admittedParticipants.delete(cId);
+        }
+      }
       // console.log(roomId, this.video, this.roster, this.tsMap, this.nameMap);
       // Clean up the data of users who aren't in the room anymore
       const memberIds = this.roster.map((p) => p.id);
@@ -1924,6 +1951,13 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
+
+      // Transition admitted participant to disconnected state with timestamp for grace period
+      const admittedRecord = this.admittedParticipants.get(clientId);
+      if (admittedRecord) {
+        admittedRecord.state = 'disconnected';
+        admittedRecord.lastDisconnectedAt = Date.now();
+      }
 
       // Auto-release lock when the departing socket is the current lock holder.
       // This prevents remaining participants from being frozen behind an orphaned lock.
