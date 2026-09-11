@@ -267,7 +267,7 @@ COMMENT ON TABLE public.account_room_usage IS 'Materialized counter cache of act
 CREATE TABLE IF NOT EXISTS public.room_quota_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES public.profiles(id),
-  room_id text NOT NULL,
+  room_id text REFERENCES public.rooms("roomId") ON DELETE SET NULL,
   room_kind text NOT NULL,
   event_type text NOT NULL CHECK (event_type IN ('CREATED', 'DELETED', 'EXPIRED', 'ENDED', 'PERMANENCE_CHANGED', 'REJECTED', 'PURGED')),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -328,6 +328,7 @@ CREATE INDEX IF NOT EXISTS vbrowser_reservations_expiry_idx ON public.vbrowser_r
 
 -- Room Quota Events
 CREATE INDEX IF NOT EXISTS idx_room_quota_events_account ON public.room_quota_events USING btree (account_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_room_quota_events_room_id ON public.room_quota_events USING btree (room_id);
 
 -- ----------------------------------------------------------------------------
 -- 4. FUNCTIONS & PROCEDURES
@@ -603,7 +604,7 @@ BEGIN
   IF FOUND THEN
     IF NOT v_limits.enabled THEN
       INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-      VALUES (p_account_id, p_room_id, p_room_kind, 'REJECTED', '{"reason": "ACCOUNT_ROOMS_DISABLED"}'::jsonb);
+      VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', jsonb_build_object('room_id', p_room_id, 'reason', 'ACCOUNT_ROOMS_DISABLED'));
       RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
     END IF;
     v_max_total := v_limits.max_total_rooms;
@@ -618,28 +619,28 @@ BEGIN
   -- 6. Enforce Total Room Ceiling
   IF v_usage.total >= v_max_total THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-    VALUES (p_account_id, p_room_id, p_room_kind, 'REJECTED', 
-            jsonb_build_object('reason', 'TOTAL_ROOM_LIMIT_EXCEEDED', 'limit', v_max_total, 'current', v_usage.total));
+    VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
+            jsonb_build_object('room_id', p_room_id, 'reason', 'TOTAL_ROOM_LIMIT_EXCEEDED', 'limit', v_max_total, 'current', v_usage.total));
     RAISE EXCEPTION 'TOTAL_ROOM_LIMIT_EXCEEDED';
   END IF;
 
   -- 7. Enforce Room Kind Sub-Limit
   IF p_room_kind = 'watch' AND v_usage.watch >= v_max_watch THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-    VALUES (p_account_id, p_room_id, p_room_kind, 'REJECTED', 
-            jsonb_build_object('reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'watch', 'limit', v_max_watch, 'current', v_usage.watch));
+    VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
+            jsonb_build_object('room_id', p_room_id, 'reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'watch', 'limit', v_max_watch, 'current', v_usage.watch));
     RAISE EXCEPTION 'WATCH_ROOM_LIMIT_EXCEEDED';
   ELSIF p_room_kind = 'permanent' AND v_usage.permanent >= v_max_permanent THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-    VALUES (p_account_id, p_room_id, p_room_kind, 'REJECTED', 
-            jsonb_build_object('reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'permanent', 'limit', v_max_permanent, 'current', v_usage.permanent));
+    VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
+            jsonb_build_object('room_id', p_room_id, 'reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'permanent', 'limit', v_max_permanent, 'current', v_usage.permanent));
     RAISE EXCEPTION 'PERMANENT_ROOM_LIMIT_EXCEEDED';
   END IF;
 
   -- 8. Insert Authoritative Room Row
   INSERT INTO public.rooms (
     "roomId", "creationTime", "lastUpdateTime", passcode, owner_passcode,
-    passcode_fingerprint, "roomTitle", "roomDescription", coverPhoto,
+    passcode_fingerprint, "roomTitle", "roomDescription", "coverPhoto",
     owner_id, "isSubRoom", status, "startedAt", "expiresAt", "isPermanent",
     "isChatDisabled", room_kind
   ) VALUES (
@@ -733,7 +734,7 @@ BEGIN
 
   -- 6. Audit Event
   INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-  VALUES (p_account_id, p_room_id, v_room.room_kind, 'DELETED', jsonb_build_object('total_rooms', v_usage.total));
+  VALUES (p_account_id, NULL, v_room.room_kind, 'DELETED', jsonb_build_object('room_id', p_room_id, 'total_rooms', v_usage.total));
 
   RETURN jsonb_build_object(
     'deletedRoomId', p_room_id,
@@ -993,7 +994,7 @@ BEGIN
     v_deleted_ids := array_append(v_deleted_ids, r."roomId");
 
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-    VALUES (p_account_id, r."roomId", r.room_kind, 'PURGED', jsonb_build_object('account_purge', true));
+    VALUES (p_account_id, NULL, r.room_kind, 'PURGED', jsonb_build_object('room_id', r."roomId", 'account_purge', true));
 
     INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", reason, timestamp)
     VALUES (r."roomId", p_account_id::text, 'room.deleted', r.status, 'deleted', 'account purged', v_now);
