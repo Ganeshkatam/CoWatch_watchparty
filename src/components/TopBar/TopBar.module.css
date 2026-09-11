@@ -57,7 +57,7 @@
   align-items: center;
   gap: 16px;
   position: absolute;
-  left: calc(50% - 40px);
+  left: calc(50% - 80px);
   transform: translateX(-50%);
   background: transparent;
   border: none;
