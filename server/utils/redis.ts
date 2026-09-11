@@ -478,5 +478,26 @@ export async function atomicIncrWithTtl(key: string, ttlSeconds: number, feature
   return Number(res) || 1;
 }
 
+export async function getRateLimitCount(key: string, feature = "ratelimit"): Promise<number> {
+  const res = await executeTimed(rawCoreClient, "core", feature, "get", (c) =>
+    c.get(key)
+  );
+  return Number(res) || 0;
+}
+
+export async function getRateLimitTtl(key: string, feature = "ratelimit"): Promise<number> {
+  const res = await executeTimed(rawCoreClient, "core", feature, "ttl", (c) =>
+    c.ttl(key)
+  );
+  return Number(res) || -1;
+}
+
+export async function delRateLimit(key: string, feature = "ratelimit"): Promise<boolean> {
+  const res = await executeTimed(rawCoreClient, "core", feature, "del", (c) =>
+    c.del(key)
+  );
+  return Boolean(res && res > 0);
+}
+
 // Controlled export of the underlying client for legacy compatibility
 export const redis = rawEdgeClient || rawCoreClient;

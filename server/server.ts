@@ -468,6 +468,19 @@ app.post("/createRoom", async (req, res) => {
     return;
   }
 
+  // MEMBER-001 Invariant: Capacity range validation (2 - 10, default 10 platform ceiling)
+  let maxParticipants = 10;
+  if (req.body?.maxParticipants !== undefined && req.body?.maxParticipants !== null) {
+    const parsedCapacity = Number(req.body.maxParticipants);
+    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 2 || parsedCapacity > 10) {
+      res.status(400).json({
+        error: "Participant capacity must be an integer between 2 and 10.",
+      });
+      return;
+    }
+    maxParticipants = parsedCapacity;
+  }
+
   const passcodeFingerprint = computePasscodeFingerprint(rawPasscode);
 
   if (postgres) {
@@ -499,7 +512,7 @@ app.post("/createRoom", async (req, res) => {
 
       await postgres.query(
         `SELECT public.create_room_authoritative(
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
         ) AS result`,
         [
           decoded.uid,
@@ -516,11 +529,18 @@ app.post("/createRoom", async (req, res) => {
           config.FREE_ROOM_LIMIT || 5, // max total
           5,                          // max watch
           2,                          // max permanent
+          maxParticipants,            // max participants
         ]
       );
     } catch (e: any) {
       redisCount("createRoomError");
       const errMsg = e?.message || "";
+      if (errMsg.includes("INVALID_PARTICIPANT_CAPACITY")) {
+        res.status(400).json({
+          error: "Participant capacity must be an integer between 2 and 100.",
+        });
+        return;
+      }
       if (errMsg.includes("TOTAL_ROOM_LIMIT_EXCEEDED")) {
         res.status(409).json({
           error: {
@@ -578,6 +598,7 @@ app.post("/createRoom", async (req, res) => {
   newRoom.status = 'inactive';
   newRoom.owner_id = decoded.uid;
   newRoom.isPermanent = isPermanent;
+  newRoom.maxParticipants = maxParticipants;
 
   const preload = (req.body?.video || "").slice(0, 20000);
   if (preload) {
@@ -1017,7 +1038,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
   try {
     const result = await postgres?.query(
       `SELECT "roomId", "roomTitle", "roomDescription", "coverPhoto", status, "expiresAt", "isPermanent",
-              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id, participants_locked
+              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id, participants_locked, max_participants
        FROM rooms WHERE "roomId" = $1`,
       [cleanRoomId],
     );
@@ -1049,6 +1070,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       status: derivedStatus,
       requiresPasscode: Boolean(row.requiresPasscode),
       participantsLocked: Boolean(row.participants_locked),
+      maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
       isOwner,
     });
   } catch (err) {
@@ -1115,7 +1137,7 @@ app.post("/verifyPasscode", async (req, res) => {
 
   try {
     const result = await postgres?.query(
-      `SELECT passcode, status, owner_id, participants_locked FROM rooms WHERE "roomId" = $1`,
+      `SELECT passcode, status, owner_id, participants_locked, max_participants FROM rooms WHERE "roomId" = $1`,
       [cleanRoomId],
     );
 
@@ -1162,6 +1184,23 @@ app.post("/verifyPasscode", async (req, res) => {
         code: "PARTICIPANTS_LOCKED",
       });
       return;
+    }
+
+    // MEMBER-001 Invariant: Pre-check capacity enforcement
+    // Non-owners entering a full room are rejected with ROOM_FULL
+    const memoryRoom = rooms.get(cleanRoomId);
+    if (memoryRoom && !isOwner) {
+      if (typeof row.max_participants === "number") {
+        memoryRoom.maxParticipants = row.max_participants;
+      }
+      if (memoryRoom.isRoomFull(isOwner)) {
+        res.status(403).json({
+          valid: false,
+          error: "This room has reached its participant limit.",
+          code: "ROOM_FULL",
+        });
+        return;
+      }
     }
 
     // Success: reset rate limit attempts for this target and return 200
@@ -1369,7 +1408,7 @@ app.get("/roomDetails", async (req, res) => {
     const roomResult = await postgres?.query(
       `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
               "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-              status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
+              status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
        FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
       [roomId, decoded.uid],
     );

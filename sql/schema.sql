@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   passcode_fingerprint text NOT NULL,
   room_kind text NOT NULL DEFAULT 'watch',
   participants_locked boolean NOT NULL DEFAULT false,
+  max_participants integer NOT NULL DEFAULT 10 CHECK (max_participants >= 2 AND max_participants <= 10),
   CONSTRAINT room_status_check CHECK (status IN ('scheduled', 'active', 'inactive', 'ended', 'expired')),
   CONSTRAINT room_title_not_empty CHECK (btrim("roomTitle") <> ''),
   CONSTRAINT rooms_expiration_policy_check CHECK (
@@ -545,7 +546,8 @@ CREATE OR REPLACE FUNCTION public.create_room_authoritative(
   p_expires_at timestamp with time zone,
   p_default_total_rooms integer DEFAULT 5,
   p_default_watch_rooms integer DEFAULT 5,
-  p_default_permanent_rooms integer DEFAULT 2
+  p_default_permanent_rooms integer DEFAULT 2,
+  p_max_participants integer DEFAULT 10
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -560,9 +562,16 @@ DECLARE
   v_max_total integer;
   v_max_watch integer;
   v_max_permanent integer;
+  v_effective_capacity integer;
 BEGIN
   IF p_room_kind NOT IN ('watch', 'permanent') THEN
     RAISE EXCEPTION 'ROOM_KIND_INVALID';
+  END IF;
+
+  -- Platform hard ceiling: 10 participants maximum
+  v_effective_capacity := COALESCE(p_max_participants, 10);
+  IF v_effective_capacity < 2 OR v_effective_capacity > 10 THEN
+    RAISE EXCEPTION 'INVALID_PARTICIPANT_CAPACITY';
   END IF;
 
   -- 1. Ensure usage row exists
@@ -637,17 +646,17 @@ BEGIN
     RAISE EXCEPTION 'PERMANENT_ROOM_LIMIT_EXCEEDED';
   END IF;
 
-  -- 8. Insert Authoritative Room Row
+  -- 8. Insert Authoritative Room Row with max_participants
   INSERT INTO public.rooms (
     "roomId", "creationTime", "lastUpdateTime", passcode, owner_passcode,
     passcode_fingerprint, "roomTitle", "roomDescription", "coverPhoto",
     owner_id, "isSubRoom", status, "startedAt", "expiresAt", "isPermanent",
-    "isChatDisabled", room_kind
+    "isChatDisabled", room_kind, max_participants
   ) VALUES (
     p_room_id, v_now, v_now, p_passcode_hash, p_owner_passcode,
     p_passcode_fingerprint, p_room_title, p_room_description, p_cover_photo,
     p_account_id, v_is_permanent, 'inactive', v_now, p_expires_at, v_is_permanent,
-    p_is_chat_disabled, p_room_kind
+    p_is_chat_disabled, p_room_kind, v_effective_capacity
   );
 
   -- 9. Update Materialized Usage Record
@@ -660,7 +669,7 @@ BEGIN
 
   -- 10. Audit Record & Lifecycle Event
   INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-  VALUES (p_account_id, p_room_id, p_room_kind, 'CREATED', jsonb_build_object('total_rooms', v_usage.total + 1));
+  VALUES (p_account_id, p_room_id, p_room_kind, 'CREATED', jsonb_build_object('total_rooms', v_usage.total + 1, 'max_participants', v_effective_capacity));
 
   INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "newStatus", "newExpiresAt", reason)
   VALUES (p_room_id, p_account_id::text, 'room.created', 'inactive', p_expires_at, 'authorized room creation');
@@ -669,7 +678,8 @@ BEGIN
     'roomId', p_room_id,
     'roomKind', p_room_kind,
     'totalRooms', v_usage.total + 1,
-    'maxTotal', v_max_total
+    'maxTotal', v_max_total,
+    'maxParticipants', v_effective_capacity
   );
 END;
 $$;

@@ -1,4 +1,10 @@
-import { redis, atomicIncrWithTtl } from "./redis.ts";
+import {
+  redisCore,
+  atomicIncrWithTtl,
+  getRateLimitCount,
+  getRateLimitTtl,
+  delRateLimit,
+} from "./redis.ts";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -39,14 +45,13 @@ export async function checkRateLimit(
   const now = Date.now();
   const windowMs = windowSeconds * 1000;
 
-  if (redis) {
+  if (redisCore.isAvailable()) {
     try {
       const redisKey = `ratelimit:${key}`;
-      const count = await redis.get(redisKey);
-      const currentCount = Number(count) || 0;
+      const currentCount = await getRateLimitCount(redisKey);
 
       if (currentCount >= maxAttempts) {
-        const ttl = await redis.ttl(redisKey);
+        const ttl = await getRateLimitTtl(redisKey);
         return {
           allowed: false,
           retryAfterSeconds: ttl > 0 ? ttl : windowSeconds,
@@ -94,7 +99,7 @@ export async function recordAttempt(
 ): Promise<void> {
   const now = Date.now();
 
-  if (redis) {
+  if (redisCore.isAvailable()) {
     try {
       const redisKey = `ratelimit:${key}`;
       // Phase 3 Command Economics: Atomic INCR with TTL applied on creation only (no separate EXPIRE round-trip)
@@ -112,9 +117,9 @@ export async function recordAttempt(
 }
 
 export async function resetRateLimit(key: string): Promise<void> {
-  if (redis) {
+  if (redisCore.isAvailable()) {
     try {
-      await redis.del(`ratelimit:${key}`);
+      await delRateLimit(`ratelimit:${key}`);
     } catch (err) {
       console.warn("Redis rate limit reset error:", err);
     }

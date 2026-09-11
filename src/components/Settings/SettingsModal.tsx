@@ -34,6 +34,7 @@ interface SettingsModalProps {
   setRoomDescription?: (desc: string) => void;
   mediaPath?: string | undefined;
   setMediaPath?: (path: string) => void;
+  maxParticipants?: number;
 }
 
 export const SettingsModal = ({
@@ -42,6 +43,7 @@ export const SettingsModal = ({
   roomLock,
   setRoomLock,
   owner,
+  maxParticipants = 10,
 }: SettingsModalProps) => {
   const { user, profile } = useContext(MetadataContext);
   
@@ -169,6 +171,29 @@ export const SettingsModal = ({
                 disabled={!isOwner}
                 size="md"
               />
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "8px",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <Text size="sm" fw={600} c="var(--text-primary)">
+                    Participant Capacity
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Capacity is fixed for temporary rooms.
+                  </Text>
+                </div>
+                <Text size="sm" fw={700} c="violet">
+                  {maxParticipants} participants
+                </Text>
+              </div>
             </Stack>
           </div>
 

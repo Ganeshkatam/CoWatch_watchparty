@@ -165,7 +165,30 @@ export class Room {
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
   public participantsLocked: boolean = false;
+  public maxParticipants: number = 10;
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
+
+  public isRoomFull = (_isOwner?: boolean, clientId?: string, sessionId?: string): boolean => {
+    // Reconnecting participant within grace period does not consume an extra slot
+    if (clientId && sessionId && this.verifyAdmittedParticipant(clientId, sessionId)) {
+      return false;
+    }
+
+    // Active admitted participants calculation: connected or within 10-minute grace period
+    const now = Date.now();
+    let activeAdmittedCount = 0;
+    for (const [cId, rec] of this.admittedParticipants.entries()) {
+      if (rec.state === 'connected') {
+        activeAdmittedCount++;
+      } else if (rec.state === 'disconnected' && rec.lastDisconnectedAt) {
+        if (now - rec.lastDisconnectedAt <= ADMISSION_DISCONNECT_GRACE_MS) {
+          activeAdmittedCount++;
+        }
+      }
+    }
+
+    return activeAdmittedCount >= this.maxParticipants;
+  };
 
   public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string) => {
     if (!clientId || !sessionId) return;
@@ -252,12 +275,15 @@ export class Room {
       let isOwner = false;
       if (postgres) {
         const result = await postgres.query(
-          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked FROM rooms where "roomId" = $1`,
+          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where "roomId" = $1`,
           [this.roomId],
         );
         const roomRow = result.rows[0];
         if (roomRow?.participants_locked !== undefined) {
           this.participantsLocked = Boolean(roomRow.participants_locked);
+        }
+        if (roomRow?.max_participants !== undefined && typeof roomRow.max_participants === "number") {
+          this.maxParticipants = roomRow.max_participants;
         }
         const passcode = (socket.handshake.query?.passcode as string) || "";
         const roomPasscode = roomRow?.passcode;
@@ -376,15 +402,6 @@ export class Room {
         } else {
           this.status = "active";
         }
-        // Check if room is at capacity
-        const isSubRoom = roomRow?.isSubRoom;
-        const roomCapacity = isSubRoom
-          ? config.ROOM_CAPACITY_SUB
-          : config.ROOM_CAPACITY;
-        if (roomCapacity && this.roster.length >= roomCapacity) {
-          next(new Error("This room is full"));
-          return;
-        }
       }
       // clientId is meant for things that shouldn't require login
       // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
@@ -456,6 +473,19 @@ export class Room {
           next(err);
           return;
         }
+      }
+
+      // MEMBER-001 Invariant: Capacity Authority
+      // Flow: Creds -> Lock Policy -> Existing Session -> Capacity Check -> ADMIT or ROOM_FULL
+      // - If room is full, reject with ROOM_FULL unless owner or existing admitted session reconnecting
+      if (this.isRoomFull(isOwner, clientId, sessionId)) {
+        const err = new Error("ROOM_FULL");
+        (err as any).data = {
+          code: "ROOM_FULL",
+          message: "This room has reached its participant limit.",
+        };
+        next(err);
+        return;
       }
 
       next();
@@ -1000,6 +1030,7 @@ export class Room {
       roomDescription: this.roomDescription,
       mediaPath: this.mediaPath,
       participantsLocked: this.participantsLocked,
+      maxParticipants: this.maxParticipants,
     });
   };
 
@@ -1910,6 +1941,7 @@ export class Room {
       roomDescription: first?.roomDescription,
       mediaPath: first?.mediaPath,
       participantsLocked: Boolean(first?.participants_locked ?? this.participantsLocked),
+      maxParticipants: typeof first?.max_participants === "number" ? first.max_participants : this.maxParticipants,
     });
   };
 

@@ -68,6 +68,7 @@ interface RoomDetailsData {
   endedAt: string | null;
   isPermanent: boolean;
   owner_id?: string;
+  max_participants?: number;
   lifecycleEvents: LifecycleEvent[];
   chatSummary?: {
     messagesCount: number;

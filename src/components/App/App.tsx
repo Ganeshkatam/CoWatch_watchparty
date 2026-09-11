@@ -203,6 +203,7 @@ interface AppState {
   cameraDeviceId?: string;
   micDeviceId?: string;
   participantsLocked: boolean;
+  maxParticipants: number;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -255,6 +256,7 @@ export class App extends React.Component<AppProps, AppState> {
     copiedRoomLink: false,
     roomLock: "",
     participantsLocked: false,
+    maxParticipants: 10,
     controller: "",
     roomId: "",
     savedPasscodes: {},
@@ -871,6 +873,12 @@ export class App extends React.Component<AppProps, AppState> {
           err.message?.includes("PARTICIPANTS_LOCKED")
         ) {
           this.setState({ overlayMsg: "This room is currently locked to existing participants." });
+        } else if (
+          err.message === "ROOM_FULL" ||
+          (err as any)?.data?.code === "ROOM_FULL" ||
+          err.message?.includes("ROOM_FULL")
+        ) {
+          this.setState({ overlayMsg: "This room has reached its participant limit." });
         } else {
           this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
         }
@@ -1712,6 +1720,9 @@ export class App extends React.Component<AppProps, AppState> {
     }
     if (typeof data.participantsLocked === "boolean") {
       this.setState({ participantsLocked: data.participantsLocked });
+    }
+    if (typeof data.maxParticipants === "number") {
+      this.setState({ maxParticipants: data.maxParticipants });
     }
     this.setPasscode(data.passcode);
     this.setRoomTitle(data.roomTitle);
@@ -2980,6 +2991,7 @@ export class App extends React.Component<AppProps, AppState> {
           setRoomDescription={this.setRoomDescription}
           mediaPath={this.state.mediaPath}
           setMediaPath={this.setMediaPath}
+          maxParticipants={this.state.maxParticipants}
         />
         <AssignHostModal
           opened={this.state.isAssignHostModalOpen}
