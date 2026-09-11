@@ -19,7 +19,7 @@ export abstract class Player {
   public abstract clearState: () => void;
   public abstract loadSubtitles: (src: string) => void;
   public abstract isPictureInPictureSupported: () => boolean;
-  public abstract togglePictureInPicture: () => Promise<void>;
+  public abstract togglePictureInPicture: (autoTriggered?: boolean) => Promise<void>;
   public abstract syncSubtitles: (sharerTime: number) => void;
   public abstract getTimeRanges: () => { start: number; end: number }[];
   public abstract setLoop: (loop: boolean) => void;

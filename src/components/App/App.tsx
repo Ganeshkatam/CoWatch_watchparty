@@ -501,6 +501,16 @@ export class App extends React.Component<AppProps, AppState> {
             this.roomPlaylistPlay(0);
           }
           : undefined,
+      enterpictureinpicture: () => {
+        if (
+          pipManager.isSmartPiPEnabled() &&
+          !this.state.roomPaused &&
+          Boolean(this.state.roomMedia) &&
+          this.Player().isPictureInPictureSupported()
+        ) {
+          this.Player().togglePictureInPicture(true);
+        }
+      },
     };
 
     setupMediaSessionActionHandlers(actions, {
@@ -519,6 +529,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
     document.onfullscreenchange = this.onFullScreenChange;
     document.onkeydown = this.onKeydown;
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
 
     this.syncDocumentMetadata();
     this.syncMediaSessionMetadata();
@@ -548,9 +559,38 @@ export class App extends React.Component<AppProps, AppState> {
     this.init();
   }
 
+  handleVisibilityChange = async () => {
+    if (typeof document === "undefined") return;
+
+    if (document.hidden) {
+      // Authoritative trigger: Only trigger if media is playing and Smart PiP is enabled
+      const isPlaying = !this.state.roomPaused && Boolean(this.state.roomMedia);
+      const isPiPSupported = this.Player().isPictureInPictureSupported();
+      const currentPipState = pipManager.getState();
+
+      if (
+        pipManager.isSmartPiPEnabled() &&
+        isPlaying &&
+        isPiPSupported &&
+        !currentPipState.active &&
+        currentPipState.stage === "idle"
+      ) {
+        try {
+          await this.Player().togglePictureInPicture(true);
+        } catch (e) {
+          console.warn("Smart PiP auto-trigger failed:", e);
+        }
+      }
+    } else {
+      // Tab visible again: only dock back if this was an auto-triggered session
+      await pipManager.handleTabVisible();
+    }
+  };
+
   componentWillUnmount() {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     window.clearInterval(this.heartbeat);
     this.pipUnsubscribe?.();
     pipManager.cleanup();
@@ -3285,6 +3325,8 @@ export class App extends React.Component<AppProps, AppState> {
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
                         playsInline
                         onClick={this.roomTogglePlay}
+                        //@ts-expect-error autoPictureInPicture is standard in modern HTMLVideoElement
+                        autoPictureInPicture={pipManager.isSmartPiPEnabled()}
                       ></video>
                     )}
                     {Boolean(this.state.total) && (

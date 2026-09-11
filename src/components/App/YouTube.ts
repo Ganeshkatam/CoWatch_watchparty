@@ -238,11 +238,11 @@ export class YouTube implements Player {
     return pipManager.isDocumentPiPSupported();
   };
 
-  togglePictureInPicture = async (): Promise<void> => {
+  togglePictureInPicture = async (autoTriggered: boolean = false): Promise<void> => {
     const container =
       document.getElementById("leftYtContainer") ||
       document.getElementById("leftYt");
     if (!container) return;
-    await pipManager.toggle(container);
+    await pipManager.toggle(container, null, autoTriggered);
   };
 }

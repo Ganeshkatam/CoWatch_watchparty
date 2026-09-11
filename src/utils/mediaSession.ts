@@ -21,6 +21,7 @@ export interface MediaSessionActions {
   next?: () => void | Promise<void>;
   previous?: () => void | Promise<void>;
   stop?: () => void | Promise<void>;
+  enterpictureinpicture?: () => void | Promise<void>;
 }
 
 export interface MediaSessionPlaylistState {
@@ -39,6 +40,7 @@ const REGISTERED_ACTIONS: MediaSessionAction[] = [
   "previoustrack",
   "nexttrack",
   "stop",
+  "enterpictureinpicture" as MediaSessionAction,
 ];
 
 export function isMediaSessionSupported(): boolean {
@@ -266,6 +268,15 @@ export function setupMediaSessionActionHandlers(
     });
   } else {
     safeSetActionHandler("stop", null);
+  }
+
+  // Progressive enterpictureinpicture action handler
+  if (actions.enterpictureinpicture) {
+    safeSetActionHandler("enterpictureinpicture" as MediaSessionAction, () => {
+      actions.enterpictureinpicture?.();
+    });
+  } else {
+    safeSetActionHandler("enterpictureinpicture" as MediaSessionAction, null);
   }
 }
 

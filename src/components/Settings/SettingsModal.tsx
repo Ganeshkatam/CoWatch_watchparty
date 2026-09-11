@@ -11,6 +11,7 @@ import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
 import { supabase } from "../../utils/supabaseClient";
+import { pipManager } from "../../utils/pipManager";
 
 interface SettingsModalProps {
   modalOpen: boolean;
@@ -51,6 +52,7 @@ export const SettingsModal = ({
   const [draftNotif, setDraftNotif] = useState(Boolean(getCurrentSettings().disableChatSound));
   const [draftCamera, setDraftCamera] = useState(profile?.pref_camera_on ?? false);
   const [draftMic, setDraftMic] = useState(profile?.pref_mic_on ?? false);
+  const [draftSmartPiP, setDraftSmartPiP] = useState(pipManager.isSmartPiPEnabled());
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +64,7 @@ export const SettingsModal = ({
       setDraftNotif(Boolean(getCurrentSettings().disableChatSound));
       setDraftCamera(profile?.pref_camera_on ?? false);
       setDraftMic(profile?.pref_mic_on ?? false);
+      setDraftSmartPiP(pipManager.isSmartPiPEnabled());
       setError("");
     }
   }, [modalOpen, roomLock, profile]);
@@ -85,6 +88,7 @@ export const SettingsModal = ({
           disableChatSound: !draftNotif,
         })
       );
+      pipManager.setSmartPiPEnabled(draftSmartPiP);
       
       const { error: prefError } = await supabase
         .from("profiles")
@@ -195,6 +199,13 @@ export const SettingsModal = ({
                 description="Automatically join rooms with your microphone enabled."
                 checked={draftMic}
                 onChange={(e) => setDraftMic(e.currentTarget.checked)}
+                size="md"
+              />
+              <Switch
+                label="Smart Picture-in-Picture"
+                description="Automatically float video in Picture-in-Picture when switching tabs or screens."
+                checked={draftSmartPiP}
+                onChange={(e) => setDraftSmartPiP(e.currentTarget.checked)}
                 size="md"
               />
             </Stack>

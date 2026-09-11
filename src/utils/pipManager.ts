@@ -11,6 +11,7 @@ export interface PiPState {
   active: boolean;
   mode: "document" | "native" | null;
   target: HTMLElement | null;
+  autoTriggered?: boolean;
 }
 
 interface PiPSession {
@@ -33,11 +34,46 @@ class PiPManager {
     active: false,
     mode: null,
     target: null,
+    autoTriggered: false,
   };
 
   private session: PiPSession | null = null;
   private nativeSession: NativeSession | null = null;
   private listeners: Set<(state: PiPState) => void> = new Set();
+  private smartPiPEnabled: boolean = true;
+  private autoTriggered: boolean = false;
+
+  constructor() {
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const stored = window.localStorage.getItem("cowatch-smart-pip");
+        if (stored !== null) {
+          this.smartPiPEnabled = stored !== "false";
+        }
+      } catch {
+        // Ignore storage access restrictions
+      }
+    }
+  }
+
+  public isSmartPiPEnabled = (): boolean => {
+    return this.smartPiPEnabled;
+  };
+
+  public setSmartPiPEnabled = (enabled: boolean): void => {
+    this.smartPiPEnabled = enabled;
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem("cowatch-smart-pip", enabled ? "true" : "false");
+      } catch {
+        // Ignore storage access restrictions
+      }
+    }
+  };
+
+  public isAutoTriggered = (): boolean => {
+    return Boolean(this.state.autoTriggered);
+  };
 
   public getState(): PiPState {
     return { ...this.state };
@@ -92,7 +128,8 @@ class PiPManager {
    */
   public openDocumentPiP = async (
     target: HTMLElement,
-    options?: { width?: number; height?: number }
+    options?: { width?: number; height?: number },
+    autoTriggered: boolean = false
   ): Promise<boolean> => {
     if (!this.isDocumentPiPSupported()) {
       return false;
@@ -113,7 +150,8 @@ class PiPManager {
       return false;
     }
 
-    this.setState({ stage: "opening", active: false, mode: "document", target });
+    this.autoTriggered = autoTriggered;
+    this.setState({ stage: "opening", active: false, mode: "document", target, autoTriggered });
 
     const width = options?.width || target.clientWidth || 640;
     const height = options?.height || target.clientHeight || 360;
@@ -126,7 +164,8 @@ class PiPManager {
       });
     } catch (err) {
       console.warn("Failed to request Document PiP window:", err);
-      this.setState({ stage: "idle", active: false, mode: null, target: null });
+      this.autoTriggered = false;
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
       return false;
     }
 
@@ -193,6 +232,7 @@ class PiPManager {
       active: true,
       mode: "document",
       target,
+      autoTriggered,
     });
 
     return true;
@@ -278,37 +318,46 @@ class PiPManager {
   /**
    * Toggles native video Picture-in-Picture with enter/leave event bindings.
    */
-  private toggleNativePiP = async (video: HTMLVideoElement): Promise<void> => {
+  private toggleNativePiP = async (
+    video: HTMLVideoElement,
+    autoTriggered: boolean = false
+  ): Promise<void> => {
     try {
       if (document.pictureInPictureElement === video) {
         await document.exitPictureInPicture();
         this.nativeSession = null;
-        this.setState({ stage: "idle", active: false, mode: null, target: null });
+        this.autoTriggered = false;
+        this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
       } else {
-        this.setState({ stage: "opening", active: false, mode: "native", target: video });
+        this.autoTriggered = autoTriggered;
+        this.setState({ stage: "opening", active: false, mode: "native", target: video, autoTriggered });
         const leaveHandler = () => {
           video.removeEventListener("leavepictureinpicture", leaveHandler);
           this.nativeSession = null;
-          this.setState({ stage: "idle", active: false, mode: null, target: null });
+          this.autoTriggered = false;
+          this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
         };
         video.addEventListener("leavepictureinpicture", leaveHandler);
         await video.requestPictureInPicture();
         this.nativeSession = { video, leaveHandler };
-        this.setState({ stage: "active", active: true, mode: "native", target: video });
+        this.setState({ stage: "active", active: true, mode: "native", target: video, autoTriggered });
       }
     } catch (e) {
       console.warn("Failed to toggle native Picture-in-Picture:", e);
       this.nativeSession = null;
-      this.setState({ stage: "idle", active: false, mode: null, target: null });
+      this.autoTriggered = false;
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     }
   };
 
   /**
-   * User-activated toggle: Document PiP preferred, with native video fallback.
+   * User-activated toggle: Inverted priority: Native video PiP preferred for HTMLVideoElements,
+   * falling back to Document PiP for non-video DOM containers (e.g. YouTube iframes).
    */
   public toggle = async (
     target: HTMLElement,
-    fallbackVideo?: HTMLVideoElement | null
+    fallbackVideo?: HTMLVideoElement | null,
+    autoTriggered: boolean = false
   ): Promise<void> => {
     if (this.state.active || this.state.stage === "active") {
       await this.restoreAndClose();
@@ -319,19 +368,45 @@ class PiPManager {
       return;
     }
 
-    if (this.isDocumentPiPSupported()) {
-      await this.openDocumentPiP(target);
+    // 1. Prefer native video PiP whenever an HTMLVideoElement is available or queryable
+    const videoEl =
+      fallbackVideo ||
+      (target instanceof HTMLVideoElement ? target : (target.querySelector?.("video") as HTMLVideoElement | null));
+    if (videoEl && this.isNativePiPSupported(videoEl)) {
+      await this.toggleNativePiP(videoEl, autoTriggered);
       return;
     }
 
-    const videoEl =
-      fallbackVideo || (target instanceof HTMLVideoElement ? target : null);
-    if (videoEl && this.isNativePiPSupported(videoEl)) {
-      await this.toggleNativePiP(videoEl);
+    // 2. Fall back to Document PiP for elements without native video (e.g. YouTube iframes)
+    if (this.isDocumentPiPSupported()) {
+      await this.openDocumentPiP(target, undefined, autoTriggered);
       return;
     }
 
     console.warn("Picture-in-Picture is not supported for this media in this browser.");
+  };
+
+  /**
+   * Triggers Smart Picture-in-Picture on tab/screen change with autoTriggered = true.
+   */
+  public triggerSmartPiP = async (
+    target: HTMLElement,
+    fallbackVideo?: HTMLVideoElement | null
+  ): Promise<boolean> => {
+    if (!this.smartPiPEnabled) return false;
+    if (this.state.active || this.state.stage !== "idle") return false;
+    await this.toggle(target, fallbackVideo, true);
+    return this.state.active;
+  };
+
+  /**
+   * Handles returning to the tab. Only automatically docks back if the session was auto-triggered.
+   * Manual PiP sessions remain floating when returning to the tab.
+   */
+  public handleTabVisible = async (): Promise<void> => {
+    if (this.state.active && this.autoTriggered) {
+      await this.restoreAndClose();
+    }
   };
 
   /**
@@ -345,9 +420,10 @@ class PiPManager {
    * Explicitly restores DOM before attempting to close the PiP window.
    */
   public restoreAndClose = async (): Promise<void> => {
+    this.autoTriggered = false;
     if (this.session) {
       const { pipWindow, themeObserver } = this.session;
-      this.setState({ stage: "closing", active: false, mode: null, target: null });
+      this.setState({ stage: "closing", active: false, mode: null, target: null, autoTriggered: false });
       themeObserver?.disconnect();
       this.restoreSessionDOM(this.session);
       this.session = null;
@@ -358,7 +434,7 @@ class PiPManager {
       } catch (e) {
         console.warn("Error closing PiP window:", e);
       }
-      this.setState({ stage: "idle", active: false, mode: null, target: null });
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     } else if (this.nativeSession) {
       try {
         if (document.pictureInPictureElement) {
@@ -368,7 +444,7 @@ class PiPManager {
         console.warn("Error exiting native PiP:", e);
       }
       this.nativeSession = null;
-      this.setState({ stage: "idle", active: false, mode: null, target: null });
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     }
   };
 

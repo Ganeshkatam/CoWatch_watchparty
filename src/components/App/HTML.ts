@@ -43,6 +43,13 @@ export class HTML implements Player {
     if (leftVideo) {
       leftVideo.currentTime = time;
       leftVideo.src = src;
+      try {
+        if ("autoPictureInPicture" in leftVideo) {
+          (leftVideo as any).autoPictureInPicture = pipManager.isSmartPiPEnabled();
+        }
+      } catch {
+        // Progressive enhancement fallback
+      }
     }
   };
 
@@ -196,15 +203,15 @@ export class HTML implements Player {
   isPictureInPictureSupported = (): boolean => {
     const video = this.getVideoEl() as HTMLVideoElement;
     return (
-      pipManager.isDocumentPiPSupported() ||
-      pipManager.isNativePiPSupported(video)
+      pipManager.isNativePiPSupported(video) ||
+      pipManager.isDocumentPiPSupported()
     );
   };
 
-  togglePictureInPicture = async (): Promise<void> => {
+  togglePictureInPicture = async (autoTriggered: boolean = false): Promise<void> => {
     const videoEl = this.getVideoEl() as HTMLVideoElement;
     if (!videoEl) return;
     const container = (videoEl.parentElement as HTMLElement) || videoEl;
-    await pipManager.toggle(container, videoEl);
+    await pipManager.toggle(container, videoEl, autoTriggered);
   };
 }
