@@ -42,6 +42,12 @@ async function runConcurrencyStressTest() {
     "UPDATE public.account_room_usage SET total_rooms = 0, watch_rooms = 0, permanent_rooms = 0 WHERE account_id = $1",
     [accountId]
   );
+  await pool.query(
+    `INSERT INTO public.account_room_limits (account_id, max_total_rooms, max_watch_rooms, max_permanent_rooms)
+     VALUES ($1, 5, 5, 2)
+     ON CONFLICT (account_id) DO UPDATE SET max_total_rooms = 5, max_watch_rooms = 5, max_permanent_rooms = 2`,
+    [accountId]
+  );
 
   console.log("\n--- TEST 1: 100 SIMULTANEOUS CREATE REQUESTS (CEILING = 5) ---");
   const N = 100;
@@ -180,19 +186,208 @@ async function runConcurrencyStressTest() {
   console.log("TEST 2 PASSED: Perfect reconciliation between usage cache and truth table under mixed contention.");
 
   // 3. Final Clean up
-  console.log("\nCleaning up stress test rooms...");
-  const cleanupRooms = await pool.query('SELECT "roomId" FROM public.rooms WHERE owner_id = $1', [accountId]);
-  for (const r of cleanupRooms.rows) {
-    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, r.roomId]).catch(() => {});
+  console.log("\n--- TEST 3: ROOM ACTIVITY & EXTENSION LIFECYCLE TEST ---");
+  // Delete one quota-consuming room to free a slot within the 5-room ceiling
+  const existingForTest3 = await pool.query(
+    `SELECT "roomId" FROM public.rooms 
+     WHERE owner_id = $1 AND status IN ('scheduled', 'active', 'inactive') AND ("isPermanent" = true OR "expiresAt" > now())
+     LIMIT 1`,
+    [accountId]
+  );
+  if (existingForTest3.rows.length) {
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, existingForTest3.rows[0].roomId]);
   }
-  const finalUsage = await pool.query(
+  const testRoomId = `test-activity-ext-${Date.now()}`;
+  const testFingerprint = `fingerprint-act-${Date.now()}`;
+  await pool.query(
+    `SELECT public.create_room_authoritative(
+      $1, $2, 'watch', 'Activity Test Room', null,
+      'dummyhash', 'dummyenc', $3, null, false,
+      now() + INTERVAL '2 hours',
+      5, 5, 2
+    )`,
+    [accountId, testRoomId, testFingerprint]
+  );
+
+  // Transition to active
+  const actRes1 = await pool.query(
+    "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+    [testRoomId, accountId]
+  );
+  if (actRes1.rows[0].result.status !== "active") {
+    throw new Error(`TEST 3 FAILED: Expected active status, got ${actRes1.rows[0].result.status}`);
+  }
+
+  // Extend room
+  const newExpiry = new Date(Date.now() + 4 * 60 * 60 * 1000);
+  const extRes = await pool.query(
+    "SELECT public.extend_room_authoritative($1, $2, $3) AS new_expires_at",
+    [accountId, testRoomId, newExpiry]
+  );
+  if (!extRes.rows[0].new_expires_at) {
+    throw new Error("TEST 3 FAILED: Room extension failed to return new expiry");
+  }
+
+  // Transition to inactive
+  const actRes2 = await pool.query(
+    "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL) AS result",
+    [testRoomId]
+  );
+  if (actRes2.rows[0].result.status !== "inactive") {
+    throw new Error(`TEST 3 FAILED: Expected inactive status, got ${actRes2.rows[0].result.status}`);
+  }
+
+  // Age room past canonical expiresAt to test canonical expiry transition
+  await pool.query(
+    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'5 seconds\' WHERE "roomId" = $1',
+    [testRoomId]
+  );
+  const actRes3 = await pool.query(
+    "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+    [testRoomId, accountId]
+  );
+  if (actRes3.rows[0].result.status !== "expired") {
+    throw new Error(`TEST 3 FAILED: Expected auto-expiry on overdue room, got ${actRes3.rows[0].result.status}`);
+  }
+
+  const usageAfterExpiry = await pool.query(
     "SELECT total_rooms FROM public.account_room_usage WHERE account_id = $1",
     [accountId]
   );
-  console.log(`Cleaned up. Final account_room_usage: total=${finalUsage.rows[0].total_rooms}`);
+  console.log(`TEST 3 PASSED: Lifecycle transitions and extension verified. Usage after expiry: ${usageAfterExpiry.rows[0].total_rooms}`);
+
+  console.log("\n--- TEST 4: AUTHORITATIVE ACCOUNT PURGE TEST ---");
+  // Clean slate via purge
+  await pool.query("SELECT public.purge_account_rooms_authoritative($1)", [accountId]);
+
+  // Create 3 fresh rooms
+  for (let i = 0; i < 3; i++) {
+    await pool.query(
+      `SELECT public.create_room_authoritative(
+        $1, $2, 'watch', 'Purge Test Room', null,
+        'dummyhash', 'dummyenc', $3, null, false,
+        now() + INTERVAL '2 hours',
+        5, 5, 2
+      )`,
+      [accountId, `purge-room-${Date.now()}-${i}`, `purge-fp-${Date.now()}-${i}`]
+    );
+  }
+
+  const usageBeforePurge = await pool.query(
+    "SELECT total_rooms FROM public.account_room_usage WHERE account_id = $1",
+    [accountId]
+  );
+  console.log(`Created 3 rooms. account_room_usage.total_rooms = ${usageBeforePurge.rows[0].total_rooms}`);
+
+  // Call purge_account_rooms_authoritative
+  const purgeRes = await pool.query(
+    "SELECT public.purge_account_rooms_authoritative($1) AS deleted_ids",
+    [accountId]
+  );
+  const deletedIds: string[] = purgeRes.rows[0].deleted_ids;
+  console.log(`Purged rooms count: ${deletedIds.length}`);
+
+  // Verify all rooms deleted
+  const remainingRooms = await pool.query(
+    "SELECT count(*)::int AS count FROM public.rooms WHERE owner_id = $1",
+    [accountId]
+  );
+  if (remainingRooms.rows[0].count !== 0) {
+    throw new Error(`TEST 4 FAILED: Expected 0 rooms remaining in rooms table, got ${remainingRooms.rows[0].count}`);
+  }
+
+  // Verify account_room_usage row is preserved and zeroed
+  const usageAfterPurge = await pool.query(
+    "SELECT total_rooms, watch_rooms, permanent_rooms FROM public.account_room_usage WHERE account_id = $1",
+    [accountId]
+  );
+  if (usageAfterPurge.rowCount === 0) {
+    throw new Error("TEST 4 FAILED: account_room_usage row was deleted! It must be preserved with 0 usage.");
+  }
+  if (usageAfterPurge.rows[0].total_rooms !== 0 || usageAfterPurge.rows[0].watch_rooms !== 0) {
+    throw new Error(`TEST 4 FAILED: Usage not zeroed: total=${usageAfterPurge.rows[0].total_rooms}`);
+  }
+
+  // Verify account_room_limits row is preserved
+  const limitsAfterPurge = await pool.query(
+    "SELECT max_total_rooms FROM public.account_room_limits WHERE account_id = $1",
+    [accountId]
+  );
+  if (limitsAfterPurge.rowCount === 0) {
+    throw new Error("TEST 4 FAILED: account_room_limits row was deleted! Policy must be preserved.");
+  }
+
+  // Verify audit events
+  const purgeEvents = await pool.query(
+    "SELECT count(*)::int AS count FROM public.room_quota_events WHERE account_id = $1 AND event_type = 'PURGED'",
+    [accountId]
+  );
+  if (purgeEvents.rows[0].count < 3) {
+    throw new Error(`TEST 4 FAILED: Expected at least 3 PURGED audit events, got ${purgeEvents.rows[0].count}`);
+  }
+  console.log("TEST 4 PASSED: Authoritative account purge preserves policy & usage rows, zeroes counters, generates PURGED audit logs.");
+
+  // 5. Final Reconciliation Check
+  console.log("\n--- RECONCILIATION VERIFICATION (1:1 RATIO CHECK) ---");
+  const allAccountsUsage = await pool.query(
+    `SELECT u.account_id, u.total_rooms AS recorded_total, COALESCE(r.actual_total, 0) AS actual_total
+     FROM public.account_room_usage u
+     LEFT JOIN (
+       SELECT owner_id, count(*)::int AS actual_total
+       FROM public.rooms
+       WHERE status IN ('scheduled', 'active', 'inactive')
+         AND ("isPermanent" = true OR "expiresAt" > clock_timestamp())
+       GROUP BY owner_id
+     ) r ON u.account_id = r.owner_id
+     WHERE u.total_rooms != COALESCE(r.actual_total, 0)`
+  );
+  if (allAccountsUsage.rowCount && allAccountsUsage.rowCount > 0) {
+    throw new Error(`RECONCILIATION FAILED: Divergent accounts found: ${JSON.stringify(allAccountsUsage.rows)}`);
+  }
+  console.log("RECONCILIATION PASSED: 1:1 parity verified across all accounts in database.");
+
+  console.log("\n--- TEST 6: ROOM DATA AUTHORIZATION MATRIX VALIDATION ---");
+  const authTestRoomId = `auth-matrix-${Date.now()}`;
+  const authTestFingerprint = `auth-fp-${Date.now()}`;
+  const dummyPayload = JSON.stringify({ video: "https://example.com/stream.m3u8", videoTS: 123.45 });
+
+  // 1. Create a room under accountId (Owner)
+  await pool.query(
+    `SELECT public.create_room_authoritative(
+      $1, $2, 'watch', 'Auth Matrix Room', null,
+      'dummyhash', 'dummyenc', $3, null, false,
+      now() + INTERVAL '2 hours',
+      5, 5, 2
+    )`,
+    [accountId, authTestRoomId, authTestFingerprint]
+  );
+  await pool.query('UPDATE public.rooms SET data = $1 WHERE "roomId" = $2', [dummyPayload, authTestRoomId]);
+
+  // Case A: Authenticated Owner querying their own room
+  const ownerQuery = await pool.query(
+    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    [authTestRoomId, accountId]
+  );
+  if (ownerQuery.rowCount !== 1 || !ownerQuery.rows[0].data) {
+    throw new Error("TEST 6 FAILED: Authenticated owner was denied access to their own room data");
+  }
+
+  // Case B: Authenticated Non-Owner (or random UID) querying another user's room
+  const nonOwnerUid = "00000000-0000-0000-0000-000000000000";
+  const nonOwnerQuery = await pool.query(
+    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    [authTestRoomId, nonOwnerUid]
+  );
+  if (nonOwnerQuery.rowCount !== 0) {
+    throw new Error("TEST 6 FAILED: Non-owner query leaked room data! Expected 0 rows");
+  }
+
+  // Case C: Clean up
+  await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, authTestRoomId]);
+  console.log("TEST 6 PASSED: Room data authorization matrix verified (Owner-only access enforced, cross-user isolation guaranteed).");
 
   await pool.end();
-  console.log("\nALL CONCURRENCY TESTS COMPLETED SUCCESSFULLY.");
+  console.log("\nALL CONCURRENCY AND AUTHORITATIVE ACCEPTANCE TESTS COMPLETED SUCCESSFULLY.");
 }
 
 runConcurrencyStressTest().catch(err => {

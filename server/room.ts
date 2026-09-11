@@ -5,7 +5,7 @@ import { getUser, validateUserToken } from "./utils/supabase.ts";
 import { redis, redisCount, redisCountDistinct } from "./utils/redis.ts";
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
-import { postgres, updateObject, upsertObject } from "./utils/postgres.ts";
+import { postgres } from "./utils/postgres.ts";
 import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash } from "./utils/roomPasscode.ts";
 import {
   fetchYoutubeVideo,
@@ -289,44 +289,20 @@ export class Room {
           if (currentDbStatus === "inactive") {
             try {
               const activateResult = await postgres.query(
-                `UPDATE rooms
-                 SET
-                   status = 'active',
-                   "lastActiveAt" = NOW(),
-                   "startedAt" = NOW(),
-                   "expiresAt" = CASE WHEN "isPermanent" = true THEN NULL ELSE NOW() + INTERVAL '3 hours' END
-                 WHERE "roomId" = $1
-                   AND owner_id = $2
-                   AND status = 'inactive'
-                 RETURNING status, "startedAt", "expiresAt", "lastActiveAt", "isPermanent"`,
+                "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
                 [this.roomId, uid]
               );
 
-              if (activateResult.rowCount && activateResult.rowCount > 0) {
-                const row = activateResult.rows[0];
-                this.status = "active";
-                this.startedAt = new Date(row.startedAt);
-                this.expiresAt = row.expiresAt ? new Date(row.expiresAt) : undefined;
-                this.lastUpdateTime = new Date();
-
-                // Idempotent audit logging for session activation
-                await postgres.query(
-                  `INSERT INTO room_lifecycle_events 
-                   ("roomId", actor, event, "previousStatus", "newStatus", "newExpiresAt", reason)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                  [this.roomId, uid, "room.started", "inactive", "active", row.expiresAt, "host joined and started room"]
-                ).catch((e) => console.error("Failed to insert lifecycle event for started room:", e));
-              } else {
-                // Recheck if another concurrent owner socket already activated the room
-                const recheck = await postgres.query(
-                  `SELECT status, "startedAt", "expiresAt" FROM rooms WHERE "roomId" = $1`,
-                  [this.roomId]
-                );
-                const recheckStatus = recheck.rows[0]?.status;
-                if (recheckStatus === "active") {
+              if (activateResult.rows && activateResult.rows.length > 0) {
+                const res = activateResult.rows[0].result;
+                if (res.status === "active") {
                   this.status = "active";
-                  if (recheck.rows[0]?.startedAt) this.startedAt = new Date(recheck.rows[0].startedAt);
-                  if (recheck.rows[0]?.expiresAt) this.expiresAt = new Date(recheck.rows[0].expiresAt);
+                  this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
+                  this.lastUpdateTime = new Date();
+                } else if (res.status === "expired") {
+                  this.status = "expired";
+                  next(new Error("ROOM_EXPIRED"));
+                  return;
                 } else {
                   next(new Error("ROOM_NOT_STARTED"));
                   return;
@@ -1774,81 +1750,8 @@ export class Room {
     this.addChatMessage(socket, chatMsg);
   };
 
-  private setRoomOwner = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      undo: boolean;
-    };
-    if (!data) {
-      return;
-    }
-    if (!postgres) {
-      socket.emit("errorMessage", "Database is not available");
-      return;
-    }
-    const { uid } = socket;
-    if (data.undo) {
-      const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000);
-      this.expiresAt = expiresAt;
-      this.status = 'active';
-      this.isPermanent = false;
-      await updateObject(
-        postgres,
-        "rooms",
-        {
-          passcode: null,
-
-          isChatDisabled: false,
-          isSubRoom: null,
-          roomTitle: "Watch Party Room",
-          roomDescription: null,
-          mediaPath: null,
-          expiresAt: expiresAt,
-          status: 'active',
-          isPermanent: false,
-        },
-        { roomId: this.roomId },
-      );
-      socket.emit("REC:getRoomState", {});
-    } else {
-      // validate room count
-      const roomCount = (
-        await postgres.query(
-          'SELECT count(1) from room where owner_id = $1 AND "roomId" != $2',
-          [uid, this.roomId],
-        )
-      ).rows[0].count;
-      const limit = config.SUBSCRIBER_ROOM_LIMIT;
-      if (roomCount >= limit) {
-        socket.emit(
-          "errorMessage",
-          `You've exceeded the permanent room limit. Subscribe for additional permanent rooms.`,
-        );
-        return;
-      }
-      const roomObj = {
-        roomId: this.roomId,
-        owner_id: uid,
-        isSubRoom: true,
-        expiresAt: null,
-        status: 'active',
-        isPermanent: true,
-      };
-      this.expiresAt = undefined;
-      this.status = 'active';
-      this.owner_id = uid;
-      this.isPermanent = true;
-      let result: QueryResult | null = null;
-      result = await upsertObject(postgres, "rooms", roomObj, {
-        roomId: true,
-      });
-      const row = result?.rows?.[0];
-      // console.log(result, row);
-      socket.emit("REC:getRoomState", {
-        passcode: row?.passcode,
-
-        owner: row?.owner_id,
-      });
-    }
+  private setRoomOwner = async (socket: Socket, _raw: unknown) => {
+    socket.emit("errorMessage", "Room settings cannot be changed via socket.");
   };
 
   private getRoomState = async (socket: Socket) => {
@@ -1881,97 +1784,8 @@ export class Room {
     });
   };
 
-  private setRoomState = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      passcode: string;
-
-      isChatDisabled: boolean;
-      roomTitle: string;
-      roomDescription: string;
-      mediaPath: string;
-    };
-    if (!postgres) {
-      socket.emit("errorMessage", "Database is not available");
-      return;
-    }
-    if (!data) {
-      return;
-    }
-    const {
-      passcode,
-
-      isChatDisabled,
-      roomTitle,
-      roomDescription,
-      mediaPath,
-    } = data;
-    if (passcode) {
-      if (passcode.length > 100) {
-        socket.emit("errorMessage", "Password too long");
-        return;
-      }
-    }
-
-    let normalizedTitle: string | undefined = undefined;
-    if (typeof roomTitle !== "undefined") {
-      normalizedTitle = typeof roomTitle === "string" ? roomTitle.trim() : "";
-      if (normalizedTitle.length === 0) {
-        socket.emit("errorMessage", "Room title is required");
-        return;
-      }
-      if (normalizedTitle.length > 50) {
-        socket.emit("errorMessage", "Room title too long");
-        return;
-      }
-    }
-    if (roomDescription && roomDescription.length > 120) {
-      socket.emit("errorMessage", "Room description too long");
-      return;
-    }
-
-    if (mediaPath && mediaPath.length > 1000) {
-      socket.emit("errorMessage", "Media source too long");
-      return;
-    }
-
-    const roomObj: any = {
-      roomId: this.roomId,
-      passcode: await hashRoomPasscode(passcode),
-      isChatDisabled: isChatDisabled,
-      mediaPath: mediaPath,
-    };
-    const { uid } = socket;
-    if (uid) {
-      if (normalizedTitle !== undefined) roomObj.roomTitle = normalizedTitle;
-      if (roomDescription !== undefined) roomObj.roomDescription = roomDescription;
-    }
-    
-    // Remove undefined fields so they aren't part of the Postgres UPDATE query
-    Object.keys(roomObj).forEach(key => roomObj[key] === undefined && delete roomObj[key]);
-    try {
-      const query = `UPDATE rooms
-        SET ${Object.keys(roomObj).map((k, i) => `"${k}" = $${i + 1}`)}
-        WHERE "roomId" = $${Object.keys(roomObj).length + 1}
-        AND owner_id = $${Object.keys(roomObj).length + 2}
-        RETURNING *`;
-      const result = await postgres.query(query, [
-        ...Object.values(roomObj),
-        this.roomId,
-        uid,
-      ]);
-      const row = result.rows[0];
-      this.isChatDisabled = Boolean(row?.isChatDisabled);
-      this.io.of(this.roomId).emit("REC:getRoomState", {
-        owner: row?.owner_id,
-        isChatDisabled: row?.isChatDisabled,
-        roomTitle: row?.roomTitle,
-        roomDescription: row?.roomDescription,
-        mediaPath: row?.mediaPath,
-      });
-      socket.emit("successMessage", "Saved admin settings");
-    } catch (e) {
-      console.warn(e);
-    }
+  private setRoomState = async (socket: Socket, _raw: unknown) => {
+    socket.emit("errorMessage", "Room settings cannot be changed via socket.");
   };
 
   private sendSignal = (
@@ -2039,7 +1853,10 @@ export class Room {
             this.status = 'inactive';
             this.lastUpdateTime = new Date();
             if (postgres) {
-              await updateObject(postgres, "rooms", { status: 'inactive', "lastActiveAt": new Date() }, { "roomId": this.roomId });
+              await postgres.query(
+                "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",
+                [this.roomId]
+              );
             }
           }
         }, 120 * 1000);

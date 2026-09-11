@@ -634,8 +634,10 @@ app.post("/updateRoomCover", async (req, res) => {
   }
 
   const result = await postgres.query(
-    `UPDATE rooms SET "coverPhoto" = $1 WHERE "roomId" = $2 AND owner_id = $3 RETURNING "roomId"`,
-    [coverPhoto, cleanRoomId, decoded.uid]
+    `SELECT public.update_room_metadata_authoritative(
+      $1::uuid, $2::text, NULL, NULL, NULL, $3::text, NULL, NULL, NULL, false
+    ) AS result`,
+    [decoded.uid, cleanRoomId, coverPhoto]
   );
   if (result.rowCount === 0) {
     res.status(404).json({ error: "Room not found or unauthorized" });
@@ -749,20 +751,22 @@ app.post("/updateRoomSettings", async (req, res) => {
       );
     }
 
-    let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "isChatDisabled" = $3`;
-    const updateValues: any[] = [titleTrimmed, roomDescription || null, isChatDisabled];
-
-    if (isClearingPassword) {
-      updateQuery += `, passcode = NULL, owner_passcode = NULL, passcode_fingerprint = NULL`;
-    } else if (passcodeHash && ownerPasscodeEncrypted && passcodeFingerprint) {
-      updateValues.push(passcodeHash, ownerPasscodeEncrypted, passcodeFingerprint);
-      updateQuery += `, passcode = $${updateValues.length - 2}, owner_passcode = $${updateValues.length - 1}, passcode_fingerprint = $${updateValues.length}`;
-    }
-
-    updateValues.push(roomId, decoded.uid);
-    updateQuery += ` WHERE "roomId" = $${updateValues.length - 1} AND owner_id = $${updateValues.length}`;
-
-    await client.query(updateQuery, updateValues);
+    await client.query(
+      `SELECT public.update_room_metadata_authoritative(
+        $1::uuid, $2::text, $3::text, $4::text, $5::boolean, NULL, $6::text, $7::text, $8::text, $9::boolean
+      )`,
+      [
+        decoded.uid,
+        roomId,
+        titleTrimmed,
+        roomDescription || null,
+        isChatDisabled,
+        isClearingPassword ? null : passcodeHash,
+        isClearingPassword ? null : ownerPasscodeEncrypted,
+        isClearingPassword ? null : passcodeFingerprint,
+        isClearingPassword,
+      ]
+    );
 
     await client.query('COMMIT');
     res.json({ success: true });
@@ -789,8 +793,21 @@ app.delete("/deleteAccount", async (req, res) => {
     return;
   }
   if (postgres) {
-    // Delete rooms
-    await postgres.query("DELETE FROM rooms WHERE owner_id = $1", [decoded.uid]);
+    // Authoritatively purge all rooms under lock, retaining policy and zeroed usage row
+    const purgeRes = await postgres.query(
+      "SELECT public.purge_account_rooms_authoritative($1) AS deleted_ids",
+      [decoded.uid]
+    );
+    const deletedIds: string[] = purgeRes.rows?.[0]?.deleted_ids || [];
+    for (const rId of deletedIds) {
+      const memRoom = rooms.get(rId);
+      if (memRoom) {
+        memRoom.destroy();
+        rooms.delete(rId);
+        io._nsps.delete("/" + rId);
+      }
+    }
+
     // Delete linked accounts
     await postgres.query("DELETE FROM link_account WHERE uid = $1", [
       decoded.uid,
@@ -925,15 +942,40 @@ app.get("/announcements", async (_req, res) => {
 });
 
 app.get("/roomData/:roomId", async (req, res) => {
-  // Returns the room data given a room ID
-  // Only return data if the room doesn't have a passcode
-  // If it does, we could accept it as a URL parameter but for now just don't support
   const cleanRoomId = sanitizeRoomId(req.params.roomId);
-  const result = await postgres?.query(
-    `SELECT data from room WHERE "roomId" = $1 and passcode IS NULL`,
-    [cleanRoomId],
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : (req.query?.token as string | undefined);
+  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+
+  if (!uid || !token) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  const decoded = await validateUserToken(String(uid), String(token), false);
+  if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    res.status(403).json({ error: "Unauthorized or unverified email" });
+    return;
+  }
+
+  if (!postgres) {
+    res.status(500).json({ error: "Database not available" });
+    return;
+  }
+
+  const result = await postgres.query(
+    `SELECT data FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    [cleanRoomId, decoded.uid],
   );
-  res.json(result?.rows[0]?.data);
+
+  if (!result || result.rows.length === 0) {
+    res.status(404).json({ error: "Room not found or unauthorized" });
+    return;
+  }
+
+  res.json(result.rows[0].data);
 });
 
 app.get("/roomInfo/:roomId", async (req, res) => {
@@ -1425,22 +1467,12 @@ app.post("/extendRoom", async (req, res) => {
     }
 
     const updateResult = await postgres?.query(
-      `UPDATE rooms 
-       SET "expiresAt" = $1 
-       WHERE "roomId" = $2 AND owner_id = $3 AND status IN ('active', 'scheduled', 'inactive')
-       RETURNING "expiresAt"`,
-      [new Date(proposedExpiresAt), roomId, decoded.uid],
+      "SELECT public.extend_room_authoritative($1, $2, $3) AS new_expires_at",
+      [decoded.uid, roomId, new Date(proposedExpiresAt)],
     );
 
     if (updateResult && updateResult.rowCount && updateResult.rowCount > 0) {
-      const newExpiresAt = updateResult.rows[0].expiresAt;
-
-      // Insert audit log
-      await postgres?.query(`
-        INSERT INTO room_lifecycle_events 
-        ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [roomId, decoded.uid, 'room.extended', roomRow.status, roomRow.status, roomRow.expiresAt, newExpiresAt, 'user extended']);
+      const newExpiresAt = updateResult.rows[0].new_expires_at;
 
       const memoryRoom = rooms.get(roomId);
       if (memoryRoom) {

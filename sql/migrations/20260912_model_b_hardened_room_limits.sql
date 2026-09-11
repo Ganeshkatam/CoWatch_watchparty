@@ -25,6 +25,11 @@ ALTER TABLE public.rooms
     (room_kind = 'watch' AND "isPermanent" = false AND "expiresAt" IS NOT NULL)
   );
 
+-- 3b. Ensure rooms.owner_id cascades on profile deletion
+ALTER TABLE public.rooms DROP CONSTRAINT IF EXISTS room_owner_id_fkey;
+ALTER TABLE public.rooms
+  ADD CONSTRAINT room_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+
 -- 4. Single-pass index scan acceleration for room quota recalculation
 CREATE INDEX IF NOT EXISTS idx_rooms_owner_quota_eval 
   ON public.rooms(owner_id, status, "isPermanent", "expiresAt");
@@ -55,7 +60,7 @@ CREATE TABLE IF NOT EXISTS public.room_quota_events (
   account_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   room_id text NOT NULL,
   room_kind text NOT NULL,
-  event_type text NOT NULL CHECK (event_type IN ('CREATED', 'DELETED', 'EXPIRED', 'ENDED', 'PERMANENCE_CHANGED', 'REJECTED')),
+  event_type text NOT NULL CHECK (event_type IN ('CREATED', 'DELETED', 'EXPIRED', 'ENDED', 'PERMANENCE_CHANGED', 'REJECTED', 'PURGED')),
   created_at timestamptz NOT NULL DEFAULT now(),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
@@ -611,4 +616,314 @@ GRANT EXECUTE ON FUNCTION public.delete_room_authoritative(uuid, text) TO postgr
 GRANT EXECUTE ON FUNCTION public.end_room_authoritative(uuid, text, text) TO postgres, service_role;
 GRANT EXECUTE ON FUNCTION public.expire_rooms_authoritative() TO postgres, service_role;
 GRANT EXECUTE ON FUNCTION public.set_room_permanence_authoritative(uuid, text, boolean, integer) TO postgres, service_role;
+
+-- 9.6 purge_account_rooms_authoritative
+-- Purges all rooms belonging to an account under universal lock on account_room_usage(account_id).
+-- Sets usage counters to zero while retaining account quota policy and usage rows.
+CREATE OR REPLACE FUNCTION public.purge_account_rooms_authoritative(
+  p_account_id uuid
+)
+RETURNS text[]
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_now timestamptz := clock_timestamp();
+  v_deleted_ids text[] := ARRAY[]::text[];
+  r RECORD;
+BEGIN
+  -- 1. UNIFIED LOCK: Lock account usage record FIRST
+  PERFORM 1 
+  FROM public.account_room_usage 
+  WHERE account_room_usage.account_id = p_account_id 
+  FOR UPDATE;
+
+  -- 2. Audit and delete all rooms for this account
+  FOR r IN
+    SELECT public.rooms."roomId", public.rooms.room_kind, public.rooms.status
+    FROM public.rooms
+    WHERE public.rooms.owner_id = p_account_id
+    FOR UPDATE
+  LOOP
+    v_deleted_ids := array_append(v_deleted_ids, r."roomId");
+
+    INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
+    VALUES (p_account_id, r."roomId", r.room_kind, 'PURGED', jsonb_build_object('account_purge', true));
+
+    INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", reason, timestamp)
+    VALUES (r."roomId", p_account_id::text, 'room.deleted', r.status, 'deleted', 'account purged', v_now);
+  END LOOP;
+
+  DELETE FROM public.rooms WHERE public.rooms.owner_id = p_account_id;
+
+  -- 3. Reset materialized usage to zero under lock (retaining policy and usage row)
+  UPDATE public.account_room_usage
+  SET total_rooms = 0,
+      watch_rooms = 0,
+      permanent_rooms = 0,
+      updated_at = v_now
+  WHERE account_room_usage.account_id = p_account_id;
+
+  RETURN v_deleted_ids;
+END;
+$$;
+
+-- 9.7 extend_room_authoritative
+CREATE OR REPLACE FUNCTION public.extend_room_authoritative(
+  p_account_id uuid,
+  p_room_id text,
+  p_new_expires_at timestamptz
+)
+RETURNS timestamptz
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_now timestamptz := clock_timestamp();
+  v_room public.rooms%ROWTYPE;
+BEGIN
+  -- 1. UNIFIED LOCK: Lock account usage record FIRST
+  PERFORM 1 
+  FROM public.account_room_usage 
+  WHERE account_room_usage.account_id = p_account_id 
+  FOR UPDATE;
+
+  -- 2. Re-read room under lock
+  SELECT * INTO v_room
+  FROM public.rooms
+  WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ROOM_NOT_FOUND';
+  END IF;
+
+  IF v_room."isPermanent" = true THEN
+    RAISE EXCEPTION 'ROOM_IS_PERMANENT';
+  END IF;
+
+  IF v_room.status IN ('ended', 'expired') THEN
+    RAISE EXCEPTION 'ROOM_ENDED_CANNOT_EXTEND';
+  END IF;
+
+  IF v_room."expiresAt" IS NOT NULL AND v_room."expiresAt" <= v_now THEN
+    UPDATE public.rooms SET status = 'expired', "endedAt" = v_now WHERE public.rooms."roomId" = p_room_id;
+    RAISE EXCEPTION 'ROOM_ALREADY_EXPIRED';
+  END IF;
+
+  IF p_new_expires_at <= v_room."expiresAt" THEN
+    RAISE EXCEPTION 'INVALID_EXTENSION_TIME';
+  END IF;
+
+  IF p_new_expires_at > v_room."creationTime" + INTERVAL '24 hours' THEN
+    RAISE EXCEPTION 'ROOM_MAX_DURATION_EXCEEDED';
+  END IF;
+
+  -- 3. Atomically update expiresAt
+  UPDATE public.rooms
+  SET "expiresAt" = p_new_expires_at,
+      "lastUpdateTime" = v_now
+  WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id;
+
+  -- 4. Audit
+  INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
+  VALUES (p_room_id, p_account_id::text, 'room.extended', v_room.status, v_room.status, v_room."expiresAt", p_new_expires_at, 'user extended', v_now);
+
+  RETURN p_new_expires_at;
+END;
+$$;
+
+-- 9.8 set_room_activity_authoritative
+CREATE OR REPLACE FUNCTION public.set_room_activity_authoritative(
+  p_room_id text,
+  p_status text,
+  p_actor_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_now timestamptz := clock_timestamp();
+  v_room public.rooms%ROWTYPE;
+  v_usage RECORD;
+  v_new_status text := p_status;
+BEGIN
+  IF p_status NOT IN ('active', 'inactive') THEN
+    RAISE EXCEPTION 'INVALID_STATUS';
+  END IF;
+
+  SELECT * INTO v_room
+  FROM public.rooms
+  WHERE public.rooms."roomId" = p_room_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ROOM_NOT_FOUND';
+  END IF;
+
+  -- 1. UNIFIED LOCK: Lock account usage record FIRST
+  PERFORM 1 
+  FROM public.account_room_usage 
+  WHERE account_room_usage.account_id = v_room.owner_id 
+  FOR UPDATE;
+
+  -- Re-read under lock
+  SELECT * INTO v_room
+  FROM public.rooms
+  WHERE public.rooms."roomId" = p_room_id
+  FOR UPDATE;
+
+  -- If room is already ended or expired, do not overwrite
+  IF v_room.status IN ('ended') THEN
+    RETURN jsonb_build_object('roomId', p_room_id, 'status', v_room.status, 'unchanged', true);
+  END IF;
+
+  -- Canonical lifecycle check: if temporary room has passed its canonical expiresAt, transition to expired
+  IF v_room."isPermanent" = false AND v_room."expiresAt" IS NOT NULL AND v_room."expiresAt" <= v_now THEN
+    UPDATE public.rooms
+    SET status = 'expired',
+        "endedAt" = v_now,
+        "lastUpdateTime" = v_now
+    WHERE public.rooms."roomId" = p_room_id;
+
+    -- Audit
+    INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
+    VALUES (v_room.owner_id, p_room_id, v_room.room_kind, 'EXPIRED', '{"reason": "overdue_during_activity_change"}'::jsonb);
+
+    INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
+    VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.expired', v_room.status, 'expired', v_room."expiresAt", v_room."expiresAt", 'canonical expiry reached', v_now);
+
+    v_new_status := 'expired';
+  ELSE
+    -- Active / Inactive state transition
+    IF p_status = 'active' THEN
+      UPDATE public.rooms
+      SET status = 'active',
+          "startedAt" = COALESCE("startedAt", v_now),
+          "lastActiveAt" = v_now,
+          "lastUpdateTime" = v_now
+      WHERE public.rooms."roomId" = p_room_id;
+    ELSE
+      UPDATE public.rooms
+      SET status = 'inactive',
+          "lastActiveAt" = v_now,
+          "lastUpdateTime" = v_now
+      WHERE public.rooms."roomId" = p_room_id;
+    END IF;
+
+    IF v_room.status != p_status THEN
+      INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
+      VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.status_changed', v_room.status, p_status, v_room."expiresAt", v_room."expiresAt", 'activity transition', v_now);
+    END IF;
+  END IF;
+
+  -- 2. Recompute materialized usage under lock
+  SELECT 
+    count(*)::int AS total,
+    count(*) FILTER (WHERE public.rooms.room_kind = 'watch')::int AS watch,
+    count(*) FILTER (WHERE public.rooms.room_kind = 'permanent')::int AS permanent
+  INTO v_usage
+  FROM public.rooms
+  WHERE public.rooms.owner_id = v_room.owner_id
+    AND public.rooms.status IN ('scheduled', 'active', 'inactive')
+    AND (public.rooms."isPermanent" = true OR public.rooms."expiresAt" > v_now);
+
+  UPDATE public.account_room_usage
+  SET total_rooms = v_usage.total,
+      watch_rooms = v_usage.watch,
+      permanent_rooms = v_usage.permanent,
+      updated_at = v_now
+  WHERE account_room_usage.account_id = v_room.owner_id;
+
+  RETURN jsonb_build_object(
+    'roomId', p_room_id,
+    'status', v_new_status,
+    'expiresAt', v_room."expiresAt",
+    'isPermanent', v_room."isPermanent"
+  );
+END;
+$$;
+
+-- 9.9 update_room_metadata_authoritative
+CREATE OR REPLACE FUNCTION public.update_room_metadata_authoritative(
+  p_account_id uuid,
+  p_room_id text,
+  p_title text DEFAULT NULL,
+  p_description text DEFAULT NULL,
+  p_is_chat_disabled boolean DEFAULT NULL,
+  p_cover_photo text DEFAULT NULL,
+  p_passcode_hash text DEFAULT NULL,
+  p_owner_passcode text DEFAULT NULL,
+  p_passcode_fingerprint text DEFAULT NULL,
+  p_clear_passcode boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_now timestamptz := clock_timestamp();
+  v_room public.rooms%ROWTYPE;
+BEGIN
+  SELECT * INTO v_room
+  FROM public.rooms
+  WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ROOM_NOT_FOUND';
+  END IF;
+
+  IF p_passcode_fingerprint IS NOT NULL AND NOT p_clear_passcode THEN
+    PERFORM 1
+    FROM public.rooms
+    WHERE public.rooms.passcode_fingerprint = p_passcode_fingerprint
+      AND public.rooms."roomId" != p_room_id;
+
+    IF FOUND THEN
+      RAISE EXCEPTION 'PASSCODE_TAKEN';
+    END IF;
+  END IF;
+
+  UPDATE public.rooms
+  SET "roomTitle" = COALESCE(p_title, "roomTitle"),
+      "roomDescription" = CASE WHEN p_description IS NOT NULL THEN p_description ELSE "roomDescription" END,
+      "isChatDisabled" = COALESCE(p_is_chat_disabled, "isChatDisabled"),
+      "coverPhoto" = CASE WHEN p_cover_photo IS NOT NULL THEN p_cover_photo ELSE "coverPhoto" END,
+      passcode = CASE WHEN p_clear_passcode THEN NULL WHEN p_passcode_hash IS NOT NULL THEN p_passcode_hash ELSE passcode END,
+      owner_passcode = CASE WHEN p_clear_passcode THEN NULL WHEN p_owner_passcode IS NOT NULL THEN p_owner_passcode ELSE owner_passcode END,
+      passcode_fingerprint = CASE WHEN p_clear_passcode THEN NULL WHEN p_passcode_fingerprint IS NOT NULL THEN p_passcode_fingerprint ELSE passcode_fingerprint END,
+      "lastUpdateTime" = v_now
+  WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id;
+
+  INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", reason, timestamp)
+  VALUES (p_room_id, p_account_id::text, 'room.metadata_updated', v_room.status, v_room.status, 'settings updated', v_now);
+
+  RETURN jsonb_build_object(
+    'roomId', p_room_id,
+    'roomTitle', COALESCE(p_title, v_room."roomTitle"),
+    'coverPhoto', CASE WHEN p_cover_photo IS NOT NULL THEN p_cover_photo ELSE v_room."coverPhoto" END
+  );
+END;
+$$;
+
+-- Privilege Lockdown on new authoritative procedures
+REVOKE ALL ON FUNCTION public.purge_account_rooms_authoritative(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.extend_room_authoritative(uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.set_room_activity_authoritative(text, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.update_room_metadata_authoritative(uuid, text, text, text, boolean, text, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.purge_account_rooms_authoritative(uuid) TO postgres, service_role;
+GRANT EXECUTE ON FUNCTION public.extend_room_authoritative(uuid, text, timestamptz) TO postgres, service_role;
+GRANT EXECUTE ON FUNCTION public.set_room_activity_authoritative(text, text, uuid) TO postgres, service_role;
+GRANT EXECUTE ON FUNCTION public.update_room_metadata_authoritative(uuid, text, text, text, boolean, text, text, text, text, boolean) TO postgres, service_role;
+
 
