@@ -53,9 +53,17 @@ export const Create = () => {
   // Form states
   const [roomTitle, setRoomTitle] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
-  const generatePasscode = () =>
-    Math.random().toString(36).substring(2, 10).padEnd(8, "0");
+  const generatePasscode = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let result = "";
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
   const [passcode, setPasscode] = useState(generatePasscode());
+  const [passcodeError, setPasscodeError] = useState("");
+  const [checkingPasscode, setCheckingPasscode] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [copiedPasscode, setCopiedPasscode] = useState(false);
 
@@ -79,6 +87,41 @@ export const Create = () => {
     setCoverPreview(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [coverPhotoFile, selectedAvatarUrl]);
+
+  useEffect(() => {
+    if (passcode.length !== 8) {
+      setPasscodeError("Passcode must be strictly 8 characters long.");
+      return;
+    }
+    setPasscodeError("");
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      setCheckingPasscode(true);
+      try {
+        const resp = await fetch(`${serverPath}/checkPasscodeAvailability`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode }),
+        });
+        if (isCancelled) return;
+        const data = await resp.json();
+        if (data.available === false) {
+          setPasscodeError("This passcode is already taken. Each room passcode must be unique.");
+        } else {
+          setPasscodeError("");
+        }
+      } catch {
+        // network or offline
+      } finally {
+        if (!isCancelled) setCheckingPasscode(false);
+      }
+    }, 200);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [passcode]);
 
   const handleSelectPresetAvatar = (url: string) => {
     if (selectedAvatarUrl === url && !coverPhotoFile) {
@@ -111,6 +154,7 @@ export const Create = () => {
 
   const handleRegeneratePasscode = () => {
     setPasscode(generatePasscode());
+    setPasscodeError("");
   };
 
   const handleCopyPasscode = () => {
@@ -126,8 +170,12 @@ export const Create = () => {
       setError("Room title is required.");
       return;
     }
-    if (passcode.length < 8) {
-      setError("Passcode must be at least 8 characters long.");
+    if (passcode.length !== 8) {
+      setError("Passcode must be strictly 8 characters long.");
+      return;
+    }
+    if (passcodeError) {
+      setError(passcodeError);
       return;
     }
     setLoading(true);
@@ -205,7 +253,11 @@ export const Create = () => {
       window.location.assign(`/watch/${finalRoomId}`);
     } catch (err: any) {
       console.error("Room creation error:", err);
-      setError(err.message || "Failed to create room.");
+      const msg = err.message || "Failed to create room.";
+      setError(msg);
+      if (msg.toLowerCase().includes("passcode") || msg.toLowerCase().includes("taken")) {
+        setPasscodeError(msg);
+      }
       setLoading(false);
     }
   };
@@ -403,13 +455,18 @@ export const Create = () => {
               <div className={styles.passcodeField}>
                 <PasswordInput
                   label="Room passcode"
-                  description="Friends enter this passcode to join (at least 8 characters)"
-                  placeholder="Passcode"
+                  description="Friends enter this passcode to join (strictly 8 characters, must be unique)"
+                  placeholder="8-character passcode"
                   value={passcode}
                   required
                   withAsterisk
                   minLength={8}
-                  onChange={(e) => setPasscode(e.target.value)}
+                  maxLength={8}
+                  error={passcodeError || undefined}
+                  onChange={(e) => {
+                    setPasscode(e.target.value.slice(0, 8));
+                    if (error) setError("");
+                  }}
                   size="md"
                   visible={showPasscode}
                   onVisibilityChange={setShowPasscode}

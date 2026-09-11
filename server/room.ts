@@ -486,9 +486,8 @@ export class Room {
           socket.emit("errorMessage", "This room has ended or expired.");
           if (postgres) {
             postgres.query(
-              `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE "roomId" = $1`,
-              [this.roomId]
-            ).catch(e => console.error("Failed to update status on real-time check:", e));
+              `SELECT * FROM public.expire_rooms_authoritative()`
+            ).catch(e => console.error("Failed to update status on authoritative real-time check:", e));
           }
           if (this.vBrowser) {
             this.stopVBrowserInternal();

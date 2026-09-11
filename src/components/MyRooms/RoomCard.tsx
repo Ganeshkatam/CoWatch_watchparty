@@ -197,9 +197,15 @@ export const EditRoomModal = ({
       setError("Description must be under 500 characters.");
       return;
     }
-    if (!removeProtection && password && password !== passwordConfirm) {
-      setError("Passwords do not match.");
-      return;
+    if (!removeProtection && password) {
+      if (password.length !== 8) {
+        setError("Passcode must be strictly 8 characters long.");
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setError("Passwords do not match.");
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -559,18 +565,22 @@ export const EditRoomModal = ({
                     : "Enter a password to require guests to enter a passcode before joining. Leave blank for an open room."}
                 </Text>
                 <PasswordInput
-                  label={room.isPasscodeProtected ? "New password" : "Set password"}
-                  placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter password (optional)"}
+                  label={room.isPasscodeProtected ? "New passcode" : "Set passcode"}
+                  placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter 8-character passcode"}
                   value={password}
-                  onChange={(e) => setPassword(e.currentTarget.value)}
+                  minLength={8}
+                  maxLength={8}
+                  onChange={(e) => setPassword(e.currentTarget.value.slice(0, 8))}
                   disabled={isRoomActive || isSaving}
                 />
                 {password.length > 0 && (
                   <PasswordInput
-                    label="Confirm password"
-                    placeholder="Confirm new password"
+                    label="Confirm passcode"
+                    placeholder="Confirm 8-character passcode"
                     value={passwordConfirm}
-                    onChange={(e) => setPasswordConfirm(e.currentTarget.value)}
+                    minLength={8}
+                    maxLength={8}
+                    onChange={(e) => setPasswordConfirm(e.currentTarget.value.slice(0, 8))}
                     disabled={isRoomActive || isSaving}
                   />
                 )}

@@ -4,6 +4,7 @@ import {
   isBcryptHash,
   encryptPasscodeForOwner,
   decryptPasscodeForOwner,
+  computePasscodeFingerprint,
 } from './roomPasscode.ts';
 
 async function runTests() {
@@ -65,6 +66,20 @@ async function runTests() {
   if (decryptPasscodeForOwner('') !== null) throw new Error('Expected null for empty encrypted data');
   if (decryptPasscodeForOwner(null) !== null) throw new Error('Expected null for null encrypted data');
   if (decryptPasscodeForOwner('invalid:token') !== null) throw new Error('Expected null for malformed encrypted data');
+
+  // Test 8: Passcode fingerprint generation and uniqueness
+  const fp1 = computePasscodeFingerprint('aB3dE7gH');
+  const fp2 = computePasscodeFingerprint('aB3dE7gH');
+  const fp3 = computePasscodeFingerprint('aB3dE7gI');
+  if (!fp1 || fp1.length !== 64) throw new Error(`Invalid fingerprint format: ${fp1}`);
+  if (fp1 !== fp2) throw new Error('Fingerprint must be deterministic for identical passcodes');
+  if (fp1 === fp3) throw new Error('Fingerprint must be unique for distinct passcodes');
+  try {
+    computePasscodeFingerprint('');
+    throw new Error('Should have thrown on empty passcode for fingerprint');
+  } catch (e: any) {
+    if (e.message !== 'ROOM_PASSCODE_REQUIRED') throw e;
+  }
 
   console.log('All tests passed!');
 }

@@ -88,3 +88,16 @@ export function decryptPasscodeForOwner(encryptedData?: string | null): string |
     return null;
   }
 }
+
+/**
+ * Computes a deterministic SHA-256 fingerprint for a room passcode.
+ * Used to enforce uniqueness across all rooms in the database via rooms_passcode_fingerprint_key.
+ * @param passcode The plaintext room passcode.
+ * @returns 64-character lowercase hex string.
+ */
+export function computePasscodeFingerprint(passcode?: string | null): string {
+  if (!passcode || typeof passcode !== 'string') {
+    throw new Error('ROOM_PASSCODE_REQUIRED');
+  }
+  return crypto.createHash('sha256').update(passcode, 'utf8').digest('hex');
+}

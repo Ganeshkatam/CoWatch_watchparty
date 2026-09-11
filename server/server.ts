@@ -26,6 +26,7 @@ import {
   isBcryptHash,
   encryptPasscodeForOwner,
   decryptPasscodeForOwner,
+  computePasscodeFingerprint,
 } from "./utils/roomPasscode.ts";
 import {
   checkPasscodeRateLimits,
@@ -388,6 +389,34 @@ app.get("/youtubePlaylist/:playlistId", async (req, res) => {
   }
 });
 
+app.post("/checkPasscodeAvailability", async (req, res) => {
+  const passcode = req.body?.passcode;
+  if (typeof passcode !== "string" || passcode.length !== 8) {
+    res.status(400).json({
+      available: false,
+      error: "Passcode must be strictly 8 characters long.",
+    });
+    return;
+  }
+
+  if (!postgres) {
+    res.json({ available: true });
+    return;
+  }
+
+  try {
+    const fingerprint = computePasscodeFingerprint(passcode);
+    const existing = await postgres.query(
+      `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+      [fingerprint]
+    );
+    res.json({ available: existing.rows.length === 0 });
+  } catch (err: any) {
+    console.error("checkPasscodeAvailability error:", err);
+    res.status(500).json({ error: "Failed to verify passcode availability." });
+  }
+});
+
 app.post("/createRoom", async (req, res) => {
   // Authentication is required to create a room
   if (!req.body?.token || !req.body?.uid) {
@@ -423,65 +452,123 @@ app.post("/createRoom", async (req, res) => {
   }
 
   const rawPasscode = req.body?.passcode;
-  if (typeof rawPasscode !== "string" || rawPasscode.length < 8) {
+  if (typeof rawPasscode !== "string" || rawPasscode.length !== 8) {
     res.status(400).json({
-      error: "Passcode is required and must be at least 8 characters long.",
+      error: "Passcode is required and must be strictly 8 characters long.",
     });
     return;
   }
 
+  const passcodeFingerprint = computePasscodeFingerprint(rawPasscode);
+
+  if (postgres) {
+    const duplicateCheck = await postgres.query(
+      `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+      [passcodeFingerprint]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      res.status(409).json({
+        error: "This passcode is already taken. Each room passcode must be unique.",
+      });
+      return;
+    }
+  }
 
   const genName = () => makeRoomName(config.SHARD);
   let name = sanitizeRoomId(genName());
   console.log("createRoom: ", name, "by user:", decoded.email);
-  const newRoom = new Room(io, name);
 
+  const isPermanent = Boolean(req.body?.isPermanent);
+  const roomKind = isPermanent ? "permanent" : "watch";
+  const now = new Date();
+  const expiresAt = isPermanent ? null : new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
+
+  if (postgres) {
+    try {
+      const passcodeHash = await hashRoomPasscode(rawPasscode);
+      const ownerPasscodeEncrypted = encryptPasscodeForOwner(rawPasscode);
+
+      await postgres.query(
+        `SELECT public.create_room_authoritative(
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        ) AS result`,
+        [
+          decoded.uid,
+          name,
+          roomKind,
+          roomTitle,
+          req.body?.roomDescription || null,
+          passcodeHash,
+          ownerPasscodeEncrypted,
+          passcodeFingerprint,
+          typeof req.body?.coverPhoto === "string" ? req.body.coverPhoto : null,
+          Boolean(req.body?.isChatDisabled),
+          expiresAt,
+          config.FREE_ROOM_LIMIT || 5, // max total
+          5,                          // max watch
+          2,                          // max permanent
+        ]
+      );
+    } catch (e: any) {
+      redisCount("createRoomError");
+      const errMsg = e?.message || "";
+      if (errMsg.includes("TOTAL_ROOM_LIMIT_EXCEEDED")) {
+        res.status(409).json({
+          error: {
+            code: "TOTAL_ROOM_LIMIT_EXCEEDED",
+            message: "You have reached your room limit. Delete an existing room to create a new one.",
+          },
+        });
+        return;
+      }
+      if (errMsg.includes("PERMANENT_ROOM_LIMIT_EXCEEDED")) {
+        res.status(409).json({
+          error: {
+            code: "PERMANENT_ROOM_LIMIT_EXCEEDED",
+            message: "You have reached your permanent room limit.",
+          },
+        });
+        return;
+      }
+      if (errMsg.includes("WATCH_ROOM_LIMIT_EXCEEDED")) {
+        res.status(409).json({
+          error: {
+            code: "WATCH_ROOM_LIMIT_EXCEEDED",
+            message: "You have reached your temporary room limit.",
+          },
+        });
+        return;
+      }
+      if (errMsg.includes("ACCOUNT_ROOMS_DISABLED")) {
+        res.status(403).json({
+          error: {
+            code: "ACCOUNT_ROOMS_DISABLED",
+            message: "Room creation is disabled for this account.",
+          },
+        });
+        return;
+      }
+      if (e?.code === "23505" && e?.constraint === "rooms_passcode_fingerprint_key") {
+        res.status(409).json({
+          error: "This passcode is already taken. Each room passcode must be unique.",
+        });
+        return;
+      }
+      throw e;
+    }
+  }
+
+  // Authoritative in-memory registration ONLY after DB commit succeeds
+  const newRoom = new Room(io, name);
   if (req.body?.lock) {
     newRoom.lock = decoded.uid;
   }
   newRoom.isChatDisabled = Boolean(req.body?.isChatDisabled);
   newRoom.creator = decoded.email || "";
-
-  const isPermanent = Boolean(req.body?.isPermanent);
-  const now = new Date();
-  const expiresAt = isPermanent ? undefined : new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
-  newRoom.expiresAt = expiresAt;
+  newRoom.expiresAt = expiresAt ?? undefined;
   newRoom.status = 'inactive';
   newRoom.owner_id = decoded.uid;
   newRoom.isPermanent = isPermanent;
-
-  if (postgres) {
-    const rawPasscode = req.body?.passcode;
-    const roomObj = {
-      roomId: newRoom.roomId,
-      lastUpdateTime: now,
-      creationTime: now,
-      passcode: await hashRoomPasscode(rawPasscode),
-      owner_passcode: encryptPasscodeForOwner(rawPasscode),
-
-      isChatDisabled: Boolean(req.body?.isChatDisabled),
-      roomTitle: roomTitle,
-      roomDescription: req.body?.roomDescription || null,
-      coverPhoto: typeof req.body?.coverPhoto === "string" ? req.body.coverPhoto : null,
-      owner_id: decoded.uid,
-      isSubRoom: isPermanent,
-      status: 'inactive',
-      startedAt: now,
-      expiresAt: expiresAt ?? null,
-      isPermanent: isPermanent,
-    };
-    try {
-      await insertObject(postgres, "rooms", roomObj);
-      await postgres.query(`
-        INSERT INTO room_lifecycle_events 
-        ("roomId", actor, event, "newStatus", "newExpiresAt", reason)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [newRoom.roomId, decoded.uid, 'room.created', 'inactive', expiresAt ?? null, isPermanent ? 'permanent room creation' : 'temporary room creation']);
-    } catch (e) {
-      redisCount("createRoomError");
-      throw e;
-    }
-  }
 
   const preload = (req.body?.video || "").slice(0, 20000);
   if (preload) {
@@ -586,13 +673,19 @@ app.post("/updateRoomSettings", async (req, res) => {
 
   let passcodeHash: string | null = null;
   let ownerPasscodeEncrypted: string | null = null;
+  let passcodeFingerprint: string | null = null;
   const isClearingPassword = removePassword === true || password === "";
 
   if (!isClearingPassword && typeof password === 'string' && password.length > 0) {
+    if (password.length !== 8) {
+      res.status(400).json({ error: "Passcode must be strictly 8 characters long." });
+      return;
+    }
     if (Buffer.byteLength(password, 'utf8') > 72) {
       res.status(400).json({ error: "Password too long" });
       return;
     }
+    passcodeFingerprint = computePasscodeFingerprint(password);
     passcodeHash = await hashRoomPasscode(password);
     ownerPasscodeEncrypted = encryptPasscodeForOwner(password);
   }
@@ -619,6 +712,18 @@ app.post("/updateRoomSettings", async (req, res) => {
 
     const room = existingRoom.rows[0];
 
+    if (passcodeFingerprint) {
+      const duplicateCheck = await client.query(
+        `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 AND "roomId" != $2 LIMIT 1`,
+        [passcodeFingerprint, roomId]
+      );
+      if (duplicateCheck.rows.length > 0) {
+        await client.query('ROLLBACK');
+        res.status(409).json({ error: "This passcode is already taken by another room. Each room passcode must be unique." });
+        return;
+      }
+    }
+
     const cleanRoomId = roomId;
     const memRoom = rooms.get(cleanRoomId);
     const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
@@ -635,45 +740,29 @@ app.post("/updateRoomSettings", async (req, res) => {
     }
 
     const currentlyPermanent = Boolean(room.isPermanent);
+    const permanenceChanged = isPermanent !== currentlyPermanent;
 
-    let newExpiresAt = room.expiresAt;
-    let newIsSubRoom = room.isSubRoom;
-    let permanenceChanged = false;
-
-    if (isPermanent && !currentlyPermanent) {
-      newExpiresAt = null;
-      newIsSubRoom = true;
-      permanenceChanged = true;
-    } else if (!isPermanent && currentlyPermanent) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      newExpiresAt = tomorrow;
-      newIsSubRoom = false;
-      permanenceChanged = true;
+    if (permanenceChanged) {
+      await client.query(
+        `SELECT public.set_room_permanence_authoritative($1, $2, $3) AS result`,
+        [decoded.uid, roomId, isPermanent]
+      );
     }
 
-    let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "expiresAt" = $3, "isSubRoom" = $4, "isChatDisabled" = $5, "isPermanent" = $6`;
-    const updateValues: any[] = [titleTrimmed, roomDescription || null, newExpiresAt, newIsSubRoom, isChatDisabled, isPermanent];
+    let updateQuery = `UPDATE rooms SET "roomTitle" = $1, "roomDescription" = $2, "isChatDisabled" = $3`;
+    const updateValues: any[] = [titleTrimmed, roomDescription || null, isChatDisabled];
 
     if (isClearingPassword) {
-      updateQuery += `, passcode = NULL, owner_passcode = NULL`;
-    } else if (passcodeHash && ownerPasscodeEncrypted) {
-      updateValues.push(passcodeHash, ownerPasscodeEncrypted);
-      updateQuery += `, passcode = $${updateValues.length - 1}, owner_passcode = $${updateValues.length}`;
+      updateQuery += `, passcode = NULL, owner_passcode = NULL, passcode_fingerprint = NULL`;
+    } else if (passcodeHash && ownerPasscodeEncrypted && passcodeFingerprint) {
+      updateValues.push(passcodeHash, ownerPasscodeEncrypted, passcodeFingerprint);
+      updateQuery += `, passcode = $${updateValues.length - 2}, owner_passcode = $${updateValues.length - 1}, passcode_fingerprint = $${updateValues.length}`;
     }
 
     updateValues.push(roomId, decoded.uid);
     updateQuery += ` WHERE "roomId" = $${updateValues.length - 1} AND owner_id = $${updateValues.length}`;
 
     await client.query(updateQuery, updateValues);
-
-    if (permanenceChanged) {
-      await client.query(
-        `INSERT INTO room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [roomId, decoded.uid, 'room.permanence_changed', null, null, room.expiresAt, newExpiresAt, isPermanent ? "Room converted from temporary to permanent" : "Room converted from permanent to temporary"]
-      );
-    }
 
     await client.query('COMMIT');
     res.json({ success: true });
@@ -682,6 +771,10 @@ app.post("/updateRoomSettings", async (req, res) => {
       await client.query('ROLLBACK');
     } catch {}
     console.error("updateRoomSettings error:", err);
+    if (err?.code === "23505" && err?.constraint === "rooms_passcode_fingerprint_key") {
+      res.status(409).json({ error: "This passcode is already taken by another room. Each room passcode must be unique." });
+      return;
+    }
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -926,8 +1019,8 @@ app.post("/verifyPasscode", async (req, res) => {
   const cleanRoomId = sanitizeRoomId(roomId);
   const cleanPasscode = passcode.trim();
 
-  if (cleanPasscode.length < 8) {
-    res.status(400).json({ valid: false, error: "Passcode must be at least 8 characters." });
+  if (cleanPasscode.length !== 8) {
+    res.status(400).json({ valid: false, error: "Passcode must be strictly 8 characters." });
     return;
   }
 
@@ -1389,42 +1482,26 @@ app.post("/endRoom", async (req, res) => {
       return;
     }
 
-    // 1. Authoritative DB transition: verify caller is owner and current status is 'active' (or inactive fallback)
-    const updateResult = await postgres.query(
-      `UPDATE rooms 
-       SET status = 'inactive', "lastActiveAt" = NOW() 
-       WHERE "roomId" = $1 AND owner_id = $2 AND status = 'active'
-       RETURNING "roomId", "status", "expiresAt", "isPermanent"`,
-      [roomId, decoded.uid]
-    );
-
-    let roomRow = updateResult.rows[0];
-    if (!roomRow) {
-      // Check if room exists and is already inactive
-      const checkResult = await postgres.query(
-        `SELECT "roomId", "status", "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
-        [roomId, decoded.uid]
+    // 1. Authoritative DB transition: lock account usage, mark status = 'ended', and immediately reclaim quota slot
+    try {
+      await postgres.query(
+        `SELECT public.end_room_authoritative($1, $2, 'host') AS result`,
+        [decoded.uid, roomId]
       );
-      if (!checkResult || checkResult.rows.length === 0) {
+    } catch (dbErr: any) {
+      const msg = dbErr?.message || "";
+      if (msg.includes("ROOM_NOT_FOUND")) {
         res.status(404).json({ error: "Room not found or unauthorized" });
         return;
       }
-      roomRow = checkResult.rows[0];
-    } else {
-      // Insert audit log only if transition from active to inactive occurred
-      await postgres.query(
-        `INSERT INTO room_lifecycle_events 
-         ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [roomId, decoded.uid, 'room.stopped', 'active', 'inactive', roomRow.expiresAt, roomRow.expiresAt, 'session instance stopped by owner']
-      ).catch(e => console.error("Failed to insert lifecycle event for stopped room:", e));
+      throw dbErr;
     }
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
     const cleanRoomId = roomId;
     const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
-      memoryRoom.status = 'inactive';
+      memoryRoom.status = 'ended';
       
       // Explicit notification to all connected clients before disconnecting
       io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED");
@@ -1432,7 +1509,7 @@ app.post("/endRoom", async (req, res) => {
       memoryRoom.addChatMessage(null, {
         id: '',
         system: true,
-        msg: 'This watch session has been stopped by the host. The room is now inactive until the host starts a new session.',
+        msg: 'This watch party has been ended by the host.',
       });
 
       if (memoryRoom.vBrowser) {
@@ -1441,9 +1518,9 @@ app.post("/endRoom", async (req, res) => {
       memoryRoom.disconnectAllSockets();
     }
 
-    res.json({ success: true, status: 'inactive' });
+    res.json({ success: true, status: 'ended' });
   } catch (error) {
-    console.error("Error stopping room session:", error);
+    console.error("Error ending room session:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1475,30 +1552,26 @@ app.delete("/deleteRoom", async (req, res) => {
     }
     const roomId = sanitizeRoomId(rawRoomId);
 
-    // Guard: refuse to delete a room that is currently active.
-    const statusCheck = await postgres.query(
-      `SELECT status FROM rooms WHERE owner_id = $1 AND "roomId" = $2`,
-      [decoded.uid, roomId],
-    );
-    if (statusCheck.rowCount === 0) {
-      res.status(404).json({ error: "Room not found or unauthorized" });
-      return;
-    }
-    if (statusCheck.rows[0].status === "active") {
-      res.status(409).json({ error: "Cannot delete an active room. Stop the session first." });
-      return;
-    }
-
-    const result = await postgres.query(
-      `DELETE FROM rooms WHERE owner_id = $1 AND "roomId" = $2 RETURNING "roomId"`,
-      [decoded.uid, roomId],
-    );
-    if (result.rowCount === 0) {
-      res.status(404).json({ error: "Room not found or unauthorized" });
-      return;
+    // Authoritative DB deletion with lock-first serialization and quota reclamation
+    try {
+      await postgres.query(
+        `SELECT public.delete_room_authoritative($1, $2) AS result`,
+        [decoded.uid, roomId]
+      );
+    } catch (dbErr: any) {
+      const msg = dbErr?.message || "";
+      if (msg.includes("ROOM_NOT_FOUND")) {
+        res.status(404).json({ error: "Room not found or unauthorized" });
+        return;
+      }
+      if (msg.includes("ROOM_ACTIVE_CANNOT_DELETE")) {
+        res.status(409).json({ error: "Cannot delete an active room. Stop the session first." });
+        return;
+      }
+      throw dbErr;
     }
 
-    // Prevent an active room from being persisted again after its row is deleted.
+    // Clean up memory structures ONLY after authoritative DB deletion succeeds
     const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
       memoryRoom.disconnectAllSockets();
@@ -1620,10 +1693,9 @@ async function expireRooms() {
   if (!postgres) return;
   try {
     const result = await postgres.query(`
-      UPDATE rooms
-      SET status = 'expired', "endedAt" = NOW()
-      WHERE status IN ('active', 'inactive') AND "expiresAt" <= NOW() AND "isPermanent" = false
-      RETURNING "roomId", "expiresAt" as "previousExpiresAt", "endedAt" as "timestamp"
+      SELECT room_id AS "roomId", owner_id AS "ownerId", room_kind AS "roomKind",
+             previous_expires_at AS "previousExpiresAt", ended_at AS "timestamp"
+      FROM public.expire_rooms_authoritative()
     `);
     if (result.rowCount && result.rowCount > 0) {
       console.log(`[EXPIRE] Expired ${result.rowCount} rooms`);
@@ -1643,23 +1715,6 @@ async function expireRooms() {
 
           room.disconnectAllSockets();
         }
-
-        // Insert audit log
-        await postgres.query(`
-          INSERT INTO room_lifecycle_events 
-          ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [
-          row.roomId,
-          'system',
-          'room.expired',
-          'active_or_inactive',
-          'expired',
-          row.previousExpiresAt,
-          row.previousExpiresAt, // For expiry, new is same as previous since we don't extend
-          'time limit reached',
-          row.timestamp
-        ]).catch(e => console.error("Failed to insert audit log for expiration:", e));
       }
     }
   } catch (e) {

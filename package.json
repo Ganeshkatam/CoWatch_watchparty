@@ -20,7 +20,8 @@
     "testvBrowser": "docker run -d --rm --name=vbrowser --log-opt max-size=1g --net=host --shm-size=1g --cap-add=\"SYS_ADMIN\" -e DISPLAY=\":99.0\" -e NEKO_PASSWORD=user -e NEKO_PASSWORD_ADMIN=admin -e NEKO_BIND=\":5100\" -e NEKO_EPR=\":59000-59100\" -e NEKO_H264=\"1\" howardc93/vbrowser",
     "testvlc": "docker run -d --rm --name=vlc --log-opt max-size=1g --net=host -e VLC_MEDIA=\"https://github.com/ietf-wg-cellar/matroska-test-files/raw/master/test_files/test1.mkv\" -e NEKO_PASSWORD=user -e NEKO_PASSWORD_ADMIN=admin -e NEKO_BIND=\":5100\" -e NEKO_EPR=\":59000-59100\" -e NEKO_H264=\"1\" m1k1o/neko:vlc",
     "analyze": "npx source-map-explorer 'build/assets/*.js' --html result.html --no-border-checks",
-    "db:strip-slashes": "tsx server/strip_slashes.ts"
+    "db:strip-slashes": "tsx server/strip_slashes.ts",
+    "test:quota-concurrency": "tsx server/concurrency_test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",

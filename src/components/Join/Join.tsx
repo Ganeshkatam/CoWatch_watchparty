@@ -203,8 +203,8 @@ export const Join: React.FC = () => {
       return;
     }
 
-    if (cleanPass.length < 8) {
-      setFormError("Passcode must be at least 8 characters.");
+    if (cleanPass.length !== 8) {
+      setFormError("Passcode must be strictly 8 characters.");
       return;
     }
 
@@ -436,10 +436,12 @@ export const Join: React.FC = () => {
                         </span>
                       </div>
                       <PasswordInput
-                        placeholder="Enter passcode"
+                        placeholder="Enter 8-character passcode"
                         value={passcode}
+                        minLength={8}
+                        maxLength={8}
                         onChange={(event) => {
-                          setPasscode(event.currentTarget.value);
+                          setPasscode(event.currentTarget.value.slice(0, 8));
                           if (formError) setFormError("");
                         }}
                         required
@@ -484,7 +486,7 @@ export const Join: React.FC = () => {
                     className={styles.submitBtn}
                   >
                     {roomInfo?.isOwner
-                      ? "Enter Room as Host"
+                      ? "Start Room"
                       : !user
                         ? "Sign in to Join"
                         : user.email_confirmed_at == null
