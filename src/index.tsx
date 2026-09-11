@@ -5,6 +5,7 @@ import "./index.css";
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Redirect } from "react-router-dom";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import type { User } from "@supabase/supabase-js";
 import {
@@ -621,6 +622,7 @@ class CoWatch extends React.Component {
             </MantineProvider>
           )}
         </ThemeConsumer>
+        <SpeedInsights />
       </ThemeProvider>
       // </React.StrictMode>
     );
