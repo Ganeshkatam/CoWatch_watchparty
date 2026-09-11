@@ -222,7 +222,7 @@ export const ListRoomsButton = () => {
   return (
     <Button
       component={Link}
-      to="/rooms"
+      to="/myrooms"
       variant="light"
       color="violet"
       leftSection={<IconDeviceTv size={16} />}
@@ -334,7 +334,7 @@ const NavigationMenuContent: React.FC<{
                 <span>Create room</span>
               </Link>
               <Link
-                to="/rooms"
+                to="/myrooms"
                 className={styles.drawerNavLink}
                 onClick={onClose}
               >
@@ -589,8 +589,8 @@ export const TopBar = (props: {
           </Link>
           {!props.hideMyRooms && context.user && (
             <Link
-              to="/rooms"
-              className={`${styles.middleNavLink} ${location.pathname === "/rooms" ? styles.middleNavLinkActive : ""
+              to="/myrooms"
+              className={`${styles.middleNavLink} ${location.pathname === "/myrooms" ? styles.middleNavLinkActive : ""
                 }`}
             >
               My rooms

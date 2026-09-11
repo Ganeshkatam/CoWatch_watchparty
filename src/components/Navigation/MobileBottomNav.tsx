@@ -56,10 +56,10 @@ export const MobileBottomNav: React.FC = () => {
         {/* Item 2: Rooms (Authenticated) or FAQ (Guest) */}
         {user ? (
           (() => {
-            const isActive = isRouteActive(location.pathname, "/rooms", true);
+            const isActive = isRouteActive(location.pathname, "/myrooms", true);
             return (
               <Link
-                to="/rooms"
+                to="/myrooms"
                 className={`${styles.navItem} ${isActive ? styles.activeItem : ""}`}
                 aria-current={isActive ? "page" : undefined}
               >

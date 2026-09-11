@@ -141,7 +141,7 @@ if (window.location.hash && window.location.pathname === "/") {
       if (errorDesc.includes("Email provider is not supported") || errorDesc.includes("Database error saving new user")) {
         window.location.href = "/login?error=unsupported_email";
       }
-    } catch(e) {}
+    } catch (e) { }
   } else if (!window.location.hash.startsWith("#access_token=")) {
     const hashRoomId = window.location.hash.substring(1).replace(/^\//, '');
     window.location.href = "/join/" + hashRoomId;
@@ -595,13 +595,13 @@ class CoWatch extends React.Component {
                         <Route path="/profile" exact>
                           <Redirect to="/account/profile" />
                         </Route>
-                        <Route path="/rooms" exact>
+                        <Route path="/myrooms" exact>
                           <RequireVerifiedEmail>
                             <TopBar />
                             <MyRooms />
                           </RequireVerifiedEmail>
                         </Route>
-                        <Route path="/rooms/:roomId">
+                        <Route path="/myrooms/:roomId">
                           <RequireVerifiedEmail>
                             <TopBar />
                             <RoomDetails />

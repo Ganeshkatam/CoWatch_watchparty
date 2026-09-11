@@ -19,7 +19,7 @@ assert(!isBottomNavVisible("/verify-email"), "Should hide on /verify-email");
 
 // Visible routes
 assert(isBottomNavVisible("/"), "Should show on /");
-assert(isBottomNavVisible("/rooms"), "Should show on /rooms");
+assert(isBottomNavVisible("/myrooms"), "Should show on /myrooms");
 assert(isBottomNavVisible("/rooms/my-room-123"), "Should show on /rooms/:roomId");
 assert(isBottomNavVisible("/create"), "Should show on /create");
 assert(isBottomNavVisible("/profile"), "Should show on /profile");
@@ -33,9 +33,9 @@ assert(isBottomNavVisible("/faq"), "Should show on /faq");
 console.log("Testing isRouteActive...");
 
 assert(isRouteActive("/", "/"), "Root path should be active on /");
-assert(!isRouteActive("/rooms", "/"), "Root should not be active on /rooms");
-assert(isRouteActive("/rooms", "/rooms"), "/rooms should be active on /rooms");
-assert(!isRouteActive("/rooms/detail-123", "/rooms"), "/rooms should NOT be active on /rooms/:roomId");
+assert(!isRouteActive("/myrooms", "/"), "Root should not be active on /myrooms");
+assert(isRouteActive("/myrooms", "/myrooms"), "/myrooms should be active on /myrooms");
+assert(!isRouteActive("/rooms/detail-123", "/myrooms"), "/myrooms should NOT be active on /rooms/:roomId");
 assert(isRouteActive("/create", "/create"), "/create should be active on /create");
 assert(isRouteActive("/account/profile", "/account/profile"), "/account/profile should be active on /account/profile");
 assert(isRouteActive("/faq", "/faq"), "/faq should be active on /faq");

@@ -212,7 +212,7 @@ export const RoomDetails = () => {
         method: "DELETE",
       });
       if (response.ok) {
-        history.push("/rooms");
+        history.push("/myrooms");
       } else {
         throw new Error("Failed to delete room");
       }
@@ -256,7 +256,7 @@ export const RoomDetails = () => {
   if (error || !room) {
     return (
       <div className={styles.container}>
-        <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => history.push("/rooms")} mb="xl">
+        <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => history.push("/myrooms")} mb="xl">
           Back to My Rooms
         </Button>
         <Paper withBorder p="xl" radius="md" style={{ textAlign: "center" }}>
@@ -288,7 +288,7 @@ export const RoomDetails = () => {
     <div className={styles.container}>
       {/* BREADCRUMBS */}
       <div className={styles.breadcrumb}>
-        <span className={styles.breadcrumbLink} onClick={() => history.push("/rooms")}>
+        <span className={styles.breadcrumbLink} onClick={() => history.push("/myrooms")}>
           <IconArrowLeft size={15} /> My Rooms
         </span>
         <span className={styles.breadcrumbSeparator}>/</span>
@@ -315,7 +315,7 @@ export const RoomDetails = () => {
             <Button
               variant="transparent"
               leftSection={<IconArrowLeft size={16} />}
-              onClick={() => history.push("/rooms")}
+              onClick={() => history.push("/myrooms")}
               pl={0}
               color="gray"
               style={{ color: "rgba(255,255,255,0.75)" }}
@@ -749,24 +749,23 @@ export const RoomDetails = () => {
             </div>
 
             <div
-              className={`${styles.lifecycleBanner} ${
-                room.isPermanent ? styles.permanent : room.status === "active" ? styles.active : styles.inactive
-              }`}
+              className={`${styles.lifecycleBanner} ${room.isPermanent ? styles.permanent : room.status === "active" ? styles.active : styles.inactive
+                }`}
             >
               <div>
                 <Text fw={700} size="sm" c="var(--text-primary)">
                   {room.isPermanent
                     ? "Permanent Room"
                     : room.status === "active"
-                    ? "Party in Progress"
-                    : "Room is Paused"}
+                      ? "Party in Progress"
+                      : "Room is Paused"}
                 </Text>
                 <Text size="xs" c="var(--text-secondary)" mt={4} style={{ lineHeight: 1.5 }}>
                   {room.isPermanent
                     ? "This room is saved forever. You and your friends can come back and watch together anytime."
                     : room.status === "active"
-                    ? "People are currently in this room watching together."
-                    : "Nobody is in the room right now. It automatically wakes up as soon as someone joins."}
+                      ? "People are currently in this room watching together."
+                      : "Nobody is in the room right now. It automatically wakes up as soon as someone joins."}
                 </Text>
               </div>
             </div>
@@ -799,11 +798,11 @@ export const RoomDetails = () => {
                 <span className={styles.tileValue}>
                   {room.lifecycleEvents && room.lifecycleEvents.length > 0
                     ? new Date(room.lifecycleEvents[0].timestamp).toLocaleString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
                     : "Never used yet"}
                 </span>
               </div>

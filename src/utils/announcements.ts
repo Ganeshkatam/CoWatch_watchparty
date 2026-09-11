@@ -18,7 +18,7 @@ const DISMISS_PREFIX = "announcement-dismiss:";
 
 /**
  * Validates action URLs to prevent javascript:, data:, or malformed protocols.
- * Allows safe relative paths (e.g. /rooms, /create) and valid http/https URLs.
+ * Allows safe relative paths (e.g. /myrooms, /create) and valid http/https URLs.
  */
 export const isValidActionUrl = (url?: string | null): boolean => {
   if (!url || typeof url !== "string") {

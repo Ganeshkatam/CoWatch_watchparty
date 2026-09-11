@@ -51,7 +51,7 @@ const announcementA: AppAnnouncement = {
   body: "Host delegation is now active.",
   level: "info",
   action_label: "View Rooms",
-  action_url: "/rooms",
+  action_url: "/myrooms",
   published_at: "2026-09-10T12:00:00.000Z",
   updated_at: "2026-09-10T12:00:00.000Z",
 };

@@ -31,7 +31,7 @@ export function isBottomNavVisible(pathname: string): boolean {
 /**
  * Route-aware matching helper using React Router semantics.
  * By default, requires exact path matching to prevent false positives
- * (e.g., /rooms/:roomId activating the /rooms tab).
+ * (e.g., /room/:roomId activating the /myrooms tab).
  */
 export function isRouteActive(
   pathname: string,
