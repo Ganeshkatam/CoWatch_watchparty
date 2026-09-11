@@ -9,17 +9,22 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - name: Use Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
           node-version: 24.x
-      - run: npm install
+      - run: npm ci
       - run: npm run build --if-present
         env:
           CI: true
@@ -29,8 +34,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"	
           git config --global user.email "github-actions[bot]@users.noreply.github.com"	
-          rm .gitignore	
+          rm -f .gitignore	
           git checkout -b release
           git add --all
-          git commit --quiet -m "Built from ${{ github.sha }}" 	
+          git commit --quiet -m "Built from ${{ github.sha }}" || echo "No changes to commit"
           git push origin release -f
