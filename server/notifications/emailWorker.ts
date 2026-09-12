@@ -1,14 +1,14 @@
 /**
- * NOTIFY-001 Email Worker
+ * NOTIFY-001A Email Worker
  *
- * Polls the email_outbox table at a configurable interval, claims jobs atomically,
- * renders templates, and delegates delivery to the configured email provider.
+ * Polls the email_outbox table, claims jobs atomically (FOR UPDATE SKIP LOCKED),
+ * checks deliverability suppression, renders templates, and dispatches to Resend.
  *
- * Design guarantees:
- *   - At-least-once delivery via retry/backoff (max attempts configurable)
- *   - Stalled PROCESSING rows are recovered via lease-timeout reclaim
- *   - Worker crashes do not orphan rows: reclaimStalledOutboxJobs() runs at start of each cycle
- *   - Provider idempotency key is passed to Resend to prevent duplicate delivery on retry
+ * Guarantees:
+ *   - Deliverability suppression check via SHA-256 email_hash prior to dispatch.
+ *   - If recipient is suppressed: immediately marks row FAILED (RECIPIENT_SUPPRESSED), zero retries.
+ *   - Stalled jobs recovered automatically via horizontal lease timeout (locked_at).
+ *   - Ephemeral process metrics recorded for observability.
  */
 
 import config from '../config.ts';
@@ -16,12 +16,19 @@ import {
   claimOutboxJobs,
   markOutboxSent,
   markOutboxRetryOrFailed,
+  markOutboxSuppressed,
   reclaimStalledOutboxJobs,
+  checkEmailSuppression,
 } from './emailOutbox.ts';
+import { computeEmailHash } from './suppression.ts';
 import { renderEmailTemplate } from './emailTemplates.ts';
 import { NotificationDeliveryError } from './notificationErrors.ts';
 import type { EmailProvider } from './emailProvider.ts';
 import { ResendProvider } from './providers/resendProvider.ts';
+import {
+  recordWorkerCycleStart,
+  recordWorkerCycleComplete,
+} from './notificationTelemetry.ts';
 
 // ---------------------------------------------------------------------------
 // Worker state
@@ -30,22 +37,25 @@ import { ResendProvider } from './providers/resendProvider.ts';
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 let isCycleRunning = false;
 let activeProvider: EmailProvider | null = null;
+const workerId = `worker-${process.pid || 1}`;
 
 // ---------------------------------------------------------------------------
 // Worker cycle
 // ---------------------------------------------------------------------------
 
-async function workerCycle(): Promise<void> {
+export async function runWorkerCycle(): Promise<void> {
   if (isCycleRunning) {
-    // Previous cycle still running (slow DB or large batch); skip this tick
     return;
   }
 
   isCycleRunning = true;
+  const cycleStart = Date.now();
+  recordWorkerCycleStart();
 
   try {
-    // 1. Recover stalled PROCESSING rows from crashed workers (lease: 10 min)
-    const reclaimed = await reclaimStalledOutboxJobs(10);
+    // 1. Recover stalled PROCESSING rows from crashed workers based on configured lease duration
+    const leaseSeconds = Number(config.EMAIL_WORKER_LEASE_SECONDS) || 600;
+    const reclaimed = await reclaimStalledOutboxJobs(leaseSeconds);
     if (reclaimed > 0) {
       console.log(`[EmailWorker] Reclaimed ${reclaimed} stalled outbox jobs`);
     }
@@ -53,8 +63,8 @@ async function workerCycle(): Promise<void> {
     const batchSize = Number(config.EMAIL_WORKER_BATCH_SIZE) || 10;
     const provider = getProvider();
 
-    // 2. Claim batch atomically
-    const jobs = await claimOutboxJobs(batchSize);
+    // 2. Claim batch atomically with lease lock
+    const jobs = await claimOutboxJobs(batchSize, workerId);
     if (jobs.length === 0) return;
 
     console.log(`[EmailWorker] Processing ${jobs.length} email(s)`);
@@ -63,8 +73,22 @@ async function workerCycle(): Promise<void> {
     await Promise.allSettled(
       jobs.map(async (job) => {
         try {
+          // Deliverability Suppression Check (Zero plaintext email)
+          const emailHash = computeEmailHash(job.recipient_email);
+          const isSuppressed = await checkEmailSuppression(emailHash);
+          if (isSuppressed) {
+            console.warn(
+              `[EmailWorker] Recipient ${emailHash.slice(0, 8)}... is suppressed (job ${job.id}); marking FAILED`,
+            );
+            await markOutboxSuppressed(job.id);
+            return;
+          }
+
           // Render template
-          const rendered = renderEmailTemplate(job.template_key, job.payload as Record<string, unknown>);
+          const rendered = renderEmailTemplate(
+            job.template_key,
+            job.payload as Record<string, unknown>,
+          );
           if (!rendered) {
             console.error(
               `[EmailWorker] No template registered for key "${job.template_key}" (job ${job.id})`,
@@ -73,7 +97,7 @@ async function workerCycle(): Promise<void> {
             return;
           }
 
-          // Send via provider
+          // Send via provider with deterministic idempotency key
           const fromEmail = config.RESEND_FROM_EMAIL || 'CoWatch <noreply@cowatch.tv>';
           const result = await provider.send({
             to: job.recipient_email,
@@ -81,7 +105,7 @@ async function workerCycle(): Promise<void> {
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.text,
-            idempotencyKey: job.provider_idempotency_key ?? `fallback:${job.id}`,
+            idempotencyKey: job.provider_idempotency_key ?? `notify-email:${job.id}`,
           });
 
           await markOutboxSent(job.id, result.messageId);
@@ -102,7 +126,7 @@ async function workerCycle(): Promise<void> {
           if (isRetryable) {
             await markOutboxRetryOrFailed(job.id, job.attempt_count, errorCode);
           } else {
-            // Non-retryable errors immediately exhaust all attempts
+            // Non-retryable errors immediately exhaust attempts and transition to FAILED
             const maxAttempts = Number(config.EMAIL_MAX_ATTEMPTS) || 5;
             await markOutboxRetryOrFailed(job.id, maxAttempts, errorCode);
           }
@@ -113,6 +137,7 @@ async function workerCycle(): Promise<void> {
     console.error('[EmailWorker] Unhandled error in worker cycle:', err);
   } finally {
     isCycleRunning = false;
+    recordWorkerCycleComplete(Date.now() - cycleStart);
   }
 }
 
@@ -131,27 +156,18 @@ function getProvider(): EmailProvider {
 // Public API
 // ---------------------------------------------------------------------------
 
-/**
- * Start the email worker.
- * Safe to call multiple times — subsequent calls are no-ops.
- */
 export function startEmailWorker(): void {
   if (workerTimer !== null) return;
 
   const intervalMs = Number(config.EMAIL_WORKER_INTERVAL_MS) || 30_000;
-
   console.log(`[EmailWorker] Starting with interval=${intervalMs}ms, provider=${getProvider().name}`);
 
-  // Run one cycle immediately, then on interval
-  workerCycle().catch((err) => console.error('[EmailWorker] Initial cycle error:', err));
+  runWorkerCycle().catch((err) => console.error('[EmailWorker] Initial cycle error:', err));
   workerTimer = setInterval(() => {
-    workerCycle().catch((err) => console.error('[EmailWorker] Cycle error:', err));
+    runWorkerCycle().catch((err) => console.error('[EmailWorker] Cycle error:', err));
   }, intervalMs);
 }
 
-/**
- * Stop the email worker (used in tests).
- */
 export function stopEmailWorker(): void {
   if (workerTimer !== null) {
     clearInterval(workerTimer);
@@ -159,9 +175,6 @@ export function stopEmailWorker(): void {
   }
 }
 
-/**
- * Replace the active provider (used in tests).
- */
 export function setEmailProvider(provider: EmailProvider): void {
   activeProvider = provider;
 }

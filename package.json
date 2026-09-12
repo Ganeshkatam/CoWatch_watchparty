@@ -23,7 +23,9 @@
     "db:strip-slashes": "tsx server/strip_slashes.ts",
     "test:quota-concurrency": "tsx server/concurrency_test.ts",
     "test:state-matrix": "tsx src/utils/operationState.test.ts",
-    "test:notifications": "tsx server/notifications/notificationConsistency.test.ts"
+    "test:notifications": "tsx server/notifications/notificationConsistency.test.ts",
+    "test:worker-adversarial": "tsx server/notifications/emailWorker.adversarial.test.ts",
+    "test:webhook-adversarial": "tsx server/notifications/resendWebhook.adversarial.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",

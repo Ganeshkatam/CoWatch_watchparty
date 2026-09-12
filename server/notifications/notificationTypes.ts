@@ -77,6 +77,13 @@ export interface NotificationPreferences {
   updated_at: string;
 }
 
+export type ProviderDeliveryStatus =
+  | 'SENT'
+  | 'DELIVERED'
+  | 'DELIVERY_DELAYED'
+  | 'BOUNCED'
+  | 'COMPLAINED';
+
 export interface EmailOutboxRow {
   id: string;
   notification_id: string | null;
@@ -85,10 +92,16 @@ export interface EmailOutboxRow {
   recipient_email: string;
   payload: Record<string, unknown>;
   status: 'PENDING' | 'PROCESSING' | 'SENT' | 'RETRY' | 'FAILED' | 'CANCELLED';
+  provider_delivery_status?: ProviderDeliveryStatus | null;
   attempt_count: number;
   available_at: string;
   last_attempt_at: string | null;
   sent_at: string | null;
+  delivered_at?: string | null;
+  bounced_at?: string | null;
+  complained_at?: string | null;
+  locked_at?: string | null;
+  locked_by?: string | null;
   provider_message_id: string | null;
   provider_idempotency_key: string | null;
   last_error_code: string | null;

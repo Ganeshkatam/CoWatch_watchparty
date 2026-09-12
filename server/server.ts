@@ -46,6 +46,18 @@ import { registerNotificationNamespace } from "./notifications/notificationSocke
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
+import {
+  type WebhookVerifier,
+  SvixWebhookVerifier,
+  MockWebhookVerifier,
+} from "./notifications/webhookVerifier.ts";
+import { ResendWebhookHandler } from "./notifications/resendWebhook.ts";
+import { getNotificationHealthReport } from "./notifications/notificationTelemetry.ts";
+import {
+  purgeReadNotificationsExpired,
+  purgeSentOutboxRows,
+  purgeFailedOutboxRows,
+} from "./notifications/emailOutbox.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -141,6 +153,42 @@ setInterval(release, releaseInterval);
 setInterval(saveRooms, 1000);
 setInterval(expireRooms, 60 * 1000);
 startEmailWorker();
+
+// NOTIFY-001A: Webhook verification with zero dev/test bypasses in Svix logic.
+// Production requires RESEND_WEBHOOK_SECRET; non-production rejects requests if secret is unset.
+let webhookVerifier: WebhookVerifier;
+if (config.RESEND_WEBHOOK_SECRET) {
+  webhookVerifier = new SvixWebhookVerifier(config.RESEND_WEBHOOK_SECRET);
+} else if (process.env.NODE_ENV === "production") {
+  throw new Error("FATAL: RESEND_WEBHOOK_SECRET is required in production environment");
+} else {
+  console.warn(
+    "[Webhook] RESEND_WEBHOOK_SECRET not configured; rejecting incoming webhooks in non-production mode.",
+  );
+  webhookVerifier = new MockWebhookVerifier(false);
+}
+const resendWebhookHandler = new ResendWebhookHandler(webhookVerifier);
+
+// NOTIFY-001A: Authoritative retention maintenance (every 1 hour)
+// Invariant: UNREAD notifications are NEVER purged; only expired READ notifications and aged outbox records.
+const retentionInterval = 60 * 60 * 1000;
+setInterval(async () => {
+  try {
+    const readPurged = await purgeReadNotificationsExpired();
+    const sentRetentionDays = Number(config.EMAIL_SENT_RETENTION_DAYS) || 14;
+    const failedRetentionDays = Number(config.EMAIL_FAILED_RETENTION_DAYS) || 60;
+    const sentPurged = await purgeSentOutboxRows(sentRetentionDays);
+    const failedPurged = await purgeFailedOutboxRows(failedRetentionDays);
+    if (readPurged > 0 || sentPurged > 0 || failedPurged > 0) {
+      console.log(
+        `[Retention] Purged: ${readPurged} read notifications, ${sentPurged} sent outbox, ${failedPurged} failed outbox`,
+      );
+    }
+  } catch (err) {
+    console.error("[Retention] Error running notification retention purge:", err);
+  }
+}, retentionInterval);
+
 if (process.env.NODE_ENV === "development") {
   try {
     import("./vmWorker.ts");
@@ -152,9 +200,30 @@ if (process.env.NODE_ENV === "development") {
 }
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(
+  bodyParser.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
+);
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
 app.use("/api/notifications", createNotificationRouter(io));
+
+// NOTIFY-001A: Cryptographically verified Resend delivery webhook (zero raw payload stored)
+app.post("/internal/webhooks/resend", async (req, res) => {
+  await resendWebhookHandler.handleRequest(req, res);
+});
+
+// NOTIFY-001A: Database-derived Notification Health Probe (zero Redis, zero PII)
+app.get("/internal/health/notifications", async (_req, res) => {
+  try {
+    const report = await getNotificationHealthReport();
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: "HEALTH_CHECK_FAILED", details: err?.message });
+  }
+});
 
 app.get("/ping", (_req, res) => {
   res.json("pong");

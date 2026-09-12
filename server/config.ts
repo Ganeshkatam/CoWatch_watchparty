@@ -89,10 +89,15 @@ const defaults = {
   // ==========================================
   RESEND_API_KEY: "",              // Resend API key; leave blank to run in outbox-only (dry-run) mode
   RESEND_FROM_EMAIL: "CoWatch <noreply@cowatch.tv>",   // From address for transactional emails
+  RESEND_WEBHOOK_SECRET: "",       // Resend Svix webhook signing secret (whsec_...)
   EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
   EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
+  EMAIL_WORKER_LEASE_SECONDS: 600, // Lease duration before a PROCESSING job is considered stalled (10m)
   EMAIL_RETRY_DELAYS_MS: "60000,300000,1800000,3600000", // Comma-separated per-attempt delays (4 retries)
   EMAIL_MAX_ATTEMPTS: 5,           // Max delivery attempts before marking FAILED
+  EMAIL_SENT_RETENTION_DAYS: 14,   // Days to retain SENT outbox rows before purging
+  EMAIL_FAILED_RETENTION_DAYS: 60, // Days to retain FAILED outbox rows for auditing
+  NOTIFICATION_READ_RETENTION_DAYS: 90, // Days to retain READ notifications
 
   // ==========================================
   // Development / Legacy Compatibility Configuration
