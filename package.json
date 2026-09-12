@@ -41,6 +41,7 @@
     "test:age-policy": "tsx server/agePolicy.test.ts",
     "test:production-surfaces": "tsx server/productionSurfaces.test.ts",
     "test:gate1-auth": "tsx server/gate1AuthBoundaries.test.ts",
+    "test:gate3-quota": "tsx server/gate3ConcurrencyQuota.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {
