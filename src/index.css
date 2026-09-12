@@ -41,12 +41,6 @@
   --space-lg: 24px;
   --space-xl: 32px;
 
-  /* Modal Tier Width Tokens */
-  --modal-sm: 420px;
-  --modal-md: 520px;
-  --modal-lg: 680px;
-  --modal-xl: 840px;
-
   --surface-hover: rgba(139, 92, 246, 0.10);
   --surface-active: rgba(139, 92, 246, 0.16);
   --focus-ring: rgba(139, 92, 246, 0.45);
