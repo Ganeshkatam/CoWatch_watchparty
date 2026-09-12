@@ -39,6 +39,7 @@
     "test:auth-matrix": "tsx server/auth.authorization.matrix.test.ts",
     "test:failure-injection": "tsx server/resilience.failure-injection.test.ts",
     "test:age-policy": "tsx server/agePolicy.test.ts",
+    "test:production-surfaces": "tsx server/productionSurfaces.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

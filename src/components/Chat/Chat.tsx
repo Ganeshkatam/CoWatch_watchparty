@@ -436,6 +436,16 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
                 <Button size="xs" variant="subtle" onClick={this.props.onLoadMore}>Load Older Messages</Button>
               </div>
             )}
+            {!this.props.isLoading && this.props.chat.filter((msg) => !msg.cmd).length === 0 && (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  No messages yet
+                </div>
+                <div style={{ fontSize: '12px' }}>
+                  Say hello or share a reaction to get the party started!
+                </div>
+              </div>
+            )}
             {this.props.chat.filter((msg) => !msg.cmd).map((msg) => (
               <ChatMessage
                 key={msg.timestamp + msg.id}

@@ -32,12 +32,24 @@ export const Login = () => {
   });
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("error") === "unsupported_email") {
+    const searchParams = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.startsWith("#") ? location.hash.substring(1) : location.hash);
+
+    const errorCode = searchParams.get("error_code") || hashParams.get("error_code");
+    const errorParam = searchParams.get("error") || hashParams.get("error");
+    const errorDesc = searchParams.get("error_description") || hashParams.get("error_description");
+
+    if (errorParam === "unsupported_email") {
       setError("Email provider is not supported. Please use an approved provider.");
       history.replace(location.pathname);
+    } else if (errorCode === "otp_expired" || errorDesc?.includes("expired") || errorDesc?.includes("token")) {
+      setError("Your confirmation or password reset link has expired. Please sign in or request a new link.");
+      history.replace(location.pathname);
+    } else if (errorParam === "access_denied" && errorDesc) {
+      setError(decodeURIComponent(errorDesc.replace(/\+/g, " ")));
+      history.replace(location.pathname);
     }
-  }, [location.search, location.pathname, history]);
+  }, [location.search, location.hash, location.pathname, history]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

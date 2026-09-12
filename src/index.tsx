@@ -5,7 +5,7 @@ import "./index.css";
 
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Redirect } from "react-router-dom";
+import { BrowserRouter, Route, Redirect, Switch } from "react-router-dom";
 
 import type { User } from "@supabase/supabase-js";
 import {
@@ -23,6 +23,7 @@ import config from "./config";
 import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
 import { AuthContext } from "./context/AuthContext";
 import { AppShell } from "./components/Layout/AppShell";
+import { RootErrorBoundary } from "./components/Layout/RootErrorBoundary";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
@@ -43,6 +44,7 @@ const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default
 const CommunityGuidelines = lazy(() => import("./components/Pages/CommunityGuidelines").then((m) => ({ default: m.CommunityGuidelines })));
 const Support = lazy(() => import("./components/Support/Support").then((m) => ({ default: m.Support })));
 const About = lazy(() => import("./components/About/About").then((m) => ({ default: m.About })));
+const NotFound = lazy(() => import("./components/Pages/NotFound").then((m) => ({ default: m.NotFound })));
 const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
 const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
 const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
@@ -499,153 +501,165 @@ class CoWatch extends React.Component {
                   }}
                 >
                   <BrowserRouter>
-                    <AppShell>
-                      <SpeedInsights />
-                      <Suspense fallback={<RouteFallback />}>
-                        <Route
-                          path="/"
-                          exact
-                          render={(props) => {
-                            return (
-                              <React.Fragment>
-                                <TopBar />
-                                <Home />
-                                <Footer />
-                              </React.Fragment>
-                            );
-                          }}
-                        />
-                        <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
-                          <RequireGuest>
-                            <AuthLayout>
-                              <Route path="/login" exact component={Login} />
-                              <Route path="/signup" exact component={Signup} />
-                              <Route path="/forgot-password" exact component={ForgotPassword} />
-                              <Route path="/reset-password" exact component={ResetPassword} />
-                            </AuthLayout>
-                          </RequireGuest>
-                        </Route>
-                        <Route path="/verify-email" exact component={VerifyEmail} />
-                        <Route
-                          path={["/join", "/join/:roomId"]}
-                          exact
-                          component={Join}
-                        />
-                        <Route
-                          path="/preflight/:roomId"
-                          exact
-                          render={(props) => {
-                            return (
-                              <RequireVerifiedEmail>
-                                <MediaPreflight roomId={props.match.params.roomId} location={props.location} />
-                              </RequireVerifiedEmail>
-                            );
-                          }}
-                        />
-                        <Route
-                          path="/create"
-                          exact
-                          render={() => {
-                            return (
-                              <RequireVerifiedEmail>
-                                <TopBar />
-                                <Create />
-                              </RequireVerifiedEmail>
-                            );
-                          }}
-                        />
-                        <Route
-                          path="/watch/:roomId"
-                          exact
-                          render={(props) => {
-                            return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} /></RequireVerifiedEmail>;
-                          }}
-                        />
+                    <RootErrorBoundary>
+                      <AppShell>
+                        <SpeedInsights />
+                        <Suspense fallback={<RouteFallback />}>
+                          <Switch>
+                            <Route
+                              path="/"
+                              exact
+                              render={(props) => {
+                                return (
+                                  <React.Fragment>
+                                    <TopBar />
+                                    <Home />
+                                    <Footer />
+                                  </React.Fragment>
+                                );
+                              }}
+                            />
+                            <Route path={["/login", "/signup", "/forgot-password", "/reset-password"]}>
+                              <RequireGuest>
+                                <AuthLayout>
+                                  <Route path="/login" exact component={Login} />
+                                  <Route path="/signup" exact component={Signup} />
+                                  <Route path="/forgot-password" exact component={ForgotPassword} />
+                                  <Route path="/reset-password" exact component={ResetPassword} />
+                                </AuthLayout>
+                              </RequireGuest>
+                            </Route>
+                            <Route path="/verify-email" exact component={VerifyEmail} />
+                            <Route
+                              path={["/join", "/join/:roomId"]}
+                              exact
+                              component={Join}
+                            />
+                            <Route
+                              path="/preflight/:roomId"
+                              exact
+                              render={(props) => {
+                                return (
+                                  <RequireVerifiedEmail>
+                                    <MediaPreflight roomId={props.match.params.roomId} location={props.location} />
+                                  </RequireVerifiedEmail>
+                                );
+                              }}
+                            />
+                            <Route
+                              path="/create"
+                              exact
+                              render={() => {
+                                return (
+                                  <RequireVerifiedEmail>
+                                    <TopBar />
+                                    <Create />
+                                  </RequireVerifiedEmail>
+                                );
+                              }}
+                            />
+                            <Route
+                              path="/watch/:roomId"
+                              exact
+                              render={(props) => {
+                                return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} /></RequireVerifiedEmail>;
+                              }}
+                            />
 
-                        <Route
-                          path="/room-ended"
-                          exact
-                          render={() => {
-                            return (
-                              <React.Fragment>
+                            <Route
+                              path="/room-ended"
+                              exact
+                              render={() => {
+                                return (
+                                  <React.Fragment>
+                                    <TopBar />
+                                    <PostRoom />
+                                    <Footer />
+                                  </React.Fragment>
+                                );
+                              }}
+                            />
+                            <Route path="/about" exact>
+                              <>
                                 <TopBar />
-                                <PostRoom />
+                                <About />
                                 <Footer />
-                              </React.Fragment>
-                            );
-                          }}
-                        />
-                        <Route path="/about" exact>
-                          <>
-                            <TopBar />
-                            <About />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path="/support" exact>
-                          <>
-                            <TopBar />
-                            <Support />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path="/community-guidelines" exact>
-                          <>
-                            <TopBar />
-                            <CommunityGuidelines />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path="/terms">
-                          <>
-                            <TopBar />
-                            <Terms />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path="/privacy">
-                          <>
-                            <TopBar />
-                            <Privacy />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path="/faq">
-                          <>
-                            <TopBar />
-                            <FAQ />
-                            <Footer />
-                          </>
-                        </Route>
-                        <Route path={["/account", "/account/:tab*"]}>
-                          <RequireVerifiedEmail>
-                            <TopBar />
-                            <Profile />
-                          </RequireVerifiedEmail>
-                        </Route>
-                        <Route path="/profile" exact>
-                          <Redirect to="/account/profile" />
-                        </Route>
-                        <Route path="/myrooms" exact>
-                          <RequireVerifiedEmail>
-                            <TopBar />
-                            <MyRooms />
-                          </RequireVerifiedEmail>
-                        </Route>
-                        <Route path="/myrooms/:roomId">
-                          <RequireVerifiedEmail>
-                            <TopBar />
-                            <RoomDetails />
-                          </RequireVerifiedEmail>
-                        </Route>
-                        <Route path="/debug">
-                          <>
-                            <TopBar />
-                            <Debug />
-                          </>
-                        </Route>
-                      </Suspense>
-                    </AppShell>
+                              </>
+                            </Route>
+                            <Route path="/support" exact>
+                              <>
+                                <TopBar />
+                                <Support />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path="/community-guidelines" exact>
+                              <>
+                                <TopBar />
+                                <CommunityGuidelines />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path="/terms" exact>
+                              <>
+                                <TopBar />
+                                <Terms />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path="/privacy" exact>
+                              <>
+                                <TopBar />
+                                <Privacy />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path="/faq" exact>
+                              <>
+                                <TopBar />
+                                <FAQ />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path={["/account", "/account/:tab*"]}>
+                              <RequireVerifiedEmail>
+                                <TopBar />
+                                <Profile />
+                              </RequireVerifiedEmail>
+                            </Route>
+                            <Route path="/profile" exact>
+                              <Redirect to="/account/profile" />
+                            </Route>
+                            <Route path="/myrooms" exact>
+                              <RequireVerifiedEmail>
+                                <TopBar />
+                                <MyRooms />
+                              </RequireVerifiedEmail>
+                            </Route>
+                            <Route path="/myrooms/:roomId">
+                              <RequireVerifiedEmail>
+                                <TopBar />
+                                <RoomDetails />
+                              </RequireVerifiedEmail>
+                            </Route>
+                            <Route path="/debug" exact>
+                              <>
+                                <TopBar />
+                                <Debug />
+                              </>
+                            </Route>
+                            {/* Terminal Authoritative Catch-All 404 Route */}
+                            <Route>
+                              <>
+                                <TopBar />
+                                <NotFound />
+                                <Footer />
+                              </>
+                            </Route>
+                          </Switch>
+                        </Suspense>
+                      </AppShell>
+                    </RootErrorBoundary>
                   </BrowserRouter>
                 </AuthContext.Provider>
               </MetadataContext.Provider>
