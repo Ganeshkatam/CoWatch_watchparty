@@ -1826,3 +1826,10 @@ EXCEPTION
     NULL;
 END;
 $$;
+
+-- ----------------------------------------------------------------------------
+-- 10. SCHEMA DOCUMENTATION (TABLE & COLUMN COMMENTS)
+-- ----------------------------------------------------------------------------
+-- See sql/migrations/20260913_prod_003_table_and_column_descriptions.sql for
+-- the comprehensive list of table and column comments applied to all 25 tables.
+
