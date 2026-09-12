@@ -18,7 +18,8 @@ export type OperationDomain =
   | "participant-authority"
   | "media-playback"
   | "webrtc-peer"
-  | "feedback";
+  | "feedback"
+  | "settings";
 
 export type RoomInitStage =
   | "booting"
@@ -195,6 +196,7 @@ class OperationCoordinator {
     this.abortDomain("host-authority", reason);
     this.abortDomain("participant-authority", reason);
     this.abortDomain("media-playback", reason);
+    this.abortDomain("settings", reason);
   }
 
   public subscribe(listener: OperationListener): () => void {

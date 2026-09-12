@@ -39,6 +39,7 @@ import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 
 interface LifecycleEvent {
   id: string;
@@ -166,7 +167,7 @@ export const RoomDetails = () => {
       setRoom(data);
       setError(null);
     } catch (err: any) {
-      setError(err.message);
+      setError(sanitizeServerErrorMessage(err));
     } finally {
       setLoading(false);
     }

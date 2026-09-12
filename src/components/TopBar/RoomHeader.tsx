@@ -19,7 +19,7 @@ import {
 import { Menu, Tooltip, ActionIcon, Loader } from "@mantine/core";
 import { HeaderSearchBar } from "./HeaderSearchBar";
 import { getRoomUrl, getInviteMessage } from "../../utils/utils";
-import { useOperationState } from "../../hooks/useOperationState";
+import { useOperationState, useRoomInitStage } from "../../hooks/useOperationState";
 import styles from "./RoomHeader.module.css";
 
 interface RoomHeaderProps {
@@ -99,6 +99,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     setTimeout(() => setCopiedMsg(false), 2000);
   };
 
+  const { isReady } = useRoomInitStage();
   const lockOp = useOperationState("participant-authority", "lock");
   const participantsLockOp = useOperationState("participant-authority", "participants-lock");
 
@@ -276,7 +277,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             </Menu.Item>
             {onToggleLock && (
               <Menu.Item
-                disabled={!haveLock || lockOp.isPending}
+                disabled={!haveLock || !isReady || lockOp.isPending}
                 leftSection={
                   lockOp.showSpinner ? (
                     <Loader size={16} color="violet" />
@@ -288,16 +289,14 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 }
                 onClick={onToggleLock}
               >
-                {lockOp.isPending
-                  ? "Updating room controls..."
-                  : isLocked
+                {isLocked
                   ? "Unlock room controls"
                   : "Lock room controls"}
               </Menu.Item>
             )}
             {canManageParticipantsLock && onToggleParticipantsLock && (
               <Menu.Item
-                disabled={participantsLockOp.isPending}
+                disabled={!canManageParticipantsLock || !isReady || participantsLockOp.isPending}
                 leftSection={
                   participantsLockOp.showSpinner ? (
                     <Loader size={16} color="violet" />
@@ -309,9 +308,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 }
                 onClick={onToggleParticipantsLock}
               >
-                {participantsLockOp.isPending
-                  ? "Updating participant lock..."
-                  : participantsLocked
+                {participantsLocked
                   ? "Participants Locked"
                   : "Lock Participants"}
               </Menu.Item>

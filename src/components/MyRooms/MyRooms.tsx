@@ -11,6 +11,7 @@ import { RoomsToolbar } from "./RoomsToolbar";
 import { RoomCard } from "./RoomCard";
 import { RoomPagination } from "./RoomPagination";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 
 export interface RoomSummary {
   roomId: string;
@@ -116,7 +117,7 @@ const useRooms = (
       }
       setError(null);
     } catch (err: any) {
-      setError(err.message);
+      setError(sanitizeServerErrorMessage(err));
     } finally {
       setLoading(false);
     }

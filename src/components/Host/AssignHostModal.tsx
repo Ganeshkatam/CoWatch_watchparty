@@ -152,7 +152,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
             }
           }}
         >
-          {hostOp.isPending ? "Assigning..." : "Assign & Leave"}
+          Assign & Leave
         </Button>
       </div>
     </Modal>

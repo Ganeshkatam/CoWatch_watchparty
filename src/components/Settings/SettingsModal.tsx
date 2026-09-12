@@ -12,6 +12,9 @@ import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
 import { supabase } from "../../utils/supabaseClient";
 import { pipManager } from "../../utils/pipManager";
+import { sanitizeServerErrorMessage } from "../../utils/userMessages";
+import { operationCoordinator } from "../../utils/operationState";
+import { useOperationState } from "../../hooks/useOperationState";
 
 interface SettingsModalProps {
   modalOpen: boolean;
@@ -46,7 +49,8 @@ export const SettingsModal = ({
   maxParticipants = 10,
 }: SettingsModalProps) => {
   const { user, profile } = useContext(MetadataContext);
-  
+  const settingsOp = useOperationState("settings", "save-room-settings");
+
   // -- DRAFT STATE --
   const [draftLock, setDraftLock] = useState(Boolean(roomLock));
   
@@ -56,7 +60,6 @@ export const SettingsModal = ({
   const [draftMic, setDraftMic] = useState(profile?.pref_mic_on ?? false);
   const [draftSmartPiP, setDraftSmartPiP] = useState(pipManager.isSmartPiPEnabled());
 
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   // Sync draft from props when modal opens
@@ -72,7 +75,8 @@ export const SettingsModal = ({
   }, [modalOpen, roomLock, profile]);
 
   const handleSave = async () => {
-    setIsLoading(true);
+    if (settingsOp.isPending) return;
+    const opId = operationCoordinator.startOperation("settings", "save-room-settings");
     setError("");
 
     try {
@@ -102,12 +106,12 @@ export const SettingsModal = ({
       
       if (prefError) throw prefError;
 
+      operationCoordinator.resolveOperation(opId);
       setModalOpen(false);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to save settings");
-    } finally {
-      setIsLoading(false);
+      const sanitized = sanitizeServerErrorMessage(err);
+      operationCoordinator.rejectOperation(opId, sanitized);
+      setError(sanitized);
     }
   };
 
@@ -249,10 +253,10 @@ export const SettingsModal = ({
         borderBottomLeftRadius: "8px",
         borderBottomRightRadius: "8px"
       }}>
-        <Button variant="default" onClick={() => setModalOpen(false)}>
+        <Button variant="default" onClick={() => setModalOpen(false)} disabled={settingsOp.isPending}>
           Cancel
         </Button>
-        <Button color="violet" onClick={handleSave} loading={isLoading}>
+        <Button color="violet" onClick={handleSave} loading={settingsOp.showSpinner} disabled={settingsOp.isPending}>
           Save Changes
         </Button>
       </div>

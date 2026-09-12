@@ -1842,6 +1842,7 @@ export class App extends React.Component<AppProps, AppState> {
     this.setState({ mediaPath });
   };
   setRoomLock = async (locked: boolean) => {
+    if (!operationCoordinator.isRoomReady()) return;
     if (operationCoordinator.isPending("participant-authority", "lock")) return;
     operationCoordinator.startOperation("participant-authority", "lock");
     this.socket.emit("CMD:lock", { locked });
@@ -1851,9 +1852,13 @@ export class App extends React.Component<AppProps, AppState> {
     return Boolean(this.state.isOwner || (this.state.owner && this.context.user?.id === this.state.owner));
   };
 
+  canManageParticipantsLock = () => {
+    return operationCoordinator.isRoomReady() && (this.isRoomOwner() || this.state.isHost);
+  };
+
   haveLock = () => {
-    // Invariant: Authority controls remain inactive until init lifecycle reaches READY
-    if (!operationCoordinator.isRoomReady() && this.state.initStage !== "ready") {
+    // Invariant: Authority controls remain strictly inactive until init lifecycle reaches READY
+    if (!operationCoordinator.isRoomReady()) {
       return false;
     }
     if (!this.state.roomLock) {
@@ -1869,10 +1874,12 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   toggleLock = () => {
+    if (!this.haveLock()) return;
     this.setRoomLock(!Boolean(this.state.roomLock));
   };
 
   toggleParticipantsLock = () => {
+    if (!this.canManageParticipantsLock()) return;
     if (operationCoordinator.isPending("participant-authority", "participants-lock")) return;
     operationCoordinator.startOperation("participant-authority", "participants-lock");
     this.socket?.emit("CMD:setParticipantsLock", {
@@ -3221,7 +3228,7 @@ export class App extends React.Component<AppProps, AppState> {
             onSelectStream={this.onSelectStream}
             participantsLocked={this.state.participantsLocked}
             onToggleParticipantsLock={this.toggleParticipantsLock}
-            canManageParticipantsLock={this.isRoomOwner() || this.state.isHost}
+            canManageParticipantsLock={this.canManageParticipantsLock()}
           />
         )}
         {

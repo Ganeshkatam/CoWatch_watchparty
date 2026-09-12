@@ -5,7 +5,7 @@ import { MetadataContext } from "../../MetadataContext";
 import { IconBan, IconCrown, IconTrashFilled, IconX } from "@tabler/icons-react";
 import { getOrCreateClientId } from "../../utils/utils";
 import { ThemeMenuItems } from "../TopBar/TopBar";
-import { useOperationState } from "../../hooks/useOperationState";
+import { useOperationState, useRoomInitStage } from "../../hooks/useOperationState";
 import { operationCoordinator } from "../../utils/operationState";
 
 const clientId = getOrCreateClientId();
@@ -33,6 +33,7 @@ export const UserMenu = ({
   isCurrentTargetHost?: boolean;
 }) => {
   const { user } = useContext(MetadataContext);
+  const { isReady } = useRoomInitStage();
   const hostAssignOp = useOperationState("host-authority", "assign", userToManage);
   const kickOp = useOperationState("participant-authority", "kick", userToManage);
 
@@ -80,7 +81,7 @@ export const UserMenu = ({
         </Menu.Item>
         {isHost && !isCurrentTargetHost && userToManage !== clientId && !isChatMessage && (
           <Menu.Item
-            disabled={hostAssignOp.isPending}
+            disabled={!isReady || hostAssignOp.isPending}
             leftSection={
               hostAssignOp.showSpinner ? (
                 <Loader size={16} color="violet" />
@@ -89,18 +90,18 @@ export const UserMenu = ({
               )
             }
             onClick={() => {
-              if (hostAssignOp.isPending) return;
+              if (!isReady || hostAssignOp.isPending) return;
               operationCoordinator.startOperation("host-authority", "assign", userToManage);
               socket.emit("CMD:assignHost", {
                 newHostClientId: userToManage,
               });
             }}
           >
-            {hostAssignOp.isPending ? "Assigning host..." : "Make Host"}
+            Make Host
           </Menu.Item>
         )}
         <Menu.Item
-          disabled={kickOp.isPending}
+          disabled={!isReady || kickOp.isPending}
           leftSection={
             kickOp.showSpinner ? (
               <Loader size={16} color="red" />
@@ -109,14 +110,14 @@ export const UserMenu = ({
             )
           }
           onClick={async () => {
-            if (kickOp.isPending) return;
+            if (!isReady || kickOp.isPending) return;
             operationCoordinator.startOperation("participant-authority", "kick", userToManage);
             socket.emit("CMD:kickUser", {
               userToBeKicked: userToManage,
             });
           }}
         >
-          {kickOp.isPending ? "Kicking user..." : "Kick User"}
+          Kick User
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>

@@ -46,6 +46,7 @@ import {
   getRoomUrl,
   serverPath,
 } from "../../utils/utils";
+import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
 import styles from "./MyRooms.module.css";
 
@@ -277,7 +278,7 @@ export const EditRoomModal = ({
       onSuccess();
       onClose();
     } catch (e: any) {
-      setError(e.message || "Failed to update room settings.");
+      setError(sanitizeServerErrorMessage(e));
     } finally {
       setIsSaving(false);
     }
