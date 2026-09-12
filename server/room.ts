@@ -270,6 +270,28 @@ export class Room {
     return true;
   };
 
+  public hasParticipantUid = (uid: string): boolean => {
+    if (!uid) return false;
+    if (this.owner_id === uid) return true;
+    for (const rec of this.admittedParticipants.values()) {
+      if (rec.uid === uid && rec.state === 'connected' && !rec.isKicked) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  public getConnectedParticipantUids = (): string[] => {
+    const uids = new Set<string>();
+    if (this.owner_id) uids.add(this.owner_id);
+    for (const rec of this.admittedParticipants.values()) {
+      if (rec.uid && rec.state === 'connected' && !rec.isKicked) {
+        uids.add(rec.uid);
+      }
+    }
+    return Array.from(uids);
+  };
+
   public getEligibleParticipants = (excludeClientId?: string): { clientId: string; record: AdmittedParticipantRecord }[] => {
     const eligible: { clientId: string; record: AdmittedParticipantRecord }[] = [];
     for (const [cId, rec] of this.admittedParticipants.entries()) {
@@ -1247,14 +1269,21 @@ export class Room {
     this.io.of(this.roomId).emit("REC:hostChange", hostPayload);
 
     if ((reason === "failover" || reason === "explicit_transfer") && this.currentHostUid) {
+      const transferId = randomUUID();
       notificationService
         .notifyUser({
           userId: this.currentHostUid,
           type: "ROOM_HOST_TRANSFER",
           title: "Host role assigned",
           body: `You are now the host of room ${this.roomId}.`,
-          metadata: { roomId: this.roomId, reason },
-          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${Date.now()}`,
+          metadata: {
+            roomId: this.roomId,
+            action: "open_room",
+            targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
+            reason,
+            transferId,
+          },
+          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${transferId}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify new host:", err));
     }
@@ -2139,6 +2168,24 @@ export class Room {
         }
         console.warn("VBrowser assignment failed:", e?.message || e);
         socket.emit("errorMessage", "VBrowser is currently unavailable. Please try again later.");
+        const opId = (e as any)?.operationId || (e as any)?.operation_id || randomUUID();
+        if (uid) {
+          notificationService
+            .notifyUser({
+              userId: uid,
+              type: "VBROWSER_FAILURE",
+              title: "Virtual Browser Unavailable",
+              body: `Could not launch virtual browser session in room ${this.roomId}. Please try again.`,
+              metadata: {
+                roomId: this.roomId,
+                action: "open_room",
+                targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
+                operationId: opId,
+              },
+              eventId: `VBROWSER_FAILURE:${this.roomId}:${opId}`,
+            })
+            .catch((err) => console.error("[Notification] Failed to notify controller of vbrowser failure:", err));
+        }
         return;
       }
       if (assignment) {
@@ -2432,6 +2479,7 @@ export class Room {
 
     const targetUid = this.clientToUidMap[targetIdentity] || targetSocket?.uid;
     if (targetUid) {
+      const moderationEventId = operationId || randomUUID();
       notificationService
         .notifyUser({
           userId: targetUid,
@@ -2440,8 +2488,14 @@ export class Room {
           body: reason
             ? `You were removed from room ${this.roomId}: ${reason}`
             : `You were removed from room ${this.roomId} by the host.`,
-          metadata: { roomId: this.roomId, action: "kick" },
-          eventId: `MODERATION_ACTION:${this.roomId}:${targetUid}:${Date.now()}`,
+          metadata: {
+            roomId: this.roomId,
+            action: "go_home",
+            targetUrl: "/home",
+            moderationType: "kick",
+            moderationEventId,
+          },
+          eventId: `MODERATION_ACTION:${moderationEventId}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify kicked user:", err));
     }
@@ -2477,6 +2531,7 @@ export class Room {
     this.admittedParticipants.delete(targetIdentity);
 
     if (targetUid) {
+      const moderationEventId = operationId || randomUUID();
       notificationService
         .notifyUser({
           userId: targetUid,
@@ -2485,8 +2540,14 @@ export class Room {
           body: reason
             ? `You have been banned from room ${this.roomId}: ${reason}`
             : `You have been banned from room ${this.roomId} by the host.`,
-          metadata: { roomId: this.roomId, action: "ban" },
-          eventId: `MODERATION_ACTION:${this.roomId}:${targetUid}:${Date.now()}`,
+          metadata: {
+            roomId: this.roomId,
+            action: "go_home",
+            targetUrl: "/home",
+            moderationType: "ban",
+            moderationEventId,
+          },
+          eventId: `MODERATION_ACTION:${moderationEventId}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify banned user:", err));
     }

@@ -14,7 +14,9 @@ import {
   IconAlertTriangle,
   IconSpeakerphone,
   IconDoorEnter,
+  IconHome,
 } from '@tabler/icons-react';
+import { resolveNotificationAction } from '../../utils/notificationAction';
 import type { NotificationItem as NotificationItemType } from './notificationTypes';
 import styles from './NotificationItem.module.css';
 
@@ -93,7 +95,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
     }
   };
 
-  const roomId = notification.metadata?.roomId as string | undefined;
+  const resolvedAction = resolveNotificationAction(notification);
   const timeFormatted = dayjs(notification.created_at).fromNow();
 
   return (
@@ -115,18 +117,39 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           <div className={styles.time}>{timeFormatted}</div>
         </div>
         <div className={styles.body}>{notification.body}</div>
-        {roomId && (
-          <Link
-            to={`/room/${encodeURIComponent(roomId)}`}
-            className={styles.actionLink}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClick();
-              if (onClosePanel) onClosePanel();
-            }}
-          >
-            <IconDoorEnter size={14} /> Join Room
-          </Link>
+        {resolvedAction.action !== 'dismiss' && resolvedAction.url && (
+          resolvedAction.url.startsWith('http://') || resolvedAction.url.startsWith('https://') ? (
+            <a
+              href={resolvedAction.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.actionLink}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClick();
+                if (onClosePanel) onClosePanel();
+              }}
+            >
+              <IconDoorEnter size={14} /> {resolvedAction.label}
+            </a>
+          ) : (
+            <Link
+              to={resolvedAction.url}
+              className={styles.actionLink}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClick();
+                if (onClosePanel) onClosePanel();
+              }}
+            >
+              {resolvedAction.action === 'go_home' ? (
+                <IconHome size={14} />
+              ) : (
+                <IconDoorEnter size={14} />
+              )}{' '}
+              {resolvedAction.label}
+            </Link>
+          )
         )}
       </div>
       {isUnread && <div className={styles.unreadDot} />}

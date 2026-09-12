@@ -29,6 +29,8 @@ const PROTECTED_CORE_FILES = [
   'server/notifications/notificationRepository.ts',
   'server/notifications/notificationPolicy.ts',
   'server/notifications/deliveryStateService.ts',
+  'server/room.ts',
+  'server/server.ts',
 ];
 
 async function runProviderLeakageTest(): Promise<void> {

@@ -29,6 +29,7 @@ const defaults = {
   FREE_ROOM_LIMIT: 2, // The maximum number of rooms a free user can have
   SUBSCRIBER_ROOM_LIMIT: 10, // The maximum number of rooms a subscriber can have
   BETA_USER_EMAILS: "", // Comma-delimited list of user emails to include in the beta / auth
+  APP_URL: "https://cowatch.tv", // Canonical web application URL for notifications and deep links
 
   // ==========================================
   // Media Configuration

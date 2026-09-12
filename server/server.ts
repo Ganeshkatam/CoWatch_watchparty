@@ -154,6 +154,7 @@ setInterval(minuteMetrics, 60 * 1000);
 setInterval(release, releaseInterval);
 setInterval(saveRooms, 1000);
 setInterval(expireRooms, 60 * 1000);
+setInterval(checkEndingSoonRooms, 60 * 1000);
 // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
 EmailProviderRegistry.validateActiveProvider()
   .then((provider) => {
@@ -222,7 +223,7 @@ app.use(
   }),
 );
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
-app.use("/api/notifications", createNotificationRouter(io));
+app.use("/api/notifications", createNotificationRouter(io, (roomId) => rooms.get(roomId)));
 
 // NOTIFY-002: Universal Provider Delivery Webhook Ingress (POST /internal/webhooks/email/:provider)
 app.post("/internal/webhooks/email/:provider", async (req, res) => {
@@ -2425,6 +2426,7 @@ async function expireRooms() {
     if (result.rowCount && result.rowCount > 0) {
       console.log(`[EXPIRE] Expired ${result.rowCount} rooms`);
       for (const row of result.rows) {
+        const room = rooms.get(row.roomId);
         if (row.ownerId) {
           notificationService
             .notifyUser({
@@ -2432,13 +2434,31 @@ async function expireRooms() {
               type: "ROOM_ENDED",
               title: "Room Expired",
               body: "Your room has expired and ended.",
-              metadata: { roomId: row.roomId },
+              metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/home" },
               eventId: `ROOM_ENDED:${row.roomId}:${new Date(row.timestamp).getTime()}`,
             })
             .catch((err) => console.error("[EXPIRE] Failed to notify room owner:", err));
         }
-        const room = rooms.get(row.roomId);
+
         if (room) {
+          const participantUids = typeof room.getConnectedParticipantUids === "function"
+            ? room.getConnectedParticipantUids()
+            : [];
+          for (const pUid of participantUids) {
+            if (pUid !== row.ownerId) {
+              notificationService
+                .notifyUser({
+                  userId: pUid,
+                  type: "ROOM_ENDED",
+                  title: "Room Expired",
+                  body: `The room "${room.roomTitle || row.roomId}" has expired and ended.`,
+                  metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/home" },
+                  eventId: `ROOM_ENDED:${row.roomId}:${new Date(row.timestamp).getTime()}:${pUid}`,
+                })
+                .catch((err) => console.error("[EXPIRE] Failed to notify participant of room ended:", err));
+            }
+          }
+
           room.status = 'expired';
           room.addChatMessage(null, {
             id: '',
@@ -2456,6 +2476,75 @@ async function expireRooms() {
     }
   } catch (e) {
     console.error("Error expiring rooms:", e);
+  }
+}
+
+async function checkEndingSoonRooms() {
+  if (!postgres) return;
+  try {
+    const result = await postgres.query(`
+      WITH candidates AS (
+        SELECT "roomId"
+        FROM public.rooms
+        WHERE status = 'active'
+          AND "isPermanent" = false
+          AND "expiresAt" IS NOT NULL
+          AND "expiresAt" > clock_timestamp()
+          AND "expiresAt" <= clock_timestamp() + interval '15 minutes'
+          AND "endingNotifiedAt" IS NULL
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE public.rooms r
+      SET "endingNotifiedAt" = clock_timestamp()
+      FROM candidates c
+      WHERE r."roomId" = c."roomId"
+      RETURNING r."roomId", r.owner_id AS "ownerId", r."expiresAt", r."roomTitle";
+    `);
+
+    if (result.rowCount && result.rowCount > 0) {
+      console.log(`[ENDING_SOON] Dispatched 15-minute advance warnings for ${result.rowCount} rooms`);
+      for (const row of result.rows) {
+        if (row.ownerId) {
+          notificationService
+            .notifyUser({
+              userId: row.ownerId,
+              type: "ROOM_ENDING",
+              title: "Room Ending Soon",
+              body: `Your room "${row.roomTitle || row.roomId}" will expire in approximately 15 minutes.`,
+              metadata: { roomId: row.roomId, action: "open_room", targetUrl: `/room/${encodeURIComponent(row.roomId)}` },
+              eventId: `ROOM_ENDING:${row.roomId}:15m`,
+            })
+            .catch((err) => console.error("[ENDING_SOON] Failed to notify owner:", err));
+        }
+        const room = rooms.get(row.roomId);
+        if (room) {
+          room.addChatMessage(null, {
+            id: '',
+            system: true,
+            msg: 'Notice: This room will expire in 15 minutes.',
+          });
+          const participantUids = typeof room.getConnectedParticipantUids === "function"
+            ? room.getConnectedParticipantUids()
+            : [];
+          for (const pUid of participantUids) {
+            if (pUid !== row.ownerId) {
+              notificationService
+                .notifyUser({
+                  userId: pUid,
+                  type: "ROOM_ENDING",
+                  title: "Room Ending Soon",
+                  body: `The room "${room.roomTitle || row.roomId}" will expire in approximately 15 minutes.`,
+                  metadata: { roomId: row.roomId, action: "open_room", targetUrl: `/room/${encodeURIComponent(row.roomId)}` },
+                  eventId: `ROOM_ENDING:${row.roomId}:15m:${pUid}`,
+                })
+                .catch((err) => console.error("[ENDING_SOON] Failed to notify participant:", err));
+            }
+          }
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn("Error checking ending soon rooms:", e?.message || e);
   }
 }
 

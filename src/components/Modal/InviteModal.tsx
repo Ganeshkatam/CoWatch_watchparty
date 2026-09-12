@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { Modal, Button, Tooltip, ActionIcon, PasswordInput } from "@mantine/core";
+import { Modal, Button, Tooltip, ActionIcon, PasswordInput, TextInput } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { supabase } from "../../utils/supabaseClient";
 import {
   IconCopy,
   IconCheck,
@@ -17,6 +19,7 @@ import {
   IconEyeOff,
   IconLink,
   IconExternalLink,
+  IconUserPlus,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./InviteModal.module.css";
@@ -40,6 +43,60 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const [showQr, setShowQr] = useState(false);
   const [manualPasscode, setManualPasscode] = useState("");
   const [passcodePrompt, setPasscodePrompt] = useState(false);
+  const [targetUsername, setTargetUsername] = useState("");
+  const [sendingInvite, setSendingInvite] = useState(false);
+
+  const handleSendDirectInvite = async () => {
+    if (!targetUsername.trim()) return;
+    setSendingInvite(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        notifications.show({
+          title: "Sign In Required",
+          message: "Please sign in to send direct invitations.",
+          color: "yellow",
+        });
+        return;
+      }
+      const res = await fetch("/api/notifications/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          roomId: cleanId,
+          targetUsername: targetUsername.trim(),
+          invitationId: crypto.randomUUID(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        notifications.show({
+          title: "Invite Failed",
+          message: data.error || "Failed to send invite",
+          color: "red",
+        });
+      } else {
+        setTargetUsername("");
+        notifications.show({
+          title: "Invite Sent",
+          message: data.message || "Invitation sent successfully",
+          color: "green",
+        });
+      }
+    } catch {
+      notifications.show({
+        title: "Invite Error",
+        message: "Network error while sending invite",
+        color: "red",
+      });
+    } finally {
+      setSendingInvite(false);
+    }
+  };
 
   const pathParts = window.location.pathname.split("/");
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
@@ -309,6 +366,44 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Direct CoWatch Invite */}
+        <div style={{ marginTop: "16px", marginBottom: "16px", background: "rgba(255,255,255,0.03)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#9ca3af", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+            <IconUserPlus size={14} /> Send CoWatch Invite
+          </span>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <TextInput
+              placeholder="Username"
+              value={targetUsername}
+              onChange={(e) => setTargetUsername(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSendDirectInvite();
+                }
+              }}
+              size="xs"
+              style={{ flex: 1 }}
+              styles={{
+                input: {
+                  background: "#18181b",
+                  borderColor: "rgba(255,255,255,0.12)",
+                  color: "#fff",
+                },
+              }}
+            />
+            <Button
+              size="xs"
+              variant="filled"
+              color="indigo"
+              loading={sendingInvite}
+              onClick={handleSendDirectInvite}
+              disabled={!targetUsername.trim()}
+            >
+              Send
+            </Button>
+          </div>
         </div>
 
         {/* Quick Share Section */}

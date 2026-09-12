@@ -5,6 +5,8 @@ import {
   DEFAULT_LEASE_DURATION_MS,
   MAX_LIFECYCLE_CEILING_MS,
 } from "./types.ts";
+import { notificationService } from "../notifications/notificationService.ts";
+import config from "../config.ts";
 
 export interface DatabasePool {
   query<T = any>(text: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
@@ -100,6 +102,39 @@ export class AdmissionCoordinator {
             `UPDATE rooms SET status = 'active', "startedAt" = NOW() WHERE "roomId" = $1`,
             [roomId]
           );
+
+          // Persist authoritative lifecycle event for session boundary
+          const eventRes = await client.query(
+            `INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", reason)
+             VALUES ($1, $2, 'room.started', 'scheduled', 'active', 'owner_activation')
+             RETURNING id`,
+            [roomId, actor.uid || actor.clientId]
+          );
+          const sessionId = eventRes?.rows?.[0]?.id;
+
+          if (row.owner_id && sessionId) {
+            notificationService
+              .notifyUser({
+                userId: row.owner_id,
+                type: "ROOM_STARTED",
+                title: `Room Live: "${row.roomTitle || roomId}"`,
+                body: `Your scheduled room "${row.roomTitle || roomId}" is now live.`,
+                metadata: {
+                  roomId,
+                  action: "open_room",
+                  targetUrl: `/room/${encodeURIComponent(roomId)}`,
+                  sessionId,
+                },
+                eventId: `ROOM_STARTED:${roomId}:${sessionId}`,
+                emailTemplateKey: "room-started",
+                emailPayload: {
+                  roomTitle: row.roomTitle || roomId,
+                  roomUrl: `${config.APP_URL || 'https://cowatch.tv'}/room/${encodeURIComponent(roomId)}`,
+                },
+              })
+              .catch((err) => console.error("[Lifecycle] Failed to notify owner of room start:", err));
+          }
+
           return {
             allowed: true,
             status: "active",
