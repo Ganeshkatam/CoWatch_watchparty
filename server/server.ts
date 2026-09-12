@@ -33,6 +33,10 @@ import {
   recordPasscodeFailure,
   resetPasscodeLimits,
 } from "./utils/rateLimit.ts";
+import {
+  checkFeedbackRateLimit,
+  recordFeedbackAttempt,
+} from "./utils/feedbackRateLimit.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
@@ -354,6 +358,118 @@ app.post("/api/account/delete", async (req, res) => {
   } catch (e: any) {
     console.error("Error during account deletion:", e);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/feedback", async (req, res) => {
+  try {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "unknown";
+    let userId: string | null = null;
+
+    // Optional auth token verification
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+        if (user) {
+          userId = user.id;
+        }
+      } catch (authErr) {
+        // Non-blocking: proceed as anonymous if auth fails
+      }
+    }
+
+    // Rate limiting check (In-memory, 0 Redis commands)
+    const rateLimit = checkFeedbackRateLimit(ip, userId);
+    if (!rateLimit.allowed) {
+      res.status(429).json({
+        error: "Too many feedback submissions. Please try again later.",
+        retryAfter: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    // Input Validation
+    const body = req.body || {};
+    const rawType = body.type;
+    const rawContext = body.context;
+    const rawRating = body.rating;
+    const rawMessage = body.message;
+    const rawAppVersion = body.app_version;
+    const rawPlatform = body.platform;
+
+    const allowedTypes = ["bug", "suggestion", "problem", "experience"];
+    const allowedContexts = [
+      "room",
+      "playback",
+      "host",
+      "participants",
+      "chat",
+      "video",
+      "virtual-browser",
+      "connection",
+    ];
+
+    if (!rawType || !allowedTypes.includes(rawType)) {
+      res.status(400).json({ error: "Invalid feedback type" });
+      return;
+    }
+
+    if (!rawMessage || typeof rawMessage !== "string" || !rawMessage.trim()) {
+      res.status(400).json({ error: "Feedback message is required" });
+      return;
+    }
+
+    const trimmedMessage = rawMessage.trim();
+    if (trimmedMessage.length > 2000) {
+      res.status(400).json({ error: "Feedback message must not exceed 2000 characters" });
+      return;
+    }
+
+    const context = rawContext && allowedContexts.includes(rawContext) ? rawContext : "room";
+    let rating: number | null = null;
+    if (rawRating !== undefined && rawRating !== null) {
+      const numRating = Number(rawRating);
+      if (Number.isInteger(numRating) && numRating >= 1 && numRating <= 5) {
+        rating = numRating;
+      } else {
+        res.status(400).json({ error: "Rating must be an integer between 1 and 5" });
+        return;
+      }
+    }
+
+    const appVersion = typeof rawAppVersion === "string" ? rawAppVersion.slice(0, 50) : "1.0.3";
+    const platform = typeof rawPlatform === "string" ? rawPlatform.slice(0, 50) : "web";
+
+    // Privacy & Security: Strip any potential private tokens / authorization strings embedded inside the message
+    const sanitizedMessage = trimmedMessage
+      .replace(/\bBearer\s+[A-Za-z0-9-_=.]+\b/g, "[TOKEN_REDACTED]")
+      .replace(/\b(sk_[a-zA-Z0-9_-]{20,}|eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,})\b/g, "[TOKEN_REDACTED]");
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database service unavailable" });
+      return;
+    }
+
+    const insertResult = await postgres.query(
+      `INSERT INTO public.feedback (user_id, type, rating, message, context, app_version, platform)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, created_at`,
+      [userId, rawType, rating, sanitizedMessage, context, appVersion, platform]
+    );
+
+    recordFeedbackAttempt(ip, userId);
+
+    const inserted = insertResult.rows[0];
+    res.status(200).json({
+      success: true,
+      id: inserted?.id,
+      created_at: inserted?.created_at,
+    });
+  } catch (err: any) {
+    console.error("Feedback submission error:", err);
+    res.status(500).json({ error: "Failed to submit feedback" });
   }
 });
 

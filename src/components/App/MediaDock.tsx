@@ -15,6 +15,7 @@ import {
   IconPlus,
   IconScreenShare,
   IconX,
+  IconMessageDots,
 } from "@tabler/icons-react";
 import { Menu } from "@mantine/core";
 import { MetadataContext } from "../../MetadataContext";
@@ -41,6 +42,7 @@ interface MediaDockProps {
   onToggleLock?: () => void;
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
+  onOpenFeedback?: () => void;
 }
 
 export const MediaDock: React.FC<MediaDockProps> = ({
@@ -63,6 +65,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   onToggleLock,
   isFullScreen,
   onToggleFullScreen,
+  onOpenFeedback,
 }) => {
   const metadata = React.useContext(MetadataContext);
   const [copied, setCopied] = React.useState(false);
@@ -322,6 +325,14 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           >
             {copied ? "Link Copied!" : "Copy room link"}
           </Menu.Item>
+          {onOpenFeedback && (
+            <Menu.Item
+              leftSection={<IconMessageDots size={16} color="var(--color-violet)" />}
+              onClick={onOpenFeedback}
+            >
+              Send feedback
+            </Menu.Item>
+          )}
         </Menu.Dropdown>
       </Menu>
     </div>

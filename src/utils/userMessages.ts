@@ -265,6 +265,13 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
   },
 
   // DB Failures & Timeouts (never imply server rejection)
+  GENERIC_ACTION_FAILED: {
+    message: "We couldn't complete this action. Please try again.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 3000,
+  },
   PARTICIPANT_SETTINGS_UPDATE_FAILED: {
     message: "We couldn't update the participant settings. Please try again.",
     severity: "error",
@@ -286,14 +293,113 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "retry",
     duration: 4000,
   },
-  GENERIC_ACTION_FAILED: {
-    message: "We couldn't complete this action. Please try again.",
+  // Feedback & Product Signals
+  FEEDBACK_SUBMIT_SUCCESS: {
+    message: "Thanks for your feedback.",
+    severity: "success",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  FEEDBACK_SUBMIT_FAILED: {
+    message: "We couldn't send your feedback. Please try again.",
     severity: "error",
     presentation: "toast",
     action: "retry",
+    duration: 4000,
+  },
+  FEEDBACK_RATE_LIMITED: {
+    message: "You've submitted several feedback reports recently. Please wait a moment before sending more.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 4000,
+  },
+  FEEDBACK_MESSAGE_EMPTY: {
+    message: "Please enter a message before sending.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
     duration: 3000,
   },
 };
+
+export type FeedbackType = "bug" | "suggestion" | "problem" | "experience";
+export type FeedbackContext =
+  | "room"
+  | "playback"
+  | "host"
+  | "participants"
+  | "chat"
+  | "video"
+  | "virtual-browser"
+  | "connection";
+
+export interface FeedbackPayload {
+  type: FeedbackType;
+  rating?: number | null;
+  message: string;
+  context?: FeedbackContext;
+  app_version?: string;
+  platform?: string;
+}
+
+/**
+ * Creates safe, semantic feedback context for contextual feedback prompts.
+ * NEVER leaks internal tokens, passcodes, raw errors, or private IDs.
+ */
+export function createSafeFeedbackContext(
+  typeOrParams?: FeedbackType | { type?: FeedbackType; context?: FeedbackContext; trigger?: string },
+  contextArg?: FeedbackContext,
+  triggerArg?: string
+): { type: FeedbackType; context: FeedbackContext; trigger?: string; safeTrigger?: string } {
+  const allowedTypes: FeedbackType[] = ["bug", "suggestion", "problem", "experience"];
+  const allowedContexts: FeedbackContext[] = [
+    "room",
+    "playback",
+    "host",
+    "participants",
+    "chat",
+    "video",
+    "virtual-browser",
+    "connection",
+  ];
+
+  let rawType: FeedbackType | undefined;
+  let rawContext: FeedbackContext | undefined;
+  let rawTrigger: string | undefined;
+
+  if (typeof typeOrParams === "object" && typeOrParams !== null) {
+    rawType = typeOrParams.type;
+    rawContext = typeOrParams.context;
+    rawTrigger = typeOrParams.trigger;
+  } else {
+    rawType = typeOrParams;
+    rawContext = contextArg;
+    rawTrigger = triggerArg;
+  }
+
+  const type = rawType && allowedTypes.includes(rawType) ? rawType : "problem";
+  const context =
+    rawContext && allowedContexts.includes(rawContext) ? rawContext : "room";
+
+  // Allowed safe trigger list (strict semantic tokens)
+  const allowedTriggers = [
+    "operation-timeout",
+    "connection-failed",
+    "playback-error",
+    "vbrowser-error",
+    "general",
+  ];
+
+  // Discard any trigger containing tokens, jwt, sql, stack traces, or non-allowlisted identifiers
+  let safeTrigger: string | undefined;
+  if (rawTrigger && allowedTriggers.includes(rawTrigger)) {
+    safeTrigger = rawTrigger;
+  }
+
+  return { type, context, trigger: safeTrigger, safeTrigger };
+}
 
 /**
  * Returns structured UserMessage object for room initialization / recovery stages.

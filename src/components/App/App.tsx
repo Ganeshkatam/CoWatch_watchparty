@@ -55,6 +55,7 @@ import { MediaDock } from "./MediaDock";
 import { WaitingForHost } from "./WaitingForHost";
 import { HostEndedModal } from "../Modal/HostEndedModal";
 import { AssignHostModal } from "../Host/AssignHostModal";
+import { FeedbackModal } from "../Feedback/FeedbackModal";
 import { RoomRecoveryOverlay } from "../Room/RoomRecoveryOverlay";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
@@ -94,6 +95,8 @@ import {
   getAdmissionErrorMessage,
   sanitizeServerErrorMessage,
   getHostTransferredPublicMessage,
+  type FeedbackContext,
+  type FeedbackType,
 } from "../../utils/userMessages";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
@@ -218,6 +221,9 @@ interface AppState {
   maxParticipants: number;
   hostMode?: "owner" | "temporary" | "none";
   initStage: RoomInitStage;
+  isFeedbackModalOpen: boolean;
+  feedbackInitialContext?: FeedbackContext;
+  feedbackInitialType?: FeedbackType;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -319,6 +325,9 @@ export class App extends React.Component<AppProps, AppState> {
     isHost: false,
     isAssignHostModalOpen: false,
     infoMessage: "",
+    isFeedbackModalOpen: false,
+    feedbackInitialContext: undefined,
+    feedbackInitialType: undefined,
   };
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
@@ -353,6 +362,14 @@ export class App extends React.Component<AppProps, AppState> {
     if (operationCoordinator.checkDualBarrier() || operationCoordinator.isRoomReady()) {
       this.setState({ state: "connected", initStage: "ready" });
     }
+  };
+
+  openFeedback = (context?: FeedbackContext, type?: FeedbackType) => {
+    this.setState({
+      isFeedbackModalOpen: true,
+      feedbackInitialContext: context || "room",
+      feedbackInitialType: type || "suggestion",
+    });
   };
 
   startWaitingPoll = (roomId: string) => {
@@ -3104,6 +3121,12 @@ export class App extends React.Component<AppProps, AppState> {
             window.location.href = "/";
           }}
         />
+        <FeedbackModal
+          opened={this.state.isFeedbackModalOpen}
+          onClose={() => this.setState({ isFeedbackModalOpen: false })}
+          initialContext={this.state.feedbackInitialContext}
+          initialType={this.state.feedbackInitialType}
+        />
         <RoomRecoveryOverlay />
         {this.state.errorMessage && (
           <Alert
@@ -3506,6 +3529,7 @@ export class App extends React.Component<AppProps, AppState> {
                         this.setState({ isFileShareModalOpen: true })
                       }
                       onOpenQuickAdd={this.openQuickAdd}
+                      onOpenFeedback={() => this.openFeedback("room", "suggestion")}
                       playlist={playlist}
                       onPlayPlaylistItem={this.roomPlaylistPlay}
                       onDeletePlaylistItem={this.roomPlaylistDelete}

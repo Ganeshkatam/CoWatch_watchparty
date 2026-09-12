@@ -17,7 +17,8 @@ export type OperationDomain =
   | "host-authority"
   | "participant-authority"
   | "media-playback"
-  | "webrtc-peer";
+  | "webrtc-peer"
+  | "feedback";
 
 export type RoomInitStage =
   | "booting"
