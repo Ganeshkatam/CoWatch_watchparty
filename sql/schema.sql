@@ -351,9 +351,10 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO ''
+SET search_path = ''
 AS $$
 BEGIN
+  -- 1. Provision profile
   INSERT INTO public.profiles (
     id,
     username,
@@ -383,6 +384,45 @@ BEGIN
   ON CONFLICT (id) DO UPDATE SET
     avatar_url = COALESCE(public.profiles.avatar_url, excluded.avatar_url),
     display_name = COALESCE(public.profiles.display_name, excluded.display_name);
+
+  -- 2. Provision account room limits (default quotas: 5 total, 5 watch, 2 permanent)
+  INSERT INTO public.account_room_limits (
+    account_id,
+    max_total_rooms,
+    max_watch_rooms,
+    max_permanent_rooms,
+    enabled,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    5,
+    5,
+    2,
+    true,
+    clock_timestamp(),
+    clock_timestamp()
+  )
+  ON CONFLICT (account_id) DO NOTHING;
+
+  -- 3. Provision account room usage
+  INSERT INTO public.account_room_usage (
+    account_id,
+    total_rooms,
+    watch_rooms,
+    permanent_rooms,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    0,
+    0,
+    0,
+    clock_timestamp()
+  )
+  ON CONFLICT (account_id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$;
