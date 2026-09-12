@@ -1039,7 +1039,14 @@ export class App extends React.Component<AppProps, AppState> {
 
       socket.on("REC:hostChange", handleHostUpdate);
       socket.on("REC:hostAuthority", handleHostUpdate);
-      socket.on("kicked", () => {
+      socket.on("kicked", (data?: { message?: string }) => {
+        showUserMessage(USER_MESSAGES.MOD_KICKED_SELF);
+        sessionStorage.setItem("room_exit_message", data?.message || "You were removed from the room by the host.");
+        window.location.assign("/");
+      });
+      socket.on("banned", (data?: { message?: string }) => {
+        showUserMessage(USER_MESSAGES.MOD_BANNED_SELF);
+        sessionStorage.setItem("room_exit_message", data?.message || "You have been removed from this room and cannot rejoin.");
         window.location.assign("/");
       });
       socket.on("REC:play", (data?: any) => {
@@ -1395,6 +1402,16 @@ export class App extends React.Component<AppProps, AppState> {
         }
         chat[msgIndex] = { ...chat[msgIndex], ...data };
         this.setState({ chat });
+      });
+      socket.on("REC:chatMessagesDeleted", (data: { messageIds: string[] }) => {
+        if (!data?.messageIds || !Array.isArray(data.messageIds)) return;
+        const deletedSet = new Set(data.messageIds);
+        const updatedChat = this.state.chat.map((m) =>
+          (m.dbId && deletedSet.has(m.dbId))
+            ? { ...m, isDeleted: true, msg: "This message was deleted." }
+            : m
+        );
+        this.setState({ chat: updatedChat });
       });
       socket.on("REC:addReaction", (data: Reaction) => {
         const { chat } = this.state;

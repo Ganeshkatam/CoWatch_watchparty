@@ -203,14 +203,37 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
   // Moderation & Media
   MOD_KICK_HOST_ONLY: {
     message: "Only the current host can remove participants.",
-    severity: "warning",
+    severity: "error",
     presentation: "toast",
     action: "none",
-    duration: 3000,
+  },
+  MOD_BAN_HOST_ONLY: {
+    message: "Only the current host can ban participants.",
+    severity: "error",
+    presentation: "toast",
+    action: "none",
   },
   MOD_DELETE_CHAT_HOST_ONLY: {
     message: "Only the current host can delete chat messages.",
+    severity: "error",
+    presentation: "toast",
+    action: "none",
+  },
+  MOD_KICKED_SELF: {
+    message: "You were removed from the room by the host.",
     severity: "warning",
+    presentation: "toast",
+    action: "rejoin",
+  },
+  MOD_BANNED_SELF: {
+    message: "You have been removed from this room and cannot rejoin.",
+    severity: "error",
+    presentation: "modal",
+    action: "none",
+  },
+  MOD_CHAT_DELETED_TOMBSTONE: {
+    message: "This message was deleted.",
+    severity: "info",
     presentation: "toast",
     action: "none",
     duration: 3000,
@@ -478,6 +501,12 @@ export function getAdmissionUserMessage(codeOrMessage: string): UserMessage {
   ) {
     return USER_MESSAGES.PASSCODE_INCORRECT;
   }
+  if (norm.includes("BANNED_FROM_ROOM") || norm.includes("cannot rejoin")) {
+    return USER_MESSAGES.MOD_BANNED_SELF;
+  }
+  if (norm.includes("KICKED_FROM_ROOM") || norm.includes("kicked")) {
+    return USER_MESSAGES.MOD_KICKED_SELF;
+  }
   if (norm.includes("ROOM_ACCESS_DENIED")) {
     return USER_MESSAGES.ACCESS_DENIED;
   }
@@ -573,6 +602,9 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
   // Moderation
   if (trimmed.includes("Only the room host can kick participants")) {
     return USER_MESSAGES.MOD_KICK_HOST_ONLY;
+  }
+  if (trimmed.includes("Only the room host can ban participants")) {
+    return USER_MESSAGES.MOD_BAN_HOST_ONLY;
   }
   if (trimmed.includes("Only the room host can delete chat messages")) {
     return USER_MESSAGES.MOD_DELETE_CHAT_HOST_ONLY;

@@ -1,6 +1,7 @@
 import config from "./config.ts";
 import axios from "axios";
 import { Server, Socket } from "socket.io";
+import { randomUUID } from "crypto";
 import { getUser, validateUserToken } from "./utils/supabase.ts";
 import { redis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
 import { type AssignedVM } from "./vm/base.ts";
@@ -31,6 +32,7 @@ export interface RoomMessageRow {
   updated_at: Date | null;
   profile_name?: string;
   profile_picture?: string;
+  is_deleted?: boolean;
 }
 
 export async function persistRoomMessage(
@@ -49,13 +51,13 @@ export async function persistRoomMessage(
       `INSERT INTO room_messages (room_id, user_id, message, message_type, event_type, metadata, client_message_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (room_id, user_id, client_message_id) DO NOTHING
-       RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at`,
+       RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
       [roomId, userId, message, messageType, eventType, metadata, clientMessageId]
     );
     if (result.rowCount === 0 && clientMessageId) {
       // Duplicate client_message_id for this room/user, fetch the existing one
       const existingResult = await postgres.query(
-        `SELECT id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
+        `SELECT id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
          FROM room_messages
          WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3`,
         [roomId, userId, clientMessageId]
@@ -74,7 +76,7 @@ export async function loadRoomMessages(roomId: string, limit: number = 50, befor
 
   try {
     let query = `
-      SELECT rm.id, rm.room_id as "roomId", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, p.display_name as profile_name, p.avatar_url as profile_picture
+      SELECT rm.id, rm.room_id as "roomId", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
       FROM room_messages rm
       LEFT JOIN profiles p ON rm.user_id = p.id
       WHERE rm.room_id = $1
@@ -143,6 +145,9 @@ export interface AdmittedParticipantRecord {
 export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
 
 export class Room {
+  sendRoster() {
+    throw new Error("Method not implemented.");
+  }
   // Serialized state
   public video: string | null = "";
   public videoTS = 0;
@@ -187,6 +192,20 @@ export class Room {
   public participantsLocked: boolean = false;
   public maxParticipants: number = 10;
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
+  private bannedIdentities: Set<string> = new Set();
+
+  public isBanned = (clientId?: string, uid?: string): boolean => {
+    if (clientId && this.bannedIdentities.has(clientId)) return true;
+    if (uid && this.bannedIdentities.has(uid)) return true;
+    return false;
+  };
+
+  public canModerate = (socket: Socket | null | undefined): boolean => {
+    if (!socket) return false;
+    const isHost = this.isHost(socket);
+    const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
+    return isHost || isOwner;
+  };
 
   public isRoomFull = (_isOwner?: boolean, clientId?: string, sessionId?: string): boolean => {
     // Reconnecting participant within grace period does not consume an extra slot
@@ -538,6 +557,41 @@ export class Room {
         }
       }
 
+      // MODERATION-001 Invariant: Banned Participant Authority
+      // Check PostgreSQL room_bans table and L1 cache
+      const authUid = socket.uid || (socket.handshake.auth?.uid as string | undefined);
+      if (postgres) {
+        try {
+          const banRes = await postgres.query(
+            `SELECT client_identity, user_id FROM room_bans WHERE room_id = $1 AND (client_identity = $2 OR (user_id IS NOT NULL AND user_id = $3))`,
+            [this.roomId, clientId, authUid || null]
+          );
+          if (banRes.rowCount && banRes.rowCount > 0) {
+            if (clientId) this.bannedIdentities.add(clientId);
+            if (authUid) this.bannedIdentities.add(authUid);
+            const err = new Error("BANNED_FROM_ROOM");
+            (err as any).data = {
+              code: "BANNED_FROM_ROOM",
+              message: "You have been removed from this room and cannot rejoin.",
+            };
+            next(err);
+            return;
+          }
+        } catch (dbErr) {
+          console.error("Failed to check room_bans in postgres:", dbErr);
+        }
+      }
+
+      if (this.isBanned(clientId, authUid)) {
+        const err = new Error("BANNED_FROM_ROOM");
+        (err as any).data = {
+          code: "BANNED_FROM_ROOM",
+          message: "You have been removed from this room and cannot rejoin.",
+        };
+        next(err);
+        return;
+      }
+
       // LOCK-001 Invariant: Evaluate participants_locked at final server-side admission boundary.
       // Flow: Creds -> Room/Passcode verify -> participants_locked?
       // - False: admit.
@@ -887,14 +941,37 @@ export class Room {
         validateLock() && validateNotExpired() && this.playlistDelete(Number(data));
       });
       socket.on("CMD:kickUser", async (data: unknown) => {
-        if (this.isHost(socket) && validateNotExpired()) {
-          this.kickUser(data);
+        if (this.canModerate(socket) && validateNotExpired()) {
+          const payload = data as { userToBeKicked: string; reason?: string };
+          if (payload?.userToBeKicked) {
+            await this.kickUser(socket, payload.userToBeKicked, payload.reason);
+          }
         } else {
           socket.emit("errorMessage", "Only the room host can kick participants");
         }
       });
+      socket.on("CMD:banUser", async (data: unknown) => {
+        if (this.canModerate(socket) && validateNotExpired()) {
+          const payload = data as { userToBeBanned: string; reason?: string };
+          if (payload?.userToBeBanned) {
+            await this.banUser(socket, payload.userToBeBanned, payload.reason);
+          }
+        } else {
+          socket.emit("errorMessage", "Only the room host can ban participants");
+        }
+      });
+      socket.on("CMD:deleteChatMessage", async (data: unknown) => {
+        if (this.canModerate(socket) && validateNotExpired()) {
+          const payload = data as { messageIds: string[] };
+          if (payload?.messageIds) {
+            await this.deleteChatMessagesV2(socket, payload.messageIds);
+          }
+        } else {
+          socket.emit("errorMessage", "Only the room host can delete chat messages");
+        }
+      });
       socket.on("CMD:deleteChatMessages", async (data: unknown) => {
-        if (this.isHost(socket) && validateNotExpired()) {
+        if (this.canModerate(socket) && validateNotExpired()) {
           this.deleteChatMessages(data);
         } else {
           socket.emit("errorMessage", "Only the room host can delete chat messages");
@@ -2213,28 +2290,135 @@ export class Room {
     // This will keep growing in memory until the room is unloaded
   };
 
-  private kickUser = async (raw: unknown) => {
-    const data = raw as { userToBeKicked: string };
-    if (!data) {
+  public kickUser = async (actorSocket: Socket, targetIdentity: string, reason?: string) => {
+    if (!this.canModerate(actorSocket)) {
+      actorSocket.emit("errorMessage", "Only the room host can kick participants");
       return;
     }
-    if (data.userToBeKicked) {
-      this.admittedParticipants.delete(data.userToBeKicked);
+    if (!targetIdentity) return;
+
+    this.admittedParticipants.delete(targetIdentity);
+
+    const targetSocketId = this.socketIdMap[targetIdentity];
+    const targetSocket = targetSocketId
+      ? this.io.of(this.roomId).sockets.get(targetSocketId)
+      : undefined;
+
+    if (targetSocket) {
+      targetSocket.emit("kicked", {
+        code: "KICKED_FROM_ROOM",
+        message: "You were removed from the room by the host.",
+      });
+      targetSocket.disconnect(true);
     }
-    const userToBeKickedSocket = this.io
-      .of(this.roomId)
-      .sockets.get(this.socketIdMap[data.userToBeKicked]);
-    if (userToBeKickedSocket) {
-      userToBeKickedSocket.emit("kicked");
-      userToBeKickedSocket.disconnect();
+
+    this.sendRoster();
+    this.io.of(this.roomId).emit("REC:participantKicked", {
+      eventId: randomUUID(),
+      roomId: this.roomId,
+      targetUserId: targetIdentity,
+      kickedBy: actorSocket.clientId,
+      reason,
+      timestamp: Date.now(),
+    });
+  };
+
+  public banUser = async (actorSocket: Socket, targetIdentity: string, reason?: string) => {
+    if (!this.canModerate(actorSocket)) {
+      actorSocket.emit("errorMessage", "Only the room host can ban participants");
+      return;
     }
+    if (!targetIdentity) return;
+
+    // Record in L1 cache
+    this.bannedIdentities.add(targetIdentity);
+    const targetUid = this.clientToUidMap[targetIdentity];
+    if (targetUid) {
+      this.bannedIdentities.add(targetUid);
+    }
+
+    // Remove from admitted participants
+    this.admittedParticipants.delete(targetIdentity);
+
+    // Persist to PostgreSQL room_bans table
+    if (postgres) {
+      try {
+        await postgres.query(
+          `INSERT INTO room_bans (room_id, client_identity, user_id, banned_by, reason)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (room_id, client_identity) DO NOTHING`,
+          [
+            this.roomId,
+            targetIdentity,
+            targetUid || null,
+            actorSocket.clientId || actorSocket.uid || "host",
+            reason || null,
+          ]
+        );
+      } catch (err) {
+        console.error("Failed to persist room ban in database:", err);
+      }
+    }
+
+    // Eject target socket if currently connected
+    const targetSocketId = this.socketIdMap[targetIdentity];
+    const targetSocket = targetSocketId
+      ? this.io.of(this.roomId).sockets.get(targetSocketId)
+      : undefined;
+
+    if (targetSocket) {
+      targetSocket.emit("banned", {
+        code: "BANNED_FROM_ROOM",
+        message: "You have been removed from this room and cannot rejoin.",
+      });
+      targetSocket.disconnect(true);
+    }
+
+    this.sendRoster();
+    this.io.of(this.roomId).emit("REC:participantBanned", {
+      eventId: randomUUID(),
+      roomId: this.roomId,
+      targetUserId: targetIdentity,
+      bannedBy: actorSocket.clientId,
+      reason,
+      timestamp: Date.now(),
+    });
   };
 
   public disconnectAllSockets = () => {
     this.io.of(this.roomId).disconnectSockets();
   };
 
-  private deleteChatMessages = async (raw: unknown) => {
+  public deleteChatMessagesV2 = async (actorSocket: Socket, messageIds: string[]) => {
+    if (!this.canModerate(actorSocket)) {
+      actorSocket.emit("errorMessage", "Only the room host can delete chat messages");
+      return;
+    }
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return;
+
+    if (postgres) {
+      try {
+        await postgres.query(
+          `UPDATE room_messages 
+           SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
+           WHERE room_id = $1 AND id = ANY($3::uuid[])`,
+          [this.roomId, actorSocket.clientId || actorSocket.uid || "host", messageIds]
+        );
+      } catch (err) {
+        console.error("Failed to soft-delete chat messages:", err);
+      }
+    }
+
+    this.io.of(this.roomId).emit("REC:chatMessagesDeleted", {
+      eventId: randomUUID(),
+      roomId: this.roomId,
+      messageIds,
+      deletedBy: actorSocket.clientId,
+      timestamp: Date.now(),
+    });
+  };
+
+  public deleteChatMessages = async (raw: unknown) => {
     const data = raw as {
       author?: string;
       timestamp?: string;
@@ -2244,13 +2428,13 @@ export class Room {
     if (postgres) {
       if (!data.timestamp && !data.author) {
         // Clear all
-        await postgres.query(`DELETE FROM room_messages WHERE room_id = $1`, [this.roomId]);
+        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1`, [this.roomId]);
       } else if (data.timestamp && data.author) {
         // Delete specific message
-        await postgres.query(`DELETE FROM room_messages WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`, [this.roomId, data.author, data.timestamp]);
+        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`, [this.roomId, data.author, data.timestamp]);
       } else if (data.author) {
         // Delete by author
-        await postgres.query(`DELETE FROM room_messages WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`, [this.roomId, data.author]);
+        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`, [this.roomId, data.author]);
       }
     }
 
@@ -2258,11 +2442,12 @@ export class Room {
     const recentMessages = await loadRoomMessages(this.roomId, 50);
     const formattedMessages = recentMessages.map((row: any) => ({
       id: row.metadata?.clientId || row.user_id,
-      msg: row.message,
+      msg: row.is_deleted ? "This message was deleted." : row.message,
       cmd: row.event_type || undefined,
       timestamp: row.created_at.toISOString(),
       videoTS: row.metadata?.videoTS,
       dbId: row.id,
+      isDeleted: Boolean(row.is_deleted),
     }));
     this.io.of(this.roomId).emit("chatinit", formattedMessages.reverse());
     this.io.of(this.roomId).emit("ROOM_MESSAGES", formattedMessages);

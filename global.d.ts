@@ -51,6 +51,9 @@ interface ChatMessage extends ChatMessageBase {
   picture?: string;
   updatedAt?: string;
   userId?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 interface Settings {

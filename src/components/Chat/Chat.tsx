@@ -24,6 +24,9 @@ export interface RoomMessage {
   videoTS?: number;
   dbId?: string;
   name?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export function useRoomMessages(socket: Socket | undefined) {
@@ -63,16 +66,30 @@ export function useRoomMessages(socket: Socket | undefined) {
       setIsLoading(false);
     };
 
+    const handleMessagesDeleted = (data: { messageIds: string[] }) => {
+      if (!data?.messageIds || !Array.isArray(data.messageIds)) return;
+      const deletedSet = new Set(data.messageIds);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          (msg.dbId && deletedSet.has(msg.dbId))
+            ? { ...msg, isDeleted: true, msg: "This message was deleted." }
+            : msg
+        )
+      );
+    };
+
     socket.on("ROOM_MESSAGES", handleRoomMessages);
     socket.on("ROOM_MESSAGE", handleRoomMessage);
     socket.on("chatinit", handleChatInit);
     socket.on("REC:chat", handleRoomMessage);
+    socket.on("REC:chatMessagesDeleted", handleMessagesDeleted);
 
     return () => {
       socket.off("ROOM_MESSAGES", handleRoomMessages);
       socket.off("ROOM_MESSAGE", handleRoomMessage);
       socket.off("chatinit", handleChatInit);
       socket.off("REC:chat", handleRoomMessage);
+      socket.off("REC:chatMessagesDeleted", handleMessagesDeleted);
     };
   }, [socket]);
 
