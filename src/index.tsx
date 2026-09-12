@@ -26,6 +26,7 @@ import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from "@vercel/analytics/react";
 
 // Route-level code splitting for rapid initial page loads
 const Home = lazy(() => import("./components/Home/Home").then((m) => ({ default: m.Home })));
@@ -495,6 +496,7 @@ class CoWatch extends React.Component {
                   <BrowserRouter>
                     <AppShell>
                       <SpeedInsights />
+                      <Analytics />
                       <Suspense fallback={<RouteFallback />}>
                         <Route
                           path="/"
