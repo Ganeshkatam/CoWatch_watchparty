@@ -6,14 +6,21 @@ import {
 } from "./types.ts";
 import { Room } from "../room.ts";
 import type { DatabasePool } from "./admissionCoordinator.ts";
+import type { VBrowserCoordinator } from "../vbrowser/coordinator.ts";
 
 export class RoomLifecycleManager {
   private db: DatabasePool | null;
   private inMemoryRooms: Map<string, Room>;
+  private vbrowserCoordinator?: VBrowserCoordinator;
 
-  constructor(db: DatabasePool | null, inMemoryRooms: Map<string, Room>) {
+  constructor(
+    db: DatabasePool | null,
+    inMemoryRooms: Map<string, Room>,
+    vbrowserCoordinator?: VBrowserCoordinator
+  ) {
     this.db = db;
     this.inMemoryRooms = inMemoryRooms;
+    this.vbrowserCoordinator = vbrowserCoordinator;
   }
 
   public createSnapshot(room: Room, lifecycleRevision: number = 1): RoomSnapshot {
@@ -46,13 +53,15 @@ export class RoomLifecycleManager {
   }
 
   /**
-   * Two-phase safe idle evacuation barrier:
+   * Two-phase safe idle evacuation barrier with optimistic revision CAS:
    * 1. Check connected participants === 0.
-   * 2. Transactional SELECT ... FOR UPDATE.
-   * 3. Verify lifecycle revision monotonic increment.
-   * 4. Idempotent external resource teardown (VMs/browsers).
-   * 5. Re-check connected participants (abort if > 0).
-   * 6. Evict from memory and unregister room.
+   * 2. Read room lifecycle_revision = N.
+   * 3. Begin resource teardown (VBrowser / VMs) with unique teardownOperationId.
+   * 4. Execute final atomic evacuation CAS:
+   *    UPDATE rooms SET status = 'inactive', lifecycle_revision = N + 1, data = $snapshot
+   *    WHERE "roomId" = $roomId AND lifecycle_revision = N AND status = 'active'
+   * 5. If rows_affected === 0, abort evacuation immediately and preserve resident room state.
+   * 6. Evacuate from memory.
    */
   public async unloadIfIdle(
     roomId: string,
@@ -82,9 +91,9 @@ export class RoomLifecycleManager {
     }
 
     try {
-      // Phase 2: Transactional serialization
+      // Step 2: Read current revision N and status
       const res = await this.db.query(
-        `SELECT lifecycle_revision, status FROM rooms WHERE "roomId" = $1 FOR UPDATE`,
+        `SELECT lifecycle_revision, status FROM rooms WHERE "roomId" = $1`,
         [roomId]
       );
 
@@ -93,17 +102,20 @@ export class RoomLifecycleManager {
       }
 
       const currentDbRevision = res.rows[0].lifecycle_revision || 1;
-      const nextRevision = currentDbRevision + 1;
-      const snapshot = this.createSnapshot(room, nextRevision);
-      const snapshotJson = JSON.stringify(snapshot);
+      const currentStatus = res.rows[0].status;
 
-      // Write versioned snapshot
-      await this.db.query(
-        `UPDATE rooms SET data = $1, lifecycle_revision = $2, "lastUpdateTime" = NOW() WHERE "roomId" = $3`,
-        [snapshotJson, nextRevision, roomId]
-      );
+      if (currentStatus !== "active") {
+        return { evacuated: false, reason: "ROOM_NOT_ACTIVE" };
+      }
 
-      // Phase 4: External resource teardown (VMs / VBrowsers) with idempotency
+      // Step 3: Resource teardown with idempotency
+      const teardownOpId = `unload_teardown_${roomId}_${Date.now()}`;
+      if (this.vbrowserCoordinator) {
+        await this.vbrowserCoordinator.releaseByRoom(roomId, teardownOpId).catch((err) => {
+          console.warn(`Idempotent coordinator teardown notice for room ${roomId}:`, err);
+        });
+      }
+
       if (room.vBrowser) {
         try {
           await room.stopVBrowserInternal();
@@ -112,12 +124,34 @@ export class RoomLifecycleManager {
         }
       }
 
-      // Phase 5: Re-verify participant count before eviction
+      // Re-verify in-memory participant barrier before CAS
       if (room.roster.length > 0) {
         return { evacuated: false, reason: "PARTICIPANT_RACED_DURING_UNLOAD" };
       }
 
-      // Phase 6: Evacuate from RAM
+      // Step 4: Final atomic evacuation CAS
+      const nextRevision = currentDbRevision + 1;
+      const snapshot = this.createSnapshot(room, nextRevision);
+      const snapshotJson = JSON.stringify(snapshot);
+
+      const casRes = await this.db.query(
+        `UPDATE rooms
+         SET status = 'inactive',
+             lifecycle_revision = $1,
+             data = $2,
+             "lastUpdateTime" = NOW()
+         WHERE "roomId" = $3
+           AND lifecycle_revision = $4
+           AND status = 'active'`,
+        [nextRevision, snapshotJson, roomId, currentDbRevision]
+      );
+
+      if (casRes.rowCount === 0) {
+        // CAS failed: concurrent reconnect incremented revision or altered status
+        return { evacuated: false, reason: "CAS_REVISION_MISMATCH_ABORTED" };
+      }
+
+      // Step 6: Evacuate from RAM
       room.destroy();
       this.inMemoryRooms.delete(roomId);
 
@@ -161,6 +195,11 @@ export class RoomLifecycleManager {
             `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE "roomId" = $1`,
             [roomId]
           );
+
+          // Teardown VBrowser allocations
+          if (this.vbrowserCoordinator) {
+            await this.vbrowserCoordinator.releaseByRoom(roomId, `expire_${roomId}_${now}`).catch(() => {});
+          }
 
           // Handle active in-memory instance
           const inMem = this.inMemoryRooms.get(roomId);
