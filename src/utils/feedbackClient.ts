@@ -15,11 +15,13 @@ import {
   type UserMessage,
 } from "./userMessages";
 import { safeGetSession } from "./supabaseClient";
+import { createUuid } from "./utils";
 
 export interface FeedbackSubmissionResult {
   success: boolean;
   userMessage: UserMessage;
   feedbackId?: string;
+  deduped?: boolean;
 }
 
 export async function submitUserFeedback(
@@ -32,6 +34,8 @@ export async function submitUserFeedback(
       userMessage: USER_MESSAGES.FEEDBACK_MESSAGE_EMPTY,
     };
   }
+
+  const idempotencyKey = payload.idempotency_key || createUuid();
 
   const opId = operationCoordinator.startOperation("feedback", "submit", undefined, {
     timeoutMs: 12000,
@@ -58,6 +62,7 @@ export async function submitUserFeedback(
         message: messageText.slice(0, 2000),
         app_version: payload.app_version || "1.0.3",
         platform: payload.platform || "web",
+        idempotency_key: idempotencyKey,
       }),
     });
 
@@ -69,6 +74,28 @@ export async function submitUserFeedback(
       return {
         success: false,
         userMessage: USER_MESSAGES.FEEDBACK_RATE_LIMITED,
+      };
+    }
+
+    if (response.status === 400) {
+      operationCoordinator.rejectOperation(
+        opId,
+        USER_MESSAGES.FEEDBACK_VALIDATION_FAILED.message
+      );
+      return {
+        success: false,
+        userMessage: USER_MESSAGES.FEEDBACK_VALIDATION_FAILED,
+      };
+    }
+
+    if (response.status === 503 || response.status === 500) {
+      operationCoordinator.rejectOperation(
+        opId,
+        USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE.message
+      );
+      return {
+        success: false,
+        userMessage: USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE,
       };
     }
 
@@ -90,6 +117,7 @@ export async function submitUserFeedback(
       success: true,
       userMessage: USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS,
       feedbackId: data.id,
+      deduped: Boolean(data.deduped),
     };
   } catch (err) {
     console.warn("Feedback HTTP request failure:", err);

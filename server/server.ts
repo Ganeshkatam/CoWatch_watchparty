@@ -37,6 +37,7 @@ import {
   checkFeedbackRateLimit,
   recordFeedbackAttempt,
 } from "./utils/feedbackRateLimit.ts";
+import { feedbackTelemetry } from "./utils/feedbackTelemetry.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
@@ -362,20 +363,25 @@ app.post("/api/account/delete", async (req, res) => {
 });
 
 app.post("/api/feedback", async (req, res) => {
+  const startTime = Date.now();
+  feedbackTelemetry.recordSubmissionAttempt();
+
   try {
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "unknown";
 
     // 1. Strict Payload & Schema Guard: Reject malformed JSON, non-objects, or arrays
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Invalid request payload format" });
       return;
     }
 
     // 2. Reject unexpected / forbidden / internal fields before processing
-    const allowedKeys = new Set(["type", "rating", "message", "context", "app_version", "platform"]);
+    const allowedKeys = new Set(["type", "rating", "message", "context", "app_version", "platform", "idempotency_key"]);
     const bodyKeys = Object.keys(req.body);
     const hasForbiddenKeys = bodyKeys.some((k) => !allowedKeys.has(k));
     if (hasForbiddenKeys) {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Payload contains unrecognized or forbidden fields" });
       return;
     }
@@ -398,6 +404,7 @@ app.post("/api/feedback", async (req, res) => {
     // 4. Rate limiting check (In-memory sliding window, 0 Redis commands)
     const rateLimit = checkFeedbackRateLimit(ip, userId);
     if (!rateLimit.allowed) {
+      feedbackTelemetry.recordRateLimitDrop();
       res.status(429).json({
         error: "Too many feedback submissions. Please try again later.",
         retryAfter: rateLimit.retryAfterSeconds,
@@ -406,7 +413,15 @@ app.post("/api/feedback", async (req, res) => {
     }
 
     // 5. Input Validation & Strict Enums
-    const { type: rawType, context: rawContext, rating: rawRating, message: rawMessage, app_version: rawAppVersion, platform: rawPlatform } = req.body;
+    const {
+      type: rawType,
+      context: rawContext,
+      rating: rawRating,
+      message: rawMessage,
+      app_version: rawAppVersion,
+      platform: rawPlatform,
+      idempotency_key: rawIdempotencyKey,
+    } = req.body;
 
     const allowedTypes = ["bug", "suggestion", "problem", "experience"];
     const allowedContexts = [
@@ -421,11 +436,13 @@ app.post("/api/feedback", async (req, res) => {
     ];
 
     if (!rawType || typeof rawType !== "string" || !allowedTypes.includes(rawType)) {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Invalid feedback type" });
       return;
     }
 
     if (!rawMessage || typeof rawMessage !== "string") {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Feedback message is required" });
       return;
     }
@@ -433,11 +450,13 @@ app.post("/api/feedback", async (req, res) => {
     // Unicode normalization (NFC) & whitespace trim
     const normalizedMessage = rawMessage.normalize("NFC").trim();
     if (!normalizedMessage) {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Feedback message cannot be empty or whitespace only" });
       return;
     }
 
     if (normalizedMessage.length > 2000) {
+      feedbackTelemetry.recordValidationFailure();
       res.status(400).json({ error: "Feedback message must not exceed 2000 characters" });
       return;
     }
@@ -449,6 +468,7 @@ app.post("/api/feedback", async (req, res) => {
     let rating: number | null = null;
     if (rawRating !== undefined && rawRating !== null) {
       if (typeof rawRating !== "number" || !Number.isInteger(rawRating) || rawRating < 1 || rawRating > 5) {
+        feedbackTelemetry.recordValidationFailure();
         res.status(400).json({ error: "Rating must be an integer between 1 and 5" });
         return;
       }
@@ -457,6 +477,9 @@ app.post("/api/feedback", async (req, res) => {
 
     const appVersion = typeof rawAppVersion === "string" ? rawAppVersion.slice(0, 50) : "1.0.3";
     const platform = typeof rawPlatform === "string" ? rawPlatform.slice(0, 50) : "web";
+    const idempotencyKey = typeof rawIdempotencyKey === "string" && rawIdempotencyKey.trim().length > 0
+      ? rawIdempotencyKey.trim().slice(0, 100)
+      : (typeof req.headers["x-idempotency-key"] === "string" ? (req.headers["x-idempotency-key"] as string).slice(0, 100) : null);
 
     // 6. Privacy & Redaction Barrier: Strip sensitive credentials, JWTs, keys, and connection URIs
     const sanitizedMessage = normalizedMessage
@@ -466,28 +489,83 @@ app.post("/api/feedback", async (req, res) => {
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "[SCRIPT_REMOVED]");
 
     if (!postgres) {
+      feedbackTelemetry.recordDbFailure();
       res.status(503).json({ error: "Database service unavailable" });
       return;
     }
 
-    // 7. Direct PostgreSQL insert with authoritative default status = 'new'
-    const insertResult = await postgres.query(
-      `INSERT INTO public.feedback (user_id, type, rating, message, context, app_version, platform, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'new')
-       RETURNING id, created_at`,
-      [userId, rawType, rating, sanitizedMessage, context, appVersion, platform]
-    );
+    // 7. Idempotency Check: Short-circuit if identical idempotency key already persisted
+    if (idempotencyKey) {
+      try {
+        const existingResult = await postgres.query(
+          `SELECT id, created_at FROM public.feedback WHERE idempotency_key = $1`,
+          [idempotencyKey]
+        );
+        if (existingResult.rows.length > 0) {
+          const existing = existingResult.rows[0];
+          feedbackTelemetry.recordSubmissionSuccess(true, Date.now() - startTime);
+          res.status(200).json({
+            success: true,
+            id: existing.id,
+            created_at: existing.created_at,
+            deduped: true,
+          });
+          return;
+        }
+      } catch (checkErr) {
+        console.warn("Idempotency check query failed, proceeding to insert:", checkErr);
+      }
+    }
+
+    // 8. Direct PostgreSQL insert with authoritative default status = 'new'
+    let insertResult;
+    try {
+      insertResult = await postgres.query(
+        `INSERT INTO public.feedback (user_id, type, rating, message, context, app_version, platform, status, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8)
+         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+         RETURNING id, created_at`,
+        [userId, rawType, rating, sanitizedMessage, context, appVersion, platform, idempotencyKey]
+      );
+    } catch (dbErr) {
+      console.error("Feedback database insert error:", dbErr);
+      feedbackTelemetry.recordDbFailure();
+      res.status(503).json({ error: "Database service unavailable" });
+      return;
+    }
 
     recordFeedbackAttempt(ip, userId);
 
-    const inserted = insertResult.rows[0];
+    let inserted = insertResult.rows[0];
+    let isDeduped = false;
+
+    // In case of concurrent race on same idempotency key
+    if (!inserted && idempotencyKey) {
+      const fallbackResult = await postgres.query(
+        `SELECT id, created_at FROM public.feedback WHERE idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      inserted = fallbackResult.rows[0];
+      isDeduped = true;
+    }
+
+    if (!inserted) {
+      feedbackTelemetry.recordDbFailure();
+      res.status(500).json({ error: "Failed to persist feedback" });
+      return;
+    }
+
+    feedbackTelemetry.recordSubmissionSuccess(isDeduped, Date.now() - startTime);
+
     res.status(200).json({
       success: true,
-      id: inserted?.id,
-      created_at: inserted?.created_at,
+      id: inserted.id,
+      created_at: inserted.created_at,
+      ...(isDeduped ? { deduped: true } : {}),
     });
   } catch (err: any) {
     console.error("Feedback submission error:", err);
+    feedbackTelemetry.recordDbFailure();
     res.status(500).json({ error: "Failed to submit feedback" });
   }
 });
@@ -657,6 +735,7 @@ app.patch("/api/admin/feedback/:id/status", async (req, res) => {
 
     // Check optimistic lock if expected_status specified
     if (expectedStatus && expectedStatus !== currentStatus) {
+      feedbackTelemetry.recordReviewUpdate(true);
       res.status(409).json({
         error: "Feedback status conflict",
         currentStatus,
@@ -708,9 +787,12 @@ app.patch("/api/admin/feedback/:id/status", async (req, res) => {
     );
 
     if (updateResult.rows.length === 0) {
+      feedbackTelemetry.recordReviewUpdate(true);
       res.status(409).json({ error: "Concurrent update conflict. Please refresh and retry." });
       return;
     }
+
+    feedbackTelemetry.recordReviewUpdate(false);
 
     res.json({
       success: true,
@@ -795,6 +877,7 @@ app.get("/api/admin/feedback/metrics", async (req, res) => {
         byContext,
         byRating,
       },
+      telemetry: feedbackTelemetry.getMetrics(),
     });
   } catch (e: any) {
     console.error("Admin feedback metrics error:", e);

@@ -13,6 +13,7 @@
  *    presentation mode, action binding, and duration.
  */
 
+import { platform } from "os";
 import type { RoomInitStage } from "./operationState";
 
 export type MessageSeverity = "info" | "success" | "warning" | "error";
@@ -308,6 +309,20 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "retry",
     duration: 4000,
   },
+  FEEDBACK_SERVICE_UNAVAILABLE: {
+    message: "Feedback is temporarily unavailable. Please try again in a few moments.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 4000,
+  },
+  FEEDBACK_VALIDATION_FAILED: {
+    message: "Please check your feedback and try again.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3500,
+  },
   FEEDBACK_RATE_LIMITED: {
     message: "You've submitted several feedback reports recently. Please wait a moment before sending more.",
     severity: "warning",
@@ -342,6 +357,7 @@ export interface FeedbackPayload {
   context?: FeedbackContext;
   app_version?: string;
   platform?: string;
+  idempotency_key?: string;
 }
 
 /**
