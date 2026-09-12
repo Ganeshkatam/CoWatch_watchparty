@@ -193,6 +193,7 @@ export class Room {
   public maxParticipants: number = 10;
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
   private bannedIdentities: Set<string> = new Set();
+  private processedOperationIds: Set<string> = new Set();
 
   public isBanned = (clientId?: string, uid?: string): boolean => {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
@@ -942,9 +943,9 @@ export class Room {
       });
       socket.on("CMD:kickUser", async (data: unknown) => {
         if (this.canModerate(socket) && validateNotExpired()) {
-          const payload = data as { userToBeKicked: string; reason?: string };
+          const payload = data as { userToBeKicked: string; reason?: string; operationId?: string };
           if (payload?.userToBeKicked) {
-            await this.kickUser(socket, payload.userToBeKicked, payload.reason);
+            await this.kickUser(socket, payload.userToBeKicked, payload.reason, payload.operationId);
           }
         } else {
           socket.emit("errorMessage", "Only the room host can kick participants");
@@ -952,9 +953,9 @@ export class Room {
       });
       socket.on("CMD:banUser", async (data: unknown) => {
         if (this.canModerate(socket) && validateNotExpired()) {
-          const payload = data as { userToBeBanned: string; reason?: string };
+          const payload = data as { userToBeBanned: string; reason?: string; operationId?: string };
           if (payload?.userToBeBanned) {
-            await this.banUser(socket, payload.userToBeBanned, payload.reason);
+            await this.banUser(socket, payload.userToBeBanned, payload.reason, payload.operationId);
           }
         } else {
           socket.emit("errorMessage", "Only the room host can ban participants");
@@ -962,9 +963,9 @@ export class Room {
       });
       socket.on("CMD:deleteChatMessage", async (data: unknown) => {
         if (this.canModerate(socket) && validateNotExpired()) {
-          const payload = data as { messageIds: string[] };
+          const payload = data as { messageIds: string[]; operationId?: string };
           if (payload?.messageIds) {
-            await this.deleteChatMessagesV2(socket, payload.messageIds);
+            await this.deleteChatMessages(socket, payload);
           }
         } else {
           socket.emit("errorMessage", "Only the room host can delete chat messages");
@@ -972,7 +973,7 @@ export class Room {
       });
       socket.on("CMD:deleteChatMessages", async (data: unknown) => {
         if (this.canModerate(socket) && validateNotExpired()) {
-          this.deleteChatMessages(data);
+          await this.deleteChatMessages(socket, data);
         } else {
           socket.emit("errorMessage", "Only the room host can delete chat messages");
         }
@@ -2290,12 +2291,24 @@ export class Room {
     // This will keep growing in memory until the room is unloaded
   };
 
-  public kickUser = async (actorSocket: Socket, targetIdentity: string, reason?: string) => {
+  public kickUser = async (
+    actorSocket: Socket,
+    targetIdentity: string,
+    reason?: string,
+    operationId?: string
+  ) => {
     if (!this.canModerate(actorSocket)) {
       actorSocket.emit("errorMessage", "Only the room host can kick participants");
       return;
     }
     if (!targetIdentity) return;
+
+    if (operationId) {
+      if (this.processedOperationIds.has(operationId)) {
+        return;
+      }
+      this.processedOperationIds.add(operationId);
+    }
 
     this.admittedParticipants.delete(targetIdentity);
 
@@ -2323,12 +2336,24 @@ export class Room {
     });
   };
 
-  public banUser = async (actorSocket: Socket, targetIdentity: string, reason?: string) => {
+  public banUser = async (
+    actorSocket: Socket,
+    targetIdentity: string,
+    reason?: string,
+    operationId?: string
+  ) => {
     if (!this.canModerate(actorSocket)) {
       actorSocket.emit("errorMessage", "Only the room host can ban participants");
       return;
     }
     if (!targetIdentity) return;
+
+    if (operationId) {
+      if (this.processedOperationIds.has(operationId)) {
+        return;
+      }
+      this.processedOperationIds.add(operationId);
+    }
 
     // Record in L1 cache
     this.bannedIdentities.add(targetIdentity);
@@ -2389,42 +2414,51 @@ export class Room {
     this.io.of(this.roomId).disconnectSockets();
   };
 
-  public deleteChatMessagesV2 = async (actorSocket: Socket, messageIds: string[]) => {
+  public deleteChatMessages = async (actorSocket: Socket, raw: unknown) => {
     if (!this.canModerate(actorSocket)) {
       actorSocket.emit("errorMessage", "Only the room host can delete chat messages");
       return;
     }
-    if (!Array.isArray(messageIds) || messageIds.length === 0) return;
-
-    if (postgres) {
-      try {
-        await postgres.query(
-          `UPDATE room_messages 
-           SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
-           WHERE room_id = $1 AND id = ANY($3::uuid[])`,
-          [this.roomId, actorSocket.clientId || actorSocket.uid || "host", messageIds]
-        );
-      } catch (err) {
-        console.error("Failed to soft-delete chat messages:", err);
-      }
-    }
-
-    this.io.of(this.roomId).emit("REC:chatMessagesDeleted", {
-      eventId: randomUUID(),
-      roomId: this.roomId,
-      messageIds,
-      deletedBy: actorSocket.clientId,
-      timestamp: Date.now(),
-    });
-  };
-
-  public deleteChatMessages = async (raw: unknown) => {
     const data = raw as {
+      operationId?: string;
+      messageIds?: string[];
       author?: string;
       timestamp?: string;
     };
     if (!data) return;
 
+    if (data.operationId) {
+      if (this.processedOperationIds.has(data.operationId)) {
+        return;
+      }
+      this.processedOperationIds.add(data.operationId);
+    }
+
+    if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
+      if (postgres) {
+        try {
+          await postgres.query(
+            `UPDATE room_messages 
+             SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
+             WHERE room_id = $1 AND id = ANY($3::uuid[])`,
+            [this.roomId, actorSocket.clientId || actorSocket.uid || "host", data.messageIds]
+          );
+        } catch (err) {
+          console.error("Failed to soft-delete chat messages:", err);
+        }
+      }
+
+      this.io.of(this.roomId).emit("REC:chatMessagesDeleted", {
+        eventId: randomUUID(),
+        roomId: this.roomId,
+        messageIds: data.messageIds,
+        deletedBy: actorSocket.clientId,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Legacy author/timestamp handling
     if (postgres) {
       if (!data.timestamp && !data.author) {
         // Clear all
