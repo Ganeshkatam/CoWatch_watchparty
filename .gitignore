@@ -25,3 +25,5 @@ yarn-error.log*
 
 .theia
 .eslintcache
+supabase/.temp
+.temp
