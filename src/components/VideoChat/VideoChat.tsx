@@ -12,6 +12,7 @@ import {
 } from "../../utils/utils";
 import { UserMenu } from "../UserMenu/UserMenu";
 import { MetadataContext } from "../../MetadataContext";
+import { operationCoordinator } from "../../utils/operationState";
 import {
   IconCheck,
   IconChevronRight,
@@ -410,7 +411,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "failed") {
+      const iceState = pc.iceConnectionState;
+      if (iceState === "connected" || iceState === "completed") {
+        operationCoordinator.setPeerRtcStatus(id, "connected");
+      } else if (iceState === "checking") {
+        operationCoordinator.setPeerRtcStatus(id, "connecting");
+      } else if (iceState === "disconnected") {
+        operationCoordinator.setPeerRtcStatus(id, "disconnected");
+      } else if (iceState === "failed") {
+        operationCoordinator.setPeerRtcStatus(id, "failed");
         // ICE failed (permanently, not a temporary disconnection, which would be "disconnected"), tear down and attempt to re-establish
         try {
           pc.close();
@@ -418,6 +427,23 @@ export class VideoChat extends React.Component<VideoChatProps> {
         delete window.cowatch.videoPCs[id];
         delete window.cowatch.iceQueues[id];
         this.updateWebRTC();
+      } else if (iceState === "closed") {
+        operationCoordinator.setPeerRtcStatus(id, "closed");
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const connState = pc.connectionState;
+      if (connState === "connected") {
+        operationCoordinator.setPeerRtcStatus(id, "connected");
+      } else if (connState === "connecting") {
+        operationCoordinator.setPeerRtcStatus(id, "connecting");
+      } else if (connState === "disconnected") {
+        operationCoordinator.setPeerRtcStatus(id, "disconnected");
+      } else if (connState === "failed") {
+        operationCoordinator.setPeerRtcStatus(id, "failed");
+      } else if (connState === "closed") {
+        operationCoordinator.setPeerRtcStatus(id, "closed");
       }
     };
 

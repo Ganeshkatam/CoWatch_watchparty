@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Modal, Button, Text, Radio } from "@mantine/core";
+import { Modal, Button, Text, Radio, Loader } from "@mantine/core";
 import { IconCrown, IconDoorExit } from "@tabler/icons-react";
+import { useOperationState } from "../../hooks/useOperationState";
 import styles from "./AssignHostModal.module.css";
 
 interface AssignHostModalProps {
@@ -27,6 +28,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
   // Filter out the active host
   const candidates = participants.filter((p) => p.id !== currentClientId);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const hostOp = useOperationState("host-authority", "transfer");
 
   // Select first available candidate whenever modal opens or candidates change
   useEffect(() => {
@@ -117,7 +119,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
       </div>
 
       <div className={styles.actionRow}>
-        <Button variant="subtle" color="gray" size="sm" onClick={onClose}>
+        <Button variant="subtle" color="gray" size="sm" onClick={onClose} disabled={hostOp.isPending}>
           Cancel
         </Button>
         {candidates.length === 0 && (
@@ -127,6 +129,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
             size="sm"
             leftSection={<IconDoorExit size={15} />}
             onClick={onLeaveDirectly}
+            disabled={hostOp.isPending}
           >
             Leave
           </Button>
@@ -135,15 +138,21 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
           variant="filled"
           color="violet"
           size="sm"
-          leftSection={<IconCrown size={15} />}
-          disabled={!selectedClientId}
+          leftSection={
+            hostOp.showSpinner ? (
+              <Loader size={15} color="white" />
+            ) : (
+              <IconCrown size={15} />
+            )
+          }
+          disabled={!selectedClientId || hostOp.isPending}
           onClick={() => {
-            if (selectedClientId) {
+            if (selectedClientId && !hostOp.isPending) {
               onAssignAndLeave(selectedClientId);
             }
           }}
         >
-          Assign & Leave
+          {hostOp.isPending ? "Assigning..." : "Assign & Leave"}
         </Button>
       </div>
     </Modal>

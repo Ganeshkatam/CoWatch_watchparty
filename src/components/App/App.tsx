@@ -83,6 +83,11 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { pipManager, type PiPState } from "../../utils/pipManager";
+import {
+  operationCoordinator,
+  type RoomInitStage,
+  type OperationDomain,
+} from "../../utils/operationState";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -205,6 +210,7 @@ interface AppState {
   participantsLocked: boolean;
   maxParticipants: number;
   hostMode?: "owner" | "temporary" | "none";
+  initStage: RoomInitStage;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -212,6 +218,7 @@ export class App extends React.Component<AppProps, AppState> {
   declare context: React.ContextType<typeof MetadataContext>;
   state: AppState = {
     state: "starting",
+    initStage: "booting",
     roomMedia: "",
     roomPaused: false,
     roomSubtitle: "",
@@ -626,14 +633,16 @@ export class App extends React.Component<AppProps, AppState> {
 
   init = async () => {
     let roomId = this.props.urlRoomId || "";
-
-    this.setState({ roomId }, () => {
+    operationCoordinator.setInitStage("booting");
+    this.setState({ roomId, initStage: "booting" }, () => {
       this.join(roomId);
     });
   };
 
   checkRoomAccess = async (roomId: string) => {
     try {
+      operationCoordinator.setInitStage("authenticating");
+      this.setState({ initStage: "authenticating" });
       const sessionData = await safeGetSession(1200);
       const user = sessionData?.data?.session?.user;
       const token = sessionData?.data?.session?.access_token;
@@ -704,7 +713,8 @@ export class App extends React.Component<AppProps, AppState> {
   join = async (roomId: string, explicitPasscode?: string) => {
     const cleanRoomId = (roomId || "").trim();
     if (!cleanRoomId) {
-      this.setState({ state: "connected", overlayMsg: "Invalid room identifier." });
+      operationCoordinator.setInitStage("failed");
+      this.setState({ state: "connected", initStage: "failed", overlayMsg: "Invalid room identifier." });
       return;
     }
 
@@ -716,7 +726,8 @@ export class App extends React.Component<AppProps, AppState> {
     this.startingTimer = window.setTimeout(() => {
       if (this.state.state === "starting") {
         console.warn("Room connection starting state timed out (2500ms); forcing connected state.");
-        this.setState({ state: "connected" });
+        operationCoordinator.setInitStage(this.state.initStage === "synchronizing" ? "ready" : "degraded");
+        this.setState({ state: "connected", initStage: "ready" });
       }
     }, 2500);
 
@@ -778,13 +789,17 @@ export class App extends React.Component<AppProps, AppState> {
             window.clearTimeout(this.startingTimer);
             this.startingTimer = null;
           }
-          this.setState({ isWaitingForHost: true, state: "connected", overlayMsg: "" });
+          operationCoordinator.setInitStage("degraded");
+          this.setState({ isWaitingForHost: true, state: "connected", initStage: "degraded", overlayMsg: "" });
           this.startWaitingPoll(cleanRoomId);
           return;
         }
       } catch (e) {
         console.warn("Room access verification error:", e);
       }
+
+      operationCoordinator.setInitStage("connecting");
+      this.setState({ initStage: "connecting" });
 
       let shard = "";
       try {
@@ -825,13 +840,10 @@ export class App extends React.Component<AppProps, AppState> {
       this.socket = socket;
 
       socket.on("connect", async () => {
-        if (this.startingTimer) {
-          window.clearTimeout(this.startingTimer);
-          this.startingTimer = null;
-        }
+        operationCoordinator.setInitStage("synchronizing");
+        this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
         this.setState({
-          state: "connected",
           isWaitingForHost: false,
           overlayMsg: "",
           errorMessage: "",
@@ -925,6 +937,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
       const handleHostUpdate = (data: any) => {
         if (!data) return;
+        operationCoordinator.resolveDomainOperations("host-authority");
         const selfClientId = getOrCreateClientId();
         const isSelfHost =
           data.hostClientId === selfClientId ||
@@ -995,6 +1008,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ controller: data });
       });
       socket.on("REC:host", async (data: HostState) => {
+        operationCoordinator.resolveDomainOperations("media-playback", "set-media");
         let currentMedia = data.video || "";
         if (this.state.pipState?.active && this.state.roomMedia !== currentMedia) {
           pipManager.restoreAndClose().catch(console.warn);
@@ -1379,9 +1393,11 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ pictureMap: data });
       });
       socket.on("REC:lock", (data: string) => {
+        operationCoordinator.resolveDomainOperations("participant-authority", "lock");
         this.setState({ roomLock: data });
       });
       socket.on("REC:participantsLock", (data: boolean) => {
+        operationCoordinator.resolveDomainOperations("participant-authority", "participants-lock");
         this.setState({ participantsLocked: Boolean(data) });
       });
       socket.on("roster", (data: any[]) => {
@@ -1737,6 +1753,8 @@ export class App extends React.Component<AppProps, AppState> {
     this.setMediaPath(data.mediaPath);
     this.setInviteLink(this.getInviteLink());
     window.history.replaceState("", "", this.getInviteLink());
+    operationCoordinator.setInitStage("ready");
+    this.setState({ state: "connected", initStage: "ready" });
   };
 
   setOwner = (owner: string) => {
@@ -1757,8 +1775,9 @@ export class App extends React.Component<AppProps, AppState> {
   setMediaPath = (mediaPath: string | undefined) => {
     this.setState({ mediaPath });
   };
-
   setRoomLock = async (locked: boolean) => {
+    if (operationCoordinator.isPending("participant-authority", "lock")) return;
+    operationCoordinator.startOperation("participant-authority", "lock");
     this.socket.emit("CMD:lock", { locked });
   };
 
@@ -1767,6 +1786,10 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   haveLock = () => {
+    // Invariant: Authority controls remain inactive until init lifecycle reaches READY
+    if (!operationCoordinator.isRoomReady() && this.state.initStage !== "ready") {
+      return false;
+    }
     if (!this.state.roomLock) {
       return true;
     }
@@ -1784,6 +1807,8 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   toggleParticipantsLock = () => {
+    if (operationCoordinator.isPending("participant-authority", "participants-lock")) return;
+    operationCoordinator.startOperation("participant-authority", "participants-lock");
     this.socket?.emit("CMD:setParticipantsLock", {
       locked: !this.state.participantsLocked,
     });
@@ -2651,6 +2676,7 @@ export class App extends React.Component<AppProps, AppState> {
       pipManager.restoreAndClose().catch(console.warn);
     }
     const normalized = isYouTube(value) ? normalizeYouTubeUrl(value) : value;
+    operationCoordinator.startOperation("media-playback", "set-media");
     this.socket.emit("CMD:host", normalized);
   };
 
@@ -2948,10 +2974,22 @@ export class App extends React.Component<AppProps, AppState> {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Connecting to room...
+                {this.state.initStage === "authenticating"
+                  ? "Authenticating permissions..."
+                  : this.state.initStage === "connecting"
+                  ? "Connecting to room..."
+                  : this.state.initStage === "synchronizing"
+                  ? "Synchronizing room stage..."
+                  : "Preparing watch party..."}
               </Title>
               <Text c="dimmed" size="sm">
-                Synchronizing media stage and participants
+                {this.state.initStage === "authenticating"
+                  ? "Verifying room credentials and access authority"
+                  : this.state.initStage === "connecting"
+                  ? "Establishing secure realtime socket connection"
+                  : this.state.initStage === "synchronizing"
+                  ? "Synchronizing media stage, controls, and participants"
+                  : "Loading environment and initializing assets"}
               </Text>
             </div>
           </Overlay>
@@ -3008,6 +3046,7 @@ export class App extends React.Component<AppProps, AppState> {
           pictureMap={this.state.pictureMap}
           currentClientId={getOrCreateClientId()}
           onAssignAndLeave={(targetClientId: string) => {
+            operationCoordinator.startOperation("host-authority", "transfer", targetClientId);
             this.socket.emit("CMD:transferHost", { participantId: targetClientId });
             this.socket.emit("CMD:assignHost", { newHostClientId: targetClientId });
             window.location.href = "/";
