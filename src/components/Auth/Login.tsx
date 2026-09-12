@@ -159,6 +159,14 @@ export const Login = () => {
           Create account
         </Link>
       </Text>
+      <Text size="xs" ta="center" mt="xs" c="dimmed">
+        <Link to="/terms" style={{ color: "var(--text-muted)", textDecoration: "underline", marginRight: "12px" }}>
+          Terms of Service
+        </Link>
+        <Link to="/privacy" style={{ color: "var(--text-muted)", textDecoration: "underline" }}>
+          Privacy Policy
+        </Link>
+      </Text>
     </div>
   );
 };

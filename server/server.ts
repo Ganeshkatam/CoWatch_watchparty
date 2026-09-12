@@ -37,6 +37,10 @@ import {
   checkFeedbackRateLimit,
   recordFeedbackAttempt,
 } from "./utils/feedbackRateLimit.ts";
+import {
+  checkAbuseReportRateLimit,
+  recordAbuseReportAttempt,
+} from "./utils/abuseReportRateLimit.ts";
 import { feedbackTelemetry } from "./utils/feedbackTelemetry.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
@@ -456,6 +460,154 @@ app.post("/api/account/delete", async (req, res) => {
   } catch (e: any) {
     console.error("Error during account deletion:", e);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/reports/abuse", async (req: express.Request, res: express.Response) => {
+  try {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "unknown";
+
+    // 1. Authentication check: Bearer token is strictly required
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing or invalid authorization header" });
+      return;
+    }
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      res.status(401).json({ error: "Bearer token missing" });
+      return;
+    }
+
+    let reporterUserId: string;
+    try {
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user?.id) {
+        res.status(401).json({ error: "Unauthorized session or token expired" });
+        return;
+      }
+      reporterUserId = user.id;
+    } catch (authErr) {
+      res.status(401).json({ error: "Failed to authenticate session token" });
+      return;
+    }
+
+    // 2. Strict Payload Validation
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      res.status(400).json({ error: "Invalid request payload format" });
+      return;
+    }
+
+    const allowedKeys = new Set(["category", "reason", "targetUserId", "targetRoomId", "context"]);
+    const bodyKeys = Object.keys(req.body);
+    if (bodyKeys.some((k) => !allowedKeys.has(k))) {
+      res.status(400).json({ error: "Payload contains unrecognized fields" });
+      return;
+    }
+
+    // 3. Rate limiting check (5 per hour per user, 10 per hour per IP)
+    const rateLimit = checkAbuseReportRateLimit(ip, reporterUserId);
+    if (!rateLimit.allowed) {
+      res.status(429).json({
+        error: "Too many abuse reports submitted. Please try again later.",
+        retryAfter: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    const { category, reason, targetUserId, targetRoomId, context } = req.body;
+
+    const validCategories = new Set([
+      "harassment",
+      "spam",
+      "hate_speech",
+      "inappropriate_content",
+      "copyright",
+      "other",
+    ]);
+
+    if (!category || typeof category !== "string" || !validCategories.has(category)) {
+      res.status(400).json({ error: "Invalid or missing report category" });
+      return;
+    }
+
+    if (!reason || typeof reason !== "string" || reason.trim().length < 5 || reason.trim().length > 1000) {
+      res.status(400).json({ error: "Reason must be between 5 and 1000 characters" });
+      return;
+    }
+
+    const cleanTargetUserId = typeof targetUserId === "string" && targetUserId.trim() ? targetUserId.trim() : null;
+    const cleanTargetRoomId = typeof targetRoomId === "string" && targetRoomId.trim() ? targetRoomId.trim() : null;
+
+    if (!cleanTargetUserId && !cleanTargetRoomId) {
+      res.status(400).json({ error: "At least one target (user or room) must be specified" });
+      return;
+    }
+
+    // Self-reporting check
+    if (cleanTargetUserId && cleanTargetUserId === reporterUserId) {
+      res.status(400).json({ error: "Cannot report yourself" });
+      return;
+    }
+
+    const cleanContext = context && typeof context === "object" && !Array.isArray(context) ? context : {};
+
+    // 4. Server/service-role database write (bypassing client RLS securely)
+    const query = `
+      INSERT INTO public.abuse_reports (
+        reporter_user_id,
+        target_user_id,
+        target_room_id,
+        category,
+        reason,
+        context,
+        status
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+      RETURNING id, created_at;
+    `;
+
+    const values = [
+      reporterUserId,
+      cleanTargetUserId,
+      cleanTargetRoomId,
+      category,
+      reason.trim(),
+      JSON.stringify(cleanContext),
+    ];
+
+    let result;
+    if (postgres) {
+      result = await postgres.query(query, values);
+    } else if (supabaseAdmin) {
+      const { data, error: sbErr } = await supabaseAdmin
+        .from("abuse_reports")
+        .insert({
+          reporter_user_id: reporterUserId,
+          target_user_id: cleanTargetUserId,
+          target_room_id: cleanTargetRoomId,
+          category,
+          reason: reason.trim(),
+          context: cleanContext,
+          status: "pending",
+        })
+        .select("id, created_at")
+        .single();
+      if (sbErr) throw sbErr;
+      result = { rows: [data] };
+    } else {
+      throw new Error("No database connection available");
+    }
+
+    recordAbuseReportAttempt(ip, reporterUserId);
+
+    res.status(201).json({
+      success: true,
+      reportId: result.rows[0].id,
+      createdAt: result.rows[0].created_at,
+    });
+  } catch (err: any) {
+    console.error("Error processing abuse report:", err);
+    res.status(500).json({ error: "Internal server error while filing report" });
   }
 });
 

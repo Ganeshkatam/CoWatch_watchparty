@@ -14,12 +14,14 @@ import {
   IconLockOpen,
   IconMessageShare,
   IconSettings,
+  IconAlertTriangle,
   IconX,
 } from "@tabler/icons-react";
 import { Menu, Tooltip, ActionIcon, Loader } from "@mantine/core";
 import { HeaderSearchBar } from "./HeaderSearchBar";
 import { getRoomUrl, getInviteMessage } from "../../utils/utils";
 import { useOperationState, useRoomInitStage } from "../../hooks/useOperationState";
+import { ReportModal } from "../Report/ReportModal";
 import styles from "./RoomHeader.module.css";
 
 interface RoomHeaderProps {
@@ -73,6 +75,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const getCleanRoomId = () => {
     if (propRoomId) return propRoomId.replace(/^\//, "");
@@ -319,6 +322,14 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             >
               Room settings
             </Menu.Item>
+            <Menu.Divider />
+            <Menu.Item
+              color="red"
+              leftSection={<IconAlertTriangle size={16} />}
+              onClick={() => setIsReportModalOpen(true)}
+            >
+              Report Room
+            </Menu.Item>
           </Menu.Dropdown>
         </Menu>
 
@@ -425,6 +436,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           <span className={styles.exitText}>Exit</span>
         </button>
       </div>
+
+      <ReportModal
+        opened={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetRoomId={cleanRoomId}
+      />
     </header>
   );
 };

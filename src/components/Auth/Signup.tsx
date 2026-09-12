@@ -353,6 +353,17 @@ export const Signup = () => {
             <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
 
             <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
+            <Text size="xs" c="dimmed" ta="center" mt="xs">
+              By creating an account, you agree to our{" "}
+              <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                Privacy Policy
+              </Link>
+              .
+            </Text>
           </form>
         )}
 

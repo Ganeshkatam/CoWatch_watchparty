@@ -43,7 +43,7 @@ const BackButton = () => {
 export const Privacy = () => {
   useDocumentMetadata({
     title: "Privacy Policy | CoWatch",
-    description: "Read the privacy policy for CoWatch. Learn how we handle rooms, data, and user privacy.",
+    description: "Read the privacy policy for CoWatch. Learn how we handle rooms, data, transactional notifications, and user privacy.",
   });
 
   return (
@@ -54,38 +54,45 @@ export const Privacy = () => {
           Privacy Policy
         </Title>
 
-        <Title order={2} size="h4" mb="sm">Rooms</Title>
+        <Title order={2} size="h4" mb="sm">Rooms & Viewing History</Title>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>By default, rooms are temporary and expire after one day of inactivity.</List.Item>
-          <List.Item>Users have the option of making a room permanent, which can be undone at any time.</List.Item>
-          <List.Item>We do not keep logs of the content that users watch.</List.Item>
+          <List.Item>By default, rooms are temporary and expire after inactivity.</List.Item>
+          <List.Item>Room owners have the option to make rooms permanent, which can be changed at any time.</List.Item>
+          <List.Item>We do not track, profile, or retain logs of the media content you watch in rooms.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Personal Information</Title>
+        <Title order={2} size="h4" mb="sm">Account Information</Title>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>An account is required to use the service. You can sign in or register with an email or authentication provider, which will be used to display your name and picture in the rooms you join.</List.Item>
-          <List.Item>If you provide this information, we may use it to contact you regarding your use of the service.</List.Item>
-          <List.Item>We do not sell personal information to third parties.</List.Item>
+          <List.Item>An account is required to host rooms or save preferences. Your username, display name, and avatar are displayed to participants in rooms you join.</List.Item>
+          <List.Item>We never sell your personal information or email address to third parties.</List.Item>
           <List.Item>
-            You have the right to request deletion of your user data, in accordance with various laws governing data protection. Please contact <Anchor href="mailto:support@cowatch.me" c="var(--color-violet)">support@cowatch.me</Anchor> to request user data deletion.
+            You can delete your account and associated profile data at any time from your Account Settings, or by contacting <Anchor href="mailto:support@cowatch.me" c="var(--color-violet)">support@cowatch.me</Anchor>.
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Cookies</Title>
+        <Title order={2} size="h4" mb="sm">Transactional Notifications & Email</Title>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>We use services such as Google Analytics to measure usage. These services may set cookies or other information locally on your device.</List.Item>
+          <List.Item>We send transactional communications (such as room invitations, room expiration notices, and security alerts) based on your account activity.</List.Item>
+          <List.Item>You can customize or disable email notification categories at any time in your Account Preferences.</List.Item>
+          <List.Item>To protect your privacy, invalid or unsubscribed email addresses are protected using one-way cryptographic hashes rather than storing plaintext suppression records.</List.Item>
+        </List>
+
+        <Title order={2} size="h4" mb="sm">Live Audio, Video & WebRTC</Title>
+        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+          <List.Item>Real-time voice, webcam, and screen sharing are delivered via encrypted WebRTC connections.</List.Item>
+          <List.Item>Direct peer-to-peer media streaming inherently exchanges network addresses (IP addresses) between participants in the room to route audio and video.</List.Item>
         </List>
 
         <Title order={2} size="h4" mb="sm">Virtual Browsers</Title>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>Virtual machines are recycled after each session ends and any data on them is destroyed.</List.Item>
-          <List.Item>Your commands are encrypted while in-transit to the virtual machine.</List.Item>
+          <List.Item>Cloud virtual browser containers are dedicated to your session and are automatically recycled and wiped upon session conclusion.</List.Item>
+          <List.Item>Interactive control commands are encrypted in-transit between your browser and the cloud virtual machine.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">YouTube</Title>
+        <Title order={2} size="h4" mb="sm">Third-Party Services</Title>
         <List mb="sm" spacing="sm" c="var(--text-secondary)">
           <List.Item>
-            The service provides the ability to search and play YouTube videos. Google/YouTube may use data provided to the search service in accordance with the <Anchor href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">Google Privacy Policy</Anchor>.
+            Searching and streaming YouTube videos within CoWatch utilizes the YouTube API Services. Your interaction with YouTube content is governed by the <Anchor href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">Google Privacy Policy</Anchor>.
           </List.Item>
         </List>
       </Paper>
@@ -107,17 +114,20 @@ export const Terms = () => {
           Terms of Service
         </Title>
         
-        <Text mb="md" c="var(--text-primary)" fw={500}>By using this service you agree to the following terms:</Text>
+        <Text mb="md" c="var(--text-primary)" fw={500}>By using CoWatch, you agree to the following terms:</Text>
         <List mb="xl" spacing="sm" c="var(--text-secondary)">
-          <List.Item>You are over 18 years of age</List.Item>
-          <List.Item>Your use of the service may be terminated if you are found to be sharing illegal or infringing content</List.Item>
-          <List.Item>The service provides no guarantee of uptime or availability</List.Item>
-          <List.Item>You use the service at your own risk of encountering objectionable content, as we do not actively moderate rooms unless content is found to be illegal or infringing</List.Item>
+          <List.Item><strong>Age Requirement:</strong> You must be at least 18 years of age to register an account or use the service.</List.Item>
+          <List.Item><strong>User Content & Rights:</strong> You warrant that you have all necessary rights, licenses, or permissions for any media content, URLs, files, or streams you share or broadcast in rooms.</List.Item>
+          <List.Item><strong>Prohibited Conduct:</strong> You may not use the service to transmit illegal, infringing, defamatory, harassing, abusive, or sexually explicit material. Violating content will result in immediate termination.</List.Item>
+          <List.Item><strong>Virtual Browser Acceptable Use:</strong> Shared virtual browser instances must be used solely for standard interactive browsing and media playback. Automated vulnerability scanning, cryptocurrency mining, denial-of-service attacks, and network probing are strictly prohibited.</List.Item>
+          <List.Item><strong>Room Management & Moderation:</strong> Room hosts have authority over their rooms, including setting passcodes, participant locks, and kicking or banning users who disrupt the session. Users must respect room rules and host moderation actions.</List.Item>
+          <List.Item><strong>Service Availability:</strong> CoWatch is provided on an "as is" and "as available" basis without warranties of uninterrupted uptime or error-free operation.</List.Item>
+          <List.Item><strong>Account Suspension & Termination:</strong> We reserve the right to suspend or terminate accounts that violate these Terms, our Community Guidelines, or applicable laws.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">YouTube</Title>
+        <Title order={2} size="h4" mb="sm">YouTube Content</Title>
         <Text mb="sm" c="var(--text-secondary)">
-          The service provides the ability to search and play YouTube videos. By using the YouTube search you agree to the <Anchor href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">YouTube Terms of Service</Anchor>.
+          When playing YouTube videos through CoWatch, you are accessing YouTube content directly and agree to be bound by the <Anchor href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">YouTube Terms of Service</Anchor>.
         </Text>
       </Paper>
     </Container>
@@ -174,7 +184,7 @@ export const FAQ = () => {
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            A virtual browser (VBrowser) is a browser running in the cloud that a room's members can connect to. Everyone in the room sees the same thing, so it's a great way to watch videos or collaborate on tasks together.
+            A virtual browser (VBrowser) is a cloud-hosted Chromium session that room members can connect to simultaneously. Everyone in the room sees the same screen in real-time with shared controls, making it ideal for watching videos, browsing media sites, or collaborating together.
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -185,30 +195,29 @@ export const FAQ = () => {
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            VBrowsers will terminate automatically if no one is in the room for a while.<br/>
-            VBrowser sessions are limited to a maximum of 24 hours.
+            Virtual browsers terminate automatically when a room becomes empty or inactive to conserve server capacity. Individual sessions also have a standard maximum duration of 24 hours.
           </Accordion.Panel>
         </Accordion.Item>
 
         <Accordion.Item value="vbrowser-not-available">
           <Accordion.Control>
             <Text fw={600} size="md" c="var(--text-primary)">
-              How do I access sites that have a "not available" message in the VBrowser?
+              How do I access sites that show a "not available" message in the VBrowser?
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            Some sites may block traffic that's detected as coming from the cloud. You may need to install a VPN extension inside the virtual browser.
+            Certain streaming providers block data center and cloud IP addresses. When encountering geo-restrictions or data center blocks, you can install a VPN or proxy extension inside the virtual browser session.
           </Accordion.Panel>
         </Accordion.Item>
 
         <Accordion.Item value="audio-screensharing">
           <Accordion.Control>
             <Text fw={600} size="md" c="var(--text-primary)">
-              How come I'm not getting any audio when screensharing?
+              How do I share audio when screensharing?
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            To share audio, you must be using Chrome/Edge and sharing a tab or desktop.
+            To share system or media audio, use a Chromium-based browser (Google Chrome, Microsoft Edge, Brave) and select "Share tab audio" or "Share system audio" when prompted by your operating system.
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -219,7 +228,7 @@ export const FAQ = () => {
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            Currently there isn't a hard limit, although the service hasn't been tested with more than 15 people or so. Screensharing and filesharing rely on one person uploading to everyone else, so it may not work well with large room sizes.
+            CoWatch rooms have an authoritative maximum limit of 10 participants per room. This ceiling ensures sub-second playback synchronization, low-latency peer-to-peer WebRTC video/audio chat, and stable streaming performance for all attendees.
           </Accordion.Panel>
         </Accordion.Item>
 

@@ -1,5 +1,6 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { useHistory, Link } from "react-router-dom";
+import { notifications } from "@mantine/notifications";
 import {
   Container,
   Title,
@@ -52,6 +53,22 @@ export const Home: React.FC = () => {
     canonicalUrl: "https://cowatch.tv/",
     url: "https://cowatch.tv/",
   });
+
+  useEffect(() => {
+    try {
+      const exitMsg = sessionStorage.getItem("room_exit_message");
+      if (exitMsg) {
+        sessionStorage.removeItem("room_exit_message");
+        notifications.show({
+          title: "Room Disconnected",
+          message: exitMsg,
+          color: "orange",
+          icon: <IconAlertCircle size={18} />,
+          autoClose: 7000,
+        });
+      }
+    } catch (e) {}
+  }, []);
 
   const handleStartWatchParty = () => {
     if (user) {

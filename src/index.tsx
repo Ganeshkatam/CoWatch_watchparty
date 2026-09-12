@@ -40,6 +40,8 @@ const RoomDetails = lazy(() => import("./components/MyRooms/RoomDetails").then((
 const Terms = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Terms })));
 const Privacy = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Privacy })));
 const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.FAQ })));
+const CommunityGuidelines = lazy(() => import("./components/Pages/CommunityGuidelines").then((m) => ({ default: m.CommunityGuidelines })));
+const Support = lazy(() => import("./components/Support/Support").then((m) => ({ default: m.Support })));
 const About = lazy(() => import("./components/About/About").then((m) => ({ default: m.About })));
 const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
 const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
@@ -580,22 +582,39 @@ class CoWatch extends React.Component {
                             <Footer />
                           </>
                         </Route>
+                        <Route path="/support" exact>
+                          <>
+                            <TopBar />
+                            <Support />
+                            <Footer />
+                          </>
+                        </Route>
+                        <Route path="/community-guidelines" exact>
+                          <>
+                            <TopBar />
+                            <CommunityGuidelines />
+                            <Footer />
+                          </>
+                        </Route>
                         <Route path="/terms">
                           <>
                             <TopBar />
                             <Terms />
+                            <Footer />
                           </>
                         </Route>
                         <Route path="/privacy">
                           <>
                             <TopBar />
                             <Privacy />
+                            <Footer />
                           </>
                         </Route>
                         <Route path="/faq">
                           <>
                             <TopBar />
                             <FAQ />
+                            <Footer />
                           </>
                         </Route>
                         <Route path={["/account", "/account/:tab*"]}>

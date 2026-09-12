@@ -2,11 +2,12 @@ import React, { useContext, useState } from "react";
 import { Menu, Loader, Modal, Button, Group, Text, Stack } from "@mantine/core";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
-import { IconBan, IconCrown, IconTrashFilled, IconUserX, IconX } from "@tabler/icons-react";
+import { IconBan, IconCrown, IconTrashFilled, IconUserX, IconX, IconAlertTriangle } from "@tabler/icons-react";
 import { getOrCreateClientId } from "../../utils/utils";
 import { ThemeMenuItems } from "../TopBar/TopBar";
 import { useOperationState, useRoomInitStage } from "../../hooks/useOperationState";
 import { operationCoordinator } from "../../utils/operationState";
+import { ReportModal } from "../Report/ReportModal";
 
 const clientId = getOrCreateClientId();
 
@@ -40,6 +41,7 @@ export const UserMenu = ({
 
   const [isKickModalOpen, setIsKickModalOpen] = useState(false);
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const handleConfirmKick = () => {
     setIsKickModalOpen(false);
@@ -70,7 +72,7 @@ export const UserMenu = ({
         <Menu.Target>{trigger}</Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>{displayName || userToManage}</Menu.Label>
-          
+
           {userToManage === clientId && (
             <>
               <Menu.Divider />
@@ -158,6 +160,19 @@ export const UserMenu = ({
               </Menu.Item>
             </>
           )}
+
+          {userToManage !== clientId && (
+            <>
+              <Menu.Divider />
+              <Menu.Item
+                color="red"
+                leftSection={<IconAlertTriangle size={16} />}
+                onClick={() => setIsReportModalOpen(true)}
+              >
+                Report User
+              </Menu.Item>
+            </>
+          )}
         </Menu.Dropdown>
       </Menu>
 
@@ -204,6 +219,17 @@ export const UserMenu = ({
           </Group>
         </Stack>
       </Modal>
+
+      <ReportModal
+        opened={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetUsername={displayName || userToManage}
+        context={{
+          targetClientId: userToManage,
+          timestamp: timestamp,
+          isChatMessage: isChatMessage,
+        }}
+      />
     </>
   );
 };

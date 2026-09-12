@@ -31,7 +31,9 @@
     "test:provider-webhooks": "tsx server/notifications/webhooks/providerWebhooks.test.ts",
     "test:brevo-e2e": "tsx server/notifications/brevoE2E.test.ts",
     "test:action-contract": "tsx src/utils/notificationAction.test.ts",
-    "test:domain-events": "tsx server/notifications/domainEvents.integration.test.ts"
+    "test:domain-events": "tsx server/notifications/domainEvents.integration.test.ts",
+    "test:reports": "tsx server/reports.adversarial.test.ts",
+    "test:navigation": "tsx src/utils/navigationPolicy.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",

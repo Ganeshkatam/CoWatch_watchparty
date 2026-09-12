@@ -33,6 +33,7 @@ import {
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { NotificationPreferencesSection } from "./NotificationPreferencesSection";
 import styles from "./Profile.module.css";
 
 const AppearanceSelector = () => {
@@ -762,6 +763,9 @@ export const Profile: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Email Notification Preferences Section */}
+                <NotificationPreferencesSection />
               </>
             )}
 

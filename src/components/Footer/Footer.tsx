@@ -41,6 +41,12 @@ export const Footer = () => (
           <Text component={Link} to="/privacy" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
             Privacy
           </Text>
+          <Text component={Link} to="/support" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
+            Support
+          </Text>
+          <Text component={Link} to="/community-guidelines" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
+            Guidelines
+          </Text>
         </Group>
 
         <Group gap="xs">

@@ -19,6 +19,7 @@ import {
   IconMoon,
   IconUsers,
   IconHome,
+  IconHelpCircle,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 import { TopBarSearch } from "./TopBarSearch";
@@ -353,6 +354,10 @@ const NavigationMenuContent: React.FC<{
               </Link>
             </>
           )}
+          <Link to="/support" className={styles.drawerNavLink} onClick={onClose}>
+            <IconHelpCircle size={18} stroke={1.5} />
+            <span>Support &amp; Help</span>
+          </Link>
         </div>
 
         {/* In-room actions if applicable */}
