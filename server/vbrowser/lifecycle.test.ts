@@ -158,13 +158,19 @@ class MockDatabase implements DatabasePool {
     }
 
     // UPDATE vbrowser_reservations SET status = 'RELEASING'
-    if (text.includes("UPDATE vbrowser_reservations SET status = 'RELEASING'")) {
+    if (text.includes("UPDATE vbrowser_reservations") && text.includes("status = 'RELEASING'")) {
       const id = params[0];
       const record = this.reservations.get(id);
       if (record) {
+        if (text.includes("status IN")) {
+          if (record.status !== "RESERVED" && record.status !== "ALLOCATED") {
+            return { rows: [], rowCount: 0 };
+          }
+        }
         record.status = "RELEASING";
+        return { rows: [record] as unknown as T[], rowCount: 1 };
       }
-      return { rows: record ? ([record] as unknown as T[]) : [], rowCount: record ? 1 : 0 };
+      return { rows: [], rowCount: 0 };
     }
 
     // UPDATE vbrowser_reservations SET status = 'RELEASED'

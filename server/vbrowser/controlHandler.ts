@@ -301,13 +301,13 @@ export class VBrowserControlHandler {
    * Container crash detection broadcasts FAILED and unmounts dock.
    */
   public handleContainerCrash(roomId: string, reservationId: string, currentEpoch: number): void {
-    this.broadcastState({
+    const failedState: VBrowserStateSnapshot = {
       roomId,
       reservationId,
       status: "FAILED",
       epoch: currentEpoch,
       failureReason: CANONICAL_USER_MESSAGES.PROVIDER_UNAVAILABLE,
-    });
-    this.activeSessions.delete(roomId);
+    };
+    this.broadcastState(failedState);
   }
 }

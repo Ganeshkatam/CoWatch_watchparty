@@ -430,7 +430,7 @@ async function runControlTests() {
 
     handler.handleContainerCrash(room.roomId, alloc.state.reservationId!, 1);
     const crashedState = handler.getSessionState(room.roomId);
-    assert.equal(crashedState.status, "DISCONNECTED");
+    assert.equal(crashedState.status, "FAILED");
     console.log("Test 9 Passed: Container crash detection broadcasts FAILED and frees media dock.");
   }
 

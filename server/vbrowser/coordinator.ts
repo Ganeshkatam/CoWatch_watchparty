@@ -351,11 +351,15 @@ export class VBrowserCoordinator {
         return { success: true };
       }
 
-      // Step 1: Transition to RELEASING in DB
-      await this.db.query(
-        `UPDATE vbrowser_reservations SET status = 'RELEASING' WHERE id = $1`,
+      // Step 1: Atomic transition to RELEASING in DB
+      const casRes = await this.db.query<VBrowserReservationRecord>(
+        `UPDATE vbrowser_reservations SET status = 'RELEASING' WHERE id = $1 AND status IN ('RESERVED', 'ALLOCATED') RETURNING *`,
         [record.id]
       );
+      if (!casRes.rows || casRes.rows.length === 0) {
+        // Another concurrent release is already in-flight or completed
+        return { success: true };
+      }
 
       // Step 2: Provider teardown
       const targetVmId = options.vmid || record.vmid || record.id;
