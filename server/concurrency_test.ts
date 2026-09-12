@@ -33,7 +33,7 @@ if (!connectionString) {
 const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
-  max: 30,
+  max: 10,
 });
 
 async function runConcurrencyStressTest() {
@@ -57,9 +57,9 @@ async function runConcurrencyStressTest() {
     [accountId]
   );
   await pool.query(
-    `INSERT INTO public.account_room_limits (account_id, max_total_rooms, max_watch_rooms, max_permanent_rooms)
-     VALUES ($1, 5, 5, 2)
-     ON CONFLICT (account_id) DO UPDATE SET max_total_rooms = 5, max_watch_rooms = 5, max_permanent_rooms = 2`,
+    `INSERT INTO public.account_room_limits (account_id, plan_id)
+     VALUES ($1, 'free')
+     ON CONFLICT (account_id) DO UPDATE SET plan_id = 'free', override_total_rooms = NULL, override_watch_rooms = NULL, override_permanent_rooms = NULL, override_room_duration_hours = NULL, override_vbrowser_allowed = NULL, override_vbrowser_concurrency = NULL`,
     [accountId]
   );
 
@@ -74,7 +74,7 @@ async function runConcurrencyStressTest() {
         $1, $2, 'watch', $3, 'stress 100 description',
         'dummyhash', 'dummyenc', $4, null, false,
         now() + INTERVAL '3 hours',
-        5, 5, 2
+        10
       ) AS result`,
       [accountId, roomId, title, fingerprint]
     )
@@ -156,7 +156,7 @@ async function runConcurrencyStressTest() {
           $1, $2, 'watch', 'Contention Room', null,
           'dummyhash', 'dummyenc', $3, null, false,
           now() + INTERVAL '3 hours',
-          5, 5, 2
+          10
         )`,
         [accountId, roomId, fingerprint]
       )
@@ -218,7 +218,7 @@ async function runConcurrencyStressTest() {
       $1, $2, 'watch', 'Activity Test Room', null,
       'dummyhash', 'dummyenc', $3, null, false,
       now() + INTERVAL '2 hours',
-      5, 5, 2
+      10
     )`,
     [accountId, testRoomId, testFingerprint]
   );
@@ -281,7 +281,7 @@ async function runConcurrencyStressTest() {
         $1, $2, 'watch', 'Purge Test Room', null,
         'dummyhash', 'dummyenc', $3, null, false,
         now() + INTERVAL '2 hours',
-        5, 5, 2
+        10
       )`,
       [accountId, `purge-room-${Date.now()}-${i}`, `purge-fp-${Date.now()}-${i}`]
     );
@@ -324,7 +324,7 @@ async function runConcurrencyStressTest() {
 
   // Verify account_room_limits row is preserved
   const limitsAfterPurge = await pool.query(
-    "SELECT max_total_rooms FROM public.account_room_limits WHERE account_id = $1",
+    "SELECT plan_id FROM public.account_room_limits WHERE account_id = $1",
     [accountId]
   );
   if (limitsAfterPurge.rowCount === 0) {
@@ -371,7 +371,7 @@ async function runConcurrencyStressTest() {
       $1, $2, 'watch', 'Auth Matrix Room', null,
       'dummyhash', 'dummyenc', $3, null, false,
       now() + INTERVAL '2 hours',
-      5, 5, 2
+      10
     )`,
     [accountId, authTestRoomId, authTestFingerprint]
   );
@@ -410,7 +410,7 @@ async function runConcurrencyStressTest() {
       $1, $2, 'watch', 'Lock Matrix Room', null,
       'dummyhash', 'dummyenc', $3, null, false,
       now() + INTERVAL '2 hours',
-      5, 5, 2
+      10
     )`,
     [accountId, lockTestRoomId, lockTestFingerprint]
   );
@@ -956,7 +956,7 @@ async function runConcurrencyStressTest() {
       $1, $2, 'watch', 'Capacity Test Room', 'testing capacity',
       'caphash', 'capenc', $3, null, false,
       now() + INTERVAL '3 hours',
-      10, 10, 2, 10
+      10
     ) AS result`,
     [accountId, capTestRoomId, `cap-fp-${Date.now()}`]
   );
@@ -982,7 +982,7 @@ async function runConcurrencyStressTest() {
           $1, $2, 'watch', 'Invalid Cap Room', 'testing',
           'caphash', 'capenc', $3, null, false,
           now() + INTERVAL '3 hours',
-          10, 10, 2, $4
+          $4
         ) AS result`,
         [accountId, `cap-inv-${Date.now()}-${invCap}`, `cap-inv-fp-${Date.now()}-${invCap}`, invCap]
       );
@@ -1511,6 +1511,305 @@ async function runConcurrencyStressTest() {
     throw new Error(`TEST 10 Case R FAILED: Sequence non-monotonic: p1=${p1Seq}, p2=${p2Seq}, p3=${p3Seq}`);
   }
   console.log("TEST 10 Case R PASSED: Deterministic admission sequence monotonicity across repeated joins and leaves.");
+
+  // ============================================================================
+  // TEST 11 — POLICY-001 Subscription & Entitlement Architecture Suite
+  // ============================================================================
+  console.log("\n==========================================");
+  console.log("STARTING TEST 11: POLICY-001 Subscription & Entitlement Architecture Suite");
+  console.log("==========================================");
+
+  // Clean slate before Test 11
+  await pool.query("SELECT public.purge_account_rooms_authoritative($1)", [accountId]);
+  await pool.query(
+    `UPDATE public.account_room_limits
+     SET plan_id = 'free',
+         override_total_rooms = NULL,
+         override_watch_rooms = NULL,
+         override_permanent_rooms = NULL,
+         override_room_duration_hours = NULL,
+         override_vbrowser_allowed = NULL,
+         override_vbrowser_concurrency = NULL
+     WHERE account_id = $1`,
+    [accountId]
+  );
+
+  // Case A: Centralized Entitlement Resolver
+  const entResA = await pool.query("SELECT * FROM public.resolve_account_entitlement($1)", [accountId]);
+  if (entResA.rowCount !== 1) {
+    throw new Error("TEST 11 Case A FAILED: resolve_account_entitlement did not return row");
+  }
+  const entA = entResA.rows[0];
+  if (entA.plan_id !== "free" || entA.max_total_rooms !== 5 || entA.max_room_duration_hours !== 24 || entA.is_vbrowser_allowed !== false) {
+    throw new Error(`TEST 11 Case A FAILED: Unexpected resolved free plan: ${JSON.stringify(entA)}`);
+  }
+  console.log("TEST 11 Case A PASSED: Centralized entitlement resolver returned correct effective values.");
+
+  // Case B: Max Room Duration Enforcement (ROOM_DURATION_EXCEEDS_PLAN_LIMIT)
+  let durationExceededCaught = false;
+  try {
+    await pool.query(
+      `SELECT public.create_room_authoritative(
+        $1, $2, 'watch', 'Overdue Plan Room', null,
+        'hash', 'enc', $3, null, false,
+        now() + INTERVAL '25 hours',
+        10
+      )`,
+      [accountId, `dur-over-${Date.now()}`, `dur-fp-${Date.now()}`]
+    );
+  } catch (err: any) {
+    durationExceededCaught = err.message.includes("ROOM_DURATION_EXCEEDS_PLAN_LIMIT");
+  }
+  if (!durationExceededCaught) {
+    throw new Error("TEST 11 Case B FAILED: 25h room creation was not rejected on 24h plan");
+  }
+
+  // Permitted duration succeeds
+  const validDurationRoomId = `dur-valid-${Date.now()}`;
+  await pool.query(
+    `SELECT public.create_room_authoritative(
+      $1, $2, 'watch', 'Valid Duration Room', null,
+      'hash', 'enc', $3, null, false,
+      now() + INTERVAL '12 hours',
+      10
+    )`,
+    [accountId, validDurationRoomId, `dur-fp-valid-${Date.now()}`]
+  );
+  await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, validDurationRoomId]);
+  console.log("TEST 11 Case B PASSED: Max room duration strictly enforced against resolved plan ceiling.");
+
+  // Case C: Live Entitlement Mutation (20 -> 21 -> 19 Grandfathering Matrix)
+  console.log("Testing Live Entitlement Mutation (20 -> 21 -> 19 Grandfathering Matrix)...");
+  // 1. Upgrade to 'premium' (max_total_rooms = 20, max_watch_rooms = 20)
+  await pool.query("UPDATE public.account_room_limits SET plan_id = 'premium' WHERE account_id = $1", [accountId]);
+  const entPremium = (await pool.query("SELECT * FROM public.resolve_account_entitlement($1)", [accountId])).rows[0];
+  if (entPremium.max_total_rooms !== 20 || entPremium.max_room_duration_hours !== 72) {
+    throw new Error(`TEST 11 Case C FAILED: Premium plan not resolved: ${JSON.stringify(entPremium)}`);
+  }
+
+  // 2. Create 20 rooms -> all succeed
+  const pRooms = Array.from({ length: 20 }).map((_, i) => {
+    return pool.query(
+      `SELECT public.create_room_authoritative(
+        $1, $2, 'watch', $3, null,
+        'hash', 'enc', $4, null, false,
+        now() + INTERVAL '10 hours',
+        10
+      )`,
+      [accountId, `prem-room-${Date.now()}-${i}`, `Room ${i}`, `prem-fp-${Date.now()}-${i}`]
+    );
+  });
+  await Promise.all(pRooms);
+
+  const usagePrem = (await pool.query("SELECT total_rooms FROM public.account_room_usage WHERE account_id = $1", [accountId])).rows[0];
+  if (usagePrem.total_rooms !== 20) {
+    throw new Error(`TEST 11 Case C FAILED: Expected 20 rooms in usage, got ${usagePrem.total_rooms}`);
+  }
+
+  // 3. 21st room creation is rejected (ceiling = 20)
+  let rejected21 = false;
+  try {
+    await pool.query(
+      `SELECT public.create_room_authoritative(
+        $1, $2, 'watch', 'Room 21 Attempt', null,
+        'hash', 'enc', $3, null, false,
+        now() + INTERVAL '10 hours',
+        10
+      )`,
+      [accountId, `prem-room-21-${Date.now()}`, `prem-fp-21-${Date.now()}`]
+    );
+  } catch (err: any) {
+    rejected21 = err.message.includes("TOTAL_ROOM_LIMIT_EXCEEDED");
+  }
+  if (!rejected21) {
+    throw new Error("TEST 11 Case C FAILED: 21st room was not rejected under 20-room quota");
+  }
+
+  // 4. Apply custom override: override_total_rooms = 21, override_watch_rooms = 21
+  await pool.query(
+    "UPDATE public.account_room_limits SET override_total_rooms = 21, override_watch_rooms = 21 WHERE account_id = $1",
+    [accountId]
+  );
+  const ent21 = (await pool.query("SELECT * FROM public.resolve_account_entitlement($1)", [accountId])).rows[0];
+  if (ent21.max_total_rooms !== 21) {
+    throw new Error(`TEST 11 Case C FAILED: Override not reflected in resolve_account_entitlement: ${JSON.stringify(ent21)}`);
+  }
+
+  // 5. 21st room creation now succeeds!
+  const room21Id = `prem-room-21-success-${Date.now()}`;
+  await pool.query(
+    `SELECT public.create_room_authoritative(
+      $1, $2, 'watch', 'Room 21 Succeeded', null,
+      'hash', 'enc', $3, null, false,
+      now() + INTERVAL '10 hours',
+      10
+    )`,
+    [accountId, room21Id, `prem-fp-21-s-${Date.now()}`]
+  );
+  const usage21 = (await pool.query("SELECT total_rooms FROM public.account_room_usage WHERE account_id = $1", [accountId])).rows[0];
+  if (usage21.total_rooms !== 21) {
+    throw new Error(`TEST 11 Case C FAILED: Expected 21 rooms in usage, got ${usage21.total_rooms}`);
+  }
+
+  // 6. Reduce quota below current usage: override_total_rooms = 19, override_watch_rooms = 19
+  await pool.query(
+    "UPDATE public.account_room_limits SET override_total_rooms = 19, override_watch_rooms = 19 WHERE account_id = $1",
+    [accountId]
+  );
+
+  // 7. Grandfathering Verification: All 21 rooms remain active
+  const activeRoomsAfterDowngrade = await pool.query(
+    `SELECT count(*)::int AS count FROM public.rooms WHERE owner_id = $1 AND status IN ('scheduled', 'active', 'inactive')`,
+    [accountId]
+  );
+  if (activeRoomsAfterDowngrade.rows[0].count !== 21) {
+    throw new Error(`TEST 11 Case C FAILED: Grandfathered rooms were corrupted! Expected 21, got ${activeRoomsAfterDowngrade.rows[0].count}`);
+  }
+
+  // 8. 22nd room creation is blocked because usage (21) >= effective ceiling (19)
+  let rejected22 = false;
+  try {
+    await pool.query(
+      `SELECT public.create_room_authoritative(
+        $1, $2, 'watch', 'Room 22 Blocked', null,
+        'hash', 'enc', $3, null, false,
+        now() + INTERVAL '10 hours',
+        10
+      )`,
+      [accountId, `prem-room-22-${Date.now()}`, `prem-fp-22-${Date.now()}`]
+    );
+  } catch (err: any) {
+    rejected22 = err.message.includes("TOTAL_ROOM_LIMIT_EXCEEDED");
+  }
+  if (!rejected22) {
+    throw new Error("TEST 11 Case C FAILED: Room creation was permitted when usage exceeded reduced quota");
+  }
+
+  // Clean up all 21 rooms
+  await pool.query("SELECT public.purge_account_rooms_authoritative($1)", [accountId]);
+  console.log("TEST 11 Case C PASSED: Live entitlement mutation (20 -> 21 -> 19) and grandfathering verified.");
+
+  // Case D: Decoupled VBrowser Entitlement & Concurrency Enforcement
+  console.log("Testing Decoupled VBrowser Authorization...");
+
+  // Seed a minimal test provider and pool so we can exercise vbrowser_acquire_reservation
+  const VB_TEST_PROVIDER = `test-provider-policy001-${Date.now()}`;
+  const VB_TEST_POOL = `test-pool-policy001-${Date.now()}`;
+  await pool.query(
+    `INSERT INTO public.vbrowser_providers
+       (id, display_name, provider_type, enabled, lifecycle, max_concurrent_sessions, max_sessions_per_user, max_sessions_per_room, max_large_sessions)
+     VALUES ($1, 'Test Provider', 'docker', true, 'ENABLED', 100, 10, 5, 20)
+     ON CONFLICT (id) DO NOTHING`,
+    [VB_TEST_PROVIDER]
+  );
+  await pool.query(
+    `INSERT INTO public.vbrowser_pools
+       (id, provider_id, region, enabled, lifecycle, min_size, limit_size, max_sessions_per_user, max_sessions_per_room, max_large_sessions)
+     VALUES ($1, $2, 'test-region', true, 'ENABLED', 0, 50, 5, 3, 10)
+     ON CONFLICT (id) DO NOTHING`,
+    [VB_TEST_POOL, VB_TEST_PROVIDER]
+  );
+
+  // 1. Reset to Free plan (is_vbrowser_allowed = false)
+  await pool.query(
+    `UPDATE public.account_room_limits
+     SET plan_id = 'free',
+         override_total_rooms = NULL,
+         override_watch_rooms = NULL,
+         override_permanent_rooms = NULL,
+         override_room_duration_hours = NULL,
+         override_vbrowser_allowed = NULL,
+         override_vbrowser_concurrency = NULL
+     WHERE account_id = $1`,
+    [accountId]
+  );
+
+  const vbTestRoomId1 = `vb-room-1-${Date.now()}`;
+  const vbTestRoomId2 = `vb-room-2-${Date.now()}`;
+  await pool.query(
+    `SELECT public.create_room_authoritative($1, $2, 'watch', 'VB Room 1', null, 'hash', 'enc', $3, null, false, now() + INTERVAL '3 hours', 10)`,
+    [accountId, vbTestRoomId1, `vb-fp-1-${Date.now()}`]
+  );
+  await pool.query(
+    `SELECT public.create_room_authoritative($1, $2, 'watch', 'VB Room 2', null, 'hash', 'enc', $3, null, false, now() + INTERVAL '3 hours', 10)`,
+    [accountId, vbTestRoomId2, `vb-fp-2-${Date.now()}`]
+  );
+
+  // Attempt acquisition on free plan -> VBROWSER_NOT_ENTITLED (function name in DB)
+  let vbFreeBlocked = false;
+  try {
+    await pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 100, 50)",
+      [VB_TEST_PROVIDER, VB_TEST_POOL, vbTestRoomId1, accountId]
+    );
+  } catch (err: any) {
+    vbFreeBlocked = err.message.includes("VBROWSER_NOT_ENTITLED");
+  }
+  if (!vbFreeBlocked) {
+    throw new Error("TEST 11 Case D FAILED: VBrowser acquisition allowed on Free plan");
+  }
+  console.log("TEST 11 Case D sub-check 1 PASSED: Free plan VBrowser correctly blocked (VBROWSER_NOT_ENTITLED).");
+
+  // 2. Upgrade to Premium (is_vbrowser_allowed = true, max_vbrowser_concurrency = 1)
+  await pool.query("UPDATE public.account_room_limits SET plan_id = 'premium' WHERE account_id = $1", [accountId]);
+
+  // First acquisition succeeds
+  let firstReservationId: string | null = null;
+  const vbAcq1 = await pool.query(
+    "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 100, 50) AS reservation_id",
+    [VB_TEST_PROVIDER, VB_TEST_POOL, vbTestRoomId1, accountId]
+  );
+  firstReservationId = vbAcq1.rows[0].reservation_id;
+  if (!firstReservationId) {
+    throw new Error("TEST 11 Case D FAILED: First VBrowser acquisition failed on Premium plan");
+  }
+  console.log(`TEST 11 Case D sub-check 2 PASSED: First reservation acquired (id=${firstReservationId}).`);
+
+  // Second concurrent acquisition for same account in different room -> VBROWSER_CONCURRENCY_LIMIT_REACHED
+  let vbConcurrencyBlocked = false;
+  try {
+    await pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 100, 50)",
+      [VB_TEST_PROVIDER, VB_TEST_POOL, vbTestRoomId2, accountId]
+    );
+  } catch (err: any) {
+    vbConcurrencyBlocked = err.message.includes("VBROWSER_CONCURRENCY_LIMIT_REACHED");
+  }
+  if (!vbConcurrencyBlocked) {
+    throw new Error("TEST 11 Case D FAILED: Concurrent VBrowser acquisition exceeded concurrency limit without error");
+  }
+  console.log("TEST 11 Case D sub-check 3 PASSED: Concurrency limit enforced (VBROWSER_CONCURRENCY_LIMIT_REACHED).");
+
+  // Release first reservation and verify second can now acquire
+  await pool.query("SELECT public.vbrowser_release_reservation($1, $2)", [accountId, vbTestRoomId1]);
+  const vbAcq2 = await pool.query(
+    "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 100, 50) AS reservation_id",
+    [VB_TEST_PROVIDER, VB_TEST_POOL, vbTestRoomId2, accountId]
+  );
+  if (!vbAcq2.rows[0].reservation_id) {
+    throw new Error("TEST 11 Case D FAILED: VBrowser acquisition failed after release of first reservation");
+  }
+  console.log("TEST 11 Case D sub-check 4 PASSED: After release, second room acquisition succeeded.");
+
+  // Clean up: release remaining reservation, clean rooms, remove test fixtures
+  await pool.query("SELECT public.vbrowser_release_reservation($1, $2)", [accountId, vbTestRoomId2]);
+  await pool.query("SELECT public.purge_account_rooms_authoritative($1)", [accountId]);
+  await pool.query("DELETE FROM public.vbrowser_reservations WHERE provider_id = $1", [VB_TEST_PROVIDER]);
+  await pool.query("DELETE FROM public.vbrowser_pools WHERE id = $1", [VB_TEST_POOL]);
+  await pool.query("DELETE FROM public.vbrowser_providers WHERE id = $1", [VB_TEST_PROVIDER]);
+  await pool.query(
+    `UPDATE public.account_room_limits
+     SET plan_id = 'free',
+         override_total_rooms = NULL,
+         override_watch_rooms = NULL,
+         override_permanent_rooms = NULL,
+         override_room_duration_hours = NULL,
+         override_vbrowser_allowed = NULL,
+         override_vbrowser_concurrency = NULL
+     WHERE account_id = $1`,
+    [accountId]
+  );
+  console.log("TEST 11 Case D PASSED: Decoupled VBrowser entitlement & concurrency enforcement verified.");
 
   await pool.end();
   console.log("\nALL CONCURRENCY AND AUTHORITATIVE ACCEPTANCE TESTS COMPLETED SUCCESSFULLY.");
