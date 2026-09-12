@@ -29,14 +29,17 @@ export const Footer = () => (
         </Group>
 
         <Group gap="md">
+          <Text component={Link} to="/about" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
+            About
+          </Text>
+          <Text component={Link} to="/faq" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
+            FAQ
+          </Text>
           <Text component={Link} to="/terms" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
             Terms
           </Text>
           <Text component={Link} to="/privacy" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
             Privacy
-          </Text>
-          <Text component={Link} to="/faq" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
-            FAQ
           </Text>
         </Group>
 

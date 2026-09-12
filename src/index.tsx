@@ -40,6 +40,7 @@ const RoomDetails = lazy(() => import("./components/MyRooms/RoomDetails").then((
 const Terms = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Terms })));
 const Privacy = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Privacy })));
 const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.FAQ })));
+const About = lazy(() => import("./components/About/About").then((m) => ({ default: m.About })));
 const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
 const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
 const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
@@ -572,7 +573,13 @@ class CoWatch extends React.Component {
                             );
                           }}
                         />
-
+                        <Route path="/about" exact>
+                          <>
+                            <TopBar />
+                            <About />
+                            <Footer />
+                          </>
+                        </Route>
                         <Route path="/terms">
                           <>
                             <TopBar />

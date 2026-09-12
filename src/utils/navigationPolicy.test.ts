@@ -29,6 +29,7 @@ assert(isBottomNavVisible("/account/security"), "Should show on /account/securit
 assert(isBottomNavVisible("/terms"), "Should show on /terms");
 assert(isBottomNavVisible("/privacy"), "Should show on /privacy");
 assert(isBottomNavVisible("/faq"), "Should show on /faq");
+assert(isBottomNavVisible("/about"), "Should show on /about");
 
 console.log("Testing isRouteActive...");
 
@@ -39,5 +40,6 @@ assert(!isRouteActive("/rooms/detail-123", "/myrooms"), "/myrooms should NOT be 
 assert(isRouteActive("/create", "/create"), "/create should be active on /create");
 assert(isRouteActive("/account/profile", "/account/profile"), "/account/profile should be active on /account/profile");
 assert(isRouteActive("/faq", "/faq"), "/faq should be active on /faq");
+assert(isRouteActive("/about", "/about"), "/about should be active on /about");
 
 console.log("All navigationPolicy tests passed successfully!");
