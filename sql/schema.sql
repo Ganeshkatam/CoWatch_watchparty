@@ -1646,19 +1646,32 @@ CREATE TRIGGER vbrowser_pools_set_updated_at
 -- 6. ROW LEVEL SECURITY (RLS) & POLICIES
 -- ----------------------------------------------------------------------------
 
--- Enable RLS across all tables
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.room_lifecycle_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.room_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_providers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_pools ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_reservations ENABLE ROW LEVEL SECURITY;
+-- Enable RLS across all 25 production tables
+ALTER TABLE public.abuse_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_room_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_room_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.active_user ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.durable_rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_delivery_suppressions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_type_registry ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_bans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_lifecycle_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_media_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_quota_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscription_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser_pools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser_providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vbrowser_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.webhook_events ENABLE ROW LEVEL SECURITY;
 
 -- 6.1 Profiles Policies
 DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
@@ -1695,6 +1708,56 @@ CREATE POLICY "Users view own room limits" ON public.account_room_limits
 DROP POLICY IF EXISTS "Users view own room usage" ON public.account_room_usage;
 CREATE POLICY "Users view own room usage" ON public.account_room_usage
   FOR SELECT TO authenticated USING (auth.uid() = account_id);
+
+-- 6.5 Subscription Plans Policies
+DROP POLICY IF EXISTS "Public view active subscription plans" ON public.subscription_plans;
+CREATE POLICY "Public view active subscription plans" ON public.subscription_plans
+  FOR SELECT TO anon, authenticated USING (is_active = true);
+
+-- 6.6 Notification Registry & In-App Notification Policies
+DROP POLICY IF EXISTS "Public read notification types" ON public.notification_type_registry;
+CREATE POLICY "Public read notification types" ON public.notification_type_registry
+  FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Users select own notifications" ON public.notifications;
+CREATE POLICY "Users select own notifications" ON public.notifications
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users select own preferences" ON public.notification_preferences;
+CREATE POLICY "Users select own preferences" ON public.notification_preferences
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users update own preferences" ON public.notification_preferences;
+CREATE POLICY "Users update own preferences" ON public.notification_preferences
+  FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- 6.7 Feedback Policies
+DROP POLICY IF EXISTS "feedback_insert_hardened" ON public.feedback;
+CREATE POLICY "feedback_insert_hardened" ON public.feedback
+  FOR INSERT TO public WITH CHECK ((user_id IS NULL) OR ((auth.uid() IS NOT NULL) AND (user_id = auth.uid())));
+
+DROP POLICY IF EXISTS "feedback_select_owner_only" ON public.feedback;
+CREATE POLICY "feedback_select_owner_only" ON public.feedback
+  FOR SELECT TO public USING ((auth.uid() IS NOT NULL) AND (user_id = auth.uid()));
+
+-- 6.8 Server-Only Defense-in-Depth Explicit Deny Policies
+-- See sql/migrations/20260913_prod_003_explicit_server_only_deny_policies.sql
+CREATE POLICY "abuse_reports_deny_client_access" ON public.abuse_reports FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "active_user_deny_client_access" ON public.active_user FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "durable_rate_limits_deny_client_access" ON public.durable_rate_limits FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "email_delivery_suppressions_deny_client_access" ON public.email_delivery_suppressions FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "email_outbox_deny_client_access" ON public.email_outbox FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "room_bans_deny_client_access" ON public.room_bans FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "room_lifecycle_events_deny_client_access" ON public.room_lifecycle_events FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "room_media_sessions_deny_client_access" ON public.room_media_sessions FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "room_messages_deny_client_access" ON public.room_messages FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "room_quota_events_deny_client_access" ON public.room_quota_events FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "vbrowser_deny_client_access" ON public.vbrowser FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "vbrowser_pools_deny_client_access" ON public.vbrowser_pools FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "vbrowser_providers_deny_client_access" ON public.vbrowser_providers FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "vbrowser_reservations_deny_client_access" ON public.vbrowser_reservations FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "webhook_events_deny_client_access" ON public.webhook_events FOR ALL TO public USING (false) WITH CHECK (false);
+
 
 -- ----------------------------------------------------------------------------
 -- 7. STORAGE BUCKETS & STORAGE POLICIES
