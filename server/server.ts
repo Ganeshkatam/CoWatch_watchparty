@@ -364,23 +364,38 @@ app.post("/api/account/delete", async (req, res) => {
 app.post("/api/feedback", async (req, res) => {
   try {
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "unknown";
-    let userId: string | null = null;
 
-    // Optional auth token verification
+    // 1. Strict Payload & Schema Guard: Reject malformed JSON, non-objects, or arrays
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      res.status(400).json({ error: "Invalid request payload format" });
+      return;
+    }
+
+    // 2. Reject unexpected / forbidden / internal fields before processing
+    const allowedKeys = new Set(["type", "rating", "message", "context", "app_version", "platform"]);
+    const bodyKeys = Object.keys(req.body);
+    const hasForbiddenKeys = bodyKeys.some((k) => !allowedKeys.has(k));
+    if (hasForbiddenKeys) {
+      res.status(400).json({ error: "Payload contains unrecognized or forbidden fields" });
+      return;
+    }
+
+    // 3. Zero-Trust Identity: Strictly derive from verified server session, NEVER from client body or header
+    let userId: string | null = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       try {
-        const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-        if (user) {
+        const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+        if (!error && user?.id) {
           userId = user.id;
         }
       } catch (authErr) {
-        // Non-blocking: proceed as anonymous if auth fails
+        userId = null;
       }
     }
 
-    // Rate limiting check (In-memory, 0 Redis commands)
+    // 4. Rate limiting check (In-memory sliding window, 0 Redis commands)
     const rateLimit = checkFeedbackRateLimit(ip, userId);
     if (!rateLimit.allowed) {
       res.status(429).json({
@@ -390,14 +405,8 @@ app.post("/api/feedback", async (req, res) => {
       return;
     }
 
-    // Input Validation
-    const body = req.body || {};
-    const rawType = body.type;
-    const rawContext = body.context;
-    const rawRating = body.rating;
-    const rawMessage = body.message;
-    const rawAppVersion = body.app_version;
-    const rawPlatform = body.platform;
+    // 5. Input Validation & Strict Enums
+    const { type: rawType, context: rawContext, rating: rawRating, message: rawMessage, app_version: rawAppVersion, platform: rawPlatform } = req.body;
 
     const allowedTypes = ["bug", "suggestion", "problem", "experience"];
     const allowedContexts = [
@@ -411,50 +420,60 @@ app.post("/api/feedback", async (req, res) => {
       "connection",
     ];
 
-    if (!rawType || !allowedTypes.includes(rawType)) {
+    if (!rawType || typeof rawType !== "string" || !allowedTypes.includes(rawType)) {
       res.status(400).json({ error: "Invalid feedback type" });
       return;
     }
 
-    if (!rawMessage || typeof rawMessage !== "string" || !rawMessage.trim()) {
+    if (!rawMessage || typeof rawMessage !== "string") {
       res.status(400).json({ error: "Feedback message is required" });
       return;
     }
 
-    const trimmedMessage = rawMessage.trim();
-    if (trimmedMessage.length > 2000) {
+    // Unicode normalization (NFC) & whitespace trim
+    const normalizedMessage = rawMessage.normalize("NFC").trim();
+    if (!normalizedMessage) {
+      res.status(400).json({ error: "Feedback message cannot be empty or whitespace only" });
+      return;
+    }
+
+    if (normalizedMessage.length > 2000) {
       res.status(400).json({ error: "Feedback message must not exceed 2000 characters" });
       return;
     }
 
-    const context = rawContext && allowedContexts.includes(rawContext) ? rawContext : "room";
+    const context = rawContext && typeof rawContext === "string" && allowedContexts.includes(rawContext)
+      ? rawContext
+      : "room";
+
     let rating: number | null = null;
     if (rawRating !== undefined && rawRating !== null) {
-      const numRating = Number(rawRating);
-      if (Number.isInteger(numRating) && numRating >= 1 && numRating <= 5) {
-        rating = numRating;
-      } else {
+      if (typeof rawRating !== "number" || !Number.isInteger(rawRating) || rawRating < 1 || rawRating > 5) {
         res.status(400).json({ error: "Rating must be an integer between 1 and 5" });
         return;
       }
+      rating = rawRating;
     }
 
     const appVersion = typeof rawAppVersion === "string" ? rawAppVersion.slice(0, 50) : "1.0.3";
     const platform = typeof rawPlatform === "string" ? rawPlatform.slice(0, 50) : "web";
 
-    // Privacy & Security: Strip any potential private tokens / authorization strings embedded inside the message
-    const sanitizedMessage = trimmedMessage
-      .replace(/\bBearer\s+[A-Za-z0-9-_=.]+\b/g, "[TOKEN_REDACTED]")
-      .replace(/\b(sk_[a-zA-Z0-9_-]{20,}|eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,})\b/g, "[TOKEN_REDACTED]");
+    // 6. Privacy & Redaction Barrier: Strip sensitive credentials, JWTs, keys, and connection URIs
+    const sanitizedMessage = normalizedMessage
+      .replace(/\bBearer\s+[A-Za-z0-9-_=.]+\b/gi, "[TOKEN_REDACTED]")
+      .replace(/\b(sk_[a-zA-Z0-9_-]{20,}|sbp_[a-zA-Z0-9_-]{20,}|eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,})\b/g, "[TOKEN_REDACTED]")
+      .replace(/\b(redis|postgres|postgresql|mongodb):\/\/[^\s]+/gi, "[URI_REDACTED]")
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "[SCRIPT_REMOVED]");
 
     if (!postgres) {
       res.status(503).json({ error: "Database service unavailable" });
       return;
     }
 
+    // 7. Direct PostgreSQL insert with authoritative default status = 'new'
     const insertResult = await postgres.query(
-      `INSERT INTO public.feedback (user_id, type, rating, message, context, app_version, platform)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO public.feedback (user_id, type, rating, message, context, app_version, platform, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'new')
        RETURNING id, created_at`,
       [userId, rawType, rating, sanitizedMessage, context, appVersion, platform]
     );

@@ -84,3 +84,9 @@ export function recordFeedbackAttempt(ip: string, userId?: string | null): void 
     feedbackUserStore.set(cleanUser, userList);
   }
 }
+
+export function resetFeedbackRateLimitsForTesting(): void {
+  feedbackIpStore.clear();
+  feedbackUserStore.clear();
+}
+
