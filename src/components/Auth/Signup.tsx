@@ -5,6 +5,7 @@ import { supabase } from "../../utils/supabaseClient";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { autoCreateUsername } from "../../utils/utils";
+import { calculateAge } from "../../utils/age";
 
 const ALLOWED_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -33,6 +34,8 @@ export const Signup = () => {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [dob, setDob] = useState("");
+  const [dobError, setDobError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -61,10 +64,26 @@ export const Signup = () => {
     e.preventDefault();
     if (submitting) return;
     setError(null);
+    setDobError(null);
     setSuccess(null);
 
     if (!name.trim()) {
       setError("Please enter your name");
+      return;
+    }
+
+    if (!dob) {
+      const msg = "Please enter your date of birth";
+      setDobError(msg);
+      setError(msg);
+      return;
+    }
+
+    const ageCheck = calculateAge(dob);
+    if (!ageCheck.valid || !ageCheck.isEligible) {
+      const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
+      setDobError(msg);
+      setError(msg);
       return;
     }
 
@@ -167,6 +186,23 @@ export const Signup = () => {
           <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
             <div>
               <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <TextInput
+                label="Date of birth"
+                type="date"
+                required
+                value={dob}
+                onChange={(e) => {
+                  setDob(e.target.value);
+                  if (dobError) setDobError(null);
+                }}
+                error={dobError}
+                max={new Date().toISOString().split("T")[0]}
+              />
+              <Text size="xs" c="dimmed" mt={4}>
+                You must be at least 18 years old to use CoWatch.
+              </Text>
             </div>
             <div>
               <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
