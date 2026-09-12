@@ -507,7 +507,7 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
 
   // Security barrier: Filter out any internal infrastructure, transport, or database leaks
   const technicalTermsPattern =
-    /\b(postgres|redis|zincrby|socket\.io|webrtc|peerconnection|candidate|ice|operationid|uncaught|syntaxerror|typeerror|nullpointer|internalerror|exception|cluster\s+node)\b/i;
+    /\b(postgres|postgresql|redis|zincrby|socket\.io|webrtc|peerconnection|candidate|ice|operationid|uncaught|syntaxerror|typeerror|nullpointer|internalerror|exception|cluster\s+node)\b/i;
   const sqlPattern =
     /\b(select\s+.*from|insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i;
   const uuidPattern =
