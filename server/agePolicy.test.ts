@@ -247,8 +247,41 @@ async function runAgePolicyTests() {
   );
   console.log("  [PASS] Checkpoint 10: Archived migration remains retired.");
 
+  // Checkpoint 11: AGE-003 Pre-signup eligibility step and reset invariants
+  assert.ok(signupContent.includes("isAgeEligible"), "Signup must maintain isAgeEligible state");
+  assert.ok(signupContent.includes("handleVerifyAge"), "Signup must define handleVerifyAge for Step 1");
+  assert.ok(signupContent.includes("handleResetAgeGate"), "Signup must allow resetting eligibility to lock Step 2");
+  assert.ok(signupContent.includes("Verify and continue"), "Step 1 must provide Verify and continue action");
+  console.log("  [PASS] Checkpoint 11: Pre-signup age gate step and lock/reset invariants verified.");
+
+  // Checkpoint 12: AGE-003 Google OAuth signup guard
+  assert.ok(signupContent.includes("handleGoogleSignUp"), "Signup must implement Google sign-up handler");
+  assert.ok(signupContent.includes("signInWithOAuth"), "Google sign-up must call signInWithOAuth");
+  assert.ok(
+    signupContent.includes("if (!isAgeEligible)"),
+    "Google OAuth must be strictly guarded against execution without 18+ eligibility"
+  );
+  console.log("  [PASS] Checkpoint 12: Google OAuth registration availability guarded by 18+ eligibility.");
+
+  // Checkpoint 13: AGE-003 Wording precision and durable non-persistence
+  assert.ok(
+    signupContent.includes("18+ eligibility confirmed"),
+    'Signup must use "18+ eligibility confirmed" rather than claiming server-side verification'
+  );
+  assert.ok(
+    !signupContent.includes("Age verified</Badge>") && !signupContent.includes("Age verified</span>"),
+    'Signup must not claim "Age verified" as a server-side verified status'
+  );
+  assert.ok(
+    !signupContent.includes('localStorage.setItem("dob"') &&
+    !signupContent.includes('localStorage.setItem("date_of_birth"') &&
+    !signupContent.includes('sessionStorage.setItem("dob"'),
+    "DOB must never be written to durable browser storage (localStorage or sessionStorage)"
+  );
+  console.log("  [PASS] Checkpoint 13: Terminology precision and non-persistence invariants verified.");
+
   console.log("\n=========================================================");
-  console.log("All AGE-002A Policy & Certification Guard checks PASSED!");
+  console.log("All AGE-002A & AGE-003 Policy & Guard checks PASSED!");
   console.log("=========================================================");
 }
 

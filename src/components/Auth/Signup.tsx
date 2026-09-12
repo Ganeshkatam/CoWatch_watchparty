@@ -11,9 +11,12 @@ import {
   Avatar,
   Group,
   Tooltip,
+  Divider,
+  Badge,
 } from "@mantine/core";
-import { IconPhoto, IconCheck, IconX } from "@tabler/icons-react";
+import { IconPhoto, IconCheck, IconX, IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
+import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { autoCreateUsername, openFileSelector } from "../../utils/utils";
@@ -56,6 +59,8 @@ export const Signup = () => {
   const [password, setPassword] = useState("");
   const [dob, setDob] = useState("");
   const [dobError, setDobError] = useState<string | null>(null);
+  const [isAgeEligible, setIsAgeEligible] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // Profile photo selection state
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(SIGNUP_AVATAR_PRESETS[0].url);
@@ -132,6 +137,61 @@ export const Signup = () => {
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
+  const handleVerifyAge = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setDobError(null);
+
+    if (!dob) {
+      const msg = "Please enter your date of birth";
+      setDobError(msg);
+      return;
+    }
+
+    const ageCheck = calculateAge(dob);
+    if (!ageCheck.valid || !ageCheck.isEligible) {
+      const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
+      setDobError(msg);
+      setIsAgeEligible(false);
+      return;
+    }
+
+    setIsAgeEligible(true);
+  };
+
+  const handleResetAgeGate = () => {
+    setIsAgeEligible(false);
+    setDobError(null);
+    setError(null);
+  };
+
+  const handleGoogleSignUp = async () => {
+    if (!isAgeEligible) {
+      setError("Please confirm your 18+ eligibility before continuing.");
+      return;
+    }
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      const params = new URLSearchParams(location.search);
+      const redirect = params.get("redirect") || params.get("next") || "/";
+      const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
+      const redirectTo = `${window.location.origin}${redirectTarget}`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Google Auth error:", err);
+      setError(err.message);
+      setGoogleLoading(false);
+    }
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
@@ -148,6 +208,7 @@ export const Signup = () => {
       const msg = "Please enter your date of birth";
       setDobError(msg);
       setError(msg);
+      setIsAgeEligible(false);
       return;
     }
 
@@ -156,6 +217,7 @@ export const Signup = () => {
       const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
       setDobError(msg);
       setError(msg);
+      setIsAgeEligible(false);
       return;
     }
 
@@ -263,149 +325,241 @@ export const Signup = () => {
     }
   }, [email, resendCooldown]);
 
+  const enabledOptions = (config.VITE_AUTH_SIGNIN_METHODS || "google,email").split(",");
+
   return (
     <div style={{ width: "100%" }}>
-      <Title
-        order={2}
-        ta="left"
-        fw={900}
-        style={{
-          background: "linear-gradient(45deg, var(--color-violet), var(--color-pink))",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-        }}
-      >
-        Create your account
-      </Title>
-      <Text c="dimmed" size="sm" ta="left" mt={5}>
-        Join CoWatch to host watch parties and watch together with friends.
-      </Text>
+      {!isAgeEligible ? (
+        <>
+          <Title
+            order={2}
+            ta="left"
+            fw={900}
+            style={{
+              background: "linear-gradient(45deg, var(--color-violet), var(--color-pink))",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Age verification
+          </Title>
+          <Text c="dimmed" size="sm" ta="left" mt={5}>
+            CoWatch requires all account holders to be at least 18 years of age.
+          </Text>
 
-      <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
-        {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
+          <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
+            {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
 
-        {success ? (
-          <div>
-            <Alert color="green" title="Check your email" mb="md">{success}</Alert>
-            <Button fullWidth variant="default" onClick={handleResend} disabled={resendCooldown > 0}>
-              {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend confirmation email"}
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-            <div className={styles.avatarSection}>
-              <div className={styles.avatarPreviewRing}>
-                <Avatar
-                  src={activeAvatarPreview}
-                  alt={name || "Profile avatar"}
-                  size={70}
-                  radius="50%"
-                  className={styles.avatarPreviewItem}
+            <form onSubmit={handleVerifyAge} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+              <div>
+                <TextInput
+                  label="Date of birth"
+                  type="date"
+                  required
+                  value={dob}
+                  onChange={(e) => {
+                    setDob(e.target.value);
+                    if (dobError) setDobError(null);
+                  }}
+                  error={dobError}
+                  max={new Date().toISOString().split("T")[0]}
                 />
-              </div>
-
-              <div style={{ textAlign: "center" }}>
-                <Text size="xs" fw={600} c="dimmed" mb={6}>
-                  Choose your avatar
+                <Text size="xs" c="dimmed" mt={4}>
+                  Used solely for local age eligibility verification. Your date of birth is not stored, transmitted, or shared.
                 </Text>
-                <div className={styles.avatarPresetsRow}>
-                  {SIGNUP_AVATAR_PRESETS.map((preset) => {
-                    const isActive = selectedAvatarUrl === preset.url;
-                    return (
-                      <Tooltip label={preset.label} key={preset.id} withArrow>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectPreset(preset.url)}
-                          className={`${styles.avatarPresetButton} ${isActive ? styles.avatarPresetButtonActive : ""}`}
-                          aria-label={preset.label}
-                        >
-                          <Avatar src={preset.url} size={36} radius="50%" alt={preset.label} />
-                          {isActive && (
-                            <span className={styles.presetCheckBadge}>
-                              <IconCheck size={11} stroke={3} />
-                            </span>
-                          )}
-                        </button>
-                      </Tooltip>
-                    );
-                  })}
-                </div>
               </div>
 
-              <Group gap="xs" justify="center">
-                <Button
-                  type="button"
-                  variant="subtle"
-                  size="xs"
-                  leftSection={<IconPhoto size={14} />}
-                  onClick={handleUploadCustomPhoto}
-                >
-                  {customAvatarFile ? "Change custom photo" : "Upload photo"}
+              <Button fullWidth type="submit" mt="md">
+                Verify and continue
+              </Button>
+
+              <Text size="xs" c="dimmed" ta="center" mt="xs">
+                By continuing, you acknowledge that you are at least 18 years old in accordance with our{" "}
+                <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                  Privacy Policy
+                </Link>
+                .
+              </Text>
+            </form>
+          </Paper>
+        </>
+      ) : (
+        <>
+          <Title
+            order={2}
+            ta="left"
+            fw={900}
+            style={{
+              background: "linear-gradient(45deg, var(--color-violet), var(--color-pink))",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Create your account
+          </Title>
+          <Text c="dimmed" size="sm" ta="left" mt={5}>
+            Join CoWatch to host watch parties and watch together with friends.
+          </Text>
+
+          <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
+            {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
+
+            {success ? (
+              <div>
+                <Alert color="green" title="Check your email" mb="md">{success}</Alert>
+                <Button fullWidth variant="default" onClick={handleResend} disabled={resendCooldown > 0}>
+                  {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend confirmation email"}
                 </Button>
-                {(selectedAvatarUrl || customAvatarFile) && (
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    borderRadius: "var(--mantine-radius-md)",
+                    background: "rgba(20, 184, 166, 0.08)",
+                    border: "1px solid rgba(20, 184, 166, 0.25)",
+                  }}
+                >
+                  <Group gap="xs">
+                    <Badge color="teal" variant="filled" size="sm">
+                      18+ eligibility confirmed
+                    </Badge>
+                    <Text size="xs" c="dimmed">
+                      Local check passed
+                    </Text>
+                  </Group>
+                  <Button variant="subtle" size="compact-xs" color="gray" onClick={handleResetAgeGate}>
+                    Edit date
+                  </Button>
+                </div>
+
+                {enabledOptions.includes("google") && (
                   <Button
-                    type="button"
-                    variant="subtle"
-                    color="gray"
-                    size="xs"
-                    leftSection={<IconX size={14} />}
-                    onClick={handleClearAvatar}
+                    leftSection={<IconBrandGoogleFilled />}
+                    onClick={handleGoogleSignUp}
+                    variant="default"
+                    fullWidth
+                    loading={googleLoading}
                   >
-                    Reset
+                    Continue with Google
                   </Button>
                 )}
-              </Group>
 
-              {avatarError && (
-                <Text size="xs" c="red" ta="center">
-                  {avatarError}
-                </Text>
-              )}
-            </div>
+                {enabledOptions.includes("google") && enabledOptions.includes("email") && (
+                  <Divider label="Or continue with email" labelPosition="center" my="xs" />
+                )}
 
-            <div>
-              <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div>
-              <TextInput
-                label="Date of birth"
-                type="date"
-                required
-                value={dob}
-                onChange={(e) => {
-                  setDob(e.target.value);
-                  if (dobError) setDobError(null);
-                }}
-                error={dobError}
-                max={new Date().toISOString().split("T")[0]}
-              />
-              <Text size="xs" c="dimmed" mt={4}>
-                Used solely for age eligibility verification. Your date of birth is not stored or shared on your profile.
-              </Text>
-            </div>
-            <div>
-              <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-              <Text size="xs" c="dimmed" mt={4}>
-                Use Gmail, Outlook, Hotmail, Live, MSN, Yahoo, Zoho, or Proton.
-              </Text>
-            </div>
-            <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                {enabledOptions.includes("email") && (
+                  <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                    <div className={styles.avatarSection}>
+                      <div className={styles.avatarPreviewRing}>
+                        <Avatar
+                          src={activeAvatarPreview}
+                          alt={name || "Profile avatar"}
+                          size={70}
+                          radius="50%"
+                          className={styles.avatarPreviewItem}
+                        />
+                      </div>
 
-            <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
-            <Text size="xs" c="dimmed" ta="center" mt="xs">
-              By creating an account, you agree to our{" "}
-              <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                Privacy Policy
-              </Link>
-              .
-            </Text>
-          </form>
-        )}
-      </Paper>
+                      <div style={{ textAlign: "center" }}>
+                        <Text size="xs" fw={600} c="dimmed" mb={6}>
+                          Choose your avatar
+                        </Text>
+                        <div className={styles.avatarPresetsRow}>
+                          {SIGNUP_AVATAR_PRESETS.map((preset) => {
+                            const isActive = selectedAvatarUrl === preset.url;
+                            return (
+                              <Tooltip label={preset.label} key={preset.id} withArrow>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectPreset(preset.url)}
+                                  className={`${styles.avatarPresetButton} ${isActive ? styles.avatarPresetButtonActive : ""}`}
+                                  aria-label={preset.label}
+                                >
+                                  <Avatar src={preset.url} size={36} radius="50%" alt={preset.label} />
+                                  {isActive && (
+                                    <span className={styles.presetCheckBadge}>
+                                      <IconCheck size={11} stroke={3} />
+                                    </span>
+                                  )}
+                                </button>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <Group gap="xs" justify="center">
+                        <Button
+                          type="button"
+                          variant="subtle"
+                          size="xs"
+                          leftSection={<IconPhoto size={14} />}
+                          onClick={handleUploadCustomPhoto}
+                        >
+                          {customAvatarFile ? "Change custom photo" : "Upload photo"}
+                        </Button>
+                        {(selectedAvatarUrl || customAvatarFile) && (
+                          <Button
+                            type="button"
+                            variant="subtle"
+                            color="gray"
+                            size="xs"
+                            leftSection={<IconX size={14} />}
+                            onClick={handleClearAvatar}
+                          >
+                            Reset
+                          </Button>
+                        )}
+                      </Group>
+
+                      {avatarError && (
+                        <Text size="xs" c="red" ta="center">
+                          {avatarError}
+                        </Text>
+                      )}
+                    </div>
+
+                    <div>
+                      <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />
+                    </div>
+                    <div>
+                      <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <Text size="xs" c="dimmed" mt={4}>
+                        Use Gmail, Outlook, Hotmail, Live, MSN, Yahoo, Zoho, or Proton.
+                      </Text>
+                    </div>
+                    <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+
+                    <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
+                    <Text size="xs" c="dimmed" ta="center" mt="xs">
+                      By creating an account, you agree to our{" "}
+                      <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
+                        Privacy Policy
+                      </Link>
+                      .
+                    </Text>
+                  </form>
+                )}
+              </div>
+            )}
+          </Paper>
+        </>
+      )}
+
       <Text size="sm" ta="center" mt="md" c="dimmed">
         Already have an account?{" "}
         <Link to={{ pathname: "/login", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
