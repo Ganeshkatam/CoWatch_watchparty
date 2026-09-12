@@ -12,4 +12,6 @@ export default {
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) || "",
   VITE_SUPABASE_PUBLISHABLE_KEY:
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY) || "",
+  VITE_ICE_SERVERS:
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_ICE_SERVERS) || "",
 };

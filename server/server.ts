@@ -103,11 +103,50 @@ const listenHost = config.HOST || "0.0.0.0";
 server?.listen(listenPort, listenHost, () => {
   console.log(`Server listening on ${listenHost}:${listenPort}`);
 });
-server?.on("error", (err: any) => {
-  console.error("Server listen error:", err);
-});
+const getCorsOptions = (): cors.CorsOptions => {
+  if (process.env.NODE_ENV !== "production") {
+    return { origin: true, credentials: true };
+  }
 
-const io = new Server(server, { cors: {}, transports: ["websocket"] });
+  const allowedOrigins = new Set<string>([
+    "https://cowatch.tv",
+    "https://www.cowatch.tv",
+    "https://app.cowatch.tv",
+  ]);
+
+  if (config.APP_URL) {
+    try {
+      const appOrigin = new URL(config.APP_URL).origin;
+      allowedOrigins.add(appOrigin);
+    } catch {
+      // ignore malformed APP_URL
+    }
+  }
+
+  if (config.CORS_ALLOWED_ORIGINS) {
+    for (const origin of config.CORS_ALLOWED_ORIGINS.split(",")) {
+      const trimmed = origin.trim();
+      if (trimmed) allowedOrigins.add(trimmed);
+    }
+  }
+
+  return {
+    origin: (origin, callback) => {
+      // Allow non-browser requests (e.g. server-to-server, curl, health probes)
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+    credentials: true,
+  };
+};
+
+const corsOptions = getCorsOptions();
+const io = new Server(server, { cors: corsOptions, transports: ["websocket"] });
 registerNotificationNamespace(io);
 notificationService.setIo(io);
 io.engine.use(async (req: any, res: Response, next: () => void) => {
@@ -175,16 +214,24 @@ EmailProviderRegistry.validateActiveProvider()
 startEmailWorker();
 
 // NOTIFY-001A: Webhook verification with zero dev/test bypasses in Svix logic.
-// Production requires RESEND_WEBHOOK_SECRET; non-production rejects requests if secret is unset.
+// Production requires RESEND_WEBHOOK_SECRET when Resend is the active provider; non-production rejects requests if secret is unset.
+const isResendActive =
+  config.EMAIL_PROVIDER === "resend" ||
+  Boolean(config.RESEND_API_KEY) ||
+  config.EMAIL_PROFILE_DEFAULT_BINDING === "resend" ||
+  config.EMAIL_BINDING_DEFAULT_PROVIDER === "resend";
+
 let webhookVerifier: WebhookVerifier;
 if (config.RESEND_WEBHOOK_SECRET) {
   webhookVerifier = new SvixWebhookVerifier(config.RESEND_WEBHOOK_SECRET);
-} else if (process.env.NODE_ENV === "production") {
-  throw new Error("FATAL: RESEND_WEBHOOK_SECRET is required in production environment");
+} else if (process.env.NODE_ENV === "production" && isResendActive) {
+  throw new Error("FATAL: RESEND_WEBHOOK_SECRET is required in production environment when Resend is active");
 } else {
-  console.warn(
-    "[Webhook] RESEND_WEBHOOK_SECRET not configured; rejecting incoming webhooks in non-production mode.",
-  );
+  if (isResendActive) {
+    console.warn(
+      "[Webhook] RESEND_WEBHOOK_SECRET not configured; rejecting incoming webhooks in non-production mode.",
+    );
+  }
   webhookVerifier = new MockWebhookVerifier(false);
 }
 const resendWebhookHandler = new ResendWebhookHandler(webhookVerifier);
@@ -219,7 +266,7 @@ if (process.env.NODE_ENV === "development") {
   }
 }
 
-app.use(cors());
+app.use(cors(corsOptions));
 
 // NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media & VBrowser safe)
 app.use((_req, res, next) => {

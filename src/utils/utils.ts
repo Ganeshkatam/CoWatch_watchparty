@@ -190,34 +190,47 @@ export function shuffle(array: any[]) {
   }
 }
 
-export const iceServers = () => [
-  { urls: "stun:stun.l.google.com:19302" },
-  {
-    urls: "turn:5.161.207.54:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.161.49.183:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:135.181.147.65:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.78.83.26:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.223.48.157:3478",
-    username: "username",
-    credential: "password",
-  },
-];
+export const iceServers = (): RTCIceServer[] => {
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_ICE_SERVERS) {
+    try {
+      const parsed = JSON.parse(import.meta.env.VITE_ICE_SERVERS);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Invalid VITE_ICE_SERVERS JSON configuration; falling back to default ICE servers.", e);
+    }
+  }
+
+  return [
+    { urls: "stun:stun.l.google.com:19302" },
+    {
+      urls: "turn:5.161.207.54:3478",
+      username: "username",
+      credential: "password",
+    },
+    {
+      urls: "turn:5.161.49.183:3478",
+      username: "username",
+      credential: "password",
+    },
+    {
+      urls: "turn:135.181.147.65:3478",
+      username: "username",
+      credential: "password",
+    },
+    {
+      urls: "turn:5.78.83.26:3478",
+      username: "username",
+      credential: "password",
+    },
+    {
+      urls: "turn:5.223.48.157:3478",
+      username: "username",
+      credential: "password",
+    },
+  ];
+};
 
 export const serverCandidates: string[] = (() => {
   if (typeof window !== "undefined") {
