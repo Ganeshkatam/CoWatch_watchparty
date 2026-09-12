@@ -1,18 +1,12 @@
 /**
- * AGE-002 Policy Verification & Invariant Regression Suite
+ * AGE-002A Policy Verification & Certification Guard Suite
  *
- * POLICY INVARIANT:
- * 1. Age eligibility exists ONLY as client-side signup UX (product/UX gate).
- * 2. It NEVER becomes a server or database security boundary.
- * 3. User enters DOB on /signup; calculateAge evaluates 18+ eligibility locally.
- * 4. The signup payload sent to Supabase contains ZERO age metadata:
- *    - NO date_of_birth
- *    - NO birthdate
- *    - NO age
- *    - NO age_verified
- *    - NO age_verified_at
- * 5. Server admission invariant:
- *    HTTP/API admission -> Authentication -> Authorization -> Safety rules -> ALLOW/DENY != Age verification.
+ * POLICY INVARIANT (AGE-002 / AGE-002A):
+ * 1. Date of birth (DOB) is required in the client signup UI (/signup).
+ * 2. Pure client-side calculateAge() checks 18+ eligibility locally.
+ * 3. Submissions under 18 are blocked in the UI with an inline error and issue ZERO network requests.
+ * 4. Submissions 18+ proceed to Supabase with NO date_of_birth, birthdate, or age metadata transmitted.
+ * 5. The server and database perform ZERO age evaluation, verification, or admission enforcement.
  * 6. Terms of Service (/terms) retains its required 18+ contractual clause.
  * 7. Community Guidelines (/community-guidelines) retains its minor safety clause.
  * 8. Database contains ZERO age columns or triggers; 20260910 migration remains archived.
@@ -48,18 +42,18 @@ function getAllFiles(dir: string, extFilter: string[]): string[] {
 }
 
 async function runAgePolicyTests() {
-  console.log("Running AGE-002 Policy Verification Suite...");
+  console.log("Running AGE-002A Policy Verification & Certification Guard Suite...\n");
 
-  // 1. Assert Terms of Service retains the contractual 18+ requirement intact
+  // Checkpoint 1: Terms of Service retains 18+ contractual clause
   const pagesPath = path.join(rootDir, "src", "components", "Pages", "Pages.tsx");
   const pagesContent = fs.readFileSync(pagesPath, "utf-8");
   assert.ok(
     pagesContent.includes("You must be at least 18 years of age to register an account or use the service"),
     "Terms of Service must retain the 18+ contractual eligibility requirement"
   );
-  console.log("  [PASS] Terms of Service retains 18+ contractual policy clause.");
+  console.log("  [PASS] Checkpoint 1: Terms of Service retains 18+ contractual clause.");
 
-  // 2. Surgical assertion on Pages.tsx: Ensure NO runtime age-gating logic exists in Pages.tsx
+  // Checkpoint 2: Pages.tsx contains only static contractual copy (no runtime gating logic)
   const pagesLines = pagesContent.split("\n");
   for (let i = 0; i < pagesLines.length; i++) {
     const line = pagesLines[i];
@@ -78,81 +72,96 @@ async function runAgePolicyTests() {
       }
     }
   }
-  console.log("  [PASS] Pages.tsx contains only static contractual copy and zero runtime age-gating logic.");
+  console.log("  [PASS] Checkpoint 2: Pages.tsx contains only static contractual copy.");
 
-  // 3. Assert Community Guidelines retains minor protection policy intact
+  // Checkpoint 3: Community Guidelines retains minor protection prohibitions
   const guidelinesPath = path.join(rootDir, "src", "components", "Pages", "CommunityGuidelines.tsx");
   const guidelinesContent = fs.readFileSync(guidelinesPath, "utf-8");
   assert.ok(
     guidelinesContent.includes("exploitation of minors will result in immediate permanent termination"),
     "Community Guidelines must retain strict minor protection rules"
   );
-  console.log("  [PASS] Community Guidelines retains minor safety and exploitation prohibitions.");
+  console.log("  [PASS] Checkpoint 3: Community Guidelines minor protection clause preserved.");
 
-  // 4. Deterministic Client calculateAge Test Suite
-  console.log("  Verifying deterministic calculateAge utility...");
+  // Checkpoint 4: Deterministic Client calculateAge Unit Tests (String-Only)
   const refDate = new Date(2026, 8, 13); // September 13, 2026
 
-  // Missing DOB
+  // 4a. Missing / non-string DOB fails
   const missingResult = calculateAge("", refDate);
   assert.strictEqual(missingResult.valid, false, "Empty DOB must be invalid");
   assert.strictEqual(missingResult.isEligible, false, "Empty DOB must be ineligible");
 
-  // Invalid date format
+  const nullResult = calculateAge(null, refDate);
+  assert.strictEqual(nullResult.valid, false, "Null DOB must be invalid");
+
+  const undefinedResult = calculateAge(undefined, refDate);
+  assert.strictEqual(undefinedResult.valid, false, "Undefined DOB must be invalid");
+
+  // 4b. Malformed format fails
   const malformedResult = calculateAge("not-a-date", refDate);
   assert.strictEqual(malformedResult.valid, false, "Malformed string must be invalid");
 
-  // Impossible calendar date (Feb 31)
+  // 4c. Impossible calendar date fails (e.g. Feb 31)
   const impossibleDate = calculateAge("2024-02-31", refDate);
   assert.strictEqual(impossibleDate.valid, false, "Impossible calendar date must be rejected");
 
-  // Future DOB
+  // 4d. Future DOB fails
   const futureResult = calculateAge("2026-09-14", refDate);
   assert.strictEqual(futureResult.valid, false, "Future date must be invalid");
-  assert.ok(futureResult.error?.includes("future"), "Future date should give future error message");
+  assert.ok(futureResult.error?.includes("future"), "Future date error message expected");
 
-  // Exact 18th birthday boundary (born Sep 13, 2008 on ref date Sep 13, 2026) -> Eligible
+  // 4e. Exact 18th birthday boundary (born Sep 13, 2008 on ref date Sep 13, 2026) -> Age 18, Eligible
   const exact18 = calculateAge("2008-09-13", refDate);
   assert.strictEqual(exact18.valid, true, "Exact 18th birthday date must be valid");
   assert.strictEqual(exact18.age, 18, "Calculated age must be exactly 18");
   assert.strictEqual(exact18.isEligible, true, "User on 18th birthday must be eligible");
 
-  // One day before 18th birthday (born Sep 14, 2008 on ref date Sep 13, 2026) -> Age 17, Ineligible
+  // 4f. Day before 18th birthday (born Sep 14, 2008 on ref date Sep 13, 2026) -> Age 17, Ineligible
   const dayBefore18 = calculateAge("2008-09-14", refDate);
   assert.strictEqual(dayBefore18.valid, true, "Day before 18th birthday date is valid format");
   assert.strictEqual(dayBefore18.age, 17, "Calculated age must be 17");
   assert.strictEqual(dayBefore18.isEligible, false, "User 1 day below 18 must be ineligible");
-  assert.ok(dayBefore18.error?.includes("18 years of age"), "Error must state minimum age requirement");
+  assert.ok(dayBefore18.error?.includes("18 years of age"), "Error must state 18 minimum age");
 
-  // Adult (born Sep 13, 2000 on ref date Sep 13, 2026) -> Age 26, Eligible
+  // 4g. Normal adult (born Sep 13, 2000 on ref date Sep 13, 2026) -> Age 26, Eligible
   const adult = calculateAge("2000-09-13", refDate);
   assert.strictEqual(adult.valid, true);
   assert.strictEqual(adult.age, 26);
   assert.strictEqual(adult.isEligible, true);
 
-  // Leap-day birthday handling (born Feb 29, 2008):
-  // On Feb 28, 2026 -> has not reached birthday yet -> age 17, Ineligible
+  // 4h. Leap-day birthday handling (born Feb 29, 2008):
+  // On Feb 28, 2026 -> age 17, Ineligible
   const leapBefore = calculateAge("2008-02-29", new Date(2026, 1, 28));
   assert.strictEqual(leapBefore.age, 17);
   assert.strictEqual(leapBefore.isEligible, false);
 
-  // On March 1, 2026 -> birthday has passed -> age 18, Eligible
+  // On March 1, 2026 -> age 18, Eligible
   const leapAfter = calculateAge("2008-02-29", new Date(2026, 2, 1));
   assert.strictEqual(leapAfter.age, 18);
   assert.strictEqual(leapAfter.isEligible, true);
 
-  console.log("  [PASS] calculateAge calendar calculation, boundary, leap day, and eligibility logic verified.");
+  console.log("  [PASS] Checkpoint 4: Deterministic calculateAge calendar & boundary tests pass.");
 
-  // 5. Assert Signup UI Component Structure & Payload Boundaries
+  // Checkpoint 5: Signup UI renders DOB field and executes local eligibility gate
   const signupPath = path.join(rootDir, "src", "components", "Auth", "Signup.tsx");
   const signupContent = fs.readFileSync(signupPath, "utf-8");
 
-  // Verifies DOB input exists
   assert.ok(signupContent.includes('label="Date of birth"'), "Signup must render Date of birth input label");
   assert.ok(signupContent.includes('type="date"'), "Signup must use type='date' input");
   assert.ok(signupContent.includes("calculateAge"), "Signup must invoke calculateAge for client-side check");
 
-  // Extract supabase.auth.signUp call from Signup.tsx and assert options.data contains ZERO age metadata
+  // Checkpoint 6: Ineligible under-18 users are blocked BEFORE any network request
+  assert.ok(
+    signupContent.includes("if (!ageCheck.valid || !ageCheck.isEligible)"),
+    "Signup must verify ageCheck.isEligible"
+  );
+  assert.ok(
+    signupContent.indexOf("if (!ageCheck.valid || !ageCheck.isEligible)") < signupContent.indexOf("supabase.auth.signUp"),
+    "Eligibility check must occur strictly BEFORE supabase.auth.signUp call"
+  );
+  console.log("  [PASS] Checkpoint 5 & 6: Signup UI DOB field present and blocks under-18 before network call.");
+
+  // Checkpoint 7: Supabase signUp options payload contains ZERO age metadata
   const signUpIndex = signupContent.indexOf("supabase.auth.signUp");
   assert.ok(signUpIndex !== -1, "Signup.tsx must contain supabase.auth.signUp call");
   const signUpSnippet = signupContent.slice(signUpIndex, signUpIndex + 500);
@@ -167,16 +176,14 @@ async function runAgePolicyTests() {
   ];
 
   for (const token of prohibitedPayloadTokens) {
-    // Check inside the options payload snippet
     assert.ok(
       !signUpSnippet.includes(`${token}:`),
       `supabase.auth.signUp options payload must NOT transmit "${token}"`
     );
   }
-  console.log("  [PASS] Signup component: DOB input present; Supabase registration payload verified 100% clean of age metadata.");
+  console.log("  [PASS] Checkpoint 7: Supabase registration payload confirmed 100% clean of age metadata.");
 
-  // 6. Assert Repository-wide Server Invariant
-  // Server-side code must NEVER reference technical age tokens or perform age admission checks
+  // Checkpoint 8: Server-side codebase contains ZERO age admission checks or tokens
   const serverFiles = getAllFiles(path.join(rootDir, "server"), [".ts", ".js"])
     .filter((f) => !f.endsWith(".test.ts") && !f.endsWith(".spec.ts"));
 
@@ -199,10 +206,9 @@ async function runAgePolicyTests() {
       }
     }
   }
-  console.log("  [PASS] Server invariant: Zero age tokens or admission checks in server/ codebase.");
+  console.log("  [PASS] Checkpoint 8: Server codebase verified free of age admission checks or metadata.");
 
-  // 7. Assert Route / API Admission Invariant
-  // Verify that core routes and admission controllers have ZERO dependency on age verification:
+  // Checkpoint 9: Core routes, rooms, and VBrowser have zero age dependencies
   const serverPath = path.join(rootDir, "server", "server.ts");
   const serverContent = fs.readFileSync(serverPath, "utf-8");
   const roomPath = path.join(rootDir, "server", "room.ts");
@@ -215,7 +221,7 @@ async function runAgePolicyTests() {
   assert.ok(!roomContent.includes("age_verified"), "room.ts must not check age_verified for admission");
   assert.ok(!vbrowserContent.includes("age_verified"), "provider.ts must not check age_verified for container allocation");
 
-  // Simulated admission pipeline check
+  // Simulated admission pipeline check: Admission succeeds without any age attribute
   const admissionPipeline = (req: { authenticated: boolean; emailVerified: boolean; roomPasscodeValid: boolean; isAgeVerified?: boolean }) => {
     if (!req.authenticated) return { status: 401, allowed: false, reason: "UNAUTHENTICATED" };
     if (!req.emailVerified) return { status: 403, allowed: false, reason: "EMAIL_UNVERIFIED" };
@@ -230,21 +236,23 @@ async function runAgePolicyTests() {
     isAgeVerified: undefined,
   });
   assert.strictEqual(testAdmission.allowed, true, "Admission must succeed without any age attribute");
-  console.log("  [PASS] Route/API admission assertion: Admission pipeline is decoupled from age verification.");
+  console.log("  [PASS] Checkpoint 9: Admission pipeline is completely decoupled from age verification.");
 
-  // 8. Assert database migration is safely archived
+  // Checkpoint 10: Archived migration remains retired
   const migrationPath = path.join(rootDir, "sql", "migrations", "20260910_mandatory_age_verification.sql");
   const migrationContent = fs.readFileSync(migrationPath, "utf-8");
   assert.ok(
     migrationContent.includes("ARCHIVED & RETIRED MIGRATION - POLICY AGE-001"),
     "Migration file must contain archival annotation per repository policy"
   );
-  console.log("  [PASS] Migration script remains cleanly archived.");
+  console.log("  [PASS] Checkpoint 10: Archived migration remains retired.");
 
-  console.log("\nAll AGE-002 policy invariant tests passed successfully!");
+  console.log("\n=========================================================");
+  console.log("All AGE-002A Policy & Certification Guard checks PASSED!");
+  console.log("=========================================================");
 }
 
 runAgePolicyTests().catch((err) => {
-  console.error("AGE-002 verification failed:", err);
+  console.error("AGE-002A verification failed:", err);
   process.exit(1);
 });
