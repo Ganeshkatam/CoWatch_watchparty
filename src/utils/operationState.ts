@@ -57,6 +57,25 @@ class OperationCoordinator {
 
   private initStage: RoomInitStage = "booting";
   private initStageListeners: Set<(stage: RoomInitStage) => void> = new Set();
+  private connectionEpoch: number = 0;
+  private roomStateEpoch: number = -1;
+  private rosterEpoch: number = -1;
+  private syncWatchdogTimer: any = null;
+
+  public getConnectionEpoch(): number {
+    return this.connectionEpoch;
+  }
+
+  public incrementConnectionEpoch(): number {
+    this.connectionEpoch += 1;
+    this.resetSyncBarriers();
+    return this.connectionEpoch;
+  }
+
+  public resetSyncBarriers(): void {
+    this.roomStateEpoch = -1;
+    this.rosterEpoch = -1;
+  }
 
   public getInitStage(): RoomInitStage {
     return this.initStage;
@@ -77,6 +96,102 @@ class OperationCoordinator {
 
   public isRoomReady(): boolean {
     return this.initStage === "ready";
+  }
+
+  public beginResynchronization(timeoutMs: number = 10000): void {
+    if (this.syncWatchdogTimer) {
+      clearTimeout(this.syncWatchdogTimer);
+      this.syncWatchdogTimer = null;
+    }
+    this.setInitStage("synchronizing");
+
+    // Watchdog: If dual barrier does not settle in timeoutMs, drop to DEGRADED
+    this.syncWatchdogTimer = setTimeout(() => {
+      if (this.initStage === "synchronizing") {
+        this.setInitStage("degraded");
+      }
+    }, timeoutMs);
+  }
+
+  public completeResynchronization(): void {
+    if (this.syncWatchdogTimer) {
+      clearTimeout(this.syncWatchdogTimer);
+      this.syncWatchdogTimer = null;
+    }
+    this.setInitStage("ready");
+  }
+
+  public recordRoomStateReceived(epoch: number = this.connectionEpoch): boolean {
+    if (epoch !== this.connectionEpoch) {
+      // Obsolete sync generation event -> strictly discarded
+      return false;
+    }
+    this.roomStateEpoch = epoch;
+    return this.checkDualBarrier();
+  }
+
+  public recordRosterReceived(epoch: number = this.connectionEpoch): boolean {
+    if (epoch !== this.connectionEpoch) {
+      // Obsolete sync generation event -> strictly discarded
+      return false;
+    }
+    this.rosterEpoch = epoch;
+    return this.checkDualBarrier();
+  }
+
+  public checkDualBarrier(): boolean {
+    if (
+      this.roomStateEpoch === this.connectionEpoch &&
+      this.rosterEpoch === this.connectionEpoch
+    ) {
+      this.completeResynchronization();
+      return true;
+    }
+    return false;
+  }
+
+  public markTransportDisconnected(reason: string = "Transport disconnected"): void {
+    if (this.syncWatchdogTimer) {
+      clearTimeout(this.syncWatchdogTimer);
+      this.syncWatchdogTimer = null;
+    }
+    this.resetSyncBarriers();
+    this.abortAllTransientOperations(reason);
+    this.setInitStage("connecting");
+  }
+
+  public markTransportReconnected(): void {
+    this.incrementConnectionEpoch();
+    this.beginResynchronization(10000);
+  }
+
+  public markTerminalFailure(reason: string = "Terminal connection failure"): void {
+    if (this.syncWatchdogTimer) {
+      clearTimeout(this.syncWatchdogTimer);
+      this.syncWatchdogTimer = null;
+    }
+    this.resetSyncBarriers();
+    this.abortAllTransientOperations(reason);
+    this.setInitStage("failed");
+  }
+
+  public abortDomain(domain: OperationDomain, reason?: string): void {
+    for (const [id, op] of this.operations.entries()) {
+      if (op.domain === domain && op.status === "pending") {
+        this.cleanupTimers(id);
+        op.status = "error";
+        op.error = reason || "Operation aborted";
+        op.showSpinner = false;
+        this.notify(domain);
+        this.operations.delete(id);
+      }
+    }
+  }
+
+  public abortAllTransientOperations(reason?: string): void {
+    this.abortDomain("host-authority", reason);
+    this.abortDomain("participant-authority", reason);
+    this.abortDomain("media-playback", reason);
   }
 
   public subscribe(listener: OperationListener): () => void {

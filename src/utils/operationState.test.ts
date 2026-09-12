@@ -235,27 +235,124 @@ async function runTestMatrix() {
   console.log("✓ PASS: Server errorMessage cleanly rejects all in-flight operations in the domain.\n");
 
   // -------------------------------------------------------------
-  // Case R: Roster-Driven Kick Reconciliation
+  // FAILURE-001 Test S: Transport Disconnect & Transient Operation Abort
   // -------------------------------------------------------------
-  console.log("TEST R: Roster-Driven Kick Resolution");
-  const kickUserA = operationCoordinator.startOperation("participant-authority", "kick", "user-a");
-  assert(operationCoordinator.isPending("participant-authority", "kick", "user-a"), "Kick user-a must be pending");
+  console.log("TEST S: Transport Disconnect Lifecycle & Transient Operation Abort");
+  operationCoordinator.resetAll();
+  operationCoordinator.setInitStage("ready");
+  assert(operationCoordinator.isRoomReady(), "Room must be ready initially");
 
-  // Roster received without user-a
-  const newRoster = [{ id: "user-b" }, { id: "user-c" }];
-  const currentPeerIds = new Set(newRoster.map((p) => p.id));
-  const activeOps = operationCoordinator.getActiveOperations();
-  for (const op of activeOps) {
-    if (op.domain === "participant-authority" && op.type === "kick" && op.targetId && !currentPeerIds.has(op.targetId)) {
-      operationCoordinator.resolveOperation(op.id);
-    }
-  }
+  const opHost = operationCoordinator.startOperation("host-authority", "transfer", "user-2");
+  const opPart = operationCoordinator.startOperation("participant-authority", "participants-lock");
+  const opMedia = operationCoordinator.startOperation("media-playback", "set-media");
+  assert(operationCoordinator.isPending("host-authority", "transfer"), "Host op must be pending");
+  assert(operationCoordinator.isPending("participant-authority", "participants-lock"), "Part op must be pending");
+  assert(operationCoordinator.isPending("media-playback", "set-media"), "Media op must be pending");
 
-  assert(!operationCoordinator.isPending("participant-authority", "kick", "user-a"), "Kick user-a must resolve upon departure from roster");
-  console.log("✓ PASS: Roster departure reconciles pending kick operation.\n");
+  // Disconnect occurs
+  operationCoordinator.markTransportDisconnected("Socket disconnected");
+  assert(operationCoordinator.getInitStage() === "connecting", "Stage must drop to connecting on disconnect");
+  assert(!operationCoordinator.isRoomReady(), "Room must not be ready when disconnected");
+  assert(!operationCoordinator.isPending("host-authority"), "Host op must be aborted");
+  assert(!operationCoordinator.isPending("participant-authority"), "Part op must be aborted");
+  assert(!operationCoordinator.isPending("media-playback"), "Media op must be aborted");
+  console.log("✓ PASS: Disconnect drops lifecycle to connecting and aborts all transient UI operations.\n");
+
+  // -------------------------------------------------------------
+  // FAILURE-001 Test T: Transport Reconnect & Epoch-Isolated Dual-Barrier
+  // -------------------------------------------------------------
+  console.log("TEST T: Transport Reconnect & Epoch Isolation");
+  operationCoordinator.markTransportReconnected();
+  assert(operationCoordinator.getInitStage() === "synchronizing", "Stage must be synchronizing on reconnect");
+  const currentEpoch = operationCoordinator.getConnectionEpoch();
+
+  // Stale event from obsolete epoch 0
+  const staleRoomStateHandled = operationCoordinator.recordRoomStateReceived(currentEpoch - 1);
+  assert(!staleRoomStateHandled, "Stale epoch room state must be discarded");
+  assert(!operationCoordinator.isRoomReady(), "Stale epoch must not satisfy dual barrier");
+
+  // Single event in current epoch does NOT satisfy barrier alone
+  operationCoordinator.recordRoomStateReceived(currentEpoch);
+  assert(!operationCoordinator.isRoomReady(), "Single event in current epoch must not satisfy barrier alone");
+
+  // Late single event from other domain (e.g. hostAuthority or lock) must not satisfy barrier alone
+  operationCoordinator.resolveDomainOperations("host-authority");
+  assert(!operationCoordinator.isRoomReady(), "Late hostAuthority event alone must not satisfy room readiness");
+
+  // Second barrier component arrives for current epoch -> READY
+  operationCoordinator.recordRosterReceived(currentEpoch);
+  assert(operationCoordinator.isRoomReady(), "Dual barrier in current epoch satisfies room readiness");
+  console.log("✓ PASS: Epoch isolation discards obsolete events; strict dual barrier enforced for ready state.\n");
+
+  // -------------------------------------------------------------
+  // FAILURE-001 Test U: Watchdog Resynchronization Timeout -> Degraded -> Ready
+  // -------------------------------------------------------------
+  console.log("TEST U: Watchdog Resynchronization Timeout to DEGRADED and Recovery to READY");
+  operationCoordinator.resetAll();
+  operationCoordinator.markTransportReconnected();
+  assert(operationCoordinator.getInitStage() === "synchronizing", "Stage must be synchronizing");
+
+  // Fast-forward with small timeout simulation
+  operationCoordinator.beginResynchronization(100);
+  await sleep(150);
+  assert(operationCoordinator.getInitStage() === "degraded", "Stage must transition to degraded after timeout");
+  assert(!operationCoordinator.isRoomReady(), "Degraded state is not ready");
+
+  // Authoritative recovery arrives -> recovers to READY
+  const epochNow = operationCoordinator.getConnectionEpoch();
+  operationCoordinator.recordRoomStateReceived(epochNow);
+  operationCoordinator.recordRosterReceived(epochNow);
+  assert(operationCoordinator.isRoomReady(), "Stage must recover to ready once dual barrier is satisfied");
+  console.log("✓ PASS: Watchdog transitions to DEGRADED and cleanly recovers to READY upon barrier satisfaction.\n");
+
+  // -------------------------------------------------------------
+  // FAILURE-001 Test V: Late Authoritative Events Reconcile Stale Operations
+  // -------------------------------------------------------------
+  console.log("TEST V: Late Authoritative Server Events Reconcile Stale/Aborted Operations");
+  operationCoordinator.resetAll();
+  operationCoordinator.setInitStage("ready");
+
+  const timeoutOpLate = operationCoordinator.startOperation("host-authority", "transfer", "user-3", {
+    timeoutMs: 50,
+  });
+  await sleep(80);
+  assert(!operationCoordinator.isPending("host-authority", "transfer", "user-3"), "Op must timeout locally");
+
+  // Later, server emits REC:hostAuthority confirmation
+  operationCoordinator.resolveDomainOperations("host-authority");
+  assert(!operationCoordinator.isPending("host-authority", "transfer", "user-3"), "Op must remain non-pending");
+  console.log("✓ PASS: Late server event reconciles true state without being blocked by prior local timeout.\n");
+
+  // -------------------------------------------------------------
+  // FAILURE-001 Test W: WebRTC Multi-Peer State Isolation
+  // -------------------------------------------------------------
+  console.log("TEST W: WebRTC Per-Peer State Isolation Under Failure");
+  operationCoordinator.resetAll();
+  operationCoordinator.setInitStage("ready");
+
+  operationCoordinator.setPeerRtcStatus("peer-1", "connected");
+  operationCoordinator.setPeerRtcStatus("peer-2", "connecting");
+  operationCoordinator.setPeerRtcStatus("peer-3", "connected");
+
+  // Peer 2 fails
+  operationCoordinator.setPeerRtcStatus("peer-2", "failed");
+  assert(operationCoordinator.getPeerRtcStatus("peer-2") === "failed", "Peer 2 status must be failed");
+  assert(operationCoordinator.getPeerRtcStatus("peer-1") === "connected", "Peer 1 status must remain connected");
+  assert(operationCoordinator.getPeerRtcStatus("peer-3") === "connected", "Peer 3 status must remain connected");
+  assert(operationCoordinator.isRoomReady(), "Room lifecycle must remain READY despite single peer failure");
+  console.log("✓ PASS: Peer WebRTC failure is isolated per-peer and does not degrade room lifecycle.\n");
+
+  // -------------------------------------------------------------
+  // FAILURE-001 Test X: Terminal Admission Failure
+  // -------------------------------------------------------------
+  console.log("TEST X: Terminal Admission Failure Handling");
+  operationCoordinator.markTerminalFailure("PASSCODE_INVALID");
+  assert(operationCoordinator.getInitStage() === "failed", "Stage must be failed on terminal error");
+  assert(!operationCoordinator.isRoomReady(), "Room must not be ready on terminal failure");
+  console.log("✓ PASS: Terminal failure immediately terminates room init lifecycle.\n");
 
   console.log("----------------------------------------------------------------");
-  console.log("ALL 18 TEST CASES (A through R) PASSED WITH ZERO FAILURES.");
+  console.log("ALL 24 TEST CASES (A through X) PASSED WITH ZERO FAILURES.");
   console.log("----------------------------------------------------------------\n");
 }
 

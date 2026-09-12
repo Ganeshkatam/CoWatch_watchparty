@@ -55,6 +55,7 @@ import { MediaDock } from "./MediaDock";
 import { WaitingForHost } from "./WaitingForHost";
 import { HostEndedModal } from "../Modal/HostEndedModal";
 import { AssignHostModal } from "../Host/AssignHostModal";
+import { RoomRecoveryOverlay } from "../Room/RoomRecoveryOverlay";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -343,8 +344,7 @@ export class App extends React.Component<AppProps, AppState> {
   hasReceivedRoster: boolean = false;
 
   checkAndAdvanceToReady = () => {
-    if (this.hasReceivedRoomState && this.hasReceivedRoster) {
-      operationCoordinator.setInitStage("ready");
+    if (operationCoordinator.checkDualBarrier() || operationCoordinator.isRoomReady()) {
       this.setState({ state: "connected", initStage: "ready" });
     }
   };
@@ -849,9 +849,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.socket = socket;
 
       socket.on("connect", async () => {
-        this.hasReceivedRoomState = false;
-        this.hasReceivedRoster = false;
-        operationCoordinator.setInitStage("synchronizing");
+        operationCoordinator.markTransportReconnected();
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
         this.setState({
@@ -883,29 +881,43 @@ export class App extends React.Component<AppProps, AppState> {
           window.clearTimeout(this.startingTimer);
           this.startingTimer = null;
         }
-        this.setState({ state: "connected" });
-        if (err.message === "ROOM_NOT_STARTED") {
-          this.setState({ isWaitingForHost: true, overlayMsg: "" });
+        const errMsg = err?.message || "";
+        if (errMsg === "ROOM_NOT_STARTED") {
+          operationCoordinator.setInitStage("degraded");
+          this.setState({ isWaitingForHost: true, overlayMsg: "", state: "connected", initStage: "degraded" });
           this.startWaitingPoll(cleanRoomId);
-        } else if (err.message === "Invalid namespace") {
-          this.setState({ overlayMsg: "Couldn't load this room." });
-        } else if (err.message === "passcode" || err.message === "password") {
-          // Authoritative server check rejected passcode: redirect back to /join/:roomId
+        } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
+          operationCoordinator.markTerminalFailure("Room not found");
+          this.setState({ overlayMsg: "Couldn't load this room.", state: "connected", initStage: "failed" });
+        } else if (
+          errMsg === "passcode" ||
+          errMsg === "password" ||
+          errMsg.includes("PASSCODE_INVALID") ||
+          errMsg.includes("SESSION_INVALID") ||
+          errMsg.includes("ROOM_ACCESS_DENIED")
+        ) {
+          // Terminal authoritative check rejected: clean up and redirect to /join/:roomId
+          operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
+          this.stopWaitingPoll();
+          this.socket?.disconnect();
           window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
         } else if (
-          err.message === "PARTICIPANTS_LOCKED" ||
+          errMsg === "PARTICIPANTS_LOCKED" ||
           (err as any)?.data?.code === "PARTICIPANTS_LOCKED" ||
-          err.message?.includes("PARTICIPANTS_LOCKED")
+          errMsg.includes("PARTICIPANTS_LOCKED")
         ) {
-          this.setState({ overlayMsg: "This room is currently locked to existing participants." });
+          operationCoordinator.markTerminalFailure("Participants locked");
+          this.setState({ overlayMsg: "This room is currently locked to existing participants.", state: "connected", initStage: "failed" });
         } else if (
-          err.message === "ROOM_FULL" ||
+          errMsg === "ROOM_FULL" ||
           (err as any)?.data?.code === "ROOM_FULL" ||
-          err.message?.includes("ROOM_FULL")
+          errMsg.includes("ROOM_FULL")
         ) {
-          this.setState({ overlayMsg: "This room has reached its participant limit." });
+          operationCoordinator.markTerminalFailure("Room is full");
+          this.setState({ overlayMsg: "This room has reached its participant limit.", state: "connected", initStage: "failed" });
         } else {
-          this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room." });
+          operationCoordinator.setInitStage("degraded");
+          this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room.", state: "connected", initStage: "degraded" });
         }
       });
       socket.on("ROOM_SESSION_STOPPED", () => {
@@ -921,12 +933,7 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("disconnect", (reason) => {
-        this.hasReceivedRoomState = false;
-        this.hasReceivedRoster = false;
-        operationCoordinator.setInitStage("connecting");
-        operationCoordinator.rejectDomainOperations("host-authority", "Disconnected");
-        operationCoordinator.rejectDomainOperations("participant-authority", "Disconnected");
-        operationCoordinator.rejectDomainOperations("media-playback", "Disconnected");
+        operationCoordinator.markTransportDisconnected("Socket disconnected");
         if (this.state.isHostSessionEnded || this.state.isWaitingForHost) {
           // Suppress generic disconnect message if room was ended by host or waiting for host
           return;
@@ -936,8 +943,8 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({ overlayMsg: "Disconnected from server.", initStage: "connecting" });
         } else {
           // else the socket will automatically try to reconnect
-          // Use the alert pill since it's less disruptive
-          this.setState({ warningMessage: "Reconnecting...", initStage: "connecting" });
+          // Non-blocking indicator handled by RoomRecoveryOverlay
+          this.setState({ initStage: "connecting" });
         }
       });
       socket.on("errorMessage", (err: string) => {
@@ -1434,7 +1441,7 @@ export class App extends React.Component<AppProps, AppState> {
             operationCoordinator.resolveOperation(op.id);
           }
         }
-        this.hasReceivedRoster = true;
+        operationCoordinator.recordRosterReceived();
         this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
           this.setupRTCConnections();
         });
@@ -1788,7 +1795,7 @@ export class App extends React.Component<AppProps, AppState> {
     this.setMediaPath(data.mediaPath);
     this.setInviteLink(this.getInviteLink());
     window.history.replaceState("", "", this.getInviteLink());
-    this.hasReceivedRoomState = true;
+    operationCoordinator.recordRoomStateReceived();
     this.checkAndAdvanceToReady();
   };
 
@@ -3090,6 +3097,7 @@ export class App extends React.Component<AppProps, AppState> {
             window.location.href = "/";
           }}
         />
+        <RoomRecoveryOverlay />
         {this.state.errorMessage && (
           <Alert
             title="Error"

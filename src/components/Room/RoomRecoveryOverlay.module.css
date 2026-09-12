@@ -1,0 +1,47 @@
+.recoveryBadge {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+
+.connecting {
+  background: rgba(30, 30, 40, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+.synchronizing {
+  background: rgba(49, 39, 84, 0.88);
+  border: 1px solid rgba(147, 112, 219, 0.35);
+  color: #f1f5f9;
+}
+
+.degraded {
+  background: rgba(74, 44, 20, 0.88);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fef3c7;
+}
+
+.failed {
+  background: rgba(80, 20, 20, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fee2e2;
+}
+
+.text {
+  letter-spacing: 0.01em;
+}
