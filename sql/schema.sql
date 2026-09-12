@@ -240,22 +240,52 @@ CREATE TABLE IF NOT EXISTS public.vbrowser_reservations (
 
 COMMENT ON TABLE public.vbrowser_reservations IS 'Active session leases and capacity reservations for virtual browsers.';
 
--- 2.10 Account Room Limits (Quota Model B)
-CREATE TABLE IF NOT EXISTS public.account_room_limits (
-  account_id uuid PRIMARY KEY REFERENCES public.profiles(id),
-  max_total_rooms integer NOT NULL DEFAULT 5 CHECK (max_total_rooms >= 0),
-  max_watch_rooms integer NOT NULL DEFAULT 5 CHECK (max_watch_rooms >= 0),
-  max_permanent_rooms integer NOT NULL DEFAULT 2 CHECK (max_permanent_rooms >= 0),
-  enabled boolean NOT NULL DEFAULT true,
+-- 2.10 Subscription Plans (Product Tier Catalog - POLICY-001)
+CREATE TABLE IF NOT EXISTS public.subscription_plans (
+  id text PRIMARY KEY CHECK (length(id) > 0 AND id ~ '^[a-z0-9_-]+$'),
+  display_name text NOT NULL,
+  description text,
+  is_default boolean NOT NULL DEFAULT false,
+  max_total_rooms integer NOT NULL CHECK (max_total_rooms >= 0),
+  max_watch_rooms integer NOT NULL CHECK (max_watch_rooms >= 0),
+  max_permanent_rooms integer NOT NULL CHECK (max_permanent_rooms >= 0),
+  max_participant_capacity integer NOT NULL CHECK (max_participant_capacity >= 2 AND max_participant_capacity <= 500),
+  max_room_duration_hours integer NOT NULL DEFAULT 24 CHECK (max_room_duration_hours >= 1 AND max_room_duration_hours <= 720),
+  is_vbrowser_allowed boolean NOT NULL DEFAULT false,
+  max_vbrowser_concurrency integer NOT NULL DEFAULT 0 CHECK (max_vbrowser_concurrency >= 0),
+  is_active boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT check_watch_lte_total CHECK (max_watch_rooms <= max_total_rooms),
+  CONSTRAINT check_permanent_lte_total CHECK (max_permanent_rooms <= max_total_rooms),
+  CONSTRAINT check_vbrowser_concurrency_allowed CHECK (is_vbrowser_allowed OR max_vbrowser_concurrency = 0)
 );
 
-COMMENT ON TABLE public.account_room_limits IS 'Per-account room quota configurations and limits.';
+COMMENT ON TABLE public.subscription_plans IS 'Authoritative product and tier catalog defining quota, capacity, and feature entitlements.';
 
--- 2.11 Account Room Usage (Quota Model B Materialized Cache)
+-- 2.11 Account Room Limits (Account Entitlement Layer - POLICY-001)
+CREATE TABLE IF NOT EXISTS public.account_room_limits (
+  account_id uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  plan_id text NOT NULL REFERENCES public.subscription_plans(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  override_total_rooms integer CHECK (override_total_rooms IS NULL OR override_total_rooms >= 0),
+  override_watch_rooms integer CHECK (override_watch_rooms IS NULL OR override_watch_rooms >= 0),
+  override_permanent_rooms integer CHECK (override_permanent_rooms IS NULL OR override_permanent_rooms >= 0),
+  override_participant_capacity integer CHECK (override_participant_capacity IS NULL OR (override_participant_capacity >= 2 AND override_participant_capacity <= 500)),
+  override_room_duration_hours integer CHECK (override_room_duration_hours IS NULL OR (override_room_duration_hours >= 1 AND override_room_duration_hours <= 720)),
+  override_vbrowser_allowed boolean,
+  override_vbrowser_concurrency integer CHECK (override_vbrowser_concurrency IS NULL OR override_vbrowser_concurrency >= 0),
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT check_override_watch_lte_total CHECK (override_watch_rooms IS NULL OR override_total_rooms IS NULL OR override_watch_rooms <= override_total_rooms),
+  CONSTRAINT check_override_permanent_lte_total CHECK (override_permanent_rooms IS NULL OR override_total_rooms IS NULL OR override_permanent_rooms <= override_total_rooms)
+);
+
+COMMENT ON TABLE public.account_room_limits IS 'Per-account subscription tier binding and optional administrative overrides.';
+
+-- 2.12 Account Room Usage (Quota Model B Materialized Cache)
 CREATE TABLE IF NOT EXISTS public.account_room_usage (
-  account_id uuid PRIMARY KEY REFERENCES public.profiles(id),
+  account_id uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   total_rooms integer NOT NULL DEFAULT 0 CHECK (total_rooms >= 0),
   watch_rooms integer NOT NULL DEFAULT 0 CHECK (watch_rooms >= 0),
   permanent_rooms integer NOT NULL DEFAULT 0 CHECK (permanent_rooms >= 0),
@@ -346,15 +376,143 @@ BEGIN
 END;
 $$;
 
--- 4.2 Handle New Auth User Profile Creation
+-- 4.2 Helper: Resolve Default Subscription Plan ID
+CREATE OR REPLACE FUNCTION public.get_default_subscription_plan_id()
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_plan_id text;
+BEGIN
+  SELECT id INTO v_plan_id
+  FROM public.subscription_plans
+  WHERE is_default = true AND is_active = true
+  LIMIT 1;
+
+  IF v_plan_id IS NULL THEN
+    RAISE EXCEPTION 'DEFAULT_SUBSCRIPTION_PLAN_NOT_CONFIGURED';
+  END IF;
+
+  RETURN v_plan_id;
+END;
+$$;
+
+-- 4.3 Centralized Entitlement Authority Resolver (POLICY-001)
+CREATE OR REPLACE FUNCTION public.resolve_account_entitlement(p_account_id uuid)
+RETURNS TABLE (
+  account_id uuid,
+  plan_id text,
+  plan_display_name text,
+  enabled boolean,
+  max_total_rooms integer,
+  max_watch_rooms integer,
+  max_permanent_rooms integer,
+  max_participant_capacity integer,
+  max_room_duration_hours integer,
+  is_vbrowser_allowed boolean,
+  max_vbrowser_concurrency integer,
+  has_overrides boolean
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_rec RECORD;
+  v_eff_total integer;
+  v_eff_watch integer;
+  v_eff_permanent integer;
+  v_eff_capacity integer;
+  v_eff_duration integer;
+  v_eff_vbrowser_allowed boolean;
+  v_eff_vbrowser_concurrency integer;
+  v_has_overrides boolean;
+BEGIN
+  SELECT 
+    l.account_id,
+    l.plan_id,
+    p.display_name AS plan_display_name,
+    l.enabled,
+    p.max_total_rooms AS base_total,
+    p.max_watch_rooms AS base_watch,
+    p.max_permanent_rooms AS base_permanent,
+    p.max_participant_capacity AS base_capacity,
+    p.max_room_duration_hours AS base_duration,
+    p.is_vbrowser_allowed AS base_vbrowser_allowed,
+    p.max_vbrowser_concurrency AS base_vbrowser_concurrency,
+    l.override_total_rooms,
+    l.override_watch_rooms,
+    l.override_permanent_rooms,
+    l.override_participant_capacity,
+    l.override_room_duration_hours,
+    l.override_vbrowser_allowed,
+    l.override_vbrowser_concurrency
+  INTO v_rec
+  FROM public.account_room_limits l
+  JOIN public.subscription_plans p ON l.plan_id = p.id
+  WHERE l.account_id = p_account_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ACCOUNT_ENTITLEMENT_NOT_FOUND';
+  END IF;
+
+  v_eff_total := COALESCE(v_rec.override_total_rooms, v_rec.base_total);
+  v_eff_watch := LEAST(COALESCE(v_rec.override_watch_rooms, v_rec.base_watch), v_eff_total);
+  v_eff_permanent := LEAST(COALESCE(v_rec.override_permanent_rooms, v_rec.base_permanent), v_eff_total);
+  v_eff_capacity := COALESCE(v_rec.override_participant_capacity, v_rec.base_capacity);
+  v_eff_duration := COALESCE(v_rec.override_room_duration_hours, v_rec.base_duration);
+  v_eff_vbrowser_allowed := COALESCE(v_rec.override_vbrowser_allowed, v_rec.base_vbrowser_allowed);
+  v_eff_vbrowser_concurrency := CASE 
+    WHEN NOT v_eff_vbrowser_allowed THEN 0
+    ELSE COALESCE(v_rec.override_vbrowser_concurrency, v_rec.base_vbrowser_concurrency)
+  END;
+
+  v_has_overrides := (
+    v_rec.override_total_rooms IS NOT NULL OR
+    v_rec.override_watch_rooms IS NOT NULL OR
+    v_rec.override_permanent_rooms IS NOT NULL OR
+    v_rec.override_participant_capacity IS NOT NULL OR
+    v_rec.override_room_duration_hours IS NOT NULL OR
+    v_rec.override_vbrowser_allowed IS NOT NULL OR
+    v_rec.override_vbrowser_concurrency IS NOT NULL
+  );
+
+  account_id := v_rec.account_id;
+  plan_id := v_rec.plan_id;
+  plan_display_name := v_rec.plan_display_name;
+  enabled := v_rec.enabled;
+  max_total_rooms := v_eff_total;
+  max_watch_rooms := v_eff_watch;
+  max_permanent_rooms := v_eff_permanent;
+  max_participant_capacity := v_eff_capacity;
+  max_room_duration_hours := v_eff_duration;
+  is_vbrowser_allowed := v_eff_vbrowser_allowed;
+  max_vbrowser_concurrency := v_eff_vbrowser_concurrency;
+  has_overrides := v_has_overrides;
+
+  RETURN NEXT;
+END;
+$$;
+
+-- 4.4 Handle New Auth User Profile Creation (Neutral Identity Trigger)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_default_plan text;
 BEGIN
-  -- 1. Provision profile
+  -- 1. Resolve configured default subscription plan
+  v_default_plan := public.get_default_subscription_plan_id();
+
+  -- 2. Provision profile
   INSERT INTO public.profiles (
     id,
     username,
@@ -385,28 +543,24 @@ BEGIN
     avatar_url = COALESCE(public.profiles.avatar_url, excluded.avatar_url),
     display_name = COALESCE(public.profiles.display_name, excluded.display_name);
 
-  -- 2. Provision account room limits (default quotas: 5 total, 5 watch, 2 permanent)
+  -- 3. Explicitly assign onboarding default plan without numeric limits
   INSERT INTO public.account_room_limits (
     account_id,
-    max_total_rooms,
-    max_watch_rooms,
-    max_permanent_rooms,
+    plan_id,
     enabled,
     created_at,
     updated_at
   )
   VALUES (
     NEW.id,
-    5,
-    5,
-    2,
+    v_default_plan,
     true,
     clock_timestamp(),
     clock_timestamp()
   )
   ON CONFLICT (account_id) DO NOTHING;
 
-  -- 3. Provision account room usage
+  -- 4. Provision usage ledger record
   INSERT INTO public.account_room_usage (
     account_id,
     total_rooms,
@@ -571,7 +725,7 @@ BEGIN
 END;
 $$;
 
--- 4.6 Authoritative Room Creation (Quota Model B)
+-- 4.6 Authoritative Room Creation (Plan-Driven Quota & Duration Enforcement - POLICY-001)
 CREATE OR REPLACE FUNCTION public.create_room_authoritative(
   p_account_id uuid,
   p_room_id text,
@@ -583,35 +737,23 @@ CREATE OR REPLACE FUNCTION public.create_room_authoritative(
   p_passcode_fingerprint text,
   p_cover_photo text,
   p_is_chat_disabled boolean,
-  p_expires_at timestamp with time zone,
-  p_default_total_rooms integer DEFAULT 5,
-  p_default_watch_rooms integer DEFAULT 5,
-  p_default_permanent_rooms integer DEFAULT 2,
-  p_max_participants integer DEFAULT 10
-)
-RETURNS jsonb
+  p_expires_at timestamptz,
+  p_requested_participants integer DEFAULT NULL
+) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO ''
+SET search_path = ''
 AS $$
 DECLARE
-  v_limits public.account_room_limits%ROWTYPE;
   v_now timestamptz := clock_timestamp();
   v_is_permanent boolean := (p_room_kind = 'permanent');
   v_usage RECORD;
-  v_max_total integer;
-  v_max_watch integer;
-  v_max_permanent integer;
+  v_entitlement RECORD;
   v_effective_capacity integer;
+  v_effective_expires_at timestamptz;
 BEGIN
   IF p_room_kind NOT IN ('watch', 'permanent') THEN
     RAISE EXCEPTION 'ROOM_KIND_INVALID';
-  END IF;
-
-  -- Platform hard ceiling: 10 participants maximum
-  v_effective_capacity := COALESCE(p_max_participants, 10);
-  IF v_effective_capacity < 2 OR v_effective_capacity > 10 THEN
-    RAISE EXCEPTION 'INVALID_PARTICIPANT_CAPACITY';
   END IF;
 
   -- 1. Ensure usage row exists
@@ -619,13 +761,28 @@ BEGIN
   VALUES (p_account_id, v_now)
   ON CONFLICT (account_id) DO NOTHING;
 
-  -- 2. UNIFIED LOCK: Lock account usage record FIRST
+  -- 2. UNIFIED ATOMIC LOCK: Lock entitlement row AND usage row in order
+  PERFORM 1 
+  FROM public.account_room_limits 
+  WHERE account_id = p_account_id 
+  FOR UPDATE;
+
   PERFORM 1 
   FROM public.account_room_usage 
   WHERE account_id = p_account_id 
   FOR UPDATE;
 
-  -- 3. Auto-expire overdue rooms for this account to immediately reclaim capacity
+  -- 3. Resolve centralized effective entitlement
+  SELECT * INTO v_entitlement
+  FROM public.resolve_account_entitlement(p_account_id);
+
+  IF NOT v_entitlement.enabled THEN
+    INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
+    VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', jsonb_build_object('reason', 'ACCOUNT_ROOMS_DISABLED', 'attempted_room_id', p_room_id));
+    RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
+  END IF;
+
+  -- 4. Auto-expire overdue rooms for this account to immediately reclaim capacity
   UPDATE public.rooms
   SET status = 'expired', "endedAt" = v_now
   WHERE owner_id = p_account_id 
@@ -634,7 +791,7 @@ BEGIN
     AND "expiresAt" IS NOT NULL 
     AND "expiresAt" <= v_now;
 
-  -- 4. Single-Pass Aggregate Room Count: O(N_account)
+  -- 5. Single-Pass Aggregate Room Count: O(N_account)
   SELECT 
     count(*)::int AS total,
     count(*) FILTER (WHERE room_kind = 'watch')::int AS watch,
@@ -645,48 +802,51 @@ BEGIN
     AND status IN ('scheduled', 'active', 'inactive')
     AND ("isPermanent" = true OR "expiresAt" > v_now);
 
-  -- 5. Load Applicable Account Limits
-  SELECT * INTO v_limits
-  FROM public.account_room_limits
-  WHERE account_id = p_account_id;
-
-  IF FOUND THEN
-    IF NOT v_limits.enabled THEN
-      INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-      VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', jsonb_build_object('room_id', p_room_id, 'reason', 'ACCOUNT_ROOMS_DISABLED'));
-      RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
-    END IF;
-    v_max_total := v_limits.max_total_rooms;
-    v_max_watch := v_limits.max_watch_rooms;
-    v_max_permanent := v_limits.max_permanent_rooms;
-  ELSE
-    v_max_total := p_default_total_rooms;
-    v_max_watch := p_default_watch_rooms;
-    v_max_permanent := p_default_permanent_rooms;
-  END IF;
-
-  -- 6. Enforce Total Room Ceiling
-  IF v_usage.total >= v_max_total THEN
+  -- 6. Enforce Total Room Ceiling (Grandfathering: existing rooms preserved, new creation blocked if at/above limit)
+  IF v_usage.total >= v_entitlement.max_total_rooms THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
     VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
-            jsonb_build_object('room_id', p_room_id, 'reason', 'TOTAL_ROOM_LIMIT_EXCEEDED', 'limit', v_max_total, 'current', v_usage.total));
+            jsonb_build_object('reason', 'TOTAL_ROOM_LIMIT_EXCEEDED', 'limit', v_entitlement.max_total_rooms, 'current', v_usage.total, 'attempted_room_id', p_room_id));
     RAISE EXCEPTION 'TOTAL_ROOM_LIMIT_EXCEEDED';
   END IF;
 
   -- 7. Enforce Room Kind Sub-Limit
-  IF p_room_kind = 'watch' AND v_usage.watch >= v_max_watch THEN
+  IF p_room_kind = 'watch' AND v_usage.watch >= v_entitlement.max_watch_rooms THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
     VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
-            jsonb_build_object('room_id', p_room_id, 'reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'watch', 'limit', v_max_watch, 'current', v_usage.watch));
+            jsonb_build_object('reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'watch', 'limit', v_entitlement.max_watch_rooms, 'current', v_usage.watch, 'attempted_room_id', p_room_id));
     RAISE EXCEPTION 'WATCH_ROOM_LIMIT_EXCEEDED';
-  ELSIF p_room_kind = 'permanent' AND v_usage.permanent >= v_max_permanent THEN
+  ELSIF p_room_kind = 'permanent' AND v_usage.permanent >= v_entitlement.max_permanent_rooms THEN
     INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
     VALUES (p_account_id, NULL, p_room_kind, 'REJECTED', 
-            jsonb_build_object('room_id', p_room_id, 'reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'permanent', 'limit', v_max_permanent, 'current', v_usage.permanent));
+            jsonb_build_object('reason', 'KIND_ROOM_LIMIT_EXCEEDED', 'kind', 'permanent', 'limit', v_entitlement.max_permanent_rooms, 'current', v_usage.permanent, 'attempted_room_id', p_room_id));
     RAISE EXCEPTION 'PERMANENT_ROOM_LIMIT_EXCEEDED';
   END IF;
 
-  -- 8. Insert Authoritative Room Row with max_participants
+  -- 8. Enforce Participant Capacity Cap (Bounded by plan capacity)
+  v_effective_capacity := COALESCE(p_requested_participants, v_entitlement.max_participant_capacity);
+  IF v_effective_capacity < 2 OR v_effective_capacity > v_entitlement.max_participant_capacity THEN
+    RAISE EXCEPTION 'INVALID_PARTICIPANT_CAPACITY';
+  END IF;
+
+  -- 9. Enforce Expiration Duration (Server-side validation against plan max_room_duration_hours)
+  IF v_is_permanent THEN
+    v_effective_expires_at := NULL;
+  ELSE
+    IF p_expires_at IS NULL THEN
+      v_effective_expires_at := v_now + make_interval(hours => v_entitlement.max_room_duration_hours);
+    ELSE
+      IF p_expires_at <= v_now THEN
+        RAISE EXCEPTION 'INVALID_EXPIRATION_TIME';
+      END IF;
+      IF p_expires_at > v_now + make_interval(hours => v_entitlement.max_room_duration_hours) THEN
+        RAISE EXCEPTION 'ROOM_DURATION_EXCEEDS_PLAN_LIMIT';
+      END IF;
+      v_effective_expires_at := p_expires_at;
+    END IF;
+  END IF;
+
+  -- 10. Insert Authoritative Room Row
   INSERT INTO public.rooms (
     "roomId", "creationTime", "lastUpdateTime", passcode, owner_passcode,
     passcode_fingerprint, "roomTitle", "roomDescription", "coverPhoto",
@@ -695,11 +855,11 @@ BEGIN
   ) VALUES (
     p_room_id, v_now, v_now, p_passcode_hash, p_owner_passcode,
     p_passcode_fingerprint, p_room_title, p_room_description, p_cover_photo,
-    p_account_id, v_is_permanent, 'inactive', v_now, p_expires_at, v_is_permanent,
+    p_account_id, v_is_permanent, 'inactive', v_now, v_effective_expires_at, v_is_permanent,
     p_is_chat_disabled, p_room_kind, v_effective_capacity
   );
 
-  -- 9. Update Materialized Usage Record
+  -- 11. Update Materialized Usage Record
   UPDATE public.account_room_usage
   SET total_rooms = v_usage.total + 1,
       watch_rooms = v_usage.watch + CASE WHEN p_room_kind = 'watch' THEN 1 ELSE 0 END,
@@ -707,19 +867,21 @@ BEGIN
       updated_at = v_now
   WHERE account_id = p_account_id;
 
-  -- 10. Audit Record & Lifecycle Event
+  -- 12. Audit Record & Lifecycle Event
   INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
-  VALUES (p_account_id, p_room_id, p_room_kind, 'CREATED', jsonb_build_object('total_rooms', v_usage.total + 1, 'max_participants', v_effective_capacity));
+  VALUES (p_account_id, p_room_id, p_room_kind, 'CREATED', jsonb_build_object('total_rooms', v_usage.total + 1));
 
   INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "newStatus", "newExpiresAt", reason)
-  VALUES (p_room_id, p_account_id::text, 'room.created', 'inactive', p_expires_at, 'authorized room creation');
+  VALUES (p_room_id, p_account_id::text, 'room.created', 'inactive', v_effective_expires_at, 'authorized room creation');
 
   RETURN jsonb_build_object(
     'roomId', p_room_id,
     'roomKind', p_room_kind,
     'totalRooms', v_usage.total + 1,
-    'maxTotal', v_max_total,
-    'maxParticipants', v_effective_capacity
+    'maxTotal', v_entitlement.max_total_rooms,
+    'maxCapacity', v_effective_capacity,
+    'maxParticipants', v_effective_capacity,
+    'expiresAt', v_effective_expires_at
   );
 END;
 $$;
@@ -946,29 +1108,43 @@ BEGIN
 END;
 $$;
 
--- 4.10 Authoritative Room Extension
+-- -- 4.10 Authoritative Room Extension (POLICY-001)
 CREATE OR REPLACE FUNCTION public.extend_room_authoritative(
   p_account_id uuid,
   p_room_id text,
-  p_new_expires_at timestamp with time zone
+  p_new_expires_at timestamptz
 )
-RETURNS timestamp with time zone
+RETURNS timestamptz
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO ''
+SET search_path = ''
 AS $$
 #variable_conflict use_column
 DECLARE
   v_now timestamptz := clock_timestamp();
   v_room public.rooms%ROWTYPE;
+  v_entitlement RECORD;
 BEGIN
-  -- 1. UNIFIED LOCK: Lock account usage record FIRST
+  -- 1. UNIFIED ATOMIC LOCK: Lock entitlement row AND usage row in order
   PERFORM 1 
-  FROM public.account_room_usage 
-  WHERE account_room_usage.account_id = p_account_id 
+  FROM public.account_room_limits 
+  WHERE account_id = p_account_id 
   FOR UPDATE;
 
-  -- 2. Re-read room under lock
+  PERFORM 1 
+  FROM public.account_room_usage 
+  WHERE account_id = p_account_id 
+  FOR UPDATE;
+
+  -- 2. Resolve centralized effective entitlement
+  SELECT * INTO v_entitlement
+  FROM public.resolve_account_entitlement(p_account_id);
+
+  IF NOT v_entitlement.enabled THEN
+    RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
+  END IF;
+
+  -- 3. Re-read room under lock
   SELECT * INTO v_room
   FROM public.rooms
   WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id
@@ -995,17 +1171,18 @@ BEGIN
     RAISE EXCEPTION 'INVALID_EXTENSION_TIME';
   END IF;
 
-  IF p_new_expires_at > v_room."creationTime" + INTERVAL '24 hours' THEN
-    RAISE EXCEPTION 'ROOM_MAX_DURATION_EXCEEDED';
+  -- Server-side max room duration enforcement
+  IF p_new_expires_at > v_room."creationTime" + make_interval(hours => v_entitlement.max_room_duration_hours) THEN
+    RAISE EXCEPTION 'ROOM_DURATION_EXCEEDS_PLAN_LIMIT';
   END IF;
 
-  -- 3. Atomically update expiresAt
+  -- 4. Atomically update expiresAt
   UPDATE public.rooms
   SET "expiresAt" = p_new_expires_at,
       "lastUpdateTime" = v_now
   WHERE public.rooms."roomId" = p_room_id AND public.rooms.owner_id = p_account_id;
 
-  -- 4. Audit
+  -- 5. Audit
   INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
   VALUES (p_room_id, p_account_id::text, 'room.extended', v_room.status, v_room.status, v_room."expiresAt", p_new_expires_at, 'user extended', v_now);
 
@@ -1238,34 +1415,44 @@ BEGIN
 END;
 $$;
 
--- 4.14 Authoritative Room Permanence Toggle
+-- -- 4.14 Authoritative Room Permanence Toggle (POLICY-001)
 CREATE OR REPLACE FUNCTION public.set_room_permanence_authoritative(
   p_account_id uuid,
   p_room_id text,
-  p_is_permanent boolean,
-  p_default_permanent_rooms integer DEFAULT 2
-)
-RETURNS jsonb
+  p_is_permanent boolean
+) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO ''
+SET search_path = ''
 AS $$
 DECLARE
   v_room public.rooms%ROWTYPE;
-  v_limits public.account_room_limits%ROWTYPE;
+  v_entitlement RECORD;
   v_now timestamptz := clock_timestamp();
   v_new_kind text := CASE WHEN p_is_permanent THEN 'permanent' ELSE 'watch' END;
-  v_new_expires timestamptz := CASE WHEN p_is_permanent THEN NULL ELSE v_now + INTERVAL '1 day' END;
+  v_new_expires timestamptz;
   v_usage RECORD;
-  v_max_permanent integer;
 BEGIN
-  -- 1. UNIFIED LOCK: Lock account usage record FIRST
+  -- 1. UNIFIED ATOMIC LOCK: Lock entitlement row AND usage row in order
+  PERFORM 1 
+  FROM public.account_room_limits 
+  WHERE account_id = p_account_id 
+  FOR UPDATE;
+
   PERFORM 1 
   FROM public.account_room_usage 
   WHERE account_id = p_account_id 
   FOR UPDATE;
 
-  -- 2. Re-read room under lock
+  -- 2. Resolve centralized effective entitlement
+  SELECT * INTO v_entitlement
+  FROM public.resolve_account_entitlement(p_account_id);
+
+  IF NOT v_entitlement.enabled THEN
+    RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
+  END IF;
+
+  -- 3. Re-read room under lock
   SELECT * INTO v_room
   FROM public.rooms
   WHERE "roomId" = p_room_id AND owner_id = p_account_id
@@ -1283,17 +1470,9 @@ BEGIN
     RETURN jsonb_build_object('roomId', p_room_id, 'isPermanent', p_is_permanent, 'unchanged', true);
   END IF;
 
-  -- 3. If converting to permanent, verify quota
+  -- 4. Check quota for permanence change
   IF p_is_permanent THEN
-    SELECT * INTO v_limits
-    FROM public.account_room_limits
-    WHERE account_id = p_account_id;
-
-    IF FOUND THEN
-      v_max_permanent := v_limits.max_permanent_rooms;
-    ELSE
-      v_max_permanent := p_default_permanent_rooms;
-    END IF;
+    v_new_expires := NULL;
 
     SELECT count(*) FILTER (WHERE room_kind = 'permanent')::int AS permanent
     INTO v_usage
@@ -1302,12 +1481,25 @@ BEGIN
       AND status IN ('scheduled', 'active', 'inactive')
       AND ("isPermanent" = true OR "expiresAt" > v_now);
 
-    IF v_usage.permanent >= v_max_permanent THEN
+    IF v_usage.permanent >= v_entitlement.max_permanent_rooms THEN
       RAISE EXCEPTION 'PERMANENT_ROOM_LIMIT_EXCEEDED';
+    END IF;
+  ELSE
+    v_new_expires := v_now + make_interval(hours => v_entitlement.max_room_duration_hours);
+
+    SELECT count(*) FILTER (WHERE room_kind = 'watch')::int AS watch
+    INTO v_usage
+    FROM public.rooms
+    WHERE owner_id = p_account_id
+      AND status IN ('scheduled', 'active', 'inactive')
+      AND ("isPermanent" = true OR "expiresAt" > v_now);
+
+    IF v_usage.watch >= v_entitlement.max_watch_rooms THEN
+      RAISE EXCEPTION 'WATCH_ROOM_LIMIT_EXCEEDED';
     END IF;
   END IF;
 
-  -- 4. Update room row
+  -- 5. Update room row
   UPDATE public.rooms
   SET "isPermanent" = p_is_permanent,
       room_kind = v_new_kind,
@@ -1315,7 +1507,7 @@ BEGIN
       "expiresAt" = v_new_expires
   WHERE "roomId" = p_room_id AND owner_id = p_account_id;
 
-  -- 5. Recompute usage
+  -- 6. Recompute usage
   SELECT 
     count(*)::int AS total,
     count(*) FILTER (WHERE room_kind = 'watch')::int AS watch,
@@ -1333,7 +1525,7 @@ BEGIN
       updated_at = v_now
   WHERE account_id = p_account_id;
 
-  -- 6. Audit
+  -- 7. Audit
   INSERT INTO public.room_quota_events(account_id, room_id, room_kind, event_type, metadata)
   VALUES (p_account_id, p_room_id, v_new_kind, 'PERMANENCE_CHANGED', 
           jsonb_build_object('isPermanent', p_is_permanent, 'permanent_rooms', v_usage.permanent));

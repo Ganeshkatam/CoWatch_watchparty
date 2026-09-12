@@ -1040,7 +1040,7 @@ app.post("/createRoom", async (req, res) => {
 
       await postgres.query(
         `SELECT public.create_room_authoritative(
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
         ) AS result`,
         [
           decoded.uid,
@@ -1054,10 +1054,7 @@ app.post("/createRoom", async (req, res) => {
           typeof req.body?.coverPhoto === "string" ? req.body.coverPhoto : null,
           Boolean(req.body?.isChatDisabled),
           expiresAt,
-          config.FREE_ROOM_LIMIT || 5, // max total
-          5,                          // max watch
-          2,                          // max permanent
-          maxParticipants,            // max participants
+          maxParticipants,
         ]
       );
     } catch (e: any) {
@@ -1066,6 +1063,18 @@ app.post("/createRoom", async (req, res) => {
       if (errMsg.includes("INVALID_PARTICIPANT_CAPACITY")) {
         res.status(400).json({
           error: "Participant capacity must be an integer between 2 and 100.",
+        });
+        return;
+      }
+      if (errMsg.includes("ROOM_DURATION_EXCEEDS_PLAN_LIMIT")) {
+        res.status(400).json({
+          error: "Requested room duration exceeds the maximum duration permitted by your subscription plan.",
+        });
+        return;
+      }
+      if (errMsg.includes("ACCOUNT_ENTITLEMENT_NOT_FOUND")) {
+        res.status(403).json({
+          error: "No active subscription plan or entitlement found for this account.",
         });
         return;
       }
