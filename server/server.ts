@@ -492,6 +492,316 @@ app.post("/api/feedback", async (req, res) => {
   }
 });
 
+// ============================================================================
+// FEEDBACK-003: Internal Operations, Review Boundary & Signal Aggregation
+// ============================================================================
+
+async function authenticateOperator(req: any): Promise<{ authorized: boolean; operatorId?: string }> {
+  const operatorKey = req.headers["x-operator-key"] || req.headers["x-stats-key"] || req.query.key;
+  if (config.STATS_KEY && operatorKey === config.STATS_KEY) {
+    return { authorized: true, operatorId: "system-operator" };
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (!error && user) {
+        const isAdmin = user.app_metadata?.role === "admin" || user.user_metadata?.is_admin === true;
+        if (isAdmin) {
+          return { authorized: true, operatorId: user.id };
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return { authorized: false };
+}
+
+// 1. Operational List Query (Paginated, Filtered, Operator-Only)
+app.get("/api/admin/feedback", async (req, res) => {
+  try {
+    const auth = await authenticateOperator(req);
+    if (!auth.authorized) {
+      res.status(403).json({ error: "Unauthorized operator access" });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const rawPage = Number(req.query.page) || 1;
+    const rawLimit = Number(req.query.limit) || 20;
+
+    const page = Math.max(1, Number.isInteger(rawPage) ? rawPage : 1);
+    const limit = Math.min(50, Math.max(1, Number.isInteger(rawLimit) ? rawLimit : 20));
+    const offset = (page - 1) * limit;
+
+    const rawStatus = req.query.status as string | undefined;
+    const rawType = req.query.type as string | undefined;
+    const rawContext = req.query.context as string | undefined;
+    const rawRating = req.query.rating ? Number(req.query.rating) : null;
+
+    const allowedStatuses = ["new", "reviewed", "actioned", "dismissed"];
+    const allowedTypes = ["bug", "suggestion", "problem", "experience"];
+    const allowedContexts = ["room", "playback", "host", "participants", "chat", "video", "virtual-browser", "connection"];
+
+    if (rawStatus && !allowedStatuses.includes(rawStatus)) {
+      res.status(400).json({ error: "Invalid status filter" });
+      return;
+    }
+    if (rawType && !allowedTypes.includes(rawType)) {
+      res.status(400).json({ error: "Invalid type filter" });
+      return;
+    }
+    if (rawContext && !allowedContexts.includes(rawContext)) {
+      res.status(400).json({ error: "Invalid context filter" });
+      return;
+    }
+    if (rawRating !== null && (!Number.isInteger(rawRating) || rawRating < 1 || rawRating > 5)) {
+      res.status(400).json({ error: "Invalid rating filter" });
+      return;
+    }
+
+    const filterStatus = rawStatus || null;
+    const filterType = rawType || null;
+    const filterContext = rawContext || null;
+    const filterRating = rawRating;
+
+    // Total Count
+    const countResult = await postgres.query(
+      `SELECT COUNT(*)::int as total
+       FROM public.feedback
+       WHERE ($1::text IS NULL OR status = $1)
+         AND ($2::text IS NULL OR type = $2)
+         AND ($3::text IS NULL OR context = $3)
+         AND ($4::int IS NULL OR rating = $4)`,
+      [filterStatus, filterType, filterContext, filterRating]
+    );
+    const total = countResult.rows[0]?.total || 0;
+    const totalPages = Math.ceil(total / limit);
+
+    // Items
+    const itemsResult = await postgres.query(
+      `SELECT id, user_id, type, rating, message, context, app_version, platform, status,
+              reviewer_id, review_notes, reviewed_at, created_at, updated_at
+       FROM public.feedback
+       WHERE ($1::text IS NULL OR status = $1)
+         AND ($2::text IS NULL OR type = $2)
+         AND ($3::text IS NULL OR context = $3)
+         AND ($4::int IS NULL OR rating = $4)
+       ORDER BY created_at DESC
+       LIMIT $5 OFFSET $6`,
+      [filterStatus, filterType, filterContext, filterRating, limit, offset]
+    );
+
+    res.json({
+      items: itemsResult.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+  } catch (e: any) {
+    console.error("Admin feedback list error:", e);
+    res.status(500).json({ error: "Failed to retrieve feedback list" });
+  }
+});
+
+// 2. Concurrency-Safe Review Transition Endpoint
+app.patch("/api/admin/feedback/:id/status", async (req, res) => {
+  try {
+    const auth = await authenticateOperator(req);
+    if (!auth.authorized) {
+      res.status(403).json({ error: "Unauthorized operator access" });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const { id } = req.params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !uuidRegex.test(id)) {
+      res.status(400).json({ error: "Invalid feedback ID format" });
+      return;
+    }
+
+    const { status: targetStatus, review_notes: rawNotes, expected_status: expectedStatus } = req.body || {};
+    const allowedStatuses = ["new", "reviewed", "actioned", "dismissed"];
+    if (!targetStatus || !allowedStatuses.includes(targetStatus)) {
+      res.status(400).json({ error: "Invalid target status" });
+      return;
+    }
+
+    // Retrieve current record state
+    const currentResult = await postgres.query(
+      `SELECT id, status FROM public.feedback WHERE id = $1`,
+      [id]
+    );
+    if (currentResult.rows.length === 0) {
+      res.status(404).json({ error: "Feedback record not found" });
+      return;
+    }
+
+    const currentStatus = currentResult.rows[0].status;
+
+    // Check optimistic lock if expected_status specified
+    if (expectedStatus && expectedStatus !== currentStatus) {
+      res.status(409).json({
+        error: "Feedback status conflict",
+        currentStatus,
+        expectedStatus,
+      });
+      return;
+    }
+
+    // Valid State Transitions Map:
+    // new -> reviewed, dismissed
+    // reviewed -> actioned, dismissed, new
+    // actioned -> reviewed, dismissed
+    // dismissed -> reviewed
+    const allowedTransitions: Record<string, string[]> = {
+      new: ["reviewed", "dismissed"],
+      reviewed: ["actioned", "dismissed", "new"],
+      actioned: ["reviewed", "dismissed"],
+      dismissed: ["reviewed"],
+    };
+
+    if (currentStatus === targetStatus) {
+      res.status(400).json({ error: `Record is already in '${targetStatus}' status` });
+      return;
+    }
+
+    const validNextStates = allowedTransitions[currentStatus] || [];
+    if (!validNextStates.includes(targetStatus)) {
+      res.status(400).json({
+        error: `Invalid status transition from '${currentStatus}' to '${targetStatus}'`,
+        allowedTransitions: validNextStates,
+      });
+      return;
+    }
+
+    const reviewNotes = typeof rawNotes === "string" ? rawNotes.trim().slice(0, 1000) : null;
+    const reviewerId = auth.operatorId && uuidRegex.test(auth.operatorId) ? auth.operatorId : null;
+
+    // Atomic conditional update
+    const updateResult = await postgres.query(
+      `UPDATE public.feedback
+       SET status = $1,
+           reviewer_id = $2,
+           review_notes = $3,
+           reviewed_at = now(),
+           updated_at = now()
+       WHERE id = $4 AND status = $5
+       RETURNING id, user_id, type, rating, message, context, status, reviewer_id, review_notes, reviewed_at, updated_at`,
+      [targetStatus, reviewerId, reviewNotes, id, currentStatus]
+    );
+
+    if (updateResult.rows.length === 0) {
+      res.status(409).json({ error: "Concurrent update conflict. Please refresh and retry." });
+      return;
+    }
+
+    res.json({
+      success: true,
+      feedback: updateResult.rows[0],
+    });
+  } catch (e: any) {
+    console.error("Admin feedback status update error:", e);
+    res.status(500).json({ error: "Failed to update feedback status" });
+  }
+});
+
+// 3. Operational Product Signals & Metrics Aggregation Endpoint
+app.get("/api/admin/feedback/metrics", async (req, res) => {
+  try {
+    const auth = await authenticateOperator(req);
+    if (!auth.authorized) {
+      res.status(403).json({ error: "Unauthorized operator access" });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const metricsResult = await postgres.query(`
+      SELECT 
+        COUNT(*)::int as total,
+        COUNT(CASE WHEN status = 'new' THEN 1 END)::int as count_new,
+        COUNT(CASE WHEN status = 'reviewed' THEN 1 END)::int as count_reviewed,
+        COUNT(CASE WHEN status = 'actioned' THEN 1 END)::int as count_actioned,
+        COUNT(CASE WHEN status = 'dismissed' THEN 1 END)::int as count_dismissed,
+        ROUND(AVG(rating)::numeric, 2) as avg_rating,
+        COUNT(CASE WHEN rating IS NOT NULL THEN 1 END)::int as rated_count
+      FROM public.feedback
+    `);
+
+    const typeResult = await postgres.query(`
+      SELECT type, COUNT(*)::int as count
+      FROM public.feedback
+      GROUP BY type
+      ORDER BY count DESC
+    `);
+
+    const contextResult = await postgres.query(`
+      SELECT context, COUNT(*)::int as count
+      FROM public.feedback
+      GROUP BY context
+      ORDER BY count DESC
+    `);
+
+    const ratingResult = await postgres.query(`
+      SELECT rating, COUNT(*)::int as count
+      FROM public.feedback
+      WHERE rating IS NOT NULL
+      GROUP BY rating
+      ORDER BY rating ASC
+    `);
+
+    const base = metricsResult.rows[0] || {};
+    const byType: Record<string, number> = {};
+    for (const r of typeResult.rows) byType[r.type] = r.count;
+
+    const byContext: Record<string, number> = {};
+    for (const r of contextResult.rows) byContext[r.context] = r.count;
+
+    const byRating: Record<number, number> = {};
+    for (const r of ratingResult.rows) byRating[r.rating] = r.count;
+
+    res.json({
+      summary: {
+        total: base.total || 0,
+        countNew: base.count_new || 0,
+        countReviewed: base.count_reviewed || 0,
+        countActioned: base.count_actioned || 0,
+        countDismissed: base.count_dismissed || 0,
+        avgRating: base.avg_rating ? parseFloat(base.avg_rating) : null,
+        ratedCount: base.rated_count || 0,
+      },
+      breakdowns: {
+        byType,
+        byContext,
+        byRating,
+      },
+    });
+  } catch (e: any) {
+    console.error("Admin feedback metrics error:", e);
+    res.status(500).json({ error: "Failed to calculate feedback metrics" });
+  }
+});
+
 app.get("/health/:metric", async (req, res) => {
   const vmManagerStats = (
     await axios.get("http://localhost:" + config.VMWORKER_PORT + "/stats")
