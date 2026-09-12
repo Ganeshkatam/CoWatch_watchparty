@@ -254,7 +254,7 @@ class OperationCoordinator {
 
     // Failsafe auto-timeout
     const timeoutTimer = setTimeout(() => {
-      this.rejectOperation(id, USER_MESSAGES.OPERATION_TIMEOUT_RETRY);
+      this.rejectOperation(id, USER_MESSAGES.OPERATION_TIMEOUT_RETRY.message);
     }, timeoutMs);
     this.timeoutTimers.set(id, timeoutTimer);
 

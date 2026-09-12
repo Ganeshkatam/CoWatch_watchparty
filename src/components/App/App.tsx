@@ -729,7 +729,7 @@ export class App extends React.Component<AppProps, AppState> {
     const cleanRoomId = (roomId || "").trim();
     if (!cleanRoomId) {
       operationCoordinator.setInitStage("failed");
-      this.setState({ state: "connected", initStage: "failed", overlayMsg: USER_MESSAGES.INVALID_ROOM_LINK });
+      this.setState({ state: "connected", initStage: "failed", overlayMsg: USER_MESSAGES.INVALID_ROOM_LINK.message });
       return;
     }
 
@@ -894,7 +894,7 @@ export class App extends React.Component<AppProps, AppState> {
           this.startWaitingPoll(cleanRoomId);
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
           operationCoordinator.markTerminalFailure("Room not found");
-          this.setState({ overlayMsg: USER_MESSAGES.ROOM_NOT_FOUND, state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.ROOM_NOT_FOUND.message, state: "connected", initStage: "failed" });
         } else if (
           errMsg === "passcode" ||
           errMsg === "password" ||
@@ -913,14 +913,14 @@ export class App extends React.Component<AppProps, AppState> {
           errMsg.includes("PARTICIPANTS_LOCKED")
         ) {
           operationCoordinator.markTerminalFailure("Participants locked");
-          this.setState({ overlayMsg: USER_MESSAGES.PARTICIPANTS_LOCKED, state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.PARTICIPANTS_LOCKED.message, state: "connected", initStage: "failed" });
         } else if (
           errMsg === "ROOM_FULL" ||
           (err as any)?.data?.code === "ROOM_FULL" ||
           errMsg.includes("ROOM_FULL")
         ) {
           operationCoordinator.markTerminalFailure("Room is full");
-          this.setState({ overlayMsg: USER_MESSAGES.ROOM_FULL, state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.ROOM_FULL.message, state: "connected", initStage: "failed" });
         } else {
           operationCoordinator.setInitStage("degraded");
           this.setState({ overlayMsg: getAdmissionErrorMessage(errMsg), state: "connected", initStage: "degraded" });
@@ -946,7 +946,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
-          this.setState({ overlayMsg: USER_MESSAGES.SERVER_DISCONNECTED, initStage: "connecting" });
+          this.setState({ overlayMsg: USER_MESSAGES.SERVER_DISCONNECTED.message, initStage: "connecting" });
         } else {
           // else the socket will automatically try to reconnect
           // Non-blocking indicator handled by RoomRecoveryOverlay
@@ -988,15 +988,15 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (data.reason === "owner_regain" || data.reason === "owner_returned") {
           if (this.isRoomOwner()) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_OWNER_RETURNED_SELF });
+            this.setState({ successMessage: USER_MESSAGES.HOST_OWNER_RETURNED_SELF.message });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           } else {
-            this.setState({ infoMessage: USER_MESSAGES.HOST_OWNER_RETURNED_PUBLIC });
+            this.setState({ infoMessage: USER_MESSAGES.HOST_OWNER_RETURNED_PUBLIC.message });
             setTimeout(() => this.setState({ infoMessage: "" }), 4000);
           }
         } else if (data.reason === "explicit_transfer" || data.reason === "assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_TRANSFER_SELF });
+            this.setState({ successMessage: USER_MESSAGES.HOST_TRANSFER_SELF.message });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           } else if (!isSelfHost && wasHost) {
             this.setState({ infoMessage: getHostTransferredPublicMessage(data.hostName) });
@@ -1004,7 +1004,7 @@ export class App extends React.Component<AppProps, AppState> {
           }
         } else if (data.reason === "failover" || data.reason === "auto_assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_FAILOVER_SELF });
+            this.setState({ successMessage: USER_MESSAGES.HOST_FAILOVER_SELF.message });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           }
         }
@@ -1526,7 +1526,7 @@ export class App extends React.Component<AppProps, AppState> {
         window.clearTimeout(this.startingTimer);
         this.startingTimer = null;
       }
-      this.setState({ state: "connected", overlayMsg: USER_MESSAGES.GENERIC_CONNECTION_ERROR });
+      this.setState({ state: "connected", overlayMsg: USER_MESSAGES.GENERIC_CONNECTION_ERROR.message });
     }
   };
 

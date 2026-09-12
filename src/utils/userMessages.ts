@@ -1,74 +1,304 @@
 /**
- * USERMSG-001: User-Facing Message Sanitization Boundary
+ * USERMSG-002: Message Consistency & Presentation Boundary
  *
  * Invariants:
  * 1. Single Translation Boundary: All server errors, transport codes, and internal states
- *    are mapped to concise, empathetic, plain-English copy.
- * 2. Technical Leak Prevention: Raw error.message, error codes (e.g. ROOM_FULL, SESSION_INVALID),
- *    SQL, transport identifiers (Socket.IO, WebRTC, ICE), and infrastructure terms (Redis, Postgres,
- *    database, operationId) are strictly forbidden from reaching the UI.
- * 3. Non-Error Recovery: Recovery states ('connecting', 'degraded') are rendered as status indicators,
- *    not error states.
+ *    are mapped to structured UserMessage objects containing clear, empathetic, plain-English copy.
+ * 2. Technical Leak Prevention: Raw error.message, error codes (e.g. ROOM_FULL, SESSION_INVALID,
+ *    HOST_TRANSITION_CONFLICT), SQL, transport identifiers (Socket.IO, WebRTC, ICE), infrastructure
+ *    terms (Redis, Postgres, database, operationId), and UUIDs are strictly forbidden from reaching the UI.
+ * 3. Diagnostic Separation: Technical errors, stack traces, and raw codes remain strictly for internal
+ *    telemetry/logging and are never exposed directly to the user.
+ * 4. Structured Presentation Metadata: Returns rich UserMessage objects with explicit severity,
+ *    presentation mode, action binding, and duration.
  */
 
 import type { RoomInitStage } from "./operationState";
 
-export const USER_MESSAGES = {
-  // Connection & Recovery
-  RECONNECTING: "Reconnecting to the room...",
-  SYNCHRONIZING: "Getting the latest room information...",
-  CONNECTION_DEGRADED: "Your connection is unstable. We're still trying to reconnect.",
-  CONNECTION_FAILED: "We couldn't connect to the room.",
-  SERVER_DISCONNECTED: "You've been disconnected from the room. We'll try to reconnect.",
-  GENERIC_CONNECTION_ERROR: "We couldn't connect to the room. Please try again.",
+export type MessageSeverity = "info" | "success" | "warning" | "error";
+export type MessagePresentation = "toast" | "banner" | "overlay" | "modal";
+export type MessageAction = "none" | "retry" | "rejoin" | "choose-host";
+
+export interface UserMessage {
+  message: string;
+  severity: MessageSeverity;
+  presentation: MessagePresentation;
+  action: MessageAction;
+  duration?: number;
+}
+
+export const USER_MESSAGES: Record<string, UserMessage> = {
+  // Connection & Recovery (Non-error indicators during transition)
+  RECONNECTING: {
+    message: "Reconnecting to the room...",
+    severity: "info",
+    presentation: "overlay",
+    action: "none",
+  },
+  SYNCHRONIZING: {
+    message: "Getting the latest room information...",
+    severity: "info",
+    presentation: "overlay",
+    action: "none",
+  },
+  CONNECTION_DEGRADED: {
+    message: "Your connection is unstable. We're still trying to reconnect.",
+    severity: "warning",
+    presentation: "overlay",
+    action: "none",
+  },
+  CONNECTION_FAILED: {
+    message: "We couldn't connect to the room.",
+    severity: "error",
+    presentation: "overlay",
+    action: "retry",
+  },
+  SERVER_DISCONNECTED: {
+    message: "You've been disconnected from the room. We'll try to reconnect.",
+    severity: "warning",
+    presentation: "overlay",
+    action: "none",
+  },
+  GENERIC_CONNECTION_ERROR: {
+    message: "We couldn't connect to the room. Please try again.",
+    severity: "error",
+    presentation: "overlay",
+    action: "retry",
+  },
 
   // Access & Admission
-  PARTICIPANTS_LOCKED: "This room is currently closed to new participants.",
-  ROOM_FULL: "This room is full. Please try again later.",
-  ROOM_NOT_FOUND: "We couldn't find this room. It may have ended or expired.",
-  INVALID_ROOM_LINK: "That room link doesn't look right.",
-  SESSION_EXPIRED: "Your session has expired. Please join the room again.",
-  PASSCODE_INCORRECT: "The room code or password is incorrect.",
-  ACCESS_DENIED: "You don't have permission to join this room.",
+  PARTICIPANTS_LOCKED: {
+    message: "This room is currently closed to new participants.",
+    severity: "error",
+    presentation: "overlay",
+    action: "none",
+  },
+  ROOM_FULL: {
+    message: "This room is full. Please try again later.",
+    severity: "error",
+    presentation: "overlay",
+    action: "retry",
+  },
+  ROOM_NOT_FOUND: {
+    message: "We couldn't find this room. It may have ended or expired.",
+    severity: "error",
+    presentation: "overlay",
+    action: "none",
+  },
+  INVALID_ROOM_LINK: {
+    message: "That room link doesn't look right.",
+    severity: "error",
+    presentation: "overlay",
+    action: "none",
+  },
+  SESSION_EXPIRED: {
+    message: "Your session has expired. Please join the room again.",
+    severity: "warning",
+    presentation: "toast",
+    action: "rejoin",
+    duration: 4000,
+  },
+  PASSCODE_INCORRECT: {
+    message: "The room code or password is incorrect.",
+    severity: "error",
+    presentation: "modal",
+    action: "retry",
+  },
+  ACCESS_DENIED: {
+    message: "You don't have permission to join this room.",
+    severity: "error",
+    presentation: "overlay",
+    action: "none",
+  },
 
   // Host Authority & Controls
-  LOCK_SIGN_IN_REQUIRED: "Please sign in to change the room lock.",
-  LOCK_HOST_ONLY: "Only the current host can change the room lock.",
-  LOCK_OWNER_OR_HOST_ONLY: "Only the room owner or host can control who can join.",
-  SETTINGS_ROOM_ACTIVE: "Room settings can't be changed while the room is active.",
-  SETTINGS_SOCKET_FORBIDDEN: "These room settings can't be changed here.",
-  HOST_TARGET_REQUIRED: "Please choose someone to become the new host.",
-  HOST_TRANSFER_FAILED: "We couldn't change the host. Please try again.",
-  HOST_SELF_CLAIM_FORBIDDEN: "You can't make yourself the host.",
+  LOCK_SIGN_IN_REQUIRED: {
+    message: "Please sign in to change the room lock.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  LOCK_HOST_ONLY: {
+    message: "Only the current host can change the room lock.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  LOCK_OWNER_OR_HOST_ONLY: {
+    message: "Only the room owner or host can control who can join.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  SETTINGS_ROOM_ACTIVE: {
+    message: "Room settings can't be changed while the room is active.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  SETTINGS_SOCKET_FORBIDDEN: {
+    message: "These room settings can't be changed here.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  HOST_TARGET_REQUIRED: {
+    message: "Please choose someone to become the new host.",
+    severity: "warning",
+    presentation: "toast",
+    action: "choose-host",
+    duration: 3000,
+  },
+  HOST_TRANSFER_FAILED: {
+    message: "We couldn't change the host. Please choose another participant and try again.",
+    severity: "error",
+    presentation: "toast",
+    action: "choose-host",
+    duration: 4000,
+  },
+  HOST_SELF_CLAIM_FORBIDDEN: {
+    message: "You can't make yourself the host.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
 
   // Host Notifications
-  HOST_OWNER_RETURNED_SELF: "Welcome back! You're the host again.",
-  HOST_OWNER_RETURNED_PUBLIC: "The room creator is back and is hosting again.",
-  HOST_TRANSFER_SELF: "You're now the host.",
-  HOST_FAILOVER_SELF: "The host disconnected. You're now the host.",
+  HOST_OWNER_RETURNED_SELF: {
+    message: "Welcome back! You're the host again.",
+    severity: "success",
+    presentation: "banner",
+    action: "none",
+    duration: 4000,
+  },
+  HOST_OWNER_RETURNED_PUBLIC: {
+    message: "The room creator is back and is hosting again.",
+    severity: "info",
+    presentation: "banner",
+    action: "none",
+    duration: 4000,
+  },
+  HOST_TRANSFER_SELF: {
+    message: "You're now the host.",
+    severity: "success",
+    presentation: "banner",
+    action: "none",
+    duration: 4000,
+  },
+  HOST_FAILOVER_SELF: {
+    message: "The previous host disconnected. You're now the host.",
+    severity: "success",
+    presentation: "banner",
+    action: "none",
+    duration: 4000,
+  },
 
   // Moderation & Media
-  MOD_KICK_HOST_ONLY: "Only the current host can remove participants.",
-  MOD_DELETE_CHAT_HOST_ONLY: "Only the current host can delete chat messages.",
-  MEDIA_VBROWSER_RUNNING: "Stop the virtual browser before changing the video.",
-  MEDIA_ALREADY_SHARING: "Someone is already sharing in this room.",
-  MEDIA_NOT_ACTIVE_SHARER: "You're no longer the person sharing.",
-  VBROWSER_INVALID_INPUT: "We couldn't start the virtual browser with those settings.",
-  VBROWSER_EMAIL_REQUIRED: "Please verify your email before starting the virtual browser.",
-  VBROWSER_ALREADY_ACTIVE: "You already have a virtual browser running.",
-  VBROWSER_UNAVAILABLE: "The virtual browser is temporarily unavailable. Please try again later.",
+  MOD_KICK_HOST_ONLY: {
+    message: "Only the current host can remove participants.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  MOD_DELETE_CHAT_HOST_ONLY: {
+    message: "Only the current host can delete chat messages.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  MEDIA_VBROWSER_RUNNING: {
+    message: "Stop the virtual browser before changing the video.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  MEDIA_ALREADY_SHARING: {
+    message: "Someone is already sharing in this room.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  MEDIA_NOT_ACTIVE_SHARER: {
+    message: "You're no longer the person sharing.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  VBROWSER_INVALID_INPUT: {
+    message: "We couldn't start the virtual browser with those settings.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 3000,
+  },
+  VBROWSER_EMAIL_REQUIRED: {
+    message: "Please verify your email before starting the virtual browser.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 4000,
+  },
+  VBROWSER_ALREADY_ACTIVE: {
+    message: "You already have a virtual browser running.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
+  VBROWSER_UNAVAILABLE: {
+    message: "The virtual browser is temporarily unavailable. Please try again later.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 4000,
+  },
 
-  // DB Failures & Timeouts
-  PARTICIPANT_SETTINGS_UPDATE_FAILED: "We couldn't update the participant settings. Please try again.",
-  OPERATION_TIMEOUT: "This is taking longer than expected. Please wait a moment.",
-  OPERATION_TIMEOUT_RETRY: "This is taking longer than expected. Please try again in a moment.",
-  GENERIC_ACTION_FAILED: "We couldn't complete this action. Please try again.",
-} as const;
+  // DB Failures & Timeouts (never imply server rejection)
+  PARTICIPANT_SETTINGS_UPDATE_FAILED: {
+    message: "We couldn't update the participant settings. Please try again.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 3000,
+  },
+  OPERATION_TIMEOUT: {
+    message: "This is taking longer than expected. Your change may still be processing.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 4000,
+  },
+  OPERATION_TIMEOUT_RETRY: {
+    message: "This is taking longer than expected. Your change may still be processing. Please try again in a moment.",
+    severity: "warning",
+    presentation: "toast",
+    action: "retry",
+    duration: 4000,
+  },
+  GENERIC_ACTION_FAILED: {
+    message: "We couldn't complete this action. Please try again.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 3000,
+  },
+};
 
 /**
- * Maps room initialization / lifecycle stage to user-facing recovery copy.
+ * Returns structured UserMessage object for room initialization / recovery stages.
  */
-export function getLifecycleStageMessage(stage: RoomInitStage): string {
+export function getLifecycleUserMessage(stage: RoomInitStage): UserMessage | null {
   switch (stage) {
     case "connecting":
       return USER_MESSAGES.RECONNECTING;
@@ -82,14 +312,22 @@ export function getLifecycleStageMessage(stage: RoomInitStage): string {
     case "authenticating":
     case "ready":
     default:
-      return "";
+      return null;
   }
 }
 
 /**
- * Maps admission and connect_error strings / codes to sanitized plain-English copy.
+ * Maps room initialization / lifecycle stage to user-facing recovery copy string.
  */
-export function getAdmissionErrorMessage(codeOrMessage: string): string {
+export function getLifecycleStageMessage(stage: RoomInitStage): string {
+  const meta = getLifecycleUserMessage(stage);
+  return meta ? meta.message : "";
+}
+
+/**
+ * Returns structured UserMessage object for admission and connect_error strings.
+ */
+export function getAdmissionUserMessage(codeOrMessage: string): UserMessage {
   const norm = (codeOrMessage || "").trim();
 
   if (norm.includes("PARTICIPANTS_LOCKED")) {
@@ -129,14 +367,33 @@ export function getAdmissionErrorMessage(codeOrMessage: string): string {
 }
 
 /**
- * Sanitizes server error messages emitted via socket `errorMessage` event.
+ * Maps admission and connect_error strings / codes to sanitized plain-English copy string.
  */
-export function sanitizeServerErrorMessage(raw: string | undefined | null): string {
+export function getAdmissionErrorMessage(codeOrMessage: string): string {
+  return getAdmissionUserMessage(codeOrMessage).message;
+}
+
+/**
+ * Sanitizes server error messages and returns a structured UserMessage object.
+ */
+export function sanitizeServerUserMessage(raw: string | undefined | null): UserMessage {
   if (!raw || typeof raw !== "string") {
     return USER_MESSAGES.GENERIC_ACTION_FAILED;
   }
 
   const trimmed = raw.trim();
+
+  // Security barrier: Filter out any internal infrastructure, transport, or database leaks
+  const technicalTermsPattern =
+    /\b(postgres|redis|zincrby|socket\.io|webrtc|peerconnection|candidate|ice|operationid|uncaught|syntaxerror|typeerror|nullpointer|internalerror|exception|cluster\s+node)\b/i;
+  const sqlPattern =
+    /\b(select\s+.*from|insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i;
+  const uuidPattern =
+    /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+
+  if (technicalTermsPattern.test(trimmed) || sqlPattern.test(trimmed) || uuidPattern.test(trimmed)) {
+    return USER_MESSAGES.GENERIC_ACTION_FAILED;
+  }
 
   // Expired / Ended room
   if (trimmed.includes("ended or expired") || trimmed.includes("ROOM_NOT_FOUND")) {
@@ -162,13 +419,14 @@ export function sanitizeServerErrorMessage(raw: string | undefined | null): stri
     return USER_MESSAGES.SETTINGS_SOCKET_FORBIDDEN;
   }
 
-  // Host Handoff
+  // Host Handoff / Transitions
   if (trimmed.includes("Target participant ID is required")) {
     return USER_MESSAGES.HOST_TARGET_REQUIRED;
   }
   if (
     trimmed.includes("Failed to transfer host authority") ||
-    trimmed.includes("Failed to assign host")
+    trimmed.includes("Failed to assign host") ||
+    trimmed.includes("HOST_TRANSITION_CONFLICT")
   ) {
     return USER_MESSAGES.HOST_TRANSFER_FAILED;
   }
@@ -215,26 +473,44 @@ export function sanitizeServerErrorMessage(raw: string | undefined | null): stri
     return USER_MESSAGES.PARTICIPANT_SETTINGS_UPDATE_FAILED;
   }
 
-  // Timeout
+  // Timeout (never imply server rejection)
   if (trimmed.includes("timed out") || trimmed.includes("Timeout")) {
     return USER_MESSAGES.OPERATION_TIMEOUT_RETRY;
   }
 
-  // Security barrier: Filter out any internal infrastructure, transport, or database leaks
-  const technicalTermsPattern =
-    /\b(postgres|redis|sql|select|insert|update|delete|table|schema|socket\.io|webrtc|peerconnection|ice|operationid|stack|syntaxerror|typeerror|nullpointer)\b/i;
-
-  if (technicalTermsPattern.test(trimmed)) {
-    return USER_MESSAGES.GENERIC_ACTION_FAILED;
-  }
-
-  // If already clean, conversational copy without technical keywords, return it
-  return trimmed;
+  // If already clean, conversational copy without technical keywords, return custom object
+  return {
+    message: trimmed,
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 3000,
+  };
 }
 
 /**
- * Returns host transfer notification text for public broadcasts.
+ * Sanitizes server error messages emitted via socket `errorMessage` event to string copy.
+ */
+export function sanitizeServerErrorMessage(raw: string | undefined | null): string {
+  return sanitizeServerUserMessage(raw).message;
+}
+
+/**
+ * Returns structured UserMessage for public host transfer broadcast.
+ */
+export function getHostTransferredUserMessage(hostName?: string): UserMessage {
+  return {
+    message: `Host controls were passed to ${hostName || "a new host"}.`,
+    severity: "info",
+    presentation: "banner",
+    action: "none",
+    duration: 4000,
+  };
+}
+
+/**
+ * Returns host transfer notification text string for public broadcasts.
  */
 export function getHostTransferredPublicMessage(hostName?: string): string {
-  return `Host controls were passed to ${hostName || "a new host"}.`;
+  return getHostTransferredUserMessage(hostName).message;
 }
