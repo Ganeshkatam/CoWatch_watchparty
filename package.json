@@ -46,7 +46,7 @@
     "@googleapis/youtube": "^8.0.2",
     "@mantine/hooks": "^8.3.10",
     "@mantine/notifications": "^8.3.10",
-    "@supabase/supabase-js": "^2.112.2",
+    "@supabase/supabase-js": "^2.116.0",
     "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
