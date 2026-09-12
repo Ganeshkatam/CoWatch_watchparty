@@ -66,12 +66,43 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 }) => {
   const metadata = React.useContext(MetadataContext);
   const [copied, setCopied] = React.useState(false);
+  const [viewport, setViewport] = React.useState<{ width: number; height: number }>({
+    width: typeof window !== "undefined" ? window.innerWidth : 1024,
+    height: typeof window !== "undefined" ? window.innerHeight : 768,
+  });
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isCompact = viewport.width < 520;
+  const isMedium = viewport.width >= 520 && viewport.width < 768;
+  const isShortHeight = viewport.height < 600;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const addMediaMenuWidth = isCompact ? Math.min(viewport.width - 24, 260) : 260;
+  const playlistMenuWidth = isCompact
+    ? Math.min(viewport.width - 24, 300)
+    : isMedium
+    ? 290
+    : 340;
+  const moreMenuWidth = isCompact ? Math.min(viewport.width - 24, 200) : 200;
+  const playlistMaxHeight = isShortHeight
+    ? Math.min(viewport.height * 0.5, 260)
+    : 380;
 
   return (
     <div className={styles.dockContainer}>
@@ -85,7 +116,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           title="Stop Virtual Browser"
         >
           <IconX size={15} />
-          <span>Stop VBrowser</span>
+          <span>{isCompact ? "Stop" : "Stop VBrowser"}</span>
         </button>
       ) : isScreenSharing && onStopScreenShare ? (
         <button
@@ -95,7 +126,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           title="Stop Screenshare"
         >
           <IconX size={15} />
-          <span>Stop Share</span>
+          <span>{isCompact ? "Stop" : "Stop Share"}</span>
         </button>
       ) : Boolean(roomMedia) && onStopMedia ? (
         <button
@@ -110,12 +141,18 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           }
         >
           <IconX size={15} />
-          <span>Stop playback</span>
+          <span>{isCompact ? "Stop" : "Stop playback"}</span>
         </button>
       ) : null}
 
       {/* Add Media Dropdown Menu */}
-      <Menu shadow="xl" width={260} position="top-start" offset={10}>
+      <Menu
+        shadow="xl"
+        width={addMediaMenuWidth}
+        position="top-start"
+        offset={8}
+        withinPortal
+      >
         <Menu.Target>
           <button
             type="button"
@@ -124,8 +161,8 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             title={haveLock ? "Add media to room" : "Controls locked by host"}
           >
             <IconPlus size={16} stroke={2.5} />
-            <span>Add media</span>
-            <IconChevronDown size={14} stroke={1.5} />
+            <span>{isCompact ? "Add" : "Add media"}</span>
+            {!isCompact && <IconChevronDown size={14} stroke={1.5} />}
           </button>
         </Menu.Target>
         <Menu.Dropdown>
@@ -137,7 +174,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           >
             <div className={styles.menuItemWithDesc}>
               <span className={styles.menuItemTitle}>Share screen</span>
-              <span className={styles.menuItemDesc}>Stream your screen or tab</span>
+              {!isCompact && (
+                <span className={styles.menuItemDesc}>Stream your screen or tab</span>
+              )}
             </div>
           </Menu.Item>
 
@@ -148,7 +187,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             >
               <div className={styles.menuItemWithDesc}>
                 <span className={styles.menuItemTitle}>Browser</span>
-                <span className={styles.menuItemDesc}>Browse the web together</span>
+                {!isCompact && (
+                  <span className={styles.menuItemDesc}>Browse the web together</span>
+                )}
               </div>
             </Menu.Item>
           )}
@@ -159,7 +200,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           >
             <div className={styles.menuItemWithDesc}>
               <span className={styles.menuItemTitle}>Upload file</span>
-              <span className={styles.menuItemDesc}>Play a local video</span>
+              {!isCompact && (
+                <span className={styles.menuItemDesc}>Play a local video</span>
+              )}
             </div>
           </Menu.Item>
 
@@ -169,24 +212,32 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           >
             <div className={styles.menuItemWithDesc}>
               <span className={styles.menuItemTitle}>Video URL / Search</span>
-              <span className={styles.menuItemDesc}>Paste link or search media</span>
+              {!isCompact && (
+                <span className={styles.menuItemDesc}>Paste link or search media</span>
+              )}
             </div>
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
 
       {/* Playlist Button & Dropdown */}
-      <Menu shadow="xl" width={340} position="top" offset={10}>
+      <Menu
+        shadow="xl"
+        width={playlistMenuWidth}
+        position="top"
+        offset={8}
+        withinPortal
+      >
         <Menu.Target>
           <button type="button" className={styles.dockBtn} title="View playlist">
             <IconList size={16} />
-            <span>Playlist</span>
+            {!isCompact && <span>Playlist</span>}
             <span className={styles.badge}>{playlist.length}</span>
           </button>
         </Menu.Target>
         <Menu.Dropdown
           style={{
-            maxHeight: 380,
+            maxHeight: playlistMaxHeight,
             overflowY: playlist.length > 0 ? "auto" : "visible",
           }}
         >
@@ -217,7 +268,13 @@ export const MediaDock: React.FC<MediaDockProps> = ({
       </Menu>
 
       {/* More Options Menu */}
-      <Menu shadow="xl" width={200} position="top-end" offset={10}>
+      <Menu
+        shadow="xl"
+        width={moreMenuWidth}
+        position="top-end"
+        offset={8}
+        withinPortal
+      >
         <Menu.Target>
           <button type="button" className={styles.iconBtn} title="More actions">
             <IconDots size={16} />
@@ -270,3 +327,4 @@ export const MediaDock: React.FC<MediaDockProps> = ({
     </div>
   );
 };
+
