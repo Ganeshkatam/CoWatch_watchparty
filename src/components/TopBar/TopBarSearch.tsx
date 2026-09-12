@@ -321,32 +321,34 @@ export const TopBarSearch: React.FC = () => {
     return list;
   }, [isDark, setAppearance, context.user]);
 
-  // Compute search items - unified search across jump, rooms, pages, and actions
+  // Compute search items - unified search across jump, rooms, pages, and actions (only when query is present)
   const items = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase();
+    if (!cleanQuery) {
+      return [];
+    }
+
     const resultList: SearchItem[] = [];
 
     // 1. Direct Room code or URL detection
-    if (cleanQuery.length > 0) {
-      let extractedId = cleanQuery;
-      if (extractedId.includes("/watch/")) {
-        extractedId = extractedId.split("/watch/")[1]?.split("?")[0] || extractedId;
-      } else if (extractedId.includes("/join/")) {
-        extractedId = extractedId.split("/join/")[1]?.split("?")[0] || extractedId;
-      }
-      extractedId = extractedId.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\//, "");
+    let extractedId = cleanQuery;
+    if (extractedId.includes("/watch/")) {
+      extractedId = extractedId.split("/watch/")[1]?.split("?")[0] || extractedId;
+    } else if (extractedId.includes("/join/")) {
+      extractedId = extractedId.split("/join/")[1]?.split("?")[0] || extractedId;
+    }
+    extractedId = extractedId.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\//, "");
 
-      if (extractedId.length >= 2 && !extractedId.includes(" ")) {
-        resultList.push({
-          id: `jump-${extractedId}`,
-          type: "jump",
-          category: "Quick Jump",
-          title: `Jump to room: ${extractedId}`,
-          subtitle: "Press Enter to join this room directly",
-          path: `/join/${extractedId}`,
-          icon: <IconPlayerPlay size={16} stroke={2} />,
-        });
-      }
+    if (extractedId.length >= 2 && !extractedId.includes(" ")) {
+      resultList.push({
+        id: `jump-${extractedId}`,
+        type: "jump",
+        category: "Quick Jump",
+        title: `Jump to room: ${extractedId}`,
+        subtitle: "Press Enter to join this room directly",
+        path: `/join/${extractedId}`,
+        icon: <IconPlayerPlay size={16} stroke={2} />,
+      });
     }
 
     // 2. Rooms (User rooms + Public rooms)
@@ -360,18 +362,16 @@ export const TopBarSearch: React.FC = () => {
 
     const allCombinedRooms = Array.from(combinedRoomsMap.values());
     if (allCombinedRooms.length > 0) {
-      const matchedRooms = cleanQuery
-        ? allCombinedRooms.filter((r) => {
-            const title = (r.roomTitle || "").toLowerCase();
-            const id = (r.roomId || "").toLowerCase();
-            const desc = (r.roomDescription || "").toLowerCase();
-            return (
-              title.includes(cleanQuery) ||
-              id.includes(cleanQuery) ||
-              desc.includes(cleanQuery)
-            );
-          })
-        : rooms.slice(0, 3); // show up to 3 recent user rooms when cleanQuery is empty
+      const matchedRooms = allCombinedRooms.filter((r) => {
+        const title = (r.roomTitle || "").toLowerCase();
+        const id = (r.roomId || "").toLowerCase();
+        const desc = (r.roomDescription || "").toLowerCase();
+        return (
+          title.includes(cleanQuery) ||
+          id.includes(cleanQuery) ||
+          desc.includes(cleanQuery)
+        );
+      });
 
       matchedRooms.slice(0, 5).forEach((r) => {
         resultList.push({
@@ -389,27 +389,23 @@ export const TopBarSearch: React.FC = () => {
     }
 
     // 3. Navigation Pages
-    const matchedPages = cleanQuery
-      ? allPages.filter((p) => {
-          return (
-            p.title.toLowerCase().includes(cleanQuery) ||
-            p.subtitle?.toLowerCase().includes(cleanQuery)
-          );
-        })
-      : allPages.slice(0, 4);
+    const matchedPages = allPages.filter((p) => {
+      return (
+        p.title.toLowerCase().includes(cleanQuery) ||
+        p.subtitle?.toLowerCase().includes(cleanQuery)
+      );
+    });
 
     resultList.push(...matchedPages);
 
     // 4. Actions
-    const matchedActions = cleanQuery
-      ? allActions.filter((a) => {
-          return (
-            a.title.toLowerCase().includes(cleanQuery) ||
-            a.subtitle?.toLowerCase().includes(cleanQuery) ||
-            (cleanQuery === "theme" && a.id === "action-theme")
-          );
-        })
-      : allActions;
+    const matchedActions = allActions.filter((a) => {
+      return (
+        a.title.toLowerCase().includes(cleanQuery) ||
+        a.subtitle?.toLowerCase().includes(cleanQuery) ||
+        (cleanQuery === "theme" && a.id === "action-theme")
+      );
+    });
 
     resultList.push(...matchedActions);
 
@@ -461,7 +457,7 @@ export const TopBarSearch: React.FC = () => {
   };
 
   const isExpanded = isFocused || query.length > 0;
-  const isDropdownVisible = isFocused || mobileOpen;
+  const isDropdownVisible = (isFocused || mobileOpen) && query.trim().length > 0;
 
   return (
     <div className={styles.searchContainer} ref={containerRef}>
