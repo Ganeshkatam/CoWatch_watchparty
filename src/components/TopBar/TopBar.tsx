@@ -22,6 +22,7 @@ import {
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 import { TopBarSearch } from "./TopBarSearch";
+import { NotificationBell } from "../Notifications/NotificationBell";
 
 export const ThemeMenuItems = () => {
   const { appearance, setAppearance } = useAppearance();
@@ -648,6 +649,8 @@ export const TopBar = (props: {
           </Button>
         )}
         {!props.hideGetStarted && !context.user && <GetStartedButton />}
+        {/* Notification center bell for authenticated users */}
+        {context.user && <NotificationBell />}
 
         {/* User Avatar linking to Settings or Sign in button */}
         {!props.hideSignin && <SignInButton />}

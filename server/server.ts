@@ -42,6 +42,10 @@ import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
 import { bootstrapProviderRegistry } from "./vm/provider-bootstrap.ts";
+import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
+import { createNotificationRouter } from "./notifications/notificationRouter.ts";
+import { notificationService } from "./notifications/notificationService.ts";
+import { startEmailWorker } from "./notifications/emailWorker.ts";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in server process:", err);
@@ -85,6 +89,8 @@ server?.on("error", (err: any) => {
 });
 
 const io = new Server(server, { cors: {}, transports: ["websocket"] });
+registerNotificationNamespace(io);
+notificationService.setIo(io);
 io.engine.use(async (req: any, res: Response, next: () => void) => {
   const rawRoomId = req._query.roomId;
   if (!rawRoomId) {
@@ -134,6 +140,7 @@ setInterval(minuteMetrics, 60 * 1000);
 setInterval(release, releaseInterval);
 setInterval(saveRooms, 1000);
 setInterval(expireRooms, 60 * 1000);
+startEmailWorker();
 if (process.env.NODE_ENV === "development") {
   try {
     import("./vmWorker.ts");
@@ -147,6 +154,7 @@ if (process.env.NODE_ENV === "development") {
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
+app.use("/api/notifications", createNotificationRouter(io));
 
 app.get("/ping", (_req, res) => {
   res.json("pong");
@@ -2329,6 +2337,18 @@ async function expireRooms() {
     if (result.rowCount && result.rowCount > 0) {
       console.log(`[EXPIRE] Expired ${result.rowCount} rooms`);
       for (const row of result.rows) {
+        if (row.ownerId) {
+          notificationService
+            .notifyUser({
+              userId: row.ownerId,
+              type: "ROOM_ENDED",
+              title: "Room Expired",
+              body: "Your room has expired and ended.",
+              metadata: { roomId: row.roomId },
+              eventId: `ROOM_ENDED:${row.roomId}:${new Date(row.timestamp).getTime()}`,
+            })
+            .catch((err) => console.error("[EXPIRE] Failed to notify room owner:", err));
+        }
         const room = rooms.get(row.roomId);
         if (room) {
           room.status = 'expired';

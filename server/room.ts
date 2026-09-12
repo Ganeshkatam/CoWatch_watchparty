@@ -21,6 +21,7 @@ import twitch from "twitch-m3u8";
 import { providerRegistry } from "./vm/provider-registry.ts";
 import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 import { TimelineAuthority } from "./timelineAuthority.ts";
+import { notificationService } from "./notifications/notificationService.ts";
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -1244,6 +1245,19 @@ export class Room {
     };
     this.io.of(this.roomId).emit("REC:hostAuthority", hostPayload);
     this.io.of(this.roomId).emit("REC:hostChange", hostPayload);
+
+    if ((reason === "failover" || reason === "explicit_transfer") && this.currentHostUid) {
+      notificationService
+        .notifyUser({
+          userId: this.currentHostUid,
+          type: "ROOM_HOST_TRANSFER",
+          title: "Host role assigned",
+          body: `You are now the host of room ${this.roomId}.`,
+          metadata: { roomId: this.roomId, reason },
+          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${Date.now()}`,
+        })
+        .catch((err) => console.error("[Notification] Failed to notify new host:", err));
+    }
     this.io.of(this.roomId).emit("REC:getRoomState", {
       owner: this.owner_id,
       currentHostId: hostId,
@@ -2415,6 +2429,22 @@ export class Room {
       reason,
       timestamp: Date.now(),
     });
+
+    const targetUid = this.clientToUidMap[targetIdentity] || targetSocket?.uid;
+    if (targetUid) {
+      notificationService
+        .notifyUser({
+          userId: targetUid,
+          type: "MODERATION_ACTION",
+          title: "Removed from room",
+          body: reason
+            ? `You were removed from room ${this.roomId}: ${reason}`
+            : `You were removed from room ${this.roomId} by the host.`,
+          metadata: { roomId: this.roomId, action: "kick" },
+          eventId: `MODERATION_ACTION:${this.roomId}:${targetUid}:${Date.now()}`,
+        })
+        .catch((err) => console.error("[Notification] Failed to notify kicked user:", err));
+    }
   };
 
   public banUser = async (
@@ -2445,6 +2475,21 @@ export class Room {
 
     // Remove from admitted participants
     this.admittedParticipants.delete(targetIdentity);
+
+    if (targetUid) {
+      notificationService
+        .notifyUser({
+          userId: targetUid,
+          type: "MODERATION_ACTION",
+          title: "Banned from room",
+          body: reason
+            ? `You have been banned from room ${this.roomId}: ${reason}`
+            : `You have been banned from room ${this.roomId} by the host.`,
+          metadata: { roomId: this.roomId, action: "ban" },
+          eventId: `MODERATION_ACTION:${this.roomId}:${targetUid}:${Date.now()}`,
+        })
+        .catch((err) => console.error("[Notification] Failed to notify banned user:", err));
+    }
 
     // Persist to PostgreSQL room_bans table
     if (postgres) {

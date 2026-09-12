@@ -85,6 +85,16 @@ const defaults = {
   VBROWSER_ADMIN_KEY: "", // Optional, the key to hit admin endpoints on the vbrowser
 
   // ==========================================
+  // NOTIFY-001: Transactional Email (Resend)
+  // ==========================================
+  RESEND_API_KEY: "",              // Resend API key; leave blank to run in outbox-only (dry-run) mode
+  RESEND_FROM_EMAIL: "CoWatch <noreply@cowatch.tv>",   // From address for transactional emails
+  EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
+  EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
+  EMAIL_RETRY_DELAYS_MS: "60000,300000,1800000,3600000", // Comma-separated per-attempt delays (4 retries)
+  EMAIL_MAX_ATTEMPTS: 5,           // Max delivery attempts before marking FAILED
+
+  // ==========================================
   // Development / Legacy Compatibility Configuration
   // ==========================================
   // Kept solely because existing local Docker development/testing infrastructure or legacy admin metrics depend on them.

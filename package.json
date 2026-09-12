@@ -22,7 +22,8 @@
     "analyze": "npx source-map-explorer 'build/assets/*.js' --html result.html --no-border-checks",
     "db:strip-slashes": "tsx server/strip_slashes.ts",
     "test:quota-concurrency": "tsx server/concurrency_test.ts",
-    "test:state-matrix": "tsx src/utils/operationState.test.ts"
+    "test:state-matrix": "tsx src/utils/operationState.test.ts",
+    "test:notifications": "tsx server/notifications/notificationConsistency.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",
