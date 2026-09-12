@@ -104,6 +104,7 @@ export async function markOutboxRetryOrFailed(
       `UPDATE public.email_outbox
        SET status = 'FAILED',
            last_error_code = $2,
+           dispatch_started_at = NULL,
            locked_at = NULL,
            locked_by = NULL,
            updated_at = clock_timestamp()
@@ -116,6 +117,7 @@ export async function markOutboxRetryOrFailed(
       `UPDATE public.email_outbox
        SET status = 'RETRY',
            last_error_code = $2,
+           dispatch_started_at = NULL,
            available_at = now() + ($3 || ' milliseconds')::interval,
            locked_at = NULL,
            locked_by = NULL,
@@ -138,8 +140,25 @@ export async function markOutboxSuppressed(id: string): Promise<void> {
     `UPDATE public.email_outbox
      SET status = 'FAILED',
          last_error_code = 'RECIPIENT_SUPPRESSED',
+         dispatch_started_at = NULL,
          locked_at = NULL,
          locked_by = NULL,
+         updated_at = clock_timestamp()
+     WHERE id = $1`,
+    [id],
+  );
+}
+
+/**
+ * NOTIFY-004: Record dispatch started immediately before calling external provider.
+ * Protects against ambiguous crashes mid-dispatch.
+ */
+export async function recordDispatchStarted(id: string): Promise<void> {
+  if (!postgres || !id) return;
+
+  await postgres.query(
+    `UPDATE public.email_outbox
+     SET dispatch_started_at = clock_timestamp(),
          updated_at = clock_timestamp()
      WHERE id = $1`,
     [id],
@@ -155,12 +174,19 @@ export async function reclaimStalledOutboxJobs(
 ): Promise<number> {
   if (!postgres) return 0;
 
+  // Stalled jobs where dispatch_started_at is NOT NULL indicate an in-flight crash
+  // We record 'AMBIGUOUS_CRASH_RECOVERY' if an in-flight job is reclaimed
   const { rowCount } = await postgres.query(
     `UPDATE public.email_outbox
      SET status = 'RETRY',
          available_at = now(),
          locked_at = NULL,
          locked_by = NULL,
+         last_error_code = CASE
+           WHEN dispatch_started_at IS NOT NULL THEN 'AMBIGUOUS_CRASH_RECOVERY'
+           ELSE last_error_code
+         END,
+         dispatch_started_at = NULL,
          updated_at = clock_timestamp()
      WHERE status = 'PROCESSING'
        AND (locked_at IS NULL OR locked_at < now() - ($1 || ' seconds')::interval)`,

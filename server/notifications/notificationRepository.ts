@@ -34,6 +34,7 @@ export interface InsertEmailOutboxParams {
   notification_id: string | null;
   user_id: string;
   template_key: string;
+  delivery_profile?: string;
   recipient_email: string;
   payload: Record<string, unknown>;
   provider_idempotency_key: string;
@@ -126,14 +127,15 @@ export async function insertNotificationWithOutbox(
 
     const { rows: outboxRows } = await tx.query<EmailOutboxRow>(
       `INSERT INTO public.email_outbox
-         (notification_id, user_id, template_key, recipient_email, payload, provider_idempotency_key)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (notification_id, user_id, template_key, delivery_profile, recipient_email, payload, provider_idempotency_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (provider_idempotency_key) DO NOTHING
        RETURNING *`,
       [
         notification.id,
         outboxParams.user_id,
         outboxParams.template_key,
+        outboxParams.delivery_profile || 'transactional_default',
         outboxParams.recipient_email,
         JSON.stringify(outboxParams.payload),
         outboxParams.provider_idempotency_key,

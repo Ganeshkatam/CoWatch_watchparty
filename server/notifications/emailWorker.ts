@@ -19,7 +19,9 @@ import {
   markOutboxSuppressed,
   reclaimStalledOutboxJobs,
   checkEmailSuppression,
+  recordDispatchStarted,
 } from './emailOutbox.ts';
+import { getDeliveryProfile } from './deliveryProfiles.ts';
 import { computeEmailHash } from './suppression.ts';
 import { renderEmailTemplate } from './emailTemplates.ts';
 import { NotificationDeliveryError } from './notificationErrors.ts';
@@ -98,16 +100,21 @@ export async function runWorkerCycle(): Promise<void> {
             return;
           }
 
-          // Send via provider with deterministic idempotency key
-          const fromEmail = config.EMAIL_FROM_ADDRESS
-            ? (config.EMAIL_FROM_NAME
-                ? `"${config.EMAIL_FROM_NAME}" <${config.EMAIL_FROM_ADDRESS}>`
-                : config.EMAIL_FROM_ADDRESS)
-            : config.RESEND_FROM_EMAIL || 'CoWatch <noreply@cowatch.tv>';
+          // Resolve delivery profile and bound provider
+          const profile = getDeliveryProfile(job.delivery_profile || 'transactional_default');
+          const jobProvider = activeProvider || EmailProviderRegistry.getProviderForProfile(profile.id);
 
-          const result = await provider.send({
+          const fromEmail = profile.fromName
+            ? `"${profile.fromName}" <${profile.fromAddress}>`
+            : profile.fromAddress;
+
+          // Record dispatch started before calling provider (idempotency guard)
+          await recordDispatchStarted(job.id);
+
+          const result = await jobProvider.send({
             to: job.recipient_email,
             from: fromEmail,
+            replyTo: profile.replyTo,
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.text,
@@ -115,8 +122,8 @@ export async function runWorkerCycle(): Promise<void> {
           });
 
           const messageId = result.providerMessageId || (result as any).messageId || `sent:${job.id}`;
-          await markOutboxSent(job.id, messageId, provider.name);
-          console.log(`[EmailWorker] Sent job ${job.id} via ${provider.name}: ${messageId}`);
+          await markOutboxSent(job.id, messageId, jobProvider.name);
+          console.log(`[EmailWorker] Sent job ${job.id} via ${jobProvider.name} (profile ${profile.id}): ${messageId}`);
         } catch (err) {
           let isRetryable = true;
           let errorCode = 'PROVIDER_ERROR';

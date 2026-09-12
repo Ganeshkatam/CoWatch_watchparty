@@ -104,6 +104,8 @@ export interface EmailOutboxRow {
   locked_by?: string | null;
   provider_message_id: string | null;
   provider_idempotency_key: string | null;
+  delivery_profile: string;
+  dispatch_started_at?: string | null;
   last_error_code: string | null;
   provider?: string | null;
   provider_metadata?: Record<string, unknown> | null;

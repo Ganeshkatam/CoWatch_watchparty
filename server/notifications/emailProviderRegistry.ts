@@ -12,6 +12,7 @@ import { EmailProviderError } from './emailErrors.ts';
 import { BrevoEmailProvider } from './providers/brevoEmailProvider.ts';
 import { ResendEmailProvider } from './providers/resendEmailProvider.ts';
 import { SMTPEmailProvider } from './providers/smtpEmailProvider.ts';
+import type { DeliveryProfileId } from './deliveryProfiles.ts';
 
 export class EmailProviderRegistry {
   private static providers: Map<string, EmailProvider> = new Map();
@@ -47,12 +48,94 @@ export class EmailProviderRegistry {
   }
 
   /**
-   * Validate configuration for the active provider.
+   * NOTIFY-004: Resolve configured EmailProvider for a canonical delivery profile.
+   * Maps DeliveryProfileId -> ProviderBinding -> EmailProvider instance.
+   */
+  static getProviderForProfile(profileId?: DeliveryProfileId | string): EmailProvider {
+    if (!profileId) {
+      return this.getProvider();
+    }
+
+    // 1. Resolve configured binding for the profile
+    let bindingName = 'default';
+    switch (profileId) {
+      case 'transactional_invitation':
+        bindingName = config.EMAIL_PROFILE_INVITATION_BINDING || 'invitation';
+        break;
+      case 'transactional_security':
+        bindingName = config.EMAIL_PROFILE_SECURITY_BINDING || 'security';
+        break;
+      case 'transactional_system':
+        bindingName = config.EMAIL_PROFILE_SYSTEM_BINDING || 'system';
+        break;
+      default:
+        bindingName = config.EMAIL_PROFILE_DEFAULT_BINDING || 'default';
+        break;
+    }
+
+    // 2. Resolve provider adapter configured for that binding
+    let providerName = '';
+    if (bindingName === 'invitation') {
+      providerName = config.EMAIL_BINDING_INVITATION_PROVIDER;
+    } else if (bindingName === 'security') {
+      providerName = config.EMAIL_BINDING_SECURITY_PROVIDER;
+    } else if (bindingName === 'system') {
+      providerName = config.EMAIL_BINDING_SYSTEM_PROVIDER;
+    } else if (bindingName === 'default') {
+      providerName = config.EMAIL_BINDING_DEFAULT_PROVIDER;
+    }
+
+    const effectiveProvider = (providerName || config.EMAIL_PROVIDER || 'smtp').toLowerCase();
+
+    // 3. Multi-account credential resolution (e.g. Brevo account per binding)
+    const customInstanceKey = `${effectiveProvider}:${bindingName}`.toLowerCase();
+    if (this.providers.has(customInstanceKey)) {
+      return this.providers.get(customInstanceKey)!;
+    }
+
+    if (effectiveProvider === 'brevo') {
+      let customKey = '';
+      if (bindingName === 'invitation' && config.BREVO_API_KEY_INVITATIONS) {
+        customKey = config.BREVO_API_KEY_INVITATIONS;
+      } else if (bindingName === 'security' && config.BREVO_API_KEY_SECURITY) {
+        customKey = config.BREVO_API_KEY_SECURITY;
+      } else if (bindingName === 'system' && config.BREVO_API_KEY_SYSTEM) {
+        customKey = config.BREVO_API_KEY_SYSTEM;
+      }
+
+      if (customKey) {
+        const customProvider = new BrevoEmailProvider({
+          name: customInstanceKey,
+          apiKey: customKey,
+        });
+        this.register(customProvider);
+        return customProvider;
+      }
+    }
+
+    // 4. Fall back to standard registered provider for that provider name
+    return this.getProvider(effectiveProvider);
+  }
+
+  /**
+   * Validate configuration for the active provider and all configured profiles.
    * Throws if required credentials or options are absent.
    */
   static async validateActiveProvider(): Promise<EmailProvider> {
     const activeProvider = this.getProvider();
     await activeProvider.verifyConfiguration();
+
+    const profiles: DeliveryProfileId[] = [
+      'transactional_default',
+      'transactional_invitation',
+      'transactional_security',
+      'transactional_system',
+    ];
+    for (const p of profiles) {
+      const profileProvider = this.getProviderForProfile(p);
+      await profileProvider.verifyConfiguration();
+    }
+
     return activeProvider;
   }
 }

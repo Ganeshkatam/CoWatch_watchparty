@@ -19,16 +19,23 @@ import { EmailProviderError } from '../emailErrors.ts';
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 export class BrevoEmailProvider implements EmailProvider {
-  readonly name = 'brevo';
+  readonly name: string;
+  private customApiKey?: string;
+
+  constructor(options?: { name?: string; apiKey?: string }) {
+    this.name = options?.name || 'brevo';
+    this.customApiKey = options?.apiKey;
+  }
 
   readonly capabilities: EmailProviderCapabilities = {
     transactionalSending: true,
+    nativeIdempotency: false,
     deliveryWebhooks: true,
     bounceEvents: true,
   };
 
   private get apiKey(): string {
-    return config.BREVO_API_KEY || '';
+    return this.customApiKey || config.BREVO_API_KEY || '';
   }
 
   private get isDryRun(): boolean {
@@ -53,9 +60,10 @@ export class BrevoEmailProvider implements EmailProvider {
       return err;
     }
 
-    if (isAxiosError(err)) {
-      const status = err.response?.status ?? 0;
-      const data = err.response?.data;
+    const anyErr = err as any;
+    if (isAxiosError(err) || (anyErr && typeof anyErr === 'object' && ('response' in anyErr || 'code' in anyErr))) {
+      const status = anyErr.response?.status ?? 0;
+      const data = anyErr.response?.data;
 
       if (status === 429) {
         return new EmailProviderError(`Brevo rate limited (HTTP 429)`, {
@@ -84,12 +92,12 @@ export class BrevoEmailProvider implements EmailProvider {
         });
       }
 
-      if (status >= 500 || status === 0 || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
-        return new EmailProviderError(`Brevo server or network timeout (${status || err.code})`, {
+      if (status >= 500 || status === 0 || anyErr.code === 'ECONNABORTED' || anyErr.code === 'ETIMEDOUT') {
+        return new EmailProviderError(`Brevo server or network timeout (${status || anyErr.code})`, {
           category: 'TRANSIENT',
           provider: this.name,
           code: 'BREVO_TRANSIENT_FAILURE',
-          details: data ?? err.message,
+          details: data ?? anyErr.message,
         });
       }
 

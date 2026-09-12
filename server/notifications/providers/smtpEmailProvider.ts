@@ -17,15 +17,28 @@ import type {
 import { EmailProviderError } from '../emailErrors.ts';
 
 export class SMTPEmailProvider implements EmailProvider {
-  readonly name = 'smtp';
+  readonly name: string;
+  private transporter: Transporter | null = null;
+
+  constructor(options?: { name?: string; transporter?: Transporter } | Transporter) {
+    if (options && typeof (options as Transporter).sendMail === 'function') {
+      this.transporter = options as Transporter;
+      this.name = 'smtp';
+    } else {
+      const opts = options as { name?: string; transporter?: Transporter } | undefined;
+      this.name = opts?.name || 'smtp';
+      if (opts?.transporter) {
+        this.transporter = opts.transporter;
+      }
+    }
+  }
 
   readonly capabilities: EmailProviderCapabilities = {
     transactionalSending: true,
+    nativeIdempotency: false,
     deliveryWebhooks: false, // Standard SMTP does not natively provide inbound webhooks
     bounceEvents: false,
   };
-
-  private transporter: Transporter | null = null;
 
   private get host(): string {
     return config.EMAIL_SMTP_HOST || '';
@@ -49,12 +62,6 @@ export class SMTPEmailProvider implements EmailProvider {
 
   private get isDryRun(): boolean {
     return !this.host || this.host.trim() === '';
-  }
-
-  constructor(customTransporter?: Transporter) {
-    if (customTransporter) {
-      this.transporter = customTransporter;
-    }
   }
 
   private getTransporter(): Transporter {

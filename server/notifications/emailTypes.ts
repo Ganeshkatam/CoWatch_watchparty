@@ -30,6 +30,11 @@ export interface EmailProviderCapabilities {
    */
   transactionalSending: boolean;
   /**
+   * Supports native provider-level idempotency keys (e.g. Idempotency-Key HTTP header).
+   * Used by worker crash recovery to distinguish safe retries from ambiguous deliveries.
+   */
+  nativeIdempotency: boolean;
+  /**
    * Supports inbound delivery status webhooks (delivered, delayed).
    */
   deliveryWebhooks: boolean;
@@ -38,3 +43,4 @@ export interface EmailProviderCapabilities {
    */
   bounceEvents: boolean;
 }
+

@@ -27,6 +27,7 @@ import {
   emitNotificationCreated,
 } from './notificationSocketNamespace.ts';
 import { getUserEmail } from '../utils/supabase.ts';
+import { resolveDeliveryProfile } from './deliveryProfiles.ts';
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -141,6 +142,7 @@ export class NotificationService {
           notification = await this._insertInAppOnly(params);
         } else {
           const templateKey = params.emailTemplateKey ?? params.type.toLowerCase().replace(/_/g, '-');
+          const deliveryProfile = resolveDeliveryProfile(params.type);
           const providerKey = buildProviderIdempotencyKey(
             params.userId,
             params.eventId,
@@ -159,6 +161,7 @@ export class NotificationService {
             {
               user_id: params.userId,
               template_key: templateKey,
+              delivery_profile: deliveryProfile,
               recipient_email: recipientEmail,
               payload: params.emailPayload ?? {},
               provider_idempotency_key: providerKey,

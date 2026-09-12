@@ -41,6 +41,7 @@ import {
   checkAbuseReportRateLimit,
   recordAbuseReportAttempt,
 } from "./utils/abuseReportRateLimit.ts";
+import { checkDurableAbuseReportRateLimit } from "./utils/durableRateLimit.ts";
 import { feedbackTelemetry } from "./utils/feedbackTelemetry.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
@@ -219,6 +220,52 @@ if (process.env.NODE_ENV === "development") {
 }
 
 app.use(cors());
+
+// NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media & VBrowser safe)
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: data: https:",
+    "connect-src 'self' ws: wss: https: blob:",
+    "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+  ].join("; ");
+  res.setHeader("Content-Security-Policy", csp);
+  next();
+});
+
+function requireInternalAuth(req: any, res: any, next: any) {
+  const secret = config.INTERNAL_API_SECRET;
+  if (!secret) {
+    const clientIp = String(req.ip || req.socket?.remoteAddress || "");
+    const isLoopback = clientIp.includes("127.0.0.1") || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
+    if (!isLoopback && process.env.NODE_ENV === "production") {
+      res.status(403).json({ error: "FORBIDDEN: Internal endpoint accessible only via loopback or INTERNAL_API_SECRET" });
+      return;
+    }
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : req.headers["x-internal-secret"];
+  if (token !== secret) {
+    res.status(401).json({ error: "UNAUTHORIZED: Valid INTERNAL_API_SECRET required" });
+    return;
+  }
+  next();
+}
+
 app.use(
   bodyParser.json({
     verify: (req: any, _res, buf) => {
@@ -239,8 +286,8 @@ app.post("/internal/webhooks/resend", async (req, res) => {
   await resendWebhookHandler.handleRequest(req, res);
 });
 
-// NOTIFY-001A: Database-derived Notification Health Probe (zero Redis, zero PII)
-app.get("/internal/health/notifications", async (_req, res) => {
+// NOTIFY-001A & NOTIFY-004: Database-derived Notification Health Probe (locked behind internal boundary)
+app.get("/internal/health/notifications", requireInternalAuth, async (_req, res) => {
   try {
     const report = await getNotificationHealthReport();
     res.json(report);
@@ -505,8 +552,8 @@ app.post("/api/reports/abuse", async (req: express.Request, res: express.Respons
       return;
     }
 
-    // 3. Rate limiting check (5 per hour per user, 10 per hour per IP)
-    const rateLimit = checkAbuseReportRateLimit(ip, reporterUserId);
+    // 3. Durable Rate limiting check (5 per hour per user, 10 per hour per IP)
+    const rateLimit = await checkDurableAbuseReportRateLimit(ip, reporterUserId);
     if (!rateLimit.allowed) {
       res.status(429).json({
         error: "Too many abuse reports submitted. Please try again later.",

@@ -18,16 +18,23 @@ import { EmailProviderError } from '../emailErrors.ts';
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
 export class ResendEmailProvider implements EmailProvider {
-  readonly name = 'resend';
+  readonly name: string;
+  private customApiKey?: string;
+
+  constructor(options?: { name?: string; apiKey?: string }) {
+    this.name = options?.name || 'resend';
+    this.customApiKey = options?.apiKey;
+  }
 
   readonly capabilities: EmailProviderCapabilities = {
     transactionalSending: true,
+    nativeIdempotency: true,
     deliveryWebhooks: true,
     bounceEvents: true,
   };
 
   private get apiKey(): string {
-    return config.RESEND_API_KEY || '';
+    return this.customApiKey || config.RESEND_API_KEY || '';
   }
 
   private get isDryRun(): boolean {
@@ -52,9 +59,10 @@ export class ResendEmailProvider implements EmailProvider {
       return err;
     }
 
-    if (isAxiosError(err)) {
-      const status = err.response?.status ?? 0;
-      const data = err.response?.data;
+    const anyErr = err as any;
+    if (isAxiosError(err) || (anyErr && typeof anyErr === 'object' && ('response' in anyErr || 'code' in anyErr))) {
+      const status = anyErr.response?.status ?? 0;
+      const data = anyErr.response?.data;
 
       if (status === 429) {
         return new EmailProviderError(`Resend rate limited (HTTP 429)`, {
@@ -83,12 +91,12 @@ export class ResendEmailProvider implements EmailProvider {
         });
       }
 
-      if (status >= 500 || status === 0 || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
-        return new EmailProviderError(`Resend upstream or connection error (${status || err.code})`, {
+      if (status >= 500 || status === 0 || anyErr.code === 'ECONNABORTED' || anyErr.code === 'ETIMEDOUT') {
+        return new EmailProviderError(`Resend upstream or connection error (${status || anyErr.code})`, {
           category: 'TRANSIENT',
           provider: this.name,
           code: 'RESEND_TRANSIENT_FAILURE',
-          details: data ?? err.message,
+          details: data ?? anyErr.message,
         });
       }
 

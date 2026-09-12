@@ -86,14 +86,34 @@ const defaults = {
   VBROWSER_ADMIN_KEY: "", // Optional, the key to hit admin endpoints on the vbrowser
 
   // ==========================================
-  // NOTIFY-001 & NOTIFY-002: Transactional Email Architecture
+  // NOTIFY-001, NOTIFY-002 & NOTIFY-004: Transactional Email Architecture
   // ==========================================
-  EMAIL_PROVIDER: "smtp",          // Active email provider adapter: "brevo" | "resend" | "smtp"
+  EMAIL_PROVIDER: "smtp",          // Global default email provider adapter: "brevo" | "resend" | "smtp"
   EMAIL_FROM_ADDRESS: "noreply@cowatch.tv", // Default sender email address
   EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
 
-  // Brevo API Configuration
-  BREVO_API_KEY: "",               // Brevo API key (xkeysib-...)
+  // Delivery Profiles (Provider-neutral sender overrides)
+  EMAIL_PROFILE_INVITATION_SENDER: "", // Sender address for transactional_invitation (defaults to EMAIL_FROM_ADDRESS)
+  EMAIL_PROFILE_SECURITY_SENDER: "",   // Sender address for transactional_security (defaults to EMAIL_FROM_ADDRESS)
+  EMAIL_PROFILE_SYSTEM_SENDER: "",     // Sender address for transactional_system (defaults to EMAIL_FROM_ADDRESS)
+
+  // Infrastructure Provider Bindings (Maps Delivery Profile -> Named Provider/Account Binding)
+  EMAIL_PROFILE_DEFAULT_BINDING: "default",
+  EMAIL_PROFILE_INVITATION_BINDING: "default", // e.g. "invitations", "default"
+  EMAIL_PROFILE_SECURITY_BINDING: "default",   // e.g. "security", "default"
+  EMAIL_PROFILE_SYSTEM_BINDING: "default",     // e.g. "system", "default"
+
+  // Named Provider Bindings (Maps binding name -> registered provider adapter)
+  EMAIL_BINDING_DEFAULT_PROVIDER: "",    // Optional provider override for "default" binding
+  EMAIL_BINDING_INVITATION_PROVIDER: "", // Optional provider override for "invitations" binding
+  EMAIL_BINDING_SECURITY_PROVIDER: "",   // Optional provider override for "security" binding
+  EMAIL_BINDING_SYSTEM_PROVIDER: "",     // Optional provider override for "system" binding
+
+  // Brevo API Configuration & Multi-Account Support
+  BREVO_API_KEY: "",               // Brevo default API key (xkeysib-...)
+  BREVO_API_KEY_INVITATIONS: "",   // Optional Brevo account API key for invitations
+  BREVO_API_KEY_SECURITY: "",      // Optional Brevo account API key for security alerts
+  BREVO_API_KEY_SYSTEM: "",        // Optional Brevo account API key for system mail
   BREVO_WEBHOOK_SECRET: "",        // Brevo webhook authentication token/secret
 
   // Resend API Configuration
@@ -107,6 +127,9 @@ const defaults = {
   EMAIL_SMTP_USERNAME: "",         // SMTP username
   EMAIL_SMTP_PASSWORD: "",         // SMTP password
   EMAIL_SMTP_SECURE: false,        // True for 465 SSL, false for 587 STARTTLS
+
+  // Internal Boundary Secret (for /internal/health and administrative endpoints)
+  INTERNAL_API_SECRET: "",
 
   EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
   EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
