@@ -55,7 +55,7 @@ export const SettingsModal = ({
   const [draftLock, setDraftLock] = useState(Boolean(roomLock));
   
   // Local settings draft
-  const [draftNotif, setDraftNotif] = useState(Boolean(getCurrentSettings().disableChatSound));
+  const [draftNotif, setDraftNotif] = useState(!getCurrentSettings().disableChatSound);
   const [draftCamera, setDraftCamera] = useState(profile?.pref_camera_on ?? false);
   const [draftMic, setDraftMic] = useState(profile?.pref_mic_on ?? false);
   const [draftSmartPiP, setDraftSmartPiP] = useState(pipManager.isSmartPiPEnabled());
@@ -66,7 +66,7 @@ export const SettingsModal = ({
   useEffect(() => {
     if (modalOpen) {
       setDraftLock(Boolean(roomLock));
-      setDraftNotif(Boolean(getCurrentSettings().disableChatSound));
+      setDraftNotif(!getCurrentSettings().disableChatSound);
       setDraftCamera(profile?.pref_camera_on ?? false);
       setDraftMic(profile?.pref_mic_on ?? false);
       setDraftSmartPiP(pipManager.isSmartPiPEnabled());
@@ -122,7 +122,7 @@ export const SettingsModal = ({
       opened={modalOpen}
       onClose={() => setModalOpen(false)}
       centered
-      title="Settings"
+      title="Room Settings"
       radius="md"
       size={520}
       styles={{

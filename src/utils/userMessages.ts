@@ -162,13 +162,6 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "choose-host",
     duration: 4000,
   },
-  HOST_TRANSITION_CONFLICT: {
-    message: "We couldn't change the host. Please choose another participant and try again.",
-    severity: "error",
-    presentation: "toast",
-    action: "choose-host",
-    duration: 4000,
-  },
   HOST_SELF_CLAIM_FORBIDDEN: {
     message: "You can't make yourself the host.",
     severity: "warning",
@@ -505,17 +498,16 @@ export function getAdmissionErrorMessage(codeOrMessage: string): string {
 /**
  * Sanitizes server error messages and returns a structured UserMessage object.
  */
-export function sanitizeServerUserMessage(raw: any): UserMessage {
-  const inputStr = typeof raw === "string" ? raw : (raw?.message || (raw ? String(raw) : ""));
-  if (!inputStr) {
+export function sanitizeServerUserMessage(raw: string | undefined | null): UserMessage {
+  if (!raw || typeof raw !== "string") {
     return USER_MESSAGES.GENERIC_ACTION_FAILED;
   }
 
-  const trimmed = inputStr.trim();
+  const trimmed = raw.trim();
 
   // Security barrier: Filter out any internal infrastructure, transport, or database leaks
   const technicalTermsPattern =
-    /\b(postgres(ql)?|redis|zincrby|socket(\.io)?|webrtc|peerconnection|candidate|ice|operationid|uncaught|syntaxerror|typeerror|nullpointer|internalerror|exception|cluster\s+node|econnrefused|failed\s+to\s+fetch|database|sql)\b/i;
+    /\b(postgres|redis|zincrby|socket\.io|webrtc|peerconnection|candidate|ice|operationid|uncaught|syntaxerror|typeerror|nullpointer|internalerror|exception|cluster\s+node)\b/i;
   const sqlPattern =
     /\b(select\s+.*from|insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i;
   const uuidPattern =
@@ -525,31 +517,23 @@ export function sanitizeServerUserMessage(raw: any): UserMessage {
     return USER_MESSAGES.GENERIC_ACTION_FAILED;
   }
 
-  // Handle known error codes first so they map to specific actionable user copy
-  if (trimmed.includes("ROOM_FULL")) {
-    return USER_MESSAGES.ROOM_FULL;
-  }
+  // Admission & Capacity codes
   if (trimmed.includes("PARTICIPANTS_LOCKED")) {
     return USER_MESSAGES.PARTICIPANTS_LOCKED;
+  }
+  if (trimmed.includes("ROOM_FULL") || trimmed.includes("max capacity reached")) {
+    return USER_MESSAGES.ROOM_FULL;
   }
   if (trimmed.includes("SESSION_INVALID")) {
     return USER_MESSAGES.SESSION_EXPIRED;
   }
-  if (trimmed.includes("PASSCODE_INVALID") || trimmed === "passcode" || trimmed === "password") {
-    return USER_MESSAGES.PASSCODE_INCORRECT;
+  if (trimmed.includes("ECONNREFUSED") || trimmed.includes("connect_error")) {
+    return USER_MESSAGES.GENERIC_CONNECTION_ERROR;
   }
-  if (trimmed.includes("ROOM_ACCESS_DENIED")) {
-    return USER_MESSAGES.ACCESS_DENIED;
-  }
+
+  // Expired / Ended room
   if (trimmed.includes("ended or expired") || trimmed.includes("ROOM_NOT_FOUND")) {
     return USER_MESSAGES.ROOM_NOT_FOUND;
-  }
-  if (
-    trimmed.includes("Failed to transfer host authority") ||
-    trimmed.includes("Failed to assign host") ||
-    trimmed.includes("HOST_TRANSITION_CONFLICT")
-  ) {
-    return USER_MESSAGES.HOST_TRANSITION_CONFLICT;
   }
 
   // Lock Authority
@@ -643,7 +627,7 @@ export function sanitizeServerUserMessage(raw: any): UserMessage {
 /**
  * Sanitizes server error messages emitted via socket `errorMessage` event to string copy.
  */
-export function sanitizeServerErrorMessage(raw: any): string {
+export function sanitizeServerErrorMessage(raw: string | undefined | null): string {
   return sanitizeServerUserMessage(raw).message;
 }
 

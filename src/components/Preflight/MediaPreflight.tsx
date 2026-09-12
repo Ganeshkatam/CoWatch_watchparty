@@ -24,6 +24,7 @@ import {
   IconAlertTriangle,
   IconPlayerPlay,
   IconChevronLeft,
+  IconLock,
 } from "@tabler/icons-react";
 import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -51,6 +52,8 @@ interface RoomInfo {
   coverPhoto?: string | null;
   status: "active" | "inactive" | "expired" | string;
   requiresPasscode: boolean;
+  participantsLocked?: boolean;
+  maxParticipants?: number;
   isOwner: boolean;
 }
 
@@ -691,16 +694,44 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
             {/* Action Buttons */}
             <div className={styles.actions}>
+              {roomInfo?.participantsLocked && !roomInfo?.isOwner && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    background: "rgba(245, 159, 0, 0.1)",
+                    border: "1px solid rgba(245, 159, 0, 0.3)",
+                    color: "var(--color-warning)",
+                    fontSize: "13px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginBottom: "12px",
+                  }}
+                  role="alert"
+                >
+                  <IconLock size={16} stroke={1.8} />
+                  <span>This room is locked to new participants by the host.</span>
+                </div>
+              )}
               <Button
                 size="md"
                 fullWidth
                 variant="gradient"
                 gradient={{ from: "violet", to: "indigo", deg: 135 }}
                 onClick={handleJoinRoom}
+                disabled={
+                  roomInfo?.status === "expired" ||
+                  (!roomInfo?.isOwner && Boolean(roomInfo?.participantsLocked))
+                }
                 rightSection={<IconArrowRight size={18} />}
                 className={styles.joinButton}
               >
-                Join Watch Room
+                {roomInfo?.status === "expired"
+                  ? "Room Expired"
+                  : roomInfo?.participantsLocked && !roomInfo?.isOwner
+                    ? "Room Locked"
+                    : "Join Watch Room"}
               </Button>
               <Link
                 to={`/join/${encodeURIComponent(cleanRoomId)}`}

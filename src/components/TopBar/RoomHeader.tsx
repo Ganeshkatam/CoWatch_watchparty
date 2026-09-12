@@ -390,10 +390,13 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               type="button"
               className={`${styles.lockBtn} ${participantsLocked ? styles.lockBtnLocked : ""}`}
               onClick={onToggleParticipantsLock}
+              disabled={participantsLockOp.isPending}
               title={participantsLocked ? "Participants Locked" : "Lock Participants"}
               aria-label={participantsLocked ? "Participants Locked" : "Lock Participants"}
             >
-              {participantsLocked ? (
+              {participantsLockOp.showSpinner ? (
+                <Loader size={14} color="violet" />
+              ) : participantsLocked ? (
                 <IconLock size={15} color="var(--color-warning)" />
               ) : (
                 <IconLockOpen size={15} />

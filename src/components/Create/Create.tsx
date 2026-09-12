@@ -314,7 +314,7 @@ export const Create = () => {
                 placeholder="e.g. Watching movies, videos, and music together"
                 value={roomDescription}
                 onChange={(e) => setRoomDescription(e.target.value)}
-                maxLength={120}
+                maxLength={500}
                 size="md"
               />
 
@@ -570,7 +570,7 @@ export const Create = () => {
           <div className={styles.actionsRow}>
             <div className={styles.actionsRowMeta}>
               <Text size="xs" c="dimmed">
-                You can change room settings anytime.
+                Room settings can be adjusted in My Rooms when no session is active.
               </Text>
             </div>
             <div className={styles.actionsRowButtons}>

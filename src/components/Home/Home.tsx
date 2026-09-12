@@ -182,7 +182,7 @@ export const Home: React.FC = () => {
 
               <div className={styles.studioStatusPill}>
                 <IconUsers size={14} color="var(--text-muted)" />
-                <span>12 watching</span>
+                <span>6 watching</span>
               </div>
             </div>
 
@@ -283,7 +283,7 @@ export const Home: React.FC = () => {
                     <div className={styles.capabilityList}>
                       <div className={styles.capabilityItem}>
                         <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Remote cloud Chromium session isolated from your personal machine</span>
+                        <span>Remote cloud Chromium session isolated from your personal machine (subject to cloud instance availability)</span>
                       </div>
                       <div className={styles.capabilityItem}>
                         <IconCheck size={18} className={styles.capabilityCheck} />

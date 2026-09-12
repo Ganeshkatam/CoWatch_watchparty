@@ -853,18 +853,6 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       if (room.currentPasscode) {
         items.push(<Menu.Divider key="div1" />);
       }
-      if (computedState === 'Active' && !isPermanent) {
-        items.push(
-          <Menu.Item key="extend30" leftSection={<IconHourglassHigh size={14} />} onClick={() => handlePlaceholder('Extend +30 min')}>
-            Extend +30 min
-          </Menu.Item>
-        );
-        items.push(
-          <Menu.Item key="extend60" leftSection={<IconHourglassHigh size={14} />} onClick={() => handlePlaceholder('Extend +1 hour')}>
-            Extend +1 hour
-          </Menu.Item>
-        );
-      }
       items.push(
         <Tooltip
           key="settings"
@@ -1351,20 +1339,6 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
                   ) : (
                     <IconKey size={15} />
                   )}
-                </ActionIcon>
-              </Tooltip>
-            )}
-
-            {isRoomActive && !isPermanent && (
-              <Tooltip label="Extend +30 min" withArrow>
-                <ActionIcon
-                  className={styles.actionIconBtn}
-                  size="sm"
-                  radius="xl"
-                  onClick={() => actions.handlePlaceholder("Extend +30 min")}
-                  aria-label="Extend Room"
-                >
-                  <IconHourglassHigh size={15} />
                 </ActionIcon>
               </Tooltip>
             )}

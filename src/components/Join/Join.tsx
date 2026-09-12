@@ -40,6 +40,8 @@ interface RoomInfo {
   coverPhoto?: string | null;
   status: "active" | "inactive" | "expired" | string;
   requiresPasscode: boolean;
+  participantsLocked?: boolean;
+  maxParticipants?: number;
   isOwner: boolean;
 }
 
@@ -193,6 +195,16 @@ export const Join: React.FC = () => {
     // If caller is host, advance directly to preflight green room
     if (roomInfo?.isOwner) {
       history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`);
+      return;
+    }
+
+    if (roomInfo?.status === "expired") {
+      setFormError("This room session has expired.");
+      return;
+    }
+
+    if (roomInfo?.participantsLocked) {
+      setFormError("This room is currently locked to new participants by the host.");
       return;
     }
 
@@ -427,6 +439,21 @@ export const Join: React.FC = () => {
                     </div>
                   ) : (
                     <div className={styles.inputWrapper}>
+                      {roomInfo?.participantsLocked && (
+                        <div
+                          className={styles.inlineError}
+                          style={{
+                            marginBottom: 12,
+                            background: "rgba(245, 159, 0, 0.1)",
+                            borderColor: "rgba(245, 159, 0, 0.3)",
+                            color: "var(--color-warning)",
+                          }}
+                          role="alert"
+                        >
+                          <IconLock size={16} stroke={1.8} />
+                          <span>This room is currently locked to new participants by the host.</span>
+                        </div>
+                      )}
                       <div className={styles.passcodeHeader}>
                         <span className={styles.passcodeTitle}>Room Passcode</span>
                         <span className={styles.passcodeSubtitle}>
@@ -444,6 +471,7 @@ export const Join: React.FC = () => {
                           setPasscode(event.currentTarget.value.slice(0, 8));
                           if (formError) setFormError("");
                         }}
+                        disabled={roomInfo?.participantsLocked || verifying}
                         required
                         size="md"
                         leftSection={<IconLock size={18} stroke={1.5} />}
@@ -483,17 +511,26 @@ export const Join: React.FC = () => {
                       )
                     }
                     loading={verifying}
+                    disabled={
+                      verifying ||
+                      roomInfo?.status === "expired" ||
+                      (!roomInfo?.isOwner && Boolean(roomInfo?.participantsLocked))
+                    }
                     className={styles.submitBtn}
                   >
                     {roomInfo?.isOwner
                       ? "Start Room"
-                      : !user
-                        ? "Sign in to Join"
-                        : user.email_confirmed_at == null
-                          ? "Verify Email to Join"
-                          : verifying
-                            ? "Entering..."
-                            : "Enter Watch Room"}
+                      : roomInfo?.status === "expired"
+                        ? "Room Expired"
+                        : roomInfo?.participantsLocked
+                          ? "Room Locked"
+                          : !user
+                            ? "Sign in to Join"
+                            : user.email_confirmed_at == null
+                              ? "Verify Email to Join"
+                              : verifying
+                                ? "Entering..."
+                                : "Enter Watch Room"}
                   </Button>
                 </form>
               </>

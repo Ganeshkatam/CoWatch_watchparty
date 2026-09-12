@@ -348,7 +348,7 @@ const NavigationMenuContent: React.FC<{
                 onClick={onClose}
               >
                 <IconSettings size={18} stroke={1.5} />
-                <span>Settings</span>
+                <span>Preferences</span>
               </Link>
             </>
           )}
@@ -644,7 +644,7 @@ export const TopBar = (props: {
             onClick={props.onOpenSettings}
             leftSection={<IconSettings size={16} />}
           >
-            Settings
+            Room Settings
           </Button>
         )}
         {!props.hideGetStarted && !context.user && <GetStartedButton />}
