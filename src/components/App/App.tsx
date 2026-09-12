@@ -100,6 +100,9 @@ import {
   type FeedbackType,
 } from "../../utils/userMessages";
 import { showUserMessage } from "../../utils/toast";
+import { PlaybackSyncController } from "../../utils/playbackSyncController";
+import { Html5VideoAdapter } from "../../utils/playback/adapters";
+import { clockSynchronizer } from "../../utils/playback/clockSync";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -336,6 +339,8 @@ export class App extends React.Component<AppProps, AppState> {
   startingTimer: any = null;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
+  html5Adapter: Html5VideoAdapter = new Html5VideoAdapter(null);
+  playbackSyncController: PlaybackSyncController = new PlaybackSyncController(this.html5Adapter, clockSynchronizer);
   Player = () => {
     if (this.usingYoutube()) {
       return this.YouTubeInterface;
@@ -1056,6 +1061,15 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:pause", (data?: any) => {
         if (!operationCoordinator.canAcceptMutationEvent(data?.__epoch)) return;
         this.localPause();
+      });
+      socket.on("REC:playbackSync", (data: any) => {
+        if (!data) return;
+        const epoch = typeof data === "object" ? data?.epoch : undefined;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (data.serverTime) {
+          clockSynchronizer.recordSample(data.serverTime, Date.now() - 50, Date.now());
+        }
+        this.playbackSyncController.onPlaybackSyncReceived(data);
       });
       socket.on("REC:seek", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;

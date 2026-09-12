@@ -20,6 +20,7 @@ import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 import twitch from "twitch-m3u8";
 import { providerRegistry } from "./vm/provider-registry.ts";
 import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
+import { TimelineAuthority } from "./timelineAuthority.ts";
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -194,6 +195,7 @@ export class Room {
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
   private bannedIdentities: Set<string> = new Set();
   private processedOperationIds: Set<string> = new Set();
+  public timeline: TimelineAuthority = new TimelineAuthority();
 
   public isBanned = (clientId?: string, uid?: string): boolean => {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
@@ -206,6 +208,15 @@ export class Room {
     const isHost = this.isHost(socket);
     const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
     return isHost || isOwner;
+  };
+
+  public canControlPlayback = (socket: Socket | null | undefined): boolean => {
+    if (!socket) return false;
+    if (this.lock) {
+      const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
+      return this.isHost(socket) || isOwner;
+    }
+    return true;
   };
 
   public isRoomFull = (_isOwner?: boolean, clientId?: string, sessionId?: string): boolean => {
@@ -366,8 +377,10 @@ export class Room {
         }
       });
       if (this.video) {
+        this.videoTS = this.timeline.getCanonicalTime();
         this.lastTsMap = Date.now();
         io.of(roomId).emit("REC:tsMap", this.tsMap);
+        io.of(roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
       }
     }, 1000);
 
@@ -776,17 +789,17 @@ export class Room {
       socket.on("CMD:host", (data: unknown) => {
         validateLock() && validateNotExpired() && this.startHosting(socket, String(data));
       });
-      socket.on("CMD:play", () => {
-        validateLock() && validateNotExpired() && this.playVideo(socket);
+      socket.on("CMD:play", (data?: unknown) => {
+        validateLock() && validateNotExpired() && this.playVideo(socket, (data as any)?.operationId);
       });
-      socket.on("CMD:pause", () => {
-        validateLock() && validateNotExpired() && this.pauseVideo(socket);
+      socket.on("CMD:pause", (data?: unknown) => {
+        validateLock() && validateNotExpired() && this.pauseVideo(socket, (data as any)?.operationId);
       });
       socket.on("CMD:seek", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.seekVideo(socket, Number(data));
+        validateLock() && validateNotExpired() && this.seekVideo(socket, data as any);
       });
       socket.on("CMD:playbackRate", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.setPlaybackRate(socket, Number(data));
+        validateLock() && validateNotExpired() && this.setPlaybackRate(socket, data as any);
       });
       socket.on("CMD:loop", (data: unknown) => {
         validateLock() && validateNotExpired() && this.setLoop(Boolean(data));
@@ -1058,6 +1071,7 @@ export class Room {
       socket.emit("chatinit", formattedMessages.reverse());
       socket.emit("ROOM_MESSAGES", formattedMessages);
       socket.emit("playlist", this.playlist);
+      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       this.getRoomState(socket);
       io.of(roomId).emit("roster", this.getRosterForApp());
     });
@@ -1128,6 +1142,13 @@ export class Room {
     if (roomObj.loop) {
       this.loop = roomObj.loop;
     }
+    this.timeline = new TimelineAuthority({
+      anchorTime: this.videoTS || 0,
+      anchorWallClock: Date.now(),
+      paused: this.paused !== undefined ? this.paused : true,
+      playbackRate: this.playbackRate || 1.0,
+      mediaSource: this.video || "",
+    });
   };
 
   public saveRoom = async () => {
@@ -1359,11 +1380,13 @@ export class Room {
     this.subtitle = "";
     this.loop = false;
     this.playbackRate = 1;
+    this.timeline.setMediaSource(data);
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
     this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     this.io.of(this.roomId).emit("REC:host", this.getHostState());
+    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
     if (socket && data) {
       const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
       this.addChatMessage(socket, chatMsg);
@@ -1644,48 +1667,106 @@ export class Room {
     }
   };
 
-  private playVideo = (socket: Socket) => {
+  public playVideo = (socket: Socket, operationId?: string) => {
+    if (!this.canControlPlayback(socket)) {
+      socket.emit("CMD:error", "Playback controls are locked to the host.");
+      return;
+    }
+    if (operationId && this.processedOperationIds.has(operationId)) {
+      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
+      return;
+    }
+    if (operationId) {
+      this.processedOperationIds.add(operationId);
+    }
+    this.timeline.play();
+    this.paused = false;
+    this.videoTS = this.timeline.getCanonicalTime();
     socket.broadcast.emit("REC:play", this.video);
+    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
       id: socket.clientId,
       cmd: "play",
       msg: this.tsMap[socket.clientId]?.toString(),
     };
-    this.paused = false;
     this.addChatMessage(socket, chatMsg);
   };
 
-  private pauseVideo = (socket: Socket) => {
+  public pauseVideo = (socket: Socket, operationId?: string) => {
+    if (!this.canControlPlayback(socket)) {
+      socket.emit("CMD:error", "Playback controls are locked to the host.");
+      return;
+    }
+    if (operationId && this.processedOperationIds.has(operationId)) {
+      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
+      return;
+    }
+    if (operationId) {
+      this.processedOperationIds.add(operationId);
+    }
+    this.timeline.pause();
+    this.paused = true;
+    this.videoTS = this.timeline.getCanonicalTime();
     socket.broadcast.emit("REC:pause");
+    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
       id: socket.clientId,
       cmd: "pause",
       msg: this.tsMap[socket.clientId]?.toString(),
     };
-    this.paused = true;
     this.addChatMessage(socket, chatMsg);
   };
 
-  private seekVideo = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+  public seekVideo = (socket: Socket, data: number | { time: number; operationId?: string }) => {
+    if (!this.canControlPlayback(socket)) {
+      socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    this.videoTS = data;
-    socket.broadcast.emit("REC:seek", data);
-    const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
+    const targetTime = typeof data === "object" ? Number(data?.time) : Number(data);
+    const operationId = typeof data === "object" ? data?.operationId : undefined;
+    if (String(targetTime).length > 100 || isNaN(targetTime)) {
+      return;
+    }
+    if (operationId && this.processedOperationIds.has(operationId)) {
+      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
+      return;
+    }
+    if (operationId) {
+      this.processedOperationIds.add(operationId);
+    }
+    this.timeline.seek(targetTime);
+    this.videoTS = targetTime;
+    socket.broadcast.emit("REC:seek", targetTime);
+    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
+    const chatMsg = { id: socket.clientId, cmd: "seek", msg: targetTime?.toString() };
     this.addChatMessage(socket, chatMsg);
   };
 
-  private setPlaybackRate = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+  public setPlaybackRate = (socket: Socket, data: number | { rate: number; operationId?: string }) => {
+    if (!this.canControlPlayback(socket)) {
+      socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    this.playbackRate = Number(data);
-    this.io.of(this.roomId).emit("REC:playbackRate", Number(data));
+    const rate = typeof data === "object" ? Number(data?.rate) : Number(data);
+    const operationId = typeof data === "object" ? data?.operationId : undefined;
+    if (String(rate).length > 100 || isNaN(rate) || rate <= 0) {
+      return;
+    }
+    if (operationId && this.processedOperationIds.has(operationId)) {
+      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
+      return;
+    }
+    if (operationId) {
+      this.processedOperationIds.add(operationId);
+    }
+    this.timeline.setPlaybackRate(rate);
+    this.playbackRate = rate;
+    this.io.of(this.roomId).emit("REC:playbackRate", rate);
+    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
       id: socket.clientId,
       cmd: "playbackRate",
-      msg: data?.toString(),
+      msg: rate?.toString(),
     };
     this.addChatMessage(socket, chatMsg);
   };
