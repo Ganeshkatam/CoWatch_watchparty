@@ -8,6 +8,8 @@
  * 4. Spinner Delay Suppression: Operations completing under 150-200ms avoid showing spinners.
  */
 
+import { USER_MESSAGES } from "./userMessages";
+
 export type AsyncStatus = "idle" | "pending" | "success" | "error";
 
 export type OperationDomain =
@@ -252,7 +254,7 @@ class OperationCoordinator {
 
     // Failsafe auto-timeout
     const timeoutTimer = setTimeout(() => {
-      this.rejectOperation(id, "Operation timed out waiting for server response");
+      this.rejectOperation(id, USER_MESSAGES.OPERATION_TIMEOUT_RETRY);
     }, timeoutMs);
     this.timeoutTimers.set(id, timeoutTimer);
 

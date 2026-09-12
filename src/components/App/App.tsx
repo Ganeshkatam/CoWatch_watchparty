@@ -89,6 +89,12 @@ import {
   type RoomInitStage,
   type OperationDomain,
 } from "../../utils/operationState";
+import {
+  USER_MESSAGES,
+  getAdmissionErrorMessage,
+  sanitizeServerErrorMessage,
+  getHostTransferredPublicMessage,
+} from "../../utils/userMessages";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -723,7 +729,7 @@ export class App extends React.Component<AppProps, AppState> {
     const cleanRoomId = (roomId || "").trim();
     if (!cleanRoomId) {
       operationCoordinator.setInitStage("failed");
-      this.setState({ state: "connected", initStage: "failed", overlayMsg: "Invalid room identifier." });
+      this.setState({ state: "connected", initStage: "failed", overlayMsg: USER_MESSAGES.INVALID_ROOM_LINK });
       return;
     }
 
@@ -888,7 +894,7 @@ export class App extends React.Component<AppProps, AppState> {
           this.startWaitingPoll(cleanRoomId);
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
           operationCoordinator.markTerminalFailure("Room not found");
-          this.setState({ overlayMsg: "Couldn't load this room.", state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.ROOM_NOT_FOUND, state: "connected", initStage: "failed" });
         } else if (
           errMsg === "passcode" ||
           errMsg === "password" ||
@@ -907,17 +913,17 @@ export class App extends React.Component<AppProps, AppState> {
           errMsg.includes("PARTICIPANTS_LOCKED")
         ) {
           operationCoordinator.markTerminalFailure("Participants locked");
-          this.setState({ overlayMsg: "This room is currently locked to existing participants.", state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.PARTICIPANTS_LOCKED, state: "connected", initStage: "failed" });
         } else if (
           errMsg === "ROOM_FULL" ||
           (err as any)?.data?.code === "ROOM_FULL" ||
           errMsg.includes("ROOM_FULL")
         ) {
           operationCoordinator.markTerminalFailure("Room is full");
-          this.setState({ overlayMsg: "This room has reached its participant limit.", state: "connected", initStage: "failed" });
+          this.setState({ overlayMsg: USER_MESSAGES.ROOM_FULL, state: "connected", initStage: "failed" });
         } else {
           operationCoordinator.setInitStage("degraded");
-          this.setState({ overlayMsg: err?.message ?? "An error occurred connecting to room.", state: "connected", initStage: "degraded" });
+          this.setState({ overlayMsg: getAdmissionErrorMessage(errMsg), state: "connected", initStage: "degraded" });
         }
       });
       socket.on("ROOM_SESSION_STOPPED", () => {
@@ -940,7 +946,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
-          this.setState({ overlayMsg: "Disconnected from server.", initStage: "connecting" });
+          this.setState({ overlayMsg: USER_MESSAGES.SERVER_DISCONNECTED, initStage: "connecting" });
         } else {
           // else the socket will automatically try to reconnect
           // Non-blocking indicator handled by RoomRecoveryOverlay
@@ -948,10 +954,11 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("errorMessage", (err: string) => {
-        operationCoordinator.rejectDomainOperations("host-authority", err);
-        operationCoordinator.rejectDomainOperations("participant-authority", err);
-        operationCoordinator.rejectDomainOperations("media-playback", err);
-        this.setState({ errorMessage: err });
+        const sanitized = sanitizeServerErrorMessage(err);
+        operationCoordinator.rejectDomainOperations("host-authority", sanitized);
+        operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
+        operationCoordinator.rejectDomainOperations("media-playback", sanitized);
+        this.setState({ errorMessage: sanitized });
         setTimeout(() => {
           this.setState({ errorMessage: "" });
         }, 3000);
@@ -981,23 +988,23 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (data.reason === "owner_regain" || data.reason === "owner_returned") {
           if (this.isRoomOwner()) {
-            this.setState({ successMessage: "Welcome back! Host privileges have been restored to you." });
+            this.setState({ successMessage: USER_MESSAGES.HOST_OWNER_RETURNED_SELF });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           } else {
-            this.setState({ infoMessage: "The room creator has returned and resumed hosting." });
+            this.setState({ infoMessage: USER_MESSAGES.HOST_OWNER_RETURNED_PUBLIC });
             setTimeout(() => this.setState({ infoMessage: "" }), 4000);
           }
         } else if (data.reason === "explicit_transfer" || data.reason === "assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: "You are now the room host." });
+            this.setState({ successMessage: USER_MESSAGES.HOST_TRANSFER_SELF });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           } else if (!isSelfHost && wasHost) {
-            this.setState({ infoMessage: `Host privileges were transferred to ${data.hostName || "a new host"}.` });
+            this.setState({ infoMessage: getHostTransferredPublicMessage(data.hostName) });
             setTimeout(() => this.setState({ infoMessage: "" }), 4000);
           }
         } else if (data.reason === "failover" || data.reason === "auto_assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: "The previous host left. You are now the room host." });
+            this.setState({ successMessage: USER_MESSAGES.HOST_FAILOVER_SELF });
             setTimeout(() => this.setState({ successMessage: "" }), 4000);
           }
         }
@@ -1519,7 +1526,7 @@ export class App extends React.Component<AppProps, AppState> {
         window.clearTimeout(this.startingTimer);
         this.startingTimer = null;
       }
-      this.setState({ state: "connected", overlayMsg: "Failed to connect to room." });
+      this.setState({ state: "connected", overlayMsg: USER_MESSAGES.GENERIC_CONNECTION_ERROR });
     }
   };
 
