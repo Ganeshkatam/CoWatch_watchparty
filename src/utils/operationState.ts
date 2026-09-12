@@ -243,6 +243,10 @@ class OperationCoordinator {
     return "idle";
   }
 
+  public getActiveOperations(): OperationRecord[] {
+    return Array.from(this.operations.values());
+  }
+
   public resetAll(): void {
     for (const id of this.operations.keys()) {
       this.cleanupTimers(id);

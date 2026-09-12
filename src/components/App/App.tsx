@@ -339,6 +339,15 @@ export class App extends React.Component<AppProps, AppState> {
   mediaSessionInterval?: number;
   pipUnsubscribe?: () => void;
   waitingPollTimer: number | null = null;
+  hasReceivedRoomState: boolean = false;
+  hasReceivedRoster: boolean = false;
+
+  checkAndAdvanceToReady = () => {
+    if (this.hasReceivedRoomState && this.hasReceivedRoster) {
+      operationCoordinator.setInitStage("ready");
+      this.setState({ state: "connected", initStage: "ready" });
+    }
+  };
 
   startWaitingPoll = (roomId: string) => {
     this.stopWaitingPoll();
@@ -840,6 +849,8 @@ export class App extends React.Component<AppProps, AppState> {
       this.socket = socket;
 
       socket.on("connect", async () => {
+        this.hasReceivedRoomState = false;
+        this.hasReceivedRoster = false;
         operationCoordinator.setInitStage("synchronizing");
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
@@ -910,20 +921,29 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("disconnect", (reason) => {
+        this.hasReceivedRoomState = false;
+        this.hasReceivedRoster = false;
+        operationCoordinator.setInitStage("connecting");
+        operationCoordinator.rejectDomainOperations("host-authority", "Disconnected");
+        operationCoordinator.rejectDomainOperations("participant-authority", "Disconnected");
+        operationCoordinator.rejectDomainOperations("media-playback", "Disconnected");
         if (this.state.isHostSessionEnded || this.state.isWaitingForHost) {
           // Suppress generic disconnect message if room was ended by host or waiting for host
           return;
         }
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
-          this.setState({ overlayMsg: "Disconnected from server." });
+          this.setState({ overlayMsg: "Disconnected from server.", initStage: "connecting" });
         } else {
           // else the socket will automatically try to reconnect
           // Use the alert pill since it's less disruptive
-          this.setState({ warningMessage: "Reconnecting..." });
+          this.setState({ warningMessage: "Reconnecting...", initStage: "connecting" });
         }
       });
       socket.on("errorMessage", (err: string) => {
+        operationCoordinator.rejectDomainOperations("host-authority", err);
+        operationCoordinator.rejectDomainOperations("participant-authority", err);
+        operationCoordinator.rejectDomainOperations("media-playback", err);
         this.setState({ errorMessage: err });
         setTimeout(() => {
           this.setState({ errorMessage: "" });
@@ -1401,9 +1421,24 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ participantsLocked: Boolean(data) });
       });
       socket.on("roster", (data: any[]) => {
+        const currentPeerIds = new Set((data || []).map((p) => p.id));
+        // Resolve any pending kick operations for peers that have been removed
+        const activeOps = operationCoordinator.getActiveOperations();
+        for (const op of activeOps) {
+          if (
+            op.domain === "participant-authority" &&
+            op.type === "kick" &&
+            op.targetId &&
+            !currentPeerIds.has(op.targetId)
+          ) {
+            operationCoordinator.resolveOperation(op.id);
+          }
+        }
+        this.hasReceivedRoster = true;
         this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
           this.setupRTCConnections();
         });
+        this.checkAndAdvanceToReady();
       });
       socket.on("chatinit", (data: ChatMessage[]) => {
         this.setState({ chat: data, scrollTimestamp: Date.now() });
@@ -1753,8 +1788,8 @@ export class App extends React.Component<AppProps, AppState> {
     this.setMediaPath(data.mediaPath);
     this.setInviteLink(this.getInviteLink());
     window.history.replaceState("", "", this.getInviteLink());
-    operationCoordinator.setInitStage("ready");
-    this.setState({ state: "connected", initStage: "ready" });
+    this.hasReceivedRoomState = true;
+    this.checkAndAdvanceToReady();
   };
 
   setOwner = (owner: string) => {

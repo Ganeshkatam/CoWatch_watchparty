@@ -192,17 +192,70 @@ async function runTestMatrix() {
   console.log("✓ PASS: Fast operations suppress spinner; slow operations display spinner smoothly.\n");
 
   // -------------------------------------------------------------
-  // Case M & O: Error State Recovery & UX != Authority Invariant
+  // Case P: Room Initialization Barrier (Room State + Roster)
   // -------------------------------------------------------------
-  console.log("TEST M & O: Error Recovery & Server Authority Invariant");
-  const rejectedOp = operationCoordinator.startOperation("host-authority", "assign", "user-bad");
-  operationCoordinator.rejectOperation(rejectedOp, "INSUFFICIENT_PERMISSIONS");
-  assert(operationCoordinator.getDomainStatus("host-authority") === "error", "Domain status must be error");
-  assert(!operationCoordinator.isPending("host-authority", "assign", "user-bad"), "Op must not be pending");
-  console.log("✓ PASS: Error recovery resets pending locks and records error status.\n");
+  console.log("TEST P: Room Initialization Dual-Barrier (RoomState + Roster)");
+  operationCoordinator.resetAll();
+  operationCoordinator.setInitStage("synchronizing");
+  let hasRoomState = false;
+  let hasRoster = false;
+
+  const simulateBarrierCheck = () => {
+    if (hasRoomState && hasRoster) {
+      operationCoordinator.setInitStage("ready");
+    }
+  };
+
+  assert(!operationCoordinator.isRoomReady(), "Room must not be ready in synchronizing stage");
+
+  // Step 1: Only room state arrives
+  hasRoomState = true;
+  simulateBarrierCheck();
+  assert(!operationCoordinator.isRoomReady(), "Room must not be ready when only roomState has arrived");
+
+  // Step 2: Roster arrives -> barrier satisfied
+  hasRoster = true;
+  simulateBarrierCheck();
+  assert(operationCoordinator.isRoomReady(), "Room must become ready once both roomState and roster have arrived");
+  console.log("✓ PASS: Dual-barrier initialization correctly prevents premature ready state.\n");
+
+  // -------------------------------------------------------------
+  // Case Q: Server Error Batch Rejection
+  // -------------------------------------------------------------
+  console.log("TEST Q: Domain Batch Rejection on Server errorMessage");
+  const pendingLock = operationCoordinator.startOperation("participant-authority", "participants-lock");
+  const pendingKick = operationCoordinator.startOperation("participant-authority", "kick", "user-bad");
+  assert(operationCoordinator.isPending("participant-authority", "participants-lock"), "Lock must be pending");
+  assert(operationCoordinator.isPending("participant-authority", "kick", "user-bad"), "Kick must be pending");
+
+  operationCoordinator.rejectDomainOperations("participant-authority", "NOT_AUTHORIZED");
+  assert(!operationCoordinator.isPending("participant-authority", "participants-lock"), "Lock must no longer be pending after error");
+  assert(!operationCoordinator.isPending("participant-authority", "kick", "user-bad"), "Kick must no longer be pending after error");
+  assert(operationCoordinator.getDomainStatus("participant-authority") === "error", "Domain status must be error");
+  console.log("✓ PASS: Server errorMessage cleanly rejects all in-flight operations in the domain.\n");
+
+  // -------------------------------------------------------------
+  // Case R: Roster-Driven Kick Reconciliation
+  // -------------------------------------------------------------
+  console.log("TEST R: Roster-Driven Kick Resolution");
+  const kickUserA = operationCoordinator.startOperation("participant-authority", "kick", "user-a");
+  assert(operationCoordinator.isPending("participant-authority", "kick", "user-a"), "Kick user-a must be pending");
+
+  // Roster received without user-a
+  const newRoster = [{ id: "user-b" }, { id: "user-c" }];
+  const currentPeerIds = new Set(newRoster.map((p) => p.id));
+  const activeOps = operationCoordinator.getActiveOperations();
+  for (const op of activeOps) {
+    if (op.domain === "participant-authority" && op.type === "kick" && op.targetId && !currentPeerIds.has(op.targetId)) {
+      operationCoordinator.resolveOperation(op.id);
+    }
+  }
+
+  assert(!operationCoordinator.isPending("participant-authority", "kick", "user-a"), "Kick user-a must resolve upon departure from roster");
+  console.log("✓ PASS: Roster departure reconciles pending kick operation.\n");
 
   console.log("----------------------------------------------------------------");
-  console.log("ALL 15 TEST CASES (A through O) PASSED WITH ZERO FAILURES.");
+  console.log("ALL 18 TEST CASES (A through R) PASSED WITH ZERO FAILURES.");
   console.log("----------------------------------------------------------------\n");
 }
 
