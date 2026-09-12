@@ -7,14 +7,11 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-// import data from '@emoji-mart/data';
 import Picker from "@emoji-mart/react";
 import { init } from "emoji-mart";
-// import onClickOutside from 'react-onclickoutside';
-//@ts-expect-error
 import Linkify from "react-linkify";
 import { SecureLink } from "react-secure-link";
-import { IconMoodSmile, IconSend, IconTrash } from "@tabler/icons-react";
+import { IconCheck, IconMoodSmile, IconSend, IconTrash, IconX } from "@tabler/icons-react";
 import styles from "./Chat.module.css";
 import { useEffect, useState, useCallback } from 'react';
 import { createUuid } from "../../utils/utils";
@@ -84,8 +81,8 @@ export function useRoomMessages(socket: Socket | undefined) {
     setIsLoadingMore(true);
     const oldestMessage = messages[0];
     if (oldestMessage && oldestMessage.dbId) {
-      socket.emit("CMD:loadMessages", { 
-        beforeCursor: { createdAt: oldestMessage.timestamp, id: oldestMessage.dbId } 
+      socket.emit("CMD:loadMessages", {
+        beforeCursor: { createdAt: oldestMessage.timestamp, id: oldestMessage.dbId }
       });
     } else if (oldestMessage && oldestMessage.timestamp) {
       socket.emit("CMD:loadMessages", { beforeCursor: oldestMessage.timestamp });
@@ -416,9 +413,9 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
           style={{ position: "relative" }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {this.props.isLoading && <div style={{textAlign: 'center', padding: '10px', color: 'var(--text)'}}>Loading...</div>}
+            {this.props.isLoading && <div style={{ textAlign: 'center', padding: '10px', color: 'var(--text)' }}>Loading...</div>}
             {!this.props.isLoading && this.props.hasMore && (
-              <div style={{textAlign: 'center', padding: '10px'}}>
+              <div style={{ textAlign: 'center', padding: '10px' }}>
                 <Button size="xs" variant="subtle" onClick={this.props.onLoadMore}>Load Older Messages</Button>
               </div>
             )}
@@ -733,16 +730,16 @@ const ChatMessage = ({
               rightSectionWidth={60}
               rightSection={
                 <div style={{ display: 'flex', gap: '4px', marginRight: '4px' }}>
-                  <ActionIcon onClick={() => { setIsEditing(false); setEditMsg(msg || ''); }} size="sm">
-                    <span role="img" aria-label="Cancel">❌</span>
+                  <ActionIcon onClick={() => { setIsEditing(false); setEditMsg(msg || ''); }} size="sm" aria-label="Cancel">
+                    <IconX size={14} />
                   </ActionIcon>
                   <ActionIcon onClick={() => {
                     if (editMsg.trim().length > 0 && editMsg.trim() !== msg) {
                       onEdit && message.dbId && onEdit(message.dbId, editMsg.trim());
                     }
                     setIsEditing(false);
-                  }} size="sm">
-                    <span role="img" aria-label="Save">✅</span>
+                  }} size="sm" aria-label="Save">
+                    <IconCheck size={14} />
                   </ActionIcon>
                 </div>
               }
@@ -754,7 +751,7 @@ const ChatMessage = ({
               componentDecorator={(
                 decoratedHref: string,
                 decoratedText: string,
-                key: string,
+                key: number,
               ) => (
                 <SecureLink href={decoratedHref} key={key}>
                   {decoratedText}
