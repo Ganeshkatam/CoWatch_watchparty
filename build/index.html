@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      (function() {
+        const local = localStorage.getItem("cowatch-appearance");
+        let scheme = "dark";
+        if (local === "light") {
+          scheme = "light";
+        } else if (local === "mantine") {
+          scheme = "dark";
+        } else {
+          const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          scheme = isDark ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-color-scheme", scheme);
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0A0D14" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <meta
+      name="description"
+      content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser."
+    />
+    <meta name="application-name" content="CoWatch" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://cowatch.tv/" />
+
+    <!-- Open Graph Metadata -->
+    <meta property="og:site_name" content="CoWatch" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://cowatch.tv/" />
+    <meta property="og:title" content="CoWatch - Watch Party & Synchronized Streaming" />
+    <meta property="og:description" content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser." />
+    <meta property="og:image" content="/screenshot_full.png" />
+
+    <!-- Twitter Card Metadata -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CoWatch - Watch Party & Synchronized Streaming" />
+    <meta name="twitter:description" content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser." />
+    <meta name="twitter:image" content="/screenshot_full.png" />
+
+    <title>CoWatch - Watch Together with Friends</title>
+    <script type="module" crossorigin src="/assets/index-CGun4bTV.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BHYGcgYN.js">
+    <link rel="modulepreload" crossorigin href="/assets/supabase-DzLHw281.js">
+    <link rel="modulepreload" crossorigin href="/assets/mantine-Bo0ksNrR.js">
+    <link rel="modulepreload" crossorigin href="/assets/icons-Br-gpjSV.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-COeV_hRM.css">
+  </head>
+  <body>
+    <script>
+      // Remove fbclid parameter
+      // (function () {
+      //   var param = 'fbclid';
+      //   if (location.search.indexOf(param + '=') !== -1) {
+      //     var replace = '';
+      //     try {
+      //       var url = new URL(location);
+      //       url.searchParams.delete(param);
+      //       replace = url.href;
+      //     } catch (ex) {
+      //       var regExp = new RegExp('[?&]' + param + '=.*$');
+      //       replace = location.search.replace(regExp, '');
+      //       replace = location.pathname + replace + location.hash;
+      //     }
+      //     history.replaceState(null, '', replace);
+      //   }
+      // })();
+    </script>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+  </body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script
+    async
+    src="https://www.googletagmanager.com/gtag/js?id=UA-45337794-6"
+  ></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+
+    gtag("config", "UA-45337794-6");
+  </script>
+</html>

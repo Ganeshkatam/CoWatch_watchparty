@@ -1,0 +1,39 @@
+# https://www.robotstxt.org/robotstxt.html
+# CoWatch Robots Configuration
+
+User-agent: *
+
+# Allow public landing and informational routes
+Allow: /$
+Allow: /create$
+Allow: /join$
+Allow: /faq$
+Allow: /terms$
+Allow: /privacy$
+Allow: /login$
+Allow: /signup$
+
+# Disallow internal backend APIs, proxying, and WebSocket namespaces
+Disallow: /roomData/
+Disallow: /roomInfo/
+Disallow: /resolveShard/
+Disallow: /socket.io/
+Disallow: /proxy/
+Disallow: /api/
+Disallow: /updateRoom
+Disallow: /updateRoomCover
+Disallow: /verifyPasscode
+Disallow: /listRooms
+Disallow: /deleteRoom
+Disallow: /extendRoom
+Disallow: /endRoomSession
+
+# Disallow dynamic/private rooms and authenticated user panels
+Disallow: /r/
+Disallow: /account
+Disallow: /my-rooms
+Disallow: /reset-password
+Disallow: /verify-email
+
+# Sitemap index
+Sitemap: https://cowatch.tv/sitemap.xml
