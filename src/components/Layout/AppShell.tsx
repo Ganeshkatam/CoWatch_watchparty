@@ -32,24 +32,12 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     <div className={styles.appShell}>
       {isOffline && (
         <div
-          style={{
-            backgroundColor: "#dc2626",
-            color: "#ffffff",
-            padding: "8px 16px",
-            fontSize: "13px",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            zIndex: 9999,
-            position: "sticky",
-            top: 0,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-          }}
+          role="status"
+          aria-live="polite"
+          className={styles.offlineBanner}
         >
-          <IconWifiOff size={16} />
-          <span>You appear to be offline. Please check your network connection.</span>
+          <IconWifiOff size={16} className={styles.offlineIcon} />
+          <span>You appear to be offline. Reconnecting automatically when your connection is restored.</span>
         </div>
       )}
       <Announce />

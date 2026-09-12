@@ -73,14 +73,14 @@ export class RootErrorBoundary extends Component<Props, State> {
                   An unexpected error occurred while rendering the page. We have logged this diagnostic event and our recovery system is active.
                 </Text>
 
-                {this.state.error?.message && (
+                {Boolean(import.meta.env?.DEV) && this.state.error?.message && (
                   <Alert
                     color="red"
                     variant="light"
                     radius="md"
                     maw={480}
                     w="100%"
-                    title="Error Details"
+                    title="Diagnostic Details (Dev Only)"
                     styles={{ title: { fontWeight: 700 } }}
                   >
                     <Text size="xs" style={{ wordBreak: "break-word", fontFamily: "monospace" }}>

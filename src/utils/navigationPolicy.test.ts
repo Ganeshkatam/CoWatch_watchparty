@@ -16,6 +16,7 @@ assert(!isBottomNavVisible("/signup"), "Should hide on /signup");
 assert(!isBottomNavVisible("/forgot-password"), "Should hide on /forgot-password");
 assert(!isBottomNavVisible("/reset-password"), "Should hide on /reset-password");
 assert(!isBottomNavVisible("/verify-email"), "Should hide on /verify-email");
+assert(!isBottomNavVisible("/preflight/test-room"), "Should hide on /preflight/test-room");
 
 // Visible routes
 assert(isBottomNavVisible("/"), "Should show on /");

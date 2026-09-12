@@ -201,7 +201,7 @@ export const Signup = () => {
                 max={new Date().toISOString().split("T")[0]}
               />
               <Text size="xs" c="dimmed" mt={4}>
-                You must be at least 18 years old to use CoWatch.
+                Used solely for age eligibility verification. Your date of birth is not stored or shared on your profile.
               </Text>
             </div>
             <div>
