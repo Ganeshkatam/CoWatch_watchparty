@@ -24,7 +24,8 @@ import { computeEmailHash } from './suppression.ts';
 import { renderEmailTemplate } from './emailTemplates.ts';
 import { NotificationDeliveryError } from './notificationErrors.ts';
 import type { EmailProvider } from './emailProvider.ts';
-import { ResendProvider } from './providers/resendProvider.ts';
+import { EmailProviderError } from './emailErrors.ts';
+import { EmailProviderRegistry } from './emailProviderRegistry.ts';
 import {
   recordWorkerCycleStart,
   recordWorkerCycleComplete,
@@ -98,7 +99,12 @@ export async function runWorkerCycle(): Promise<void> {
           }
 
           // Send via provider with deterministic idempotency key
-          const fromEmail = config.RESEND_FROM_EMAIL || 'CoWatch <noreply@cowatch.tv>';
+          const fromEmail = config.EMAIL_FROM_ADDRESS
+            ? (config.EMAIL_FROM_NAME
+                ? `"${config.EMAIL_FROM_NAME}" <${config.EMAIL_FROM_ADDRESS}>`
+                : config.EMAIL_FROM_ADDRESS)
+            : config.RESEND_FROM_EMAIL || 'CoWatch <noreply@cowatch.tv>';
+
           const result = await provider.send({
             to: job.recipient_email,
             from: fromEmail,
@@ -108,18 +114,27 @@ export async function runWorkerCycle(): Promise<void> {
             idempotencyKey: job.provider_idempotency_key ?? `notify-email:${job.id}`,
           });
 
-          await markOutboxSent(job.id, result.messageId);
-          console.log(`[EmailWorker] Sent job ${job.id} via ${provider.name}: ${result.messageId}`);
+          const messageId = result.providerMessageId || (result as any).messageId || `sent:${job.id}`;
+          await markOutboxSent(job.id, messageId, provider.name);
+          console.log(`[EmailWorker] Sent job ${job.id} via ${provider.name}: ${messageId}`);
         } catch (err) {
-          const isRetryable =
-            err instanceof NotificationDeliveryError ? err.isRetryable : true;
-          const errorCode =
-            err instanceof NotificationDeliveryError
-              ? err.code
-              : 'PROVIDER_ERROR';
+          let isRetryable = true;
+          let errorCode = 'PROVIDER_ERROR';
+
+          if (err instanceof EmailProviderError) {
+            isRetryable = err.isRetryable;
+            errorCode = err.code;
+          } else if (err instanceof NotificationDeliveryError) {
+            isRetryable = err.isRetryable;
+            errorCode = err.code;
+          } else if (typeof provider.classifyError === 'function') {
+            const classified = provider.classifyError(err);
+            isRetryable = classified.isRetryable;
+            errorCode = classified.code;
+          }
 
           console.error(
-            `[EmailWorker] Job ${job.id} failed (attempt ${job.attempt_count}, retryable=${isRetryable}):`,
+            `[EmailWorker] Job ${job.id} failed via ${provider.name} (attempt ${job.attempt_count}, retryable=${isRetryable}, code=${errorCode}):`,
             err,
           );
 
@@ -147,7 +162,7 @@ export async function runWorkerCycle(): Promise<void> {
 
 function getProvider(): EmailProvider {
   if (!activeProvider) {
-    activeProvider = new ResendProvider();
+    activeProvider = EmailProviderRegistry.getProvider();
   }
   return activeProvider;
 }

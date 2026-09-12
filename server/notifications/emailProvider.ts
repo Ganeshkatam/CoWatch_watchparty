@@ -1,30 +1,38 @@
 /**
- * NOTIFY-001 Email Provider Interface
+ * NOTIFY-002 Email Provider Contract
  *
- * All email providers must implement this interface. This allows swapping
- * Resend for another provider without touching the outbox worker logic.
+ * All email provider adapters (SMTP, Brevo, Resend, Amazon SES, Postmark, etc.)
+ * must implement this contract.
  */
 
-export interface EmailMessage {
-  to: string;
-  from: string;
-  subject: string;
-  html: string;
-  text: string;
-  /** Provider-level idempotency key (passed directly to the upstream API) */
-  idempotencyKey: string;
-}
+import type {
+  EmailMessage,
+  EmailSendResult,
+  EmailProviderCapabilities,
+} from './emailTypes.ts';
+import { EmailProviderError } from './emailErrors.ts';
 
-export interface EmailSendResult {
-  messageId: string;
-  success: true;
-}
+export * from './emailTypes.ts';
+export * from './emailErrors.ts';
 
 export interface EmailProvider {
+  readonly name: string;
+  readonly capabilities: EmailProviderCapabilities;
+
   /**
-   * Send a single transactional email.
-   * Must throw on failure; the caller (worker) handles retry state transitions.
+   * Send a single transactional email message.
+   * Throws EmailProviderError on failure.
    */
   send(message: EmailMessage): Promise<EmailSendResult>;
-  readonly name: string;
+
+  /**
+   * Verify provider credentials, connection or configuration at startup.
+   * Throws EmailProviderError with category 'CONFIGURATION' or 'AUTHENTICATION' if invalid.
+   */
+  verifyConfiguration(): Promise<void>;
+
+  /**
+   * Classify any native provider or network error into an authoritative EmailProviderError.
+   */
+  classifyError(err: unknown): EmailProviderError;
 }

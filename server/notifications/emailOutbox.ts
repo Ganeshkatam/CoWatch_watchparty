@@ -71,12 +71,14 @@ export async function claimOutboxJobs(
 export async function markOutboxSent(
   id: string,
   providerMessageId: string,
+  provider = 'smtp',
 ): Promise<void> {
   if (!postgres) return;
 
   await postgres.query(
     `UPDATE public.email_outbox
      SET status = 'SENT',
+         provider = $3,
          provider_delivery_status = 'SENT',
          sent_at = clock_timestamp(),
          provider_message_id = $2,
@@ -84,7 +86,7 @@ export async function markOutboxSent(
          locked_by = NULL,
          updated_at = clock_timestamp()
      WHERE id = $1`,
-    [id, providerMessageId],
+    [id, providerMessageId, provider],
   );
 }
 
@@ -209,6 +211,7 @@ export async function updateDeliveryStatusByProviderMessageId(
   providerMessageId: string,
   status: ProviderDeliveryStatus,
   timestamp: Date = new Date(),
+  provider?: string,
 ): Promise<boolean> {
   if (!postgres || !providerMessageId) return false;
 
@@ -221,15 +224,22 @@ export async function updateDeliveryStatusByProviderMessageId(
     extraColumnClause = ', complained_at = $3';
   }
 
+  let whereClause = 'WHERE provider_message_id = $1';
+  const params: any[] = extraColumnClause
+    ? [providerMessageId, status, timestamp]
+    : [providerMessageId, status];
+
+  if (provider) {
+    const providerParamIdx = params.length + 1;
+    whereClause += ` AND provider = $${providerParamIdx}`;
+    params.push(provider);
+  }
+
   const query = `UPDATE public.email_outbox
      SET provider_delivery_status = $2,
          updated_at = clock_timestamp()
          ${extraColumnClause}
-     WHERE provider_message_id = $1`;
-
-  const params = extraColumnClause
-    ? [providerMessageId, status, timestamp]
-    : [providerMessageId, status];
+     ${whereClause}`;
 
   const { rowCount } = await postgres.query(query, params);
   return Boolean(rowCount && rowCount > 0);

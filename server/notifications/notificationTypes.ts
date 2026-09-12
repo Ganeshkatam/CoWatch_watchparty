@@ -105,6 +105,8 @@ export interface EmailOutboxRow {
   provider_message_id: string | null;
   provider_idempotency_key: string | null;
   last_error_code: string | null;
+  provider?: string | null;
+  provider_metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }

@@ -85,11 +85,28 @@ const defaults = {
   VBROWSER_ADMIN_KEY: "", // Optional, the key to hit admin endpoints on the vbrowser
 
   // ==========================================
-  // NOTIFY-001: Transactional Email (Resend)
+  // NOTIFY-001 & NOTIFY-002: Transactional Email Architecture
   // ==========================================
-  RESEND_API_KEY: "",              // Resend API key; leave blank to run in outbox-only (dry-run) mode
-  RESEND_FROM_EMAIL: "CoWatch <noreply@cowatch.tv>",   // From address for transactional emails
+  EMAIL_PROVIDER: "smtp",          // Active email provider adapter: "brevo" | "resend" | "smtp"
+  EMAIL_FROM_ADDRESS: "noreply@cowatch.tv", // Default sender email address
+  EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
+  
+  // Brevo API Configuration
+  BREVO_API_KEY: "",               // Brevo API key (xkeysib-...)
+  BREVO_WEBHOOK_SECRET: "",        // Brevo webhook authentication token/secret
+
+  // Resend API Configuration
+  RESEND_API_KEY: "",              // Resend API key; leave blank for dry-run
+  RESEND_FROM_EMAIL: "CoWatch <noreply@cowatch.tv>", // Legacy Resend from-address
   RESEND_WEBHOOK_SECRET: "",       // Resend Svix webhook signing secret (whsec_...)
+
+  // Generic SMTP Configuration (Works with Brevo SMTP, Amazon SES, Postmark, etc.)
+  EMAIL_SMTP_HOST: "",             // SMTP server hostname (e.g. smtp-relay.brevo.com)
+  EMAIL_SMTP_PORT: 587,            // SMTP port (587 for STARTTLS, 465 for SSL)
+  EMAIL_SMTP_USERNAME: "",         // SMTP username
+  EMAIL_SMTP_PASSWORD: "",         // SMTP password
+  EMAIL_SMTP_SECURE: false,        // True for 465 SSL, false for 587 STARTTLS
+
   EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
   EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
   EMAIL_WORKER_LEASE_SECONDS: 600, // Lease duration before a PROCESSING job is considered stalled (10m)

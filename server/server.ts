@@ -46,6 +46,8 @@ import { registerNotificationNamespace } from "./notifications/notificationSocke
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
+import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
+import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
 import {
   type WebhookVerifier,
   SvixWebhookVerifier,
@@ -152,6 +154,18 @@ setInterval(minuteMetrics, 60 * 1000);
 setInterval(release, releaseInterval);
 setInterval(saveRooms, 1000);
 setInterval(expireRooms, 60 * 1000);
+// NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
+EmailProviderRegistry.validateActiveProvider()
+  .then((provider) => {
+    console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
+  })
+  .catch((err) => {
+    console.error('[EmailProvider] Startup validation failed:', err);
+    if (process.env.NODE_ENV === 'production') {
+      throw err;
+    }
+  });
+
 startEmailWorker();
 
 // NOTIFY-001A: Webhook verification with zero dev/test bypasses in Svix logic.
@@ -210,7 +224,12 @@ app.use(
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
 app.use("/api/notifications", createNotificationRouter(io));
 
-// NOTIFY-001A: Cryptographically verified Resend delivery webhook (zero raw payload stored)
+// NOTIFY-002: Universal Provider Delivery Webhook Ingress (POST /internal/webhooks/email/:provider)
+app.post("/internal/webhooks/email/:provider", async (req, res) => {
+  await providerWebhookRouter.handleWebhook(req, res);
+});
+
+// NOTIFY-001A / NOTIFY-002: Resend delivery webhook compatibility endpoint
 app.post("/internal/webhooks/resend", async (req, res) => {
   await resendWebhookHandler.handleRequest(req, res);
 });
