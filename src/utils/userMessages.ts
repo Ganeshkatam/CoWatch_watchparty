@@ -174,28 +174,28 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
   HOST_OWNER_RETURNED_SELF: {
     message: "Welcome back! You're the host again.",
     severity: "success",
-    presentation: "banner",
+    presentation: "toast",
     action: "none",
     duration: 4000,
   },
   HOST_OWNER_RETURNED_PUBLIC: {
     message: "The room creator is back and is hosting again.",
     severity: "info",
-    presentation: "banner",
+    presentation: "toast",
     action: "none",
     duration: 4000,
   },
   HOST_TRANSFER_SELF: {
     message: "You're now the host.",
     severity: "success",
-    presentation: "banner",
+    presentation: "toast",
     action: "none",
     duration: 4000,
   },
   HOST_FAILOVER_SELF: {
     message: "The previous host disconnected. You're now the host.",
     severity: "success",
-    presentation: "banner",
+    presentation: "toast",
     action: "none",
     duration: 4000,
   },
@@ -638,7 +638,7 @@ export function getHostTransferredUserMessage(hostName?: string): UserMessage {
   return {
     message: `Host controls were passed to ${hostName || "a new host"}.`,
     severity: "info",
-    presentation: "banner",
+    presentation: "toast",
     action: "none",
     duration: 4000,
   };

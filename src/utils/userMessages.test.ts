@@ -110,11 +110,11 @@ assertEqual(hostTargetReq.action, "choose-host", "Host target required action");
 
 const ownerReturnSelf = USER_MESSAGES.HOST_OWNER_RETURNED_SELF;
 assertEqual(ownerReturnSelf.severity, "success", "Owner return self severity");
-assertEqual(ownerReturnSelf.presentation, "banner", "Owner return self presentation");
+assertEqual(ownerReturnSelf.presentation, "toast", "Owner return self presentation");
 
 const transferPublic = getHostTransferredUserMessage("Bob");
 assertEqual(transferPublic.severity, "info", "Public transfer severity");
-assertEqual(transferPublic.presentation, "banner", "Public transfer presentation");
+assertEqual(transferPublic.presentation, "toast", "Public transfer presentation");
 assertEqual(transferPublic.message, "Host controls were passed to Bob.", "Public transfer copy");
 
 console.log("✓ PASS: Host authority mutations and notifications validated with structured metadata.");
