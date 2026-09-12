@@ -29,7 +29,7 @@ const defaults = {
   FREE_ROOM_LIMIT: 2, // The maximum number of rooms a free user can have
   SUBSCRIBER_ROOM_LIMIT: 10, // The maximum number of rooms a subscriber can have
   BETA_USER_EMAILS: "", // Comma-delimited list of user emails to include in the beta / auth
-  APP_URL: "https://cowatch.tv", // Canonical web application URL for notifications and deep links
+  APP_URL: "", // Canonical web application URL for notifications and deep links
 
   // ==========================================
   // Media Configuration
@@ -91,7 +91,7 @@ const defaults = {
   EMAIL_PROVIDER: "smtp",          // Active email provider adapter: "brevo" | "resend" | "smtp"
   EMAIL_FROM_ADDRESS: "noreply@cowatch.tv", // Default sender email address
   EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
-  
+
   // Brevo API Configuration
   BREVO_API_KEY: "",               // Brevo API key (xkeysib-...)
   BREVO_WEBHOOK_SECRET: "",        // Brevo webhook authentication token/secret
