@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal, Button, Text, Stack, Card, Group, Badge } from "@mantine/core";
 import { IconScreenShare, IconServer } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export const ScreenShareModal = ({
   closeModal,
@@ -15,7 +16,7 @@ export const ScreenShareModal = ({
       onClose={closeModal}
       title="Share Your Screen"
       centered
-      size="md"
+      size={MODAL_SIZES.md}
     >
       <Stack gap="md">
         <Text size="sm" c="dimmed">

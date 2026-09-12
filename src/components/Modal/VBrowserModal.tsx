@@ -16,6 +16,7 @@ import { serverPath } from "../../utils/utils";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { IconHourglass, IconWorld, IconDeviceDesktop } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export class VBrowserModal extends React.Component<{
   closeModal: () => void;
@@ -82,7 +83,7 @@ export class VBrowserModal extends React.Component<{
         onClose={closeModal}
         title="Launch Virtual Browser"
         centered
-        size="md"
+        size={MODAL_SIZES.lg}
       >
         <Stack gap="md">
           <Text size="sm" c="dimmed">

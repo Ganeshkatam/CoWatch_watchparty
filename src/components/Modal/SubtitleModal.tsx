@@ -19,6 +19,7 @@ import {
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export class SubtitleModal extends React.Component<{
   closeModal: () => void;
@@ -91,7 +92,7 @@ export class SubtitleModal extends React.Component<{
         onClose={closeModal}
         centered
         title="Subtitles"
-        size="50rem"
+        size={MODAL_SIZES.lg}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           <Switch

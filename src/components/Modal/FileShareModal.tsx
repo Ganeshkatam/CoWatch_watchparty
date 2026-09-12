@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal, Button, Text, Stack, Card, Group, Badge } from "@mantine/core";
 import { IconVideo, IconServer, IconArrowsShuffle } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export const FileShareModal = (props: {
   closeModal: () => void;
@@ -13,7 +14,7 @@ export const FileShareModal = (props: {
       opened
       onClose={closeModal}
       title="Share Video File"
-      size="md"
+      size={MODAL_SIZES.md}
       centered
     >
       <Stack gap="md">

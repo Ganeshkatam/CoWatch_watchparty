@@ -1,5 +1,6 @@
 import React from "react";
 import { Modal, Button, Text } from "@mantine/core";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./HostEndedModal.module.css";
 
 interface HostEndedModalProps {
@@ -21,7 +22,7 @@ export const HostEndedModal: React.FC<HostEndedModalProps> = ({
       withCloseButton={false}
       title="This meeting has been ended by host"
       radius="md"
-      size={420}
+      size={MODAL_SIZES.sm}
       className={styles.modalRoot}
       overlayProps={{
         backgroundOpacity: 0.55,

@@ -40,6 +40,7 @@ import {
   IconInfoCircle,
   IconUserPlus,
 } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import { InviteModal } from "../Modal/InviteModal";
 import { type RoomSummary } from "./MyRooms";
 import {
@@ -291,7 +292,7 @@ export const EditRoomModal = ({
       opened={opened}
       onClose={onClose}
       centered
-      size="lg"
+      size={MODAL_SIZES.lg}
       className={editModalStyles.modalRoot}
       title={
         <div className={editModalStyles.modalHeader}>
@@ -632,7 +633,7 @@ const DeleteConfirmModal = ({
       }
       centered
       radius="md"
-      size="sm"
+      size={MODAL_SIZES.sm}
     >
       <Stack gap="md">
         <Text size="sm">
@@ -966,7 +967,7 @@ const StopRoomConfirmModal = ({
       }
       centered
       radius="md"
-      size="sm"
+      size={MODAL_SIZES.sm}
     >
       <Stack gap="md">
         <Text size="sm">
@@ -1017,7 +1018,7 @@ const InfoActionModal = ({
       }
       centered
       radius="md"
-      size="sm"
+      size={MODAL_SIZES.sm}
     >
       <Stack gap="md">
         <Text size="sm">

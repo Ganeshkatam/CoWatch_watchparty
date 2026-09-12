@@ -598,7 +598,7 @@ export const Create = () => {
                 }
                 className={styles.submitButton}
               >
-                {loading ? "Creating Room..." : "Create Room"}
+                Create Room
               </Button>
             </div>
           </div>

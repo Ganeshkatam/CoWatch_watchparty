@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Modal, Button, Text, Radio, Loader } from "@mantine/core";
 import { IconCrown, IconDoorExit } from "@tabler/icons-react";
 import { useOperationState } from "../../hooks/useOperationState";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./AssignHostModal.module.css";
 
 interface AssignHostModalProps {
@@ -51,7 +52,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
       centered
       title="Leave Room"
       radius="md"
-      size={460}
+      size={MODAL_SIZES.sm}
       className={styles.modalRoot}
       overlayProps={{
         backgroundOpacity: 0.55,

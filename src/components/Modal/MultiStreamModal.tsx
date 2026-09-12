@@ -2,6 +2,7 @@ import React, { useContext, useState } from "react";
 import { Modal, Loader, Menu, Text, Checkbox } from "@mantine/core";
 import { IconFile } from "@tabler/icons-react";
 import { MetadataContext } from "../../MetadataContext";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export const MultiStreamModal = ({
   streams,
@@ -17,7 +18,7 @@ export const MultiStreamModal = ({
   const context = useContext(MetadataContext);
   const [convert, setConvert] = useState(false);
   return (
-    <Modal opened onClose={resetMultiSelect} centered title="Select a file">
+    <Modal opened onClose={resetMultiSelect} centered title="Select a file" size={MODAL_SIZES.lg}>
       {streams.length === 0 ? (
         <Loader />
       ) : (

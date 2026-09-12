@@ -15,6 +15,7 @@ import {
   type UserMessage,
 } from "../../utils/userMessages";
 import { submitUserFeedback } from "../../utils/feedbackClient";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./FeedbackModal.module.css";
 
 interface FeedbackModalProps {
@@ -93,6 +94,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     <Modal
       opened={opened}
       onClose={onClose}
+      size={MODAL_SIZES.md}
       title={
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
           <IconMessageDots size={18} color="var(--color-violet)" />
@@ -206,7 +208,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             disabled={submitting || !message.trim()}
           >
             {submitting && <Loader size={14} color="white" />}
-            <span>{submitting ? "Sending..." : "Submit Feedback"}</span>
+            <span>Submit Feedback</span>
           </button>
         </div>
       </form>

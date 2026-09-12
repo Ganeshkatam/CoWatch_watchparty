@@ -15,6 +15,7 @@ import { pipManager } from "../../utils/pipManager";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { operationCoordinator } from "../../utils/operationState";
 import { useOperationState } from "../../hooks/useOperationState";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 interface SettingsModalProps {
   modalOpen: boolean;
@@ -124,7 +125,7 @@ export const SettingsModal = ({
       centered
       title="Room Settings"
       radius="md"
-      size={520}
+      size={MODAL_SIZES.md}
       styles={{
         content: {
           background: "var(--bg-surface)",

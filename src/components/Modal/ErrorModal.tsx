@@ -2,6 +2,7 @@ import React from "react";
 import { Modal, Button, Text, Stack } from "@mantine/core";
 import { IconHome, IconRefresh } from "@tabler/icons-react";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 export const ErrorModal = ({ error }: { error: string }) => {
   const sanitizedMessage = sanitizeServerErrorMessage(error);
@@ -16,7 +17,7 @@ export const ErrorModal = ({ error }: { error: string }) => {
       title="Connection Problem"
       centered
       radius="md"
-      size={460}
+      size={MODAL_SIZES.sm}
     >
       <Stack gap="lg" align="center" style={{ textAlign: "center", padding: "8px 0" }}>
         <Text size="sm" c="dimmed">

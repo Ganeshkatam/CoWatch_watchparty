@@ -18,6 +18,7 @@ import {
   IconLink,
   IconExternalLink,
 } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./InviteModal.module.css";
 
 interface InviteModalProps {
@@ -123,7 +124,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       centered
       onClose={closeInviteModal}
       className={styles.modalRoot}
-      size="lg"
+      size={MODAL_SIZES.md}
       title={
         <div className={styles.modalHeader}>
           <div className={styles.headerIconBadge}>

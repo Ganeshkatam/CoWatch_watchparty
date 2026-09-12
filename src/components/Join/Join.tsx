@@ -528,9 +528,7 @@ export const Join: React.FC = () => {
                             ? "Sign in to Join"
                             : user.email_confirmed_at == null
                               ? "Verify Email to Join"
-                              : verifying
-                                ? "Entering..."
-                                : "Enter Watch Room"}
+                              : "Enter Watch Room"}
                   </Button>
                 </form>
               </>

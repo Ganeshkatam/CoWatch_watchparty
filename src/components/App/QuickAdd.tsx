@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Modal } from "@mantine/core";
 import { IconSparkles } from "@tabler/icons-react";
 import { ComboBox } from "../ComboBox/ComboBox";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./QuickAdd.module.css";
 
 interface QuickAddProps {
@@ -74,7 +75,7 @@ export const QuickAdd: React.FC<QuickAddProps> = ({
         }
         centered
         radius="lg"
-        size="lg"
+        size={MODAL_SIZES.lg}
         overlayProps={{
           backgroundOpacity: 0.72,
           blur: 10,

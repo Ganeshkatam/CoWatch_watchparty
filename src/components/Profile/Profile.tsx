@@ -15,6 +15,7 @@ import {
 import { supabase } from "../../utils/supabaseClient";
 import { serverPath, openFileSelector } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
+import { MODAL_SIZES } from "../../utils/designSystem";
 import {
   IconArrowLeft,
   IconCircleCheckFilled,
@@ -349,6 +350,7 @@ export const Profile: React.FC = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         title="Delete Your Account"
         centered
+        size={MODAL_SIZES.sm}
         overlayProps={{ blur: 5, color: "var(--overlay-scrim)", opacity: 1 }}
       >
         <div style={{ padding: "10px 0" }}>
@@ -375,6 +377,7 @@ export const Profile: React.FC = () => {
         onClose={() => setAvatarError(null)}
         title="Avatar Notice"
         centered
+        size={MODAL_SIZES.sm}
         overlayProps={{ blur: 5, color: "var(--overlay-scrim)", opacity: 1 }}
       >
         <div style={{ padding: "10px 0" }}>
@@ -545,7 +548,7 @@ export const Profile: React.FC = () => {
                       color="violet"
                       className={styles.changePictureBtn}
                     >
-                      {isUploadingAvatar ? "Uploading..." : "Change picture"}
+                      Change picture
                     </Button>
                   </div>
                 </div>

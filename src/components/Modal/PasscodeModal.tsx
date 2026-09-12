@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Modal, PasswordInput, ActionIcon, Button, Group } from "@mantine/core";
 import { IconKey } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
 
 interface PasscodeModalProps {
   roomId: string;
@@ -38,7 +39,7 @@ export const PasscodeModal: React.FC<PasscodeModalProps> = ({
       withCloseButton={Boolean(onCancel)}
       opened
       centered
-      size="md"
+      size={MODAL_SIZES.sm}
       title="This room requires a passcode"
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

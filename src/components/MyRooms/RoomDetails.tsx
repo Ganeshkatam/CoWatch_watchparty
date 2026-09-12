@@ -28,6 +28,9 @@ import {
   IconMessage,
   IconShieldCheck,
   IconAlertTriangle,
+} from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
+import {
   IconInfoCircle,
   IconExternalLink,
   IconActivity,
@@ -876,7 +879,7 @@ export const RoomDetails = () => {
       </div>
 
       {/* DELETE CONFIRMATION MODAL */}
-      <Modal opened={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Delete Room" centered>
+      <Modal opened={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Delete Room" centered size={MODAL_SIZES.sm}>
         <Text size="sm" mb="lg">
           Are you sure you want to delete <strong>{room.roomTitle || room.roomId}</strong> forever? You will not be able to get it back.
         </Text>
