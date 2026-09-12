@@ -98,6 +98,7 @@ import {
   type FeedbackContext,
   type FeedbackType,
 } from "../../utils/userMessages";
+import { showUserMessage } from "../../utils/toast";
 import type WebTorrent from "webtorrent";
 import type Hls from "hls.js";
 import { type MediaPlayerClass } from "dashjs";
@@ -186,9 +187,6 @@ interface AppState {
   controller?: string;
   savedPasscodes: StringDict;
   roomId: string;
-  errorMessage: string;
-  successMessage: string;
-  warningMessage: string;
   isChatDisabled: boolean;
   showChatColumn: boolean;
   showPeopleColumn: boolean;
@@ -212,7 +210,6 @@ interface AppState {
   currentHostClientId: string;
   isHost: boolean;
   isAssignHostModalOpen: boolean;
-  infoMessage: string;
   initialCameraOn?: boolean;
   initialMicOn?: boolean;
   cameraDeviceId?: string;
@@ -281,9 +278,6 @@ export class App extends React.Component<AppProps, AppState> {
     controller: "",
     roomId: "",
     savedPasscodes: {},
-    errorMessage: "",
-    successMessage: "",
-    warningMessage: "",
     isChatDisabled: false,
     showChatColumn: isMobile()
       ? true
@@ -324,7 +318,6 @@ export class App extends React.Component<AppProps, AppState> {
     hostMode: "none",
     isHost: false,
     isAssignHostModalOpen: false,
-    infoMessage: "",
     isFeedbackModalOpen: false,
     feedbackInitialContext: undefined,
     feedbackInitialType: undefined,
@@ -878,9 +871,6 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({
           isWaitingForHost: false,
           overlayMsg: "",
-          errorMessage: "",
-          successMessage: "",
-          warningMessage: "",
         });
         // Use the name in our state, generate one if empty
         const currentName = this.context.displayName || this.state.myName || (await generateName());
@@ -975,16 +965,10 @@ export class App extends React.Component<AppProps, AppState> {
         operationCoordinator.rejectDomainOperations("host-authority", sanitized);
         operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
         operationCoordinator.rejectDomainOperations("media-playback", sanitized);
-        this.setState({ errorMessage: sanitized });
-        setTimeout(() => {
-          this.setState({ errorMessage: "" });
-        }, 3000);
+        showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
       });
       socket.on("successMessage", (success: string) => {
-        this.setState({ successMessage: success });
-        setTimeout(() => {
-          this.setState({ successMessage: "" });
-        }, 3000);
+        showUserMessage({ ...USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS, message: success });
       });
       const handleHostUpdate = (data: any) => {
         if (!data) return;
@@ -1005,24 +989,19 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (data.reason === "owner_regain" || data.reason === "owner_returned") {
           if (this.isRoomOwner()) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_OWNER_RETURNED_SELF.message });
-            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+            showUserMessage(USER_MESSAGES.HOST_OWNER_RETURNED_SELF);
           } else {
-            this.setState({ infoMessage: USER_MESSAGES.HOST_OWNER_RETURNED_PUBLIC.message });
-            setTimeout(() => this.setState({ infoMessage: "" }), 4000);
+            showUserMessage(USER_MESSAGES.HOST_OWNER_RETURNED_PUBLIC);
           }
         } else if (data.reason === "explicit_transfer" || data.reason === "assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_TRANSFER_SELF.message });
-            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+            showUserMessage(USER_MESSAGES.HOST_TRANSFER_SELF);
           } else if (!isSelfHost && wasHost) {
-            this.setState({ infoMessage: getHostTransferredPublicMessage(data.hostName) });
-            setTimeout(() => this.setState({ infoMessage: "" }), 4000);
+            showUserMessage({ ...USER_MESSAGES.HOST_TRANSFER_SELF, message: getHostTransferredPublicMessage(data.hostName), severity: "info" });
           }
         } else if (data.reason === "failover" || data.reason === "auto_assigned") {
           if (isSelfHost && !wasHost) {
-            this.setState({ successMessage: USER_MESSAGES.HOST_FAILOVER_SELF.message });
-            setTimeout(() => this.setState({ successMessage: "" }), 4000);
+            showUserMessage(USER_MESSAGES.HOST_FAILOVER_SELF);
           }
         }
       };
@@ -3135,63 +3114,6 @@ export class App extends React.Component<AppProps, AppState> {
           initialType={this.state.feedbackInitialType}
         />
         <RoomRecoveryOverlay />
-        {this.state.errorMessage && (
-          <Alert
-            title="Error"
-            color="red"
-            style={{
-              position: "fixed",
-              bottom: "10px",
-              right: "10px",
-              zIndex: 1000,
-            }}
-          >
-            {this.state.errorMessage}
-          </Alert>
-        )}
-        {this.state.successMessage && (
-          <Alert
-            title="Success"
-            color="green"
-            style={{
-              position: "fixed",
-              bottom: "10px",
-              right: "10px",
-              zIndex: 1000,
-            }}
-          >
-            {this.state.successMessage}
-          </Alert>
-        )}
-        {this.state.infoMessage && (
-          <Alert
-            title="Notice"
-            color="blue"
-            style={{
-              position: "fixed",
-              bottom: "10px",
-              right: "10px",
-              zIndex: 1000,
-            }}
-          >
-            {this.state.infoMessage}
-          </Alert>
-        )}
-        {this.state.warningMessage && (
-          <Alert
-            color="yellow"
-            // header={this.state.warningMessage}
-            style={{
-              position: "fixed",
-              top: "10px",
-              left: "50%",
-              transform: "translate(-50%, 0)",
-              zIndex: 1000,
-            }}
-          >
-            {this.state.warningMessage}
-          </Alert>
-        )}
         {!this.state.fullScreen && (
           <RoomHeader
             roomTitle={this.state.roomTitle}

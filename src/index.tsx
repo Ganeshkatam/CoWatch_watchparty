@@ -1,5 +1,6 @@
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
+import "@mantine/notifications/styles.css";
 import "./index.css";
 
 import React, { lazy, Suspense } from "react";
@@ -23,6 +24,7 @@ import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
 import { AuthContext } from "./context/AuthContext";
 import { AppShell } from "./components/Layout/AppShell";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -484,6 +486,7 @@ class CoWatch extends React.Component {
         <ThemeConsumer>
           {(resolvedColorScheme) => (
             <MantineProvider theme={theme} forceColorScheme={resolvedColorScheme}>
+              <Notifications position="bottom-right" limit={5} />
               <MetadataContext.Provider value={this.state}>
                 <AuthContext.Provider
                   value={{
