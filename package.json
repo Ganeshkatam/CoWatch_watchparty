@@ -38,6 +38,7 @@
     "test:durable-rate-limit": "tsx server/durableRateLimit.test.ts",
     "test:auth-matrix": "tsx server/auth.authorization.matrix.test.ts",
     "test:failure-injection": "tsx server/resilience.failure-injection.test.ts",
+    "test:age-policy": "tsx server/agePolicy.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

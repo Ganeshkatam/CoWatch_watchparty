@@ -51,7 +51,7 @@ CoWatch is a private, proprietary synchronized video streaming and watch party p
   - Mobile-optimized responsive layout with a dedicated bottom navigation bar for handheld devices.
   - Picture-in-Picture (PiP) and MediaSession API integration for OS-level lock screen and notification controls.
 - **Authentication & Persistence**:
-  - User accounts, age verification, and email verification powered by Supabase.
+  - User accounts, user profiles, and email verification powered by Supabase.
   - Persistent room management with custom room titles, descriptions, and cover photos.
   - Room lifecycle management tracking scheduled, active, and completed watch sessions.
 

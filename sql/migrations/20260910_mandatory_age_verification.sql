@@ -1,3 +1,17 @@
+-- ==============================================================================
+-- ARCHIVED & RETIRED MIGRATION - POLICY AGE-001
+-- ==============================================================================
+-- Policy Declaration:
+-- CoWatch no longer technically verifies age or requires date of birth during
+-- account creation. The existing 18+ eligibility requirement remains a contractual
+-- requirement under the Terms of Service.
+--
+-- This migration was never deployed to the live production database.
+-- It is preserved strictly as an inactive architectural record per repository policy.
+-- DO NOT RUN OR APPLY THIS SCRIPT.
+-- ==============================================================================
+
+-- [RETIRED / INACTIVE ARCHIVE BELOW]
 -- Mandatory account age declaration / minimum-age enforcement.
 -- Minimum age: 18 years.
 --
@@ -6,9 +20,9 @@
 -- not an identity-proofing mechanism. A stronger age-assurance product would
 -- require a trusted verification provider or a Supabase Before User Created hook.
 
-ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS date_of_birth DATE,
-  ADD COLUMN IF NOT EXISTS age_verified_at TIMESTAMPTZ;
+-- ALTER TABLE public.profiles
+--   ADD COLUMN IF NOT EXISTS date_of_birth DATE,
+--   ADD COLUMN IF NOT EXISTS age_verified_at TIMESTAMPTZ;
 
 CREATE OR REPLACE FUNCTION public.check_user_age_verification()
 RETURNS trigger
