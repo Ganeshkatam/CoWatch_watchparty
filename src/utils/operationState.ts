@@ -1,14 +1,22 @@
 /**
- * UI/STATE-001: Cross-Cutting Loading State Architecture
+ * UI/STATE-001 & SESSION-001: Cross-Cutting Loading State & Session Resilience Architecture
  *
  * Invariants:
  * 1. UX !== Authority: Loading state is strictly an ephemeral UI projection of in-flight mutations.
- * 2. Independent Domains: Room lifecycle, host authority, participant authority, media playback, and WebRTC.
- * 3. Monotonic Operation Tracking: Unique operation IDs ensure stale responses never clear newer states.
- * 4. Spinner Delay Suppression: Operations completing under 150-200ms avoid showing spinners.
+ * 2. Independent Domains: Room lifecycle, host authority, participant authority, media playback, WebRTC, settings, feedback.
+ * 3. Monotonic Epoch Tracking: OperationCoordinator is the SOLE authority for connection epochs.
+ * 4. Epoch-Crossing Abort: Operations created in epoch N cannot resolve, reject, or mutate state in epoch N+1.
+ * 5. Dual-Budget Failure Ceiling: 10 retry attempts or 45s wall-clock ceiling -> terminal FAILED.
+ * 6. Elapsed Time Progression: 0-5s CONNECTING, >5s DEGRADED, budget exhaustion FAILED.
+ * 7. Dual Readiness Barrier: Both roomState AND roster must be recorded for the current connectionEpoch before transition to READY.
+ * 8. Spinner Delay Suppression: Operations completing under 150-200ms avoid showing spinners.
  */
 
 import { USER_MESSAGES } from "./userMessages";
+
+export const RETRY_ATTEMPT_BUDGET = 10;
+export const MAX_RECOVERY_WINDOW_MS = 45_000;
+export const DEGRADED_THRESHOLD_MS = 5_000;
 
 export type AsyncStatus = "idle" | "pending" | "success" | "error";
 
@@ -47,11 +55,12 @@ export interface OperationRecord {
   startTime: number;
   showSpinner: boolean;
   error?: string;
+  epoch: number;
 }
 
 export type OperationListener = (domain: OperationDomain, operations: OperationRecord[]) => void;
 
-class OperationCoordinator {
+export class OperationCoordinator {
   private operations: Map<string, OperationRecord> = new Map();
   private listeners: Set<OperationListener> = new Set();
   private spinnerTimers: Map<string, any> = new Map();
@@ -66,14 +75,37 @@ class OperationCoordinator {
   private rosterEpoch: number = -1;
   private syncWatchdogTimer: any = null;
 
+  private reconnectAttempts: number = 0;
+  private recoveryStartTime: number = 0;
+  private degradedTimer: any = null;
+  private recoveryTimer: any = null;
+
   public getConnectionEpoch(): number {
     return this.connectionEpoch;
   }
 
-  public incrementConnectionEpoch(): number {
+  public getReconnectAttempts(): number {
+    return this.reconnectAttempts;
+  }
+
+  public getRecoveryStartTime(): number {
+    return this.recoveryStartTime;
+  }
+
+  /**
+   * SOLE authority for advancing connection epochs.
+   * Increments epoch, resets sync barriers, clears recovery timers, and begins synchronization.
+   */
+  public beginConnectionEpoch(): number {
     this.connectionEpoch += 1;
     this.resetSyncBarriers();
+    this.clearRecoveryTimers();
+    this.beginResynchronization(10000);
     return this.connectionEpoch;
+  }
+
+  public incrementConnectionEpoch(): number {
+    return this.beginConnectionEpoch();
   }
 
   public resetSyncBarriers(): void {
@@ -102,6 +134,29 @@ class OperationCoordinator {
     return this.initStage === "ready";
   }
 
+  public isEpochValid(epoch?: number): boolean {
+    return epoch === undefined || epoch === this.connectionEpoch;
+  }
+
+  /**
+   * Sync barrier events (roomState, roster) are accepted during SYNCHRONIZING or READY
+   * if their epoch matches the current connectionEpoch.
+   */
+  public canAcceptSyncEvent(epoch?: number): boolean {
+    return (
+      (this.initStage === "synchronizing" || this.initStage === "ready") &&
+      this.isEpochValid(epoch)
+    );
+  }
+
+  /**
+   * Post-ready mutation events (REC:hostAuthority, REC:lock, playback, etc.) are
+   * accepted ONLY when initStage === 'ready' AND epoch matches current connectionEpoch.
+   */
+  public canAcceptMutationEvent(epoch?: number): boolean {
+    return this.initStage === "ready" && this.isEpochValid(epoch);
+  }
+
   public beginResynchronization(timeoutMs: number = 10000): void {
     if (this.syncWatchdogTimer) {
       clearTimeout(this.syncWatchdogTimer);
@@ -122,6 +177,9 @@ class OperationCoordinator {
       clearTimeout(this.syncWatchdogTimer);
       this.syncWatchdogTimer = null;
     }
+    this.clearRecoveryTimers();
+    this.reconnectAttempts = 0;
+    this.recoveryStartTime = 0;
     this.setInitStage("ready");
   }
 
@@ -154,19 +212,75 @@ class OperationCoordinator {
     return false;
   }
 
-  public markTransportDisconnected(reason: string = "Transport disconnected"): void {
+  public markTransportDisconnected(reason: string = "Transport disconnected", now: number = Date.now()): void {
     if (this.syncWatchdogTimer) {
       clearTimeout(this.syncWatchdogTimer);
       this.syncWatchdogTimer = null;
     }
     this.resetSyncBarriers();
     this.abortAllTransientOperations(reason);
+
+    if (this.recoveryStartTime === 0) {
+      this.recoveryStartTime = now;
+    }
     this.setInitStage("connecting");
+
+    // Non-blocking transition to degraded after 5s
+    if (!this.degradedTimer) {
+      this.degradedTimer = setTimeout(() => {
+        if (this.initStage === "connecting") {
+          this.setInitStage("degraded");
+        }
+      }, DEGRADED_THRESHOLD_MS);
+    }
+
+    // Hard ceiling timeout after 45s
+    if (!this.recoveryTimer) {
+      this.recoveryTimer = setTimeout(() => {
+        if (
+          this.initStage === "connecting" ||
+          this.initStage === "degraded" ||
+          this.initStage === "synchronizing"
+        ) {
+          this.markTerminalFailure("Maximum recovery window exceeded");
+        }
+      }, MAX_RECOVERY_WINDOW_MS);
+    }
+  }
+
+  /**
+   * Tracks reconnection attempts against the dual-budget failure ceiling.
+   * Returns false if budget is exhausted (transitions to FAILED), true otherwise.
+   */
+  public recordReconnectAttempt(attempt?: number, now: number = Date.now()): boolean {
+    if (typeof attempt === "number") {
+      this.reconnectAttempts = attempt;
+    } else {
+      this.reconnectAttempts += 1;
+    }
+
+    if (this.recoveryStartTime === 0) {
+      this.recoveryStartTime = now;
+    }
+
+    const elapsed = now - this.recoveryStartTime;
+
+    // Dual-budget exhaustion check
+    if (this.reconnectAttempts >= RETRY_ATTEMPT_BUDGET || elapsed >= MAX_RECOVERY_WINDOW_MS) {
+      this.markTerminalFailure("Reconnection budget exhausted");
+      return false;
+    }
+
+    // Elapsed time progression: > 5s -> DEGRADED
+    if (elapsed >= DEGRADED_THRESHOLD_MS && this.initStage === "connecting") {
+      this.setInitStage("degraded");
+    }
+
+    return true;
   }
 
   public markTransportReconnected(): void {
-    this.incrementConnectionEpoch();
-    this.beginResynchronization(10000);
+    this.beginConnectionEpoch();
   }
 
   public markTerminalFailure(reason: string = "Terminal connection failure"): void {
@@ -174,9 +288,21 @@ class OperationCoordinator {
       clearTimeout(this.syncWatchdogTimer);
       this.syncWatchdogTimer = null;
     }
+    this.clearRecoveryTimers();
     this.resetSyncBarriers();
     this.abortAllTransientOperations(reason);
     this.setInitStage("failed");
+  }
+
+  private clearRecoveryTimers(): void {
+    if (this.degradedTimer) {
+      clearTimeout(this.degradedTimer);
+      this.degradedTimer = null;
+    }
+    if (this.recoveryTimer) {
+      clearTimeout(this.recoveryTimer);
+      this.recoveryTimer = null;
+    }
   }
 
   public abortDomain(domain: OperationDomain, reason?: string): void {
@@ -241,6 +367,7 @@ class OperationCoordinator {
       status: "pending",
       startTime: Date.now(),
       showSpinner: false,
+      epoch: this.connectionEpoch,
     };
 
     this.operations.set(id, op);
@@ -265,9 +392,16 @@ class OperationCoordinator {
     return id;
   }
 
-  public resolveOperation(id: string): void {
+  public resolveOperation(id: string): boolean {
     const op = this.operations.get(id);
-    if (!op || op.status !== "pending") return;
+    if (!op || op.status !== "pending") return false;
+
+    // Epoch-Crossing Abort Invariant: Op started in epoch N resolving in epoch N+1 must be discarded
+    if (op.epoch !== this.connectionEpoch) {
+      this.cleanupTimers(id);
+      this.operations.delete(id);
+      return false;
+    }
 
     this.cleanupTimers(id);
     op.status = "success";
@@ -281,11 +415,19 @@ class OperationCoordinator {
         this.notify(op.domain);
       }
     }, 1000);
+    return true;
   }
 
-  public rejectOperation(id: string, error?: string): void {
+  public rejectOperation(id: string, error?: string): boolean {
     const op = this.operations.get(id);
-    if (!op || op.status !== "pending") return;
+    if (!op || op.status !== "pending") return false;
+
+    // Epoch-Crossing Abort Invariant: Op started in epoch N rejecting in epoch N+1 must be discarded
+    if (op.epoch !== this.connectionEpoch) {
+      this.cleanupTimers(id);
+      this.operations.delete(id);
+      return false;
+    }
 
     this.cleanupTimers(id);
     op.status = "error";
@@ -300,6 +442,7 @@ class OperationCoordinator {
         this.notify(op.domain);
       }
     }, 3000);
+    return true;
   }
 
   public resolveDomainOperations(domain: OperationDomain, type?: string, targetId?: string): void {
@@ -373,6 +516,11 @@ class OperationCoordinator {
     }
     this.operations.clear();
     this.peerRtcStates.clear();
+    this.clearRecoveryTimers();
+    this.reconnectAttempts = 0;
+    this.recoveryStartTime = 0;
+    this.connectionEpoch = 0;
+    this.resetSyncBarriers();
     this.initStage = "booting";
     this.notify("room-lifecycle");
     this.notify("host-authority");

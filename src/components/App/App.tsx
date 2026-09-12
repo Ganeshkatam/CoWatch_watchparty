@@ -87,6 +87,7 @@ import {
 import { pipManager, type PiPState } from "../../utils/pipManager";
 import {
   operationCoordinator,
+  RETRY_ATTEMPT_BUDGET,
   type RoomInitStage,
   type OperationDomain,
 } from "../../utils/operationState";
@@ -850,6 +851,12 @@ export class App extends React.Component<AppProps, AppState> {
       const safeNamespace = encodeURIComponent(cleanRoomId);
       const socket = io(serverPath + "/" + safeNamespace, {
         transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionAttempts: RETRY_ATTEMPT_BUDGET,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+        randomizationFactor: 0.5,
+        timeout: 10000,
         query: {
           clientId,
           passcode,
@@ -865,7 +872,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.socket = socket;
 
       socket.on("connect", async () => {
-        operationCoordinator.markTransportReconnected();
+        operationCoordinator.beginConnectionEpoch();
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
         this.setState({
@@ -885,6 +892,27 @@ export class App extends React.Component<AppProps, AppState> {
           socket.emit("CMD:joinVideo");
         }
       });
+
+      socket.io?.on("reconnect_attempt", (attempt: number) => {
+        const keepGoing = operationCoordinator.recordReconnectAttempt(attempt);
+        if (!keepGoing) {
+          socket.disconnect();
+          this.setState({ overlayMsg: USER_MESSAGES.CONNECTION_FAILED.message, initStage: "failed" });
+        } else {
+          this.setState({ initStage: operationCoordinator.getInitStage() });
+        }
+      });
+
+      socket.io?.on("reconnect_failed", () => {
+        operationCoordinator.markTerminalFailure("Reconnection failed");
+        this.setState({ overlayMsg: USER_MESSAGES.CONNECTION_FAILED.message, initStage: "failed" });
+      });
+
+      socket.io?.on("reconnect_error", () => {
+        operationCoordinator.recordReconnectAttempt();
+        this.setState({ initStage: operationCoordinator.getInitStage() });
+      });
+
       socket.on("connect_error", (err: any) => {
         if (this.state.isHostSessionEnded) {
           return;
@@ -972,6 +1000,9 @@ export class App extends React.Component<AppProps, AppState> {
       });
       const handleHostUpdate = (data: any) => {
         if (!data) return;
+        if (!operationCoordinator.canAcceptMutationEvent(data.__epoch)) {
+          return;
+        }
         operationCoordinator.resolveDomainOperations("host-authority");
         const selfClientId = getOrCreateClientId();
         const isSelfHost =
@@ -1011,33 +1042,54 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("kicked", () => {
         window.location.assign("/");
       });
-      socket.on("REC:play", () => {
+      socket.on("REC:play", (data?: any) => {
+        if (!operationCoordinator.canAcceptMutationEvent(data?.__epoch)) return;
         this.localPlay();
       });
-      socket.on("REC:pause", () => {
+      socket.on("REC:pause", (data?: any) => {
+        if (!operationCoordinator.canAcceptMutationEvent(data?.__epoch)) return;
         this.localPause();
       });
-      socket.on("REC:seek", (data: number) => {
-        this.localSeek(data);
+      socket.on("REC:seek", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const time = typeof data === "object" ? data?.time : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        this.localSeek(time);
       });
-      socket.on("REC:playbackRate", (data: number) => {
-        this.setState({ roomPlaybackRate: data });
-        if (data > 0) {
-          this.Player().setPlaybackRate(data);
+      socket.on("REC:playbackRate", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const rate = typeof data === "object" ? data?.rate : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        this.setState({ roomPlaybackRate: rate });
+        if (rate > 0) {
+          this.Player().setPlaybackRate(rate);
         }
       });
-      socket.on("REC:subtitle", (data: string) => {
-        this.setState({ roomSubtitle: data }, () => {
-          this.Player().loadSubtitles(data);
+      socket.on("REC:subtitle", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const sub = typeof data === "object" ? data?.subtitle : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        this.setState({ roomSubtitle: sub }, () => {
+          this.Player().loadSubtitles(sub);
         });
       });
-      socket.on("REC:loop", (data: boolean) => {
-        this.setState({ roomLoop: data });
+      socket.on("REC:loop", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const loop = typeof data === "object" ? data?.loop : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        this.setState({ roomLoop: loop });
       });
-      socket.on("REC:changeController", (data: string) => {
-        this.setState({ controller: data });
+      socket.on("REC:changeController", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const ctrl = typeof data === "object" ? data?.controller : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        this.setState({ controller: ctrl });
       });
       socket.on("REC:host", async (data: HostState) => {
+        if (!data) return;
+        if (!operationCoordinator.canAcceptMutationEvent((data as any).__epoch)) {
+          return;
+        }
         operationCoordinator.resolveDomainOperations("media-playback", "set-media");
         let currentMedia = data.video || "";
         if (this.state.pipState?.active && this.state.roomMedia !== currentMedia) {
@@ -1422,15 +1474,23 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:pictureMap", (data: StringDict) => {
         this.setState({ pictureMap: data });
       });
-      socket.on("REC:lock", (data: string) => {
+      socket.on("REC:lock", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const lock = typeof data === "object" ? data?.lock : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
         operationCoordinator.resolveDomainOperations("participant-authority", "lock");
-        this.setState({ roomLock: data });
+        this.setState({ roomLock: lock });
       });
-      socket.on("REC:participantsLock", (data: boolean) => {
+      socket.on("REC:participantsLock", (data: any) => {
+        const epoch = typeof data === "object" ? data?.__epoch : undefined;
+        const locked = typeof data === "object" ? data?.locked : data;
+        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
         operationCoordinator.resolveDomainOperations("participant-authority", "participants-lock");
-        this.setState({ participantsLocked: Boolean(data) });
+        this.setState({ participantsLocked: Boolean(locked) });
       });
       socket.on("roster", (data: any[]) => {
+        const epoch = (data as any)?.__epoch;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         const currentPeerIds = new Set((data || []).map((p) => p.id));
         // Resolve any pending kick operations for peers that have been removed
         const activeOps = operationCoordinator.getActiveOperations();
@@ -1444,8 +1504,8 @@ export class App extends React.Component<AppProps, AppState> {
             operationCoordinator.resolveOperation(op.id);
           }
         }
-        operationCoordinator.recordRosterReceived();
-        this.setState({ participants: data, rosterUpdateTS: Date.now() }, () => {
+        operationCoordinator.recordRosterReceived(epoch ?? operationCoordinator.getConnectionEpoch());
+        this.setState({ participants: data, rosterUpdateTS: Date.now(), initStage: operationCoordinator.getInitStage() }, () => {
           this.setupRTCConnections();
         });
         this.checkAndAdvanceToReady();
@@ -1762,6 +1822,11 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   handleRoomState = (data: any) => {
+    if (!data) return;
+    const epoch = data.__epoch;
+    if (!operationCoordinator.canAcceptSyncEvent(epoch)) {
+      return;
+    }
     this.setIsChatDisabled(data.isChatDisabled);
     this.setOwner(data.owner);
     const selfClientId = getOrCreateClientId();
@@ -1798,7 +1863,7 @@ export class App extends React.Component<AppProps, AppState> {
     this.setMediaPath(data.mediaPath);
     this.setInviteLink(this.getInviteLink());
     window.history.replaceState("", "", this.getInviteLink());
-    operationCoordinator.recordRoomStateReceived();
+    operationCoordinator.recordRoomStateReceived(epoch ?? operationCoordinator.getConnectionEpoch());
     this.checkAndAdvanceToReady();
   };
 
