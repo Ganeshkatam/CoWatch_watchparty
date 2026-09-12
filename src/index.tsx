@@ -357,6 +357,38 @@ class CoWatch extends React.Component {
               } catch (e) { }
             }
 
+            // Sync pending signup custom avatar if present
+            try {
+              const pendingAvatarData = window.localStorage.getItem("cowatch-pending-avatar");
+              const pendingAvatarType = window.localStorage.getItem("cowatch-pending-avatar-type") || "image/jpeg";
+              if (pendingAvatarData && user) {
+                const mimeType = pendingAvatarType;
+                const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+                const filePath = `${user.id}/profile_${Date.now()}.${ext}`;
+
+                fetch(pendingAvatarData)
+                  .then((res) => res.blob())
+                  .then(async (blob) => {
+                    const { error: uploadError } = await supabase.storage.from("avatars").upload(filePath, blob, {
+                      upsert: true,
+                      contentType: mimeType,
+                    });
+                    if (!uploadError) {
+                      const { data: pubData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+                      if (pubData?.publicUrl) {
+                        await supabase.from("profiles").update({ avatar_url: pubData.publicUrl }).eq("id", user.id);
+                        window.localStorage.removeItem("cowatch-pending-avatar");
+                        window.localStorage.removeItem("cowatch-pending-avatar-type");
+                        this.setState({ avatarUrl: pubData.publicUrl });
+                      }
+                    }
+                  })
+                  .catch((err) => {
+                    console.warn("Pending avatar upload warning:", err);
+                  });
+              }
+            } catch (e) { }
+
             const activeAppearance = (() => {
               if (typeof window !== "undefined") {
                 const local = window.localStorage.getItem("cowatch-appearance");
