@@ -166,6 +166,10 @@ export const Create = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setError("An account is required to create a room. If you do not have an account, kindly create an account to get started.");
+      return;
+    }
     if (!roomTitle.trim()) {
       setError("Room title is required.");
       return;
@@ -276,9 +280,60 @@ export const Create = () => {
         </nav>
 
 
+        {!user && (
+          <Alert
+            color="violet"
+            mb="lg"
+            title="Account Required"
+            styles={{
+              root: {
+                border: "1px solid var(--border-subtle)",
+                background: "var(--color-violet-light, rgba(139, 92, 246, 0.08))",
+              },
+            }}
+          >
+            <Text size="sm">
+              An account is required to create and host watch party rooms. If you do not have an account, kindly create an account to get started.
+            </Text>
+            <div style={{ marginTop: "12px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <Button
+                component={Link}
+                to="/signup?redirect=%2Fcreate"
+                size="xs"
+                variant="filled"
+                color="violet"
+              >
+                Create an account
+              </Button>
+              <Button
+                component={Link}
+                to="/login?redirect=%2Fcreate"
+                size="xs"
+                variant="light"
+                color="violet"
+              >
+                Sign in
+              </Button>
+            </div>
+          </Alert>
+        )}
+
         {error && (
-          <Alert color="red" title="Unable to create room">
-            {error}
+          <Alert color="red" mb="md" title="Unable to create room">
+            <div>{error}</div>
+            {error.includes("create an account") && (
+              <div style={{ marginTop: "10px" }}>
+                <Button
+                  component={Link}
+                  to="/signup?redirect=%2Fcreate"
+                  size="xs"
+                  variant="filled"
+                  color="violet"
+                >
+                  Create an account
+                </Button>
+              </div>
+            )}
           </Alert>
         )}
 

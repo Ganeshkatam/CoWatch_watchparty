@@ -287,9 +287,19 @@ const NavigationMenuContent: React.FC<{
           <div className={styles.guestBanner}>
             <div className={styles.guestTitle}>Welcome to CoWatch</div>
             <div className={styles.guestSubtitle}>
-              Stream videos together in perfect real-time sync with friends.
+              If you do not have an account, kindly create an account to start hosting watch parties.
             </div>
             <div className={styles.guestCtaGroup}>
+              <Button
+                component={Link}
+                to="/signup"
+                variant="gradient"
+                fullWidth
+                size="xs"
+                onClick={onClose}
+              >
+                Create account
+              </Button>
               <Button
                 component={Link}
                 to="/login"
@@ -300,16 +310,6 @@ const NavigationMenuContent: React.FC<{
                 onClick={onClose}
               >
                 Sign in
-              </Button>
-              <Button
-                component={Link}
-                to="/signup"
-                variant="gradient"
-                fullWidth
-                size="xs"
-                onClick={onClose}
-              >
-                Get Started
               </Button>
             </div>
           </div>

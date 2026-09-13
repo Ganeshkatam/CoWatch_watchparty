@@ -30,7 +30,7 @@ export const ForgotPassword = () => {
     e.preventDefault();
     setError("");
     setSuccess(false);
-    
+
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
@@ -46,9 +46,9 @@ export const ForgotPassword = () => {
   return (
     <div style={{ width: "100%" }}>
       <Center mb={20}>
-        <div style={{ 
-          background: "var(--surface-hover)", 
-          padding: "16px", 
+        <div style={{
+          background: "var(--surface-hover)",
+          padding: "16px",
           borderRadius: "50%",
           display: "flex"
         }}>
@@ -60,11 +60,11 @@ export const ForgotPassword = () => {
         Enter your email and we'll send you a password-reset link.
       </Text>
 
-      <Paper 
+      <Paper
         withBorder
-        p={30} 
-        mt={30} 
-        radius="lg" 
+        p={30}
+        mt={30}
+        radius="lg"
         className={styles.authCard}
       >
         {error && (
@@ -72,7 +72,7 @@ export const ForgotPassword = () => {
             {error}
           </Alert>
         )}
-        
+
         {success ? (
           <div>
             <Alert color="green" title="Check your email" mb="md">
@@ -98,12 +98,20 @@ export const ForgotPassword = () => {
         )}
       </Paper>
       {!success && (
-        <Text size="sm" ta="center" mt="md" c="dimmed">
-          Remember your password?{" "}
-          <Link to="/login" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
-            Sign in
-          </Link>
-        </Text>
+        <>
+          <Text size="sm" ta="center" mt="md" c="dimmed">
+            Remember your password?{" "}
+            <Link to="/login" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+              Sign in
+            </Link>
+          </Text>
+          <Text size="sm" ta="center" mt="xs" c="dimmed">
+            Do not have an account?{" "}
+            <Link to="/signup" style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+              Create an account
+            </Link>
+          </Text>
+        </>
       )}
     </div>
   );

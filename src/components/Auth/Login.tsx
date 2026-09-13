@@ -70,7 +70,12 @@ export const Login = () => {
       history.push(redirect.startsWith("/") ? redirect : `/${redirect}`);
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.message);
+      const msg = err?.message || "";
+      if (msg.toLowerCase().includes("invalid login credentials")) {
+        setError("Invalid email or password. If you do not have an account yet, kindly create an account.");
+      } else {
+        setError(msg || "An error occurred during sign in.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -113,7 +118,11 @@ export const Login = () => {
         Welcome back
       </Title>
       <Text c="dimmed" size="sm" ta="left" mt={5}>
-        Sign in to continue watching together.
+        Sign in to your account, or{" "}
+        <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+          create an account
+        </Link>{" "}
+        if you are new.
       </Text>
 
       <Paper 
@@ -123,23 +132,73 @@ export const Login = () => {
         radius="lg" 
         className={styles.authCard}
       >
+        <div
+          style={{
+            padding: "10px 14px",
+            marginBottom: "16px",
+            borderRadius: "var(--mantine-radius-md)",
+            background: "var(--color-violet-light, rgba(139, 92, 246, 0.08))",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Text size="xs" c="dimmed">
+            If you do not have an account, kindly create an account first.
+          </Text>
+          <Button
+            component={Link}
+            to={{ pathname: "/signup", search: location.search }}
+            size="compact-xs"
+            variant="light"
+            color="violet"
+          >
+            Create account
+          </Button>
+        </div>
+
         {error && (
-          <Alert color="red" mb="md" title="Error">
-            {error}
+          <Alert color="red" mb="md" title="Sign In Notice">
+            <div>{error}</div>
+            {(error.includes("create an account") || error.toLowerCase().includes("invalid")) && (
+              <div style={{ marginTop: "8px" }}>
+                <Button
+                  component={Link}
+                  to={{ pathname: "/signup", search: location.search }}
+                  size="compact-xs"
+                  variant="filled"
+                  color="violet"
+                >
+                  Create an account
+                </Button>
+              </div>
+            )}
           </Alert>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {enabledOptions.includes("google") && (
-            <Button
-              leftSection={<IconBrandGoogleFilled />}
-              onClick={handleGoogleSignIn}
-              variant="default"
-              fullWidth
-              loading={googleLoading}
-            >
-              Continue with Google
-            </Button>
+            <div>
+              <Button
+                leftSection={<IconBrandGoogleFilled />}
+                onClick={handleGoogleSignIn}
+                variant="default"
+                fullWidth
+                loading={googleLoading}
+              >
+                Continue with Google
+              </Button>
+              <Text size="xs" c="dimmed" ta="center" mt={6}>
+                If you do not have an account, kindly{" "}
+                <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
+                  create an account
+                </Link>{" "}
+                first.
+              </Text>
+            </div>
           )}
 
           {enabledOptions.includes("email") && enabledOptions.includes("google") && (
@@ -175,9 +234,9 @@ export const Login = () => {
         </div>
       </Paper>
       <Text size="sm" ta="center" mt="md" c="dimmed">
-        Don't have an account?{" "}
+        Do not have an account?{" "}
         <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
-          Create account
+          Create an account
         </Link>
       </Text>
       <Text size="xs" ta="center" mt="xs" c="dimmed">
