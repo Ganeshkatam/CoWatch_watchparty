@@ -351,7 +351,7 @@ export const Signup = () => {
             {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
 
             <form onSubmit={handleVerifyAge} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-              <div>
+              <div className={styles.dateInputWrapper}>
                 <TextInput
                   label="Date of birth"
                   type="date"
@@ -361,11 +361,19 @@ export const Signup = () => {
                     setDob(e.target.value);
                     if (dobError) setDobError(null);
                   }}
+                  onClick={(e) => {
+                    try {
+                      (e.target as any).showPicker?.();
+                    } catch (err) { }
+                  }}
                   error={dobError}
                   max={new Date().toISOString().split("T")[0]}
+                  classNames={{
+                    input: styles.dateInputControl,
+                  }}
                 />
                 <Text size="xs" c="dimmed" mt={4}>
-                  Used solely for local age eligibility verification. Your date of birth is not stored, transmitted, or shared.
+                  Your date of birth is not stored, transmitted, or shared.
                 </Text>
               </div>
 

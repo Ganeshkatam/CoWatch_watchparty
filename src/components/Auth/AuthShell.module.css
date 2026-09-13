@@ -273,3 +273,80 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* Datepicker & Age Gate Input Styling */
+.dateInputWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.dateInputControl {
+  color-scheme: dark !important;
+  accent-color: var(--color-violet, #8b5cf6) !important;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.5px !important;
+  border-radius: var(--mantine-radius-md) !important;
+  border: 1px solid var(--border-subtle) !important;
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  padding: 10px 14px !important;
+  height: 44px !important;
+  cursor: pointer !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease !important;
+}
+
+.dateInputControl:hover {
+  border-color: rgba(139, 92, 246, 0.5) !important;
+  background: rgba(139, 92, 246, 0.04) !important;
+}
+
+.dateInputControl:focus,
+.dateInputControl:focus-within {
+  border-color: var(--color-violet) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25) !important;
+  outline: none !important;
+}
+
+:global([data-color-scheme="light"]) .dateInputControl,
+:global(html[data-color-scheme="light"]) .dateInputControl {
+  color-scheme: light !important;
+  background: #ffffff !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  color: #1e1e24 !important;
+}
+
+.dateInputControl::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+  transition: transform 0.2s ease, filter 0.2s ease, background-color 0.2s ease;
+  filter: invert(0.8) sepia(0.5) saturate(5) hue-rotate(220deg);
+}
+
+.dateInputControl::-webkit-calendar-picker-indicator:hover {
+  transform: scale(1.15);
+  background-color: rgba(139, 92, 246, 0.2);
+  filter: invert(1) drop-shadow(0 0 5px rgba(139, 92, 246, 0.8));
+}
+
+:global([data-color-scheme="light"]) .dateInputControl::-webkit-calendar-picker-indicator,
+:global(html[data-color-scheme="light"]) .dateInputControl::-webkit-calendar-picker-indicator {
+  filter: invert(0.3) sepia(0.8) saturate(5) hue-rotate(240deg);
+}
+
+:global([data-color-scheme="light"]) .dateInputControl::-webkit-calendar-picker-indicator:hover,
+:global(html[data-color-scheme="light"]) .dateInputControl::-webkit-calendar-picker-indicator:hover {
+  filter: invert(0.4) sepia(1) saturate(6) hue-rotate(240deg) drop-shadow(0 0 4px rgba(139, 92, 246, 0.5));
+}
+
+.dateInputControl::-webkit-datetime-edit-day-field:focus,
+.dateInputControl::-webkit-datetime-edit-month-field:focus,
+.dateInputControl::-webkit-datetime-edit-year-field:focus {
+  background-color: var(--color-violet) !important;
+  color: #ffffff !important;
+  border-radius: 4px !important;
+  outline: none !important;
+}
+
+
