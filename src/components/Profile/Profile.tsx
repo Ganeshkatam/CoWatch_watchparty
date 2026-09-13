@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import { supabase } from "../../utils/supabaseClient";
 import { serverPath, openFileSelector } from "../../utils/utils";
+import { parseAccountParams } from "../../utils/routeParams";
 import { MetadataContext } from "../../MetadataContext";
 import { MODAL_SIZES } from "../../utils/designSystem";
 import {
@@ -57,20 +58,12 @@ export const Profile: React.FC = () => {
   const location = useLocation();
   const history = useHistory();
 
-  // Route determinations
-  const pathname = location.pathname;
-  const isPreferences = pathname === "/account/preferences";
-  const isSecurity = pathname === "/account/security";
-  const isProfile = pathname === "/account/profile";
-
-  // Redirect invalid or root /account URLs to /account/profile
-  const shouldRedirectToProfile = !isProfile && !isPreferences && !isSecurity;
-
-  const activeTab = isPreferences
-    ? "preferences"
-    : isSecurity
-    ? "security"
-    : "profile";
+  // Canonical Route determinations via routeParams
+  const parsedAccount = parseAccountParams(location.search, location.pathname);
+  const activeTab = parsedAccount.tab;
+  const isPreferences = activeTab === "preferences" && parsedAccount.isCanonicalPath;
+  const isSecurity = activeTab === "security" && parsedAccount.isCanonicalPath;
+  const isProfile = activeTab === "profile" && parsedAccount.isCanonicalPath;
 
   // Form & UI States
   const [displayName, setDisplayName] = useState("");
@@ -326,8 +319,8 @@ export const Profile: React.FC = () => {
     window.location.href = "/";
   };
 
-  if (shouldRedirectToProfile) {
-    return <Redirect to="/account/profile" />;
+  if (!parsedAccount.isCanonicalPath) {
+    return <Redirect to={`/account/${activeTab}`} />;
   }
 
   if (!context.user) {

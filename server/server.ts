@@ -1940,6 +1940,15 @@ app.get("/roomInfo/:roomId", async (req, res) => {
     }
 
     const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
+    let isHost = isOwner;
+    const memoryRoom = rooms.get(cleanRoomId);
+    if (memoryRoom && callerUid) {
+      if (typeof memoryRoom.isHostUid === "function") {
+        isHost = isHost || memoryRoom.isHostUid(callerUid);
+      } else if (memoryRoom.currentHostUid) {
+        isHost = isHost || memoryRoom.currentHostUid === callerUid;
+      }
+    }
 
     // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
     res.json({
@@ -1952,6 +1961,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       participantsLocked: Boolean(row.participants_locked),
       maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
       isOwner,
+      isHost,
     });
   } catch (err) {
     console.error("Error fetching roomInfo:", err);
@@ -2055,9 +2065,19 @@ app.post("/verifyPasscode", async (req, res) => {
       return;
     }
 
-    // Participant admission lock check: non-owners cannot bypass participant lock via passcode verification
+    // Participant admission lock check: non-hosts cannot bypass participant lock via passcode verification
     const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
-    if (row.participants_locked && !isOwner) {
+    let isHost = isOwner;
+    const memoryRoom = rooms.get(cleanRoomId);
+    if (memoryRoom && callerUid) {
+      if (typeof memoryRoom.isHostUid === "function") {
+        isHost = isHost || memoryRoom.isHostUid(callerUid);
+      } else if (memoryRoom.currentHostUid) {
+        isHost = isHost || memoryRoom.currentHostUid === callerUid;
+      }
+    }
+
+    if (row.participants_locked && !isHost) {
       res.status(403).json({
         valid: false,
         error: "This room is currently locked to existing participants.",
@@ -2067,13 +2087,12 @@ app.post("/verifyPasscode", async (req, res) => {
     }
 
     // MEMBER-001 Invariant: Pre-check capacity enforcement
-    // Non-owners entering a full room are rejected with ROOM_FULL
-    const memoryRoom = rooms.get(cleanRoomId);
-    if (memoryRoom && !isOwner) {
+    // Non-hosts entering a full room are rejected with ROOM_FULL
+    if (memoryRoom && !isHost) {
       if (typeof row.max_participants === "number") {
         memoryRoom.maxParticipants = row.max_participants;
       }
-      if (memoryRoom.isRoomFull(isOwner)) {
+      if (memoryRoom.isRoomFull(isHost)) {
         res.status(403).json({
           valid: false,
           error: "This room has reached its participant limit.",

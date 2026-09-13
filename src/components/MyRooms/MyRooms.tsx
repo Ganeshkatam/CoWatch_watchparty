@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext } from "react";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
 import { serverPath, serverCandidates, setServerPath } from "../../utils/utils";
 import { getAccessToken } from "../../utils/supabaseClient";
@@ -12,6 +12,7 @@ import { RoomCard } from "./RoomCard";
 import { RoomPagination } from "./RoomPagination";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
+import { parseMyRoomsParams, getMyRoomsUrl, MyRoomsStatusFilter, MyRoomsViewMode } from "../../utils/routeParams";
 
 export interface RoomSummary {
   roomId: string;
@@ -172,17 +173,22 @@ const useRooms = (
 
 export const MyRooms = () => {
   const { user } = useContext(MetadataContext);
+  const history = useHistory();
+  const location = useLocation();
   
   useDocumentMetadata({
     title: "My Rooms",
     description: "Manage your active and permanent CoWatch watch party rooms.",
   });
   
+  const parsedParams = useMemo(() => parseMyRoomsParams(location.search), [location.search]);
+  const filterOption = parsedParams.status;
+  const viewMode = parsedParams.view;
+  const currentPage = parsedParams.page;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortOption, setSortOption] = useState("newest");
-  const [filterOption, setFilterOption] = useState("all");
-  const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 12;
 
   // Debounce search typing
@@ -210,36 +216,30 @@ export const MyRooms = () => {
     filterOption
   );
 
-  const [viewMode, setViewModeState] = useState<'grid' | 'stack'>(() => {
-    try {
-      const stored = localStorage.getItem('cowatch-room-view-mode');
-      if (stored === 'grid' || stored === 'stack') return stored;
-    } catch (e) {}
-    return 'grid';
-  });
-
-  const setViewMode = useCallback((mode: 'grid' | 'stack') => {
-    setViewModeState(mode);
+  const setViewMode = useCallback((mode: MyRoomsViewMode) => {
+    history.replace(getMyRoomsUrl({ status: filterOption, view: mode, page: currentPage }));
     try {
       localStorage.setItem('cowatch-room-view-mode', mode);
     } catch (e) {}
-  }, []);
+  }, [history, filterOption, currentPage]);
 
-  const history = useHistory();
+  const setFilterOption = useCallback((status: string) => {
+    const validStatus = (status as MyRoomsStatusFilter) || "all";
+    history.replace(getMyRoomsUrl({ status: validStatus, view: viewMode, page: 1 }));
+  }, [history, viewMode]);
+
+  const setCurrentPage = useCallback((page: number) => {
+    history.replace(getMyRoomsUrl({ status: filterOption, view: viewMode, page }));
+  }, [history, filterOption, viewMode]);
 
   const handleClearAllFilters = useCallback(() => {
-    setFilterOption("all");
     setSearchQuery("");
-  }, []);
+    history.replace(getMyRoomsUrl({ status: "all", view: viewMode, page: 1 }));
+  }, [history, viewMode]);
 
   const hasActiveFilters =
     filterOption !== "all" ||
     searchQuery.trim().length > 0;
-
-  // Reset to page 1 when search, sort, or filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch, sortOption, filterOption]);
 
   if (!user && !loading) {
     return (

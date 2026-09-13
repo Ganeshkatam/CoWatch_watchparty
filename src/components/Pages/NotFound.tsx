@@ -1,15 +1,26 @@
 import React from "react";
 import { Container, Paper, Title, Text, Button, Group, Stack } from "@mantine/core";
-import { Link, useHistory } from "react-router-dom";
+import { Link, useHistory, useLocation } from "react-router-dom";
 import { IconHome, IconSearch, IconHelp, IconArrowLeft } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { parseNotFoundParams } from "../../utils/routeParams";
 
 export const NotFound: React.FC = () => {
-  useDocumentMetadata({
-    title: "Page Not Found | CoWatch",
-    description: "The page or watch party room you requested could not be found.",
-  });
+  const location = useLocation();
   const history = useHistory();
+  const { resource } = parseNotFoundParams(location.search);
+
+  const isRoom = resource === "room";
+  const title = isRoom ? "Room Not Found | CoWatch" : "Page or Room Not Found | CoWatch";
+  const heading = isRoom ? "Room Not Found" : "Page or Room Not Found";
+  const description = isRoom
+    ? "We couldn't find the watch party room you were looking for. The link may be incorrect, or the room may have concluded and expired."
+    : "We couldn't find the page you were looking for. The link may be incorrect or the page may have been moved.";
+
+  useDocumentMetadata({
+    title,
+    description,
+  });
 
   return (
     <Container size="sm" style={{ padding: "80px 20px", minHeight: "70vh", display: "flex", alignItems: "center" }}>
@@ -40,11 +51,11 @@ export const NotFound: React.FC = () => {
           </Text>
 
           <Title order={2} fw={800} style={{ color: "var(--text-primary)" }}>
-            Page or Room Not Found
+            {heading}
           </Title>
 
           <Text c="var(--text-secondary)" size="md" maw={440}>
-            We couldn't find the page or watch party room you were looking for. The link may be incorrect, or the room may have concluded and expired.
+            {description}
           </Text>
 
           <Group justify="center" gap="sm" mt="lg" wrap="wrap">

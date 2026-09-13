@@ -118,3 +118,137 @@ export class RootErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
+import { useLocation, Link, useHistory } from "react-router-dom";
+import { parseErrorParams, SafeErrorCode } from "../../utils/routeParams";
+import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+
+export const ErrorScreen: React.FC = () => {
+  const location = useLocation();
+  const history = useHistory();
+  const { code } = parseErrorParams(location.search);
+
+  const errorConfig: Record<
+    SafeErrorCode,
+    {
+      title: string;
+      message: string;
+      primaryButtonText: string;
+      primaryButtonLink: string;
+    }
+  > = {
+    session_expired: {
+      title: "Session Expired",
+      message: "Your login session has expired. Please sign in again to continue enjoying CoWatch.",
+      primaryButtonText: "Sign In",
+      primaryButtonLink: "/login",
+    },
+    permission_denied: {
+      title: "Access Denied",
+      message: "You do not have permission to access this resource or perform this action.",
+      primaryButtonText: "Return Home",
+      primaryButtonLink: "/",
+    },
+    room_full: {
+      title: "Room is Full",
+      message: "This watch party has reached its maximum participant limit. Please try again later.",
+      primaryButtonText: "Return Home",
+      primaryButtonLink: "/",
+    },
+    room_not_found: {
+      title: "Room Not Found",
+      message: "The requested watch party room does not exist or has expired.",
+      primaryButtonText: "Browse Rooms",
+      primaryButtonLink: "/myrooms",
+    },
+    room_ended: {
+      title: "Watch Party Ended",
+      message: "This watch party session has concluded.",
+      primaryButtonText: "Room Summary",
+      primaryButtonLink: "/room-ended",
+    },
+    unauthorized: {
+      title: "Authentication Required",
+      message: "You must be signed in with a verified account to access this room.",
+      primaryButtonText: "Sign In",
+      primaryButtonLink: "/login",
+    },
+    server_unavailable: {
+      title: "Something Went Wrong",
+      message: "An unexpected error occurred or our servers are temporarily unavailable. Recovery systems are active.",
+      primaryButtonText: "Return Home",
+      primaryButtonLink: "/",
+    },
+  };
+
+  const current = errorConfig[code] || errorConfig.server_unavailable;
+
+  useDocumentMetadata({
+    title: `${current.title} | CoWatch`,
+    description: current.message,
+    noIndex: true,
+  });
+
+  return (
+    <div style={{ minHeight: "80vh", backgroundColor: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Container size="sm" style={{ padding: "40px 20px", width: "100%" }}>
+        <Paper
+          radius="lg"
+          p={36}
+          withBorder
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+            textAlign: "center",
+            boxShadow: "var(--shadow-lg)",
+          }}
+        >
+          <Stack align="center" gap="md">
+            <div
+              style={{
+                width: "60px",
+                height: "60px",
+                borderRadius: "50%",
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                display: "grid",
+                placeItems: "center",
+                color: "#ef4444",
+              }}
+            >
+              <IconAlertTriangle size={32} />
+            </div>
+
+            <Title order={2} fw={800} style={{ color: "var(--text-primary)" }}>
+              {current.title}
+            </Title>
+
+            <Text c="var(--text-secondary)" size="sm" maw={460}>
+              {current.message}
+            </Text>
+
+            <Group justify="center" gap="sm" mt="lg" wrap="wrap">
+              <Button
+                variant="default"
+                leftSection={<IconRefresh size={16} />}
+                onClick={() => window.location.reload()}
+              >
+                Reload Page
+              </Button>
+              <Button
+                component={Link}
+                to={current.primaryButtonLink}
+                leftSection={<IconHome size={16} />}
+                style={{
+                  background: "linear-gradient(135deg, var(--color-violet), var(--color-pink))",
+                  color: "#ffffff",
+                }}
+              >
+                {current.primaryButtonText}
+              </Button>
+            </Group>
+          </Stack>
+        </Paper>
+      </Container>
+    </div>
+  );
+};

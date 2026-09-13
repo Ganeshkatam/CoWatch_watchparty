@@ -30,6 +30,7 @@ import {
 } from "../../utils/utils";
 import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
+import { parseWatchParams, getWatchUrl } from "../../utils/routeParams";
 import { Chat, ChatComponent } from "../Chat/Chat";
 import { VBrowser } from "../VBrowser/VBrowser";
 import { VideoChat, VideoChatErrorBoundary } from "../VideoChat/VideoChat";
@@ -266,8 +267,12 @@ export class App extends React.Component<AppProps, AppState> {
     vBrowserQuality: "1",
     isVBrowserLarge: false,
     nonPlayableMedia: false,
-    currentTab:
-      new URLSearchParams(window.location.search).get("tab") ?? "people",
+    currentTab: (() => {
+      const parsed = parseWatchParams(window.location.search);
+      if (parsed.panel === "chat") return "chat";
+      if (parsed.panel === "participants") return "people";
+      return new URLSearchParams(window.location.search).get("tab") ?? "people";
+    })(),
     isSubscribeModalOpen: false,
     isVBrowserModalOpen: false,
     isScreenShareModalOpen: false,
@@ -283,13 +288,17 @@ export class App extends React.Component<AppProps, AppState> {
     roomId: "",
     savedPasscodes: {},
     isChatDisabled: false,
-    showChatColumn: isMobile()
-      ? true
-      : Boolean(
-        Number(
-          window.localStorage.getItem("cowatch-showchatcolumn") ?? "1",
-        ),
-      ),
+    showChatColumn: (() => {
+      const parsed = parseWatchParams(window.location.search);
+      if (parsed.panel) return true;
+      return isMobile()
+        ? true
+        : Boolean(
+          Number(
+            window.localStorage.getItem("cowatch-showchatcolumn") ?? "1",
+          ),
+        );
+    })(),
     showPeopleColumn: isMobile()
       ? false
       : Boolean(
@@ -429,6 +438,14 @@ export class App extends React.Component<AppProps, AppState> {
     } catch (e) {
       console.warn("Manual status check error:", e);
     }
+  };
+
+  syncPanelToUrl = (tab: string, showColumn: boolean) => {
+    const roomId = this.state.roomId || this.props.urlRoomId;
+    if (!roomId) return;
+    const panel = showColumn ? (tab === "chat" ? "chat" : "participants") : "none";
+    const newUrl = getWatchUrl(roomId, panel);
+    window.history.replaceState(null, "", newUrl);
   };
 
   syncDocumentMetadata = () => {
@@ -3221,9 +3238,13 @@ export class App extends React.Component<AppProps, AppState> {
             onSelectTab={(tab) => {
               if (this.state.currentTab === tab && this.state.showChatColumn) {
                 const newVal = !this.state.showChatColumn;
-                this.setState({ showChatColumn: newVal });
+                this.setState({ showChatColumn: newVal }, () => {
+                  this.syncPanelToUrl(this.state.currentTab, newVal);
+                });
               } else {
-                this.setState({ currentTab: tab, showChatColumn: true });
+                this.setState({ currentTab: tab, showChatColumn: true }, () => {
+                  this.syncPanelToUrl(tab, true);
+                });
               }
             }}
             onOpenSettings={() => this.setSettingsModalOpen(true)}
@@ -3587,6 +3608,8 @@ export class App extends React.Component<AppProps, AppState> {
                         const newVal = !this.state.showChatColumn;
                         this.setState({
                           showChatColumn: newVal,
+                        }, () => {
+                          this.syncPanelToUrl(this.state.currentTab, newVal);
                         });
                         window.localStorage.setItem(
                           "cowatch-showchatcolumn",
@@ -3617,7 +3640,12 @@ export class App extends React.Component<AppProps, AppState> {
             >
               <Tabs
                 value={this.state.currentTab}
-                onChange={(val) => this.setState({ currentTab: val ?? "people" })}
+                onChange={(val) => {
+                  const nextTab = val ?? "people";
+                  this.setState({ currentTab: nextTab }, () => {
+                    this.syncPanelToUrl(nextTab, this.state.showChatColumn);
+                  });
+                }}
                 style={{
                   display: "flex",
                   flexDirection: "column",

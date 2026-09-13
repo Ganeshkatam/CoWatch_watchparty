@@ -23,6 +23,7 @@ import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
 import { AuthContext } from "./context/AuthContext";
 import { AppShell } from "./components/Layout/AppShell";
 import { RootErrorBoundary } from "./components/Layout/RootErrorBoundary";
+import { ErrorScreen } from "./components/Layout/RootErrorBoundary";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
 import { Notifications, notifications } from "@mantine/notifications";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
@@ -706,6 +707,20 @@ class CoWatch extends React.Component {
                               <>
                                 <TopBar />
                                 <Debug />
+                              </>
+                            </Route>
+                            <Route path="/error" exact>
+                              <>
+                                <TopBar />
+                                <ErrorScreen />
+                                <Footer />
+                              </>
+                            </Route>
+                            <Route path="/not-found" exact>
+                              <>
+                                <TopBar />
+                                <NotFound />
+                                <Footer />
                               </>
                             </Route>
                             {/* Terminal Authoritative Catch-All 404 Route */}

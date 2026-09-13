@@ -146,6 +146,32 @@ export interface AdmittedParticipantRecord {
 
 export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
 
+export type RoomAction =
+  | "chat:send"
+  | "chat:delete_own"
+  | "chat:delete_other"
+  | "chat:clear"
+  | "user:kick"
+  | "user:ban"
+  | "room:transfer_host"
+  | "room:lock"
+  | "room:lock_participants"
+  | "room:playback";
+
+export interface AuthorizeActionParams {
+  actorSocket: Socket | null | undefined;
+  action: RoomAction;
+  targetUserId?: string;
+  targetMessageAuthorId?: string;
+  targetMessageRoomId?: string;
+}
+
+export interface AuthorizationResult {
+  allowed: boolean;
+  code?: "FORBIDDEN" | "UNAUTHENTICATED" | "ROOM_MISMATCH" | "NOT_FOUND";
+  reason?: string;
+}
+
 export class Room {
   sendRoster() {
     throw new Error("Method not implemented.");
@@ -202,6 +228,101 @@ export class Room {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
     if (uid && this.bannedIdentities.has(uid)) return true;
     return false;
+  };
+
+  public authorizeRoomAction = (params: AuthorizeActionParams): AuthorizationResult => {
+    const { actorSocket, action, targetUserId, targetMessageAuthorId, targetMessageRoomId } = params;
+    if (!actorSocket) {
+      return { allowed: false, code: "UNAUTHENTICATED", reason: "No socket provided" };
+    }
+
+    // Strict Room Scoping
+    if (targetMessageRoomId && targetMessageRoomId !== this.roomId) {
+      return { allowed: false, code: "ROOM_MISMATCH", reason: "Target resource does not belong to this room" };
+    }
+
+    const isHost = this.isHost(actorSocket);
+    const isOwner = Boolean(this.owner_id && actorSocket.uid && actorSocket.uid === this.owner_id);
+    const hasHostAuthority = isHost || isOwner;
+
+    switch (action) {
+      case "chat:send":
+        if (this.isChatDisabled && !hasHostAuthority) {
+          return { allowed: false, code: "FORBIDDEN", reason: "Chat is disabled in this room" };
+        }
+        return { allowed: true };
+
+      case "chat:delete_own":
+        if (
+          targetMessageAuthorId &&
+          (targetMessageAuthorId === actorSocket.uid ||
+            targetMessageAuthorId === actorSocket.clientId ||
+            hasHostAuthority)
+        ) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Cannot delete message authored by another user" };
+
+      case "chat:delete_other":
+      case "chat:clear":
+        if (hasHostAuthority) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can moderate or clear chat" };
+
+      case "user:kick":
+        if (!hasHostAuthority) {
+          return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can kick participants" };
+        }
+        if (
+          targetUserId &&
+          this.owner_id &&
+          (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
+        ) {
+          return { allowed: false, code: "FORBIDDEN", reason: "Room owner cannot be kicked" };
+        }
+        return { allowed: true };
+
+      case "user:ban":
+        if (!hasHostAuthority) {
+          return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can ban participants" };
+        }
+        if (
+          targetUserId &&
+          this.owner_id &&
+          (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
+        ) {
+          return { allowed: false, code: "FORBIDDEN", reason: "Room owner cannot be banned" };
+        }
+        return { allowed: true };
+
+      case "room:transfer_host":
+        if (isHost) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Only the current room host can transfer host authority" };
+
+      case "room:lock":
+        if (hasHostAuthority || (this.lock && actorSocket.uid === this.lock)) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Only the room host or lock holder can change playback lock" };
+
+      case "room:lock_participants":
+        if (hasHostAuthority) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Only the room owner or host can lock participants" };
+
+      case "room:playback":
+        if (this.canControlPlayback(actorSocket)) {
+          return { allowed: true };
+        }
+        return { allowed: false, code: "FORBIDDEN", reason: "Playback is locked" };
+
+      default:
+        return { allowed: false, code: "FORBIDDEN", reason: "Unknown room action" };
+    }
   };
 
   public canModerate = (socket: Socket | null | undefined): boolean => {
@@ -1006,20 +1127,16 @@ export class Room {
         }
       });
       socket.on("CMD:deleteChatMessage", async (data: unknown) => {
-        if (this.canModerate(socket) && validateNotExpired()) {
+        if (validateNotExpired()) {
           const payload = data as { messageIds: string[]; operationId?: string };
           if (payload?.messageIds) {
             await this.deleteChatMessages(socket, payload);
           }
-        } else {
-          socket.emit("errorMessage", "Only the room host can delete chat messages");
         }
       });
       socket.on("CMD:deleteChatMessages", async (data: unknown) => {
-        if (this.canModerate(socket) && validateNotExpired()) {
+        if (validateNotExpired()) {
           await this.deleteChatMessages(socket, data);
-        } else {
-          socket.emit("errorMessage", "Only the room host can delete chat messages");
         }
       });
 
@@ -2327,6 +2444,13 @@ export class Room {
       mediaPath: first?.mediaPath,
       participantsLocked: Boolean(first?.participants_locked ?? this.participantsLocked),
       maxParticipants: typeof first?.max_participants === "number" ? first.max_participants : this.maxParticipants,
+      capabilities: {
+        moderateChat: this.canModerate(socket),
+        kickParticipants: this.canModerate(socket),
+        banParticipants: this.canModerate(socket),
+        transferHost: this.isHost(socket),
+        lockRoom: this.canControlPlayback(socket),
+      },
     });
   };
 
@@ -2447,8 +2571,13 @@ export class Room {
     reason?: string,
     operationId?: string
   ) => {
-    if (!this.canModerate(actorSocket)) {
-      actorSocket.emit("errorMessage", "Only the room host can kick participants");
+    const auth = this.authorizeRoomAction({
+      actorSocket,
+      action: "user:kick",
+      targetUserId: targetIdentity,
+    });
+    if (!auth.allowed) {
+      actorSocket.emit("errorMessage", "FORBIDDEN");
       return;
     }
     if (!targetIdentity) return;
@@ -2515,8 +2644,13 @@ export class Room {
     reason?: string,
     operationId?: string
   ) => {
-    if (!this.canModerate(actorSocket)) {
-      actorSocket.emit("errorMessage", "Only the room host can ban participants");
+    const auth = this.authorizeRoomAction({
+      actorSocket,
+      action: "user:ban",
+      targetUserId: targetIdentity,
+    });
+    if (!auth.allowed) {
+      actorSocket.emit("errorMessage", "FORBIDDEN");
       return;
     }
     if (!targetIdentity) return;
@@ -2610,10 +2744,6 @@ export class Room {
   };
 
   public deleteChatMessages = async (actorSocket: Socket, raw: unknown) => {
-    if (!this.canModerate(actorSocket)) {
-      actorSocket.emit("errorMessage", "Only the room host can delete chat messages");
-      return;
-    }
     const data = raw as {
       operationId?: string;
       messageIds?: string[];
@@ -2632,6 +2762,46 @@ export class Room {
     if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
       if (postgres) {
         try {
+          // Fetch target messages to verify existence, room scoping, and authorship
+          const checkRes = await postgres.query(
+            `SELECT id, room_id, user_id, metadata FROM room_messages WHERE id = ANY($1::uuid[])`,
+            [data.messageIds]
+          );
+
+          if (checkRes.rows.length === 0) {
+            actorSocket.emit("errorMessage", "Messages not found");
+            return;
+          }
+
+          // Strict Room Scoping: Verify every target message belongs to this room
+          for (const row of checkRes.rows) {
+            if (row.room_id !== this.roomId) {
+              actorSocket.emit("errorMessage", "FORBIDDEN");
+              return; // Zero mutation on denial
+            }
+          }
+
+          // Strict Authorization: Authorize each target message
+          for (const row of checkRes.rows) {
+            const authorId = row.user_id || row.metadata?.clientId;
+            const isOwn = Boolean(
+              (actorSocket.uid && row.user_id && actorSocket.uid === row.user_id) ||
+              (actorSocket.clientId && row.metadata?.clientId && actorSocket.clientId === row.metadata.clientId)
+            );
+            const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
+            const auth = this.authorizeRoomAction({
+              actorSocket,
+              action,
+              targetMessageAuthorId: authorId,
+              targetMessageRoomId: row.room_id,
+            });
+
+            if (!auth.allowed) {
+              actorSocket.emit("errorMessage", "FORBIDDEN");
+              return; // Zero mutation on denial
+            }
+          }
+
           await postgres.query(
             `UPDATE room_messages 
              SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
@@ -2640,6 +2810,14 @@ export class Room {
           );
         } catch (err) {
           console.error("Failed to soft-delete chat messages:", err);
+          return;
+        }
+      } else {
+        // Fallback in memory without postgres
+        const isHost = this.canModerate(actorSocket);
+        if (!isHost) {
+          actorSocket.emit("errorMessage", "FORBIDDEN");
+          return;
         }
       }
 
@@ -2654,16 +2832,53 @@ export class Room {
     }
 
     // Legacy author/timestamp handling
-    if (postgres) {
-      if (!data.timestamp && !data.author) {
-        // Clear all
+    if (!data.timestamp && !data.author) {
+      // Clear all -> requires chat:clear
+      const auth = this.authorizeRoomAction({ actorSocket, action: "chat:clear" });
+      if (!auth.allowed) {
+        actorSocket.emit("errorMessage", "FORBIDDEN");
+        return; // Zero mutation on denial
+      }
+      if (postgres) {
         await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1`, [this.roomId]);
-      } else if (data.timestamp && data.author) {
-        // Delete specific message
-        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`, [this.roomId, data.author, data.timestamp]);
-      } else if (data.author) {
-        // Delete by author
-        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`, [this.roomId, data.author]);
+      }
+    } else if (data.timestamp && data.author) {
+      // Delete specific message by author/timestamp
+      const isOwn = (actorSocket.clientId && data.author === actorSocket.clientId) || (actorSocket.uid && data.author === actorSocket.uid);
+      const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
+      const auth = this.authorizeRoomAction({
+        actorSocket,
+        action,
+        targetMessageAuthorId: data.author,
+      });
+      if (!auth.allowed) {
+        actorSocket.emit("errorMessage", "FORBIDDEN");
+        return; // Zero mutation on denial
+      }
+      if (postgres) {
+        await postgres.query(
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
+          [this.roomId, data.author, data.timestamp]
+        );
+      }
+    } else if (data.author) {
+      // Delete by author
+      const isOwn = (actorSocket.clientId && data.author === actorSocket.clientId) || (actorSocket.uid && data.author === actorSocket.uid);
+      const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
+      const auth = this.authorizeRoomAction({
+        actorSocket,
+        action,
+        targetMessageAuthorId: data.author,
+      });
+      if (!auth.allowed) {
+        actorSocket.emit("errorMessage", "FORBIDDEN");
+        return; // Zero mutation on denial
+      }
+      if (postgres) {
+        await postgres.query(
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`,
+          [this.roomId, data.author]
+        );
       }
     }
 

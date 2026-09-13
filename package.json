@@ -47,6 +47,7 @@
     "test:gate3-quota": "tsx server/gate3ConcurrencyQuota.test.ts",
     "test:google-verification": "tsx server/googleOAuthVerification.test.ts",
     "test:host-privileges": "tsx server/hostPrivilegeSecurity.test.ts",
+    "test:url-security": "tsx server/urlDrivenSecurity.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {
