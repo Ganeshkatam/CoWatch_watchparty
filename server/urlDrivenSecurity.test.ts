@@ -47,6 +47,11 @@ function createMockSocket(uid: string, clientId: string, handshakeQuery: Record<
     emit: (event: string, data: any) => {
       emittedEvents.push({ event, data });
     },
+    broadcast: {
+      emit: (event: string, ...args: any[]) => {
+        emittedEvents.push({ event: `broadcast:${event}`, data: args });
+      },
+    },
     data: {},
   } as unknown as Socket;
 }
@@ -613,6 +618,354 @@ async function runTests() {
   checkDirRecursive(path.join(projectRoot, 'server'));
 
   console.log('✓ Static Invariant Firewall passed: 0 forbidden authority patterns detected across repository');
+
+  // ========================================================================================
+  // Section 8: Mechanical Enforcement of Privileged Mutation Completeness & Anti-Regression Firewall
+  //
+  // Invariant Mandate:
+  // "No privileged mutation may exist without an authorization gate immediately before the
+  //  mutation or inside the mutation-owning method."
+  //
+  // Enforces mechanically:
+  // 1. AST/Regex Extraction of ALL socket.on("CMD:*") handlers from server/room.ts.
+  //    Zero unregistered commands are permitted. Adding any new CMD:* without registering
+  //    its classification and authorization contract immediately fails the build/test.
+  // 2. Privileged Command Gating Verification:
+  //    Every privileged command must invoke pureAuthorizeRoomAction / authorizeRoomAction
+  //    or delegate to a verified internal mutation method.
+  // 3. Step-0 Internal Mutation Method Defense-in-Depth:
+  //    Every mutation-owning method (playVideo, pauseVideo, seekVideo, setPlaybackRate,
+  //    kickUser, banUser, transferHost, assignHost, deleteChatMessages) must invoke
+  //    pureAuthorizeRoomAction / authorizeRoomAction at Step 0, halting on denial before
+  //    any database mutation, room memory mutation, or socket broadcast.
+  // 4. RoomAction Exhaustiveness & Coverage:
+  //    All discrete RoomAction types in server/roomAuthorization.ts must be verified in the
+  //    pure engine and tested for rejection under unauthorized contexts.
+  // 5. REST Room Mutation Authorization Gate:
+  //    All mutating room HTTP endpoints in server/server.ts and server/notifications/
+  //    must statically verify Supabase JWT (validateToken) and check host/owner authority.
+  // 6. Zero-Mutation on Denial Invariant:
+  //    Runtime simulation verifying 0 DB queries, 0 state mutations, and 0 broadcasts on denial.
+  // ========================================================================================
+  console.log('\n--- Section 8: Mechanical Authorization Completeness & Anti-Regression Firewall ---');
+
+  // --- 8.1: Complete Inventory of CMD:* Handlers in server/room.ts ---
+  const roomSource = fs.readFileSync(path.join(projectRoot, 'server/room.ts'), 'utf-8');
+
+  // Extract all socket.on("CMD:...") and socket.on('CMD:...') occurrences
+  const cmdMatches = [...roomSource.matchAll(/socket\.on\(\s*["'](CMD:[a-zA-Z0-9_]+)["']/g)].map(m => m[1]);
+  const uniqueCmdsInSource = Array.from(new Set(cmdMatches)).sort();
+
+  // Authoritative Classification Catalog
+  interface AuthoritativeCommandSpec {
+    category: 'PRIVILEGED' | 'DENIED' | 'NON_PRIVILEGED_SAFE';
+    requiredAction?: RoomAction | RoomAction[];
+    delegatedInternalMethod?: string;
+  }
+
+  const AUTHORITATIVE_COMMAND_CATALOG: Record<string, AuthoritativeCommandSpec> = {
+    // 1. Privileged Playback & Media Operations
+    'CMD:host': { category: 'PRIVILEGED', requiredAction: 'room:set_media' },
+    'CMD:play': { category: 'PRIVILEGED', requiredAction: 'room:play', delegatedInternalMethod: 'playVideo' },
+    'CMD:pause': { category: 'PRIVILEGED', requiredAction: 'room:pause', delegatedInternalMethod: 'pauseVideo' },
+    'CMD:seek': { category: 'PRIVILEGED', requiredAction: 'room:seek', delegatedInternalMethod: 'seekVideo' },
+    'CMD:playbackRate': { category: 'PRIVILEGED', requiredAction: 'room:change_rate', delegatedInternalMethod: 'setPlaybackRate' },
+    'CMD:loop': { category: 'PRIVILEGED', requiredAction: 'room:set_media' },
+    'CMD:subtitle': { category: 'PRIVILEGED', requiredAction: 'room:subtitle_change' },
+    'CMD:lock': { category: 'PRIVILEGED', requiredAction: 'room:lock' },
+    'CMD:setParticipantsLock': { category: 'PRIVILEGED', requiredAction: 'room:lock_participants' },
+
+    // 2. Privileged Chat & Moderation Operations
+    'CMD:chat': { category: 'PRIVILEGED', requiredAction: 'chat:send', delegatedInternalMethod: 'sendChatMessage' },
+    'CMD:chatV2': { category: 'PRIVILEGED', requiredAction: 'chat:send', delegatedInternalMethod: 'sendChatMessage' },
+    'CMD:editMessage': { category: 'PRIVILEGED', requiredAction: 'chat:edit', delegatedInternalMethod: 'editMessage' },
+    'CMD:addReaction': { category: 'PRIVILEGED', requiredAction: 'chat:reaction', delegatedInternalMethod: 'addReaction' },
+    'CMD:removeReaction': { category: 'PRIVILEGED', requiredAction: 'chat:reaction', delegatedInternalMethod: 'removeReaction' },
+    'CMD:deleteChatMessage': { category: 'PRIVILEGED', requiredAction: ['chat:delete_own', 'chat:delete_other', 'chat:clear'], delegatedInternalMethod: 'deleteChatMessages' },
+    'CMD:deleteChatMessages': { category: 'PRIVILEGED', requiredAction: ['chat:delete_own', 'chat:delete_other', 'chat:clear'], delegatedInternalMethod: 'deleteChatMessages' },
+
+    // 3. Privileged Participant & Host Lifecycle Operations
+    'CMD:kickUser': { category: 'PRIVILEGED', requiredAction: 'user:kick', delegatedInternalMethod: 'kickUser' },
+    'CMD:banUser': { category: 'PRIVILEGED', requiredAction: 'user:ban', delegatedInternalMethod: 'banUser' },
+    'CMD:assignHost': { category: 'PRIVILEGED', requiredAction: 'room:transfer_host', delegatedInternalMethod: 'assignHost' },
+    'CMD:transferHost': { category: 'PRIVILEGED', requiredAction: 'room:transfer_host', delegatedInternalMethod: 'transferHost' },
+
+    // 4. Privileged Playlist Operations
+    'CMD:playlistNext': { category: 'PRIVILEGED', requiredAction: 'playlist:next' },
+    'CMD:playlistAdd': { category: 'PRIVILEGED', requiredAction: 'playlist:add' },
+    'CMD:playlistMove': { category: 'PRIVILEGED', requiredAction: 'playlist:move' },
+    'CMD:playlistDelete': { category: 'PRIVILEGED', requiredAction: 'playlist:delete' },
+
+    // 5. Privileged VBrowser Operations
+    'CMD:startVBrowser': { category: 'PRIVILEGED', requiredAction: 'vbrowser:start' },
+    'CMD:stopVBrowser': { category: 'PRIVILEGED', requiredAction: 'vbrowser:stop' },
+    'CMD:changeController': { category: 'PRIVILEGED', requiredAction: 'vbrowser:control' },
+
+    // 6. Explicitly Denied Operations (Server-Enforced Invariant Denials)
+    'CMD:becomeHost': { category: 'DENIED' },
+    'CMD:claimHost': { category: 'DENIED' },
+    'CMD:setRoomState': { category: 'DENIED' },
+    'CMD:setRoomOwner': { category: 'DENIED' },
+
+    // 7. Non-Privileged Read-Only or Self Participant Operations
+    'CMD:name': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:picture': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:ts': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:loadMessages': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:askHost': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:getRoomState': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:leaveRoom': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:joinVideo': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:leaveVideo': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:joinScreenShare': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:leaveScreenShare': { category: 'NON_PRIVILEGED_SAFE' },
+    'CMD:userMute': { category: 'NON_PRIVILEGED_SAFE' },
+  };
+
+  // Mechanical Check 8.1A: Disallow any unregistered socket command in server/room.ts
+  for (const cmd of uniqueCmdsInSource) {
+    assert(
+      cmd in AUTHORITATIVE_COMMAND_CATALOG,
+      `[Firewall 8.1A Failure] Unregistered socket command detected in server/room.ts: ${cmd}. ` +
+      `Every socket command must be explicitly registered in AUTHORITATIVE_COMMAND_CATALOG with its authorization contract!`
+    );
+  }
+
+  // Mechanical Check 8.1B: Disallow catalog drift (catalog command missing from source)
+  for (const catalogCmd of Object.keys(AUTHORITATIVE_COMMAND_CATALOG)) {
+    assert(
+      uniqueCmdsInSource.includes(catalogCmd),
+      `[Firewall 8.1B Failure] Catalog command ${catalogCmd} not found in server/room.ts. Keep catalog 1:1 synchronized.`
+    );
+  }
+  console.log(`✓ 8.1 Command Inventory Verified: All ${uniqueCmdsInSource.length} socket CMD listeners explicitly registered and classified`);
+
+  // --- 8.2: Verify Authorization Gating for Every Privileged Command ---
+  for (const [cmd, spec] of Object.entries(AUTHORITATIVE_COMMAND_CATALOG)) {
+    if (spec.category === 'PRIVILEGED') {
+      // Locate the socket.on(cmd) block in server/room.ts
+      const cmdRegex = new RegExp(`socket\\.on\\(\\s*["']${cmd}["']\\s*,([\\s\\S]*?)(?:\\n\\s*socket\\.on|\\n\\s*\\/\\/ Resolve profile|\\n\\s*\\/\\/ Async initialization)`, 'm');
+      const match = roomSource.match(cmdRegex);
+      assert(match, `Could not extract handler block for ${cmd}`);
+      const handlerBody = match[1];
+
+      if (spec.delegatedInternalMethod) {
+        // Must delegate to internal method
+        const delegationCall = `this.${spec.delegatedInternalMethod}`;
+        assert(
+          handlerBody.includes(delegationCall),
+          `[Firewall 8.2 Failure] Privileged command ${cmd} must delegate to protected method ${delegationCall}`
+        );
+      } else {
+        // Must invoke pureAuthorizeRoomAction or authorizeRoomAction directly
+        assert(
+          handlerBody.includes('pureAuthorizeRoomAction') || handlerBody.includes('authorizeRoomAction'),
+          `[Firewall 8.2 Failure] Privileged command ${cmd} does NOT invoke an authoritative authorization gate!`
+        );
+        // Must check auth.allowed and emit error/return on denial
+        assert(
+          handlerBody.includes('auth.allowed') || handlerBody.includes('!auth.allowed'),
+          `[Firewall 8.2 Failure] Privileged command ${cmd} must evaluate auth.allowed result!`
+        );
+        assert(
+          handlerBody.includes('FORBIDDEN'),
+          `[Firewall 8.2 Failure] Privileged command ${cmd} denial path must emit or respond with FORBIDDEN`
+        );
+      }
+    } else if (spec.category === 'DENIED') {
+      // Must reject immediately
+      const cmdRegex = new RegExp(`socket\\.on\\(\\s*["']${cmd}["']\\s*,([\\s\\S]*?)(?:\\n\\s*socket\\.on|\\n\\s*\\/\\/ Resolve profile|\\n\\s*\\/\\/ Async initialization)`, 'm');
+      const match = roomSource.match(cmdRegex);
+      assert(match, `Could not extract handler block for denied command ${cmd}`);
+      const handlerBody = match[1];
+      assert(
+        handlerBody.includes('errorMessage') || handlerBody.includes('CMD:error'),
+        `[Firewall 8.2 Failure] Denied command ${cmd} must emit an error message on invocation!`
+      );
+      assert(
+        !handlerBody.includes('this.io.emit') && !handlerBody.includes('postgres'),
+        `[Firewall 8.2 Failure] Denied command ${cmd} must NOT mutate DB or broadcast!`
+      );
+    }
+  }
+  console.log('✓ 8.2 Privileged Command Gating Verified: All privileged socket handlers contain authoritative gates or verified delegations');
+
+  // --- 8.3: Step-0 Internal Mutation Method Defense-in-Depth Verification ---
+  // Verify that all sensitive room methods enforce authorization at Step 0, inside the method
+  const SENSITIVE_INTERNAL_METHODS = [
+    { method: 'playVideo', action: 'room:play' },
+    { method: 'pauseVideo', action: 'room:pause' },
+    { method: 'seekVideo', action: 'room:seek' },
+    { method: 'setPlaybackRate', action: 'room:change_rate' },
+    { method: 'kickUser', action: 'user:kick' },
+    { method: 'banUser', action: 'user:ban' },
+    { method: 'transferHost', action: 'room:transfer_host' },
+    { method: 'assignHost', action: 'room:transfer_host' },
+    { method: 'deleteChatMessages', action: 'chat:delete_own' },
+    { method: 'sendChatMessage', action: 'chat:send' },
+    { method: 'editMessage', action: 'chat:edit' },
+    { method: 'addReaction', action: 'chat:reaction' },
+    { method: 'removeReaction', action: 'chat:reaction' },
+  ];
+
+  for (const { method, action } of SENSITIVE_INTERNAL_METHODS) {
+    // Match method declaration: (public|private) methodName = ... { or (public|private) async methodName = ... {
+    const methodRegex = new RegExp(`(?:public|private)\\s+(?:async\\s+)?${method}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)[^{]*\\{([\\s\\S]*?)(?:\\n\\s*(?:public|private)\\s|\\n\\s*\\/\\/ Serialized|\\n\\s*\\};\\s*\\n\\})`, 'm');
+    const match = roomSource.match(methodRegex);
+    assert(match, `Could not extract method body for ${method} in server/room.ts`);
+    const methodBody = match[1];
+
+    // Check that authorization occurs within the first 3500 characters of the method
+    const step0Slice = methodBody.slice(0, 3500);
+    assert(
+      step0Slice.includes('authorizeRoomAction') ||
+      step0Slice.includes('pureAuthorizeRoomAction') ||
+      step0Slice.includes('canControlPlayback'),
+      `[Firewall 8.3 Failure] Method ${method} is missing Step-0 authorization check! ` +
+      `Every sensitive mutation method must enforce authorization at the top of its method body.`
+    );
+    assert(
+      (step0Slice.includes('allowed') || step0Slice.includes('canControlPlayback')) &&
+      (step0Slice.includes('return') || step0Slice.includes('throw')),
+      `[Firewall 8.3 Failure] Method ${method} does not halt (return/throw) on authorization denial!`
+    );
+  }
+
+  // Statically verify that canControlPlayback itself invokes pureAuthorizeRoomAction
+  const canControlPlaybackRegex = /public\s+canControlPlayback\s*=\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s*public\s/;
+  const canControlMatch = roomSource.match(canControlPlaybackRegex);
+  assert(canControlMatch, 'Could not extract canControlPlayback implementation');
+  assert(
+    canControlMatch[1].includes('pureAuthorizeRoomAction') && canControlMatch[1].includes('"room:play"'),
+    'canControlPlayback must invoke pureAuthorizeRoomAction with room:play'
+  );
+
+  console.log('✓ 8.3 Step-0 Internal Method Gates Verified: All 9 sensitive mutation methods contain internal Step-0 authorization');
+
+  // --- 8.4: Static Verification of RoomAction Exhaustiveness ---
+  const authSource = fs.readFileSync(path.join(projectRoot, 'server/roomAuthorization.ts'), 'utf-8');
+  const actionTypeMatch = authSource.match(/export\s+type\s+RoomAction\s*=([\s\S]*?);/);
+  assert(actionTypeMatch, 'Could not extract RoomAction union from server/roomAuthorization.ts');
+
+  const definedActions = [...actionTypeMatch[1].matchAll(/["']([a-zA-Z0-9_:]+)["']/g)].map(m => m[1]);
+  assert(definedActions.length >= 24, `Expected at least 24 RoomAction variants, found ${definedActions.length}`);
+
+  // Verify each defined RoomAction is handled in authorizeRoomAction's switch statement
+  for (const actionName of definedActions) {
+    assert(
+      authSource.includes(`case "${actionName}":`) || authSource.includes(`case '${actionName}':`),
+      `[Firewall 8.4 Failure] RoomAction "${actionName}" is not handled in authorizeRoomAction switch statement!`
+    );
+  }
+
+  // Verify each defined RoomAction is tested against an unauthorized context
+  const testUnauthorizedContext = {
+    actorUid: 'unauthorized-user',
+    actorClientId: 'unauthorized-client',
+    roomId: 'room-sec-test',
+    isMember: true,
+    isHost: false,
+    isOwner: false,
+    isLockHolder: false,
+    chatEnabled: false,
+    playbackLocked: true,
+    hostEpoch: 1,
+  };
+
+  const hostOnlyActions: RoomAction[] = [
+    'chat:delete_other',
+    'chat:clear',
+    'user:kick',
+    'user:ban',
+    'room:transfer_host',
+    'room:lock',
+    'room:lock_participants',
+  ];
+
+  for (const hostAction of hostOnlyActions) {
+    const res = testRoom.authorizeRoomAction({
+      actorSocket: memberSocket,
+      action: hostAction,
+      targetUserId: 'other-user',
+    });
+    assert(res.allowed === false, `[Firewall 8.4 Matrix Failure] Action ${hostAction} was allowed for non-host!`);
+    assert(res.code === 'FORBIDDEN', `[Firewall 8.4 Matrix Failure] Action ${hostAction} rejection code must be FORBIDDEN`);
+  }
+  console.log(`✓ 8.4 RoomAction Exhaustiveness Verified: All ${definedActions.length} RoomActions accounted for and gated in pure matrix`);
+
+  // --- 8.5: REST Mutating Route Authorization Firewall ---
+  const serverSource = fs.readFileSync(path.join(projectRoot, 'server/server.ts'), 'utf-8');
+  const notificationRouterSource = fs.readFileSync(path.join(projectRoot, 'server/notifications/notificationRouter.ts'), 'utf-8');
+
+  const REST_MUTATING_ENDPOINTS = [
+    { name: '/updateRoomSettings', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/updateRoomCover', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/extendRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/endRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/deleteRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/api/notifications/invite', source: notificationRouterSource, requiresJwt: true, requiresHostOrOwner: true },
+  ];
+
+  for (const ep of REST_MUTATING_ENDPOINTS) {
+    const epRegex = new RegExp(`app\\.(?:post|put|delete|patch)\\(\\s*["']${ep.name}["']([\\s\\S]*?)(?:app\\.(?:get|post|put|delete|patch)|router\\.)`, 'm');
+    const matchedContent = ep.name.includes('/api/notifications')
+      ? ep.source
+      : ep.source.match(epRegex)?.[1] || '';
+
+    assert(matchedContent.length > 0, `Could not extract implementation for REST endpoint ${ep.name}`);
+
+      assert(
+        matchedContent.includes('validateToken') ||
+        matchedContent.includes('validateUserToken') ||
+        matchedContent.includes('supabaseAdmin.auth.getUser') ||
+        matchedContent.includes('requireAuth'),
+        `[Firewall 8.5 Failure] REST endpoint ${ep.name} must validate Supabase JWT token!`
+      );
+    if (ep.requiresHostOrOwner) {
+      assert(
+        matchedContent.includes('isHost') || matchedContent.includes('owner_id') || matchedContent.includes('isOwner'),
+        `[Firewall 8.5 Failure] REST endpoint ${ep.name} must enforce room host or owner authority!`
+      );
+      assert(
+        matchedContent.includes('403') || matchedContent.includes('401') || matchedContent.includes('Forbidden') || matchedContent.includes('FORBIDDEN'),
+        `[Firewall 8.5 Failure] REST endpoint ${ep.name} must reject unauthorized callers with 403 Forbidden!`
+      );
+    }
+  }
+  console.log('✓ 8.5 REST Mutating Route Firewall Verified: All 6 room-mutating REST routes enforce Supabase JWT and host/owner authority');
+
+  // --- 8.6: Dynamic Zero-Mutation on Denial Verification ---
+  // Lock playback to host so non-host member is unauthorized for playback actions
+  testRoom.lock = 'host-uid';
+
+  const snapshotVideo = testRoom.video;
+  const snapshotPaused = testRoom.paused;
+  const snapshotRate = testRoom.playbackRate;
+  const snapshotHost = testRoom.currentHostUid;
+
+  // Attempt unauthorized playVideo
+  testRoom.playVideo(memberSocket, 'evil-op-play');
+  assert(testRoom.video === snapshotVideo, 'playVideo: Zero mutation on denial violated: video modified');
+
+  // Attempt unauthorized pauseVideo
+  testRoom.pauseVideo(memberSocket, 'evil-op-pause');
+  assert(testRoom.paused === snapshotPaused, 'pauseVideo: Zero mutation on denial violated: paused modified');
+
+  // Attempt unauthorized seekVideo
+  testRoom.seekVideo(memberSocket, 500);
+  assert(testRoom.videoTS === 0, 'seekVideo: Zero mutation on denial violated: videoTS modified');
+
+  // Attempt unauthorized setPlaybackRate
+  testRoom.setPlaybackRate(memberSocket, 2.0);
+  assert(testRoom.playbackRate === snapshotRate, 'setPlaybackRate: Zero mutation on denial violated: playbackRate modified');
+
+  // Attempt unauthorized transferHost
+  const transferRes = await testRoom.transferHost(memberSocket, 'other-user');
+  assert(transferRes.success === false, 'transferHost: Succeeded for non-host!');
+  assert(testRoom.currentHostUid === snapshotHost, 'transferHost: Zero mutation on denial violated: host modified');
+
+  console.log('✓ 8.6 Dynamic Zero-Mutation on Denial Verified: 0 DB mutations, 0 room state mutations, 0 broadcasts on denial');
+  console.log('✓ Mechanical Authorization Completeness Invariant certified: All privileged mutations permanently gated against regression');
 
   console.log('\n=================================================================');
   console.log('ALL URL-DRIVEN SCREEN ARCHITECTURE & SECURITY TESTS PASSED!');

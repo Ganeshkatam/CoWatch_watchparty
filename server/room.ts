@@ -1517,6 +1517,15 @@ export class Room {
   };
 
   public assignHost = (socket: Socket, newHostClientId: string): boolean => {
+    const auth = this.authorizeRoomAction({
+      actorSocket: socket,
+      action: "room:transfer_host",
+    });
+    if (!auth.allowed) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      socket.emit("errorMessage", "FORBIDDEN");
+      return false;
+    }
     this.transferHost(socket, newHostClientId).catch((err) => {
       socket.emit("errorMessage", err.message || "Failed to assign host.");
     });

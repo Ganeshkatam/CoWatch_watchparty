@@ -2469,6 +2469,12 @@ app.post("/endRoom", async (req, res) => {
   const roomId = sanitizeRoomId(rawRoomId);
 
   try {
+    const memoryRoom = rooms.get(roomId);
+    if (memoryRoom && !memoryRoom.isHostUid(decoded.uid) && memoryRoom.owner_id !== decoded.uid) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can end this room" } });
+      return;
+    }
+
     if (!postgres) {
       res.status(503).json({ error: { code: "FORBIDDEN", message: "Database unavailable" } });
       return;
@@ -2487,7 +2493,6 @@ app.post("/endRoom", async (req, res) => {
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
     const cleanRoomId = roomId;
-    const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
       memoryRoom.status = 'ended';
 
@@ -2540,6 +2545,12 @@ app.delete("/deleteRoom", async (req, res) => {
     }
     const roomId = sanitizeRoomId(rawRoomId);
 
+    const memoryRoom = rooms.get(roomId);
+    if (memoryRoom && memoryRoom.owner_id && memoryRoom.owner_id !== decoded.uid) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room owner can delete this room" } });
+      return;
+    }
+
     // Authoritative DB deletion with lock-first serialization and quota reclamation
     try {
       await postgres.query(
@@ -2560,7 +2571,6 @@ app.delete("/deleteRoom", async (req, res) => {
     }
 
     // Clean up memory structures ONLY after authoritative DB deletion succeeds
-    const memoryRoom = rooms.get(roomId);
     if (memoryRoom) {
       memoryRoom.disconnectAllSockets();
       rooms.delete(roomId);
