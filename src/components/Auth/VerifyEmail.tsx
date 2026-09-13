@@ -18,7 +18,6 @@ import {
 } from "@mantine/core";
 import { IconMail, IconCheck, IconAlertCircle } from "@tabler/icons-react";
 import styles from "./AuthShell.module.css";
-import { serverPath } from "../../utils/utils";
 
 export const VerifyEmail = () => {
   useDocumentMetadata({
@@ -39,19 +38,13 @@ export const VerifyEmail = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
 
-  const isGoogleUser = Boolean(
-    user?.app_metadata?.provider === "google" ||
-    (Array.isArray(user?.app_metadata?.providers) && user?.app_metadata?.providers.includes("google")) ||
-    user?.identities?.some((id: any) => id.provider === "google")
-  );
-
   useEffect(() => {
     if (user === null) {
       history.replace("/login");
-    } else if (user && user.email_confirmed_at != null && !isGoogleUser) {
+    } else if (user && user.email_confirmed_at != null) {
       history.replace(getSafeRedirectUrl(next));
     }
-  }, [user, history, next, isGoogleUser]);
+  }, [user, history, next]);
 
   useEffect(() => {
     let timer: any;
@@ -69,42 +62,17 @@ export const VerifyEmail = () => {
     setSuccess(null);
 
     try {
-      if (isGoogleUser) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        if (!token) {
-          throw new Error("No active session found. Please sign in again.");
-        }
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: user.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}${getSafeRedirectUrl(next)}`,
+        },
+      });
 
-        const response = await fetch(`${serverPath}/api/auth/send-google-confirmation`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const data = await response.json();
-        if (!response.ok || data.error) {
-          if (data.retryAfterSeconds) {
-            setCooldown(data.retryAfterSeconds);
-          }
-          throw new Error(data.error || "Failed to dispatch confirmation email.");
-        }
-
-        setSuccess("Verification email has been resent! Please check your inbox.");
-        setCooldown(60);
-      } else {
-        const { error } = await supabase.auth.resend({
-          type: "signup",
-          email: user.email,
-          options: {
-            emailRedirectTo: `${window.location.origin}${getSafeRedirectUrl(next)}`,
-          },
-        });
-
-        if (error) throw error;
-        setSuccess("Verification email has been resent! Please check your inbox and spam folder.");
-        setCooldown(60);
-      }
+      if (error) throw error;
+      setSuccess("Verification email has been resent! Please check your inbox and spam folder.");
+      setCooldown(60);
     } catch (err: any) {
       setError(err.message || "Failed to resend confirmation email.");
     } finally {
@@ -118,21 +86,6 @@ export const VerifyEmail = () => {
     try {
       const { error } = await supabase.auth.refreshSession();
       if (error) throw error;
-
-      if (isGoogleUser && user) {
-        // Query server metadata to check if account is now confirmed
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const metaRes = await fetch(`${serverPath}/metadata?uid=${user.id}&token=${token}`);
-        if (metaRes.status === 403) {
-          const body = await metaRes.json().catch(() => ({}));
-          if (body?.error?.code === "EMAIL_NOT_VERIFIED") {
-            setError("Your email has not been confirmed yet. Please check your inbox for the confirmation link.");
-            setLoading(false);
-            return;
-          }
-        }
-      }
       history.replace(getSafeRedirectUrl(next));
     } catch (err: any) {
       setError(err.message || "Failed to refresh verification status.");
@@ -162,9 +115,10 @@ export const VerifyEmail = () => {
   }
 
   // Double check so we don't flash UI before redirect
-  if (!user || (user.email_confirmed_at != null && !isGoogleUser)) {
+  if (!user || user.email_confirmed_at != null) {
     return null;
   }
+
 
   return (
     <Container size="sm" mt={80}>

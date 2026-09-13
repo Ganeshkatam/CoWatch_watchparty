@@ -38,30 +38,12 @@ export async function validateUserToken(uid: string, token: string, requireConfi
     }
 
     if (requireConfirmation) {
-      // Standard email confirmation check
+      // Standard Supabase email confirmation check
       if (user.email_confirmed_at == null) {
         return "EMAIL_NOT_VERIFIED";
       }
-
-      // Provider-aware Google OAuth confirmation check
-      const appMetadata = user.app_metadata || {};
-      const identities = user.identities || [];
-      const isGoogleUser =
-        appMetadata.provider === "google" ||
-        (Array.isArray(appMetadata.providers) && appMetadata.providers.includes("google")) ||
-        identities.some((id: any) => id.provider === "google");
-
-      if (isGoogleUser && postgres) {
-        const verificationCheck = await postgres.query(
-          "SELECT confirmed_at FROM public.google_signup_verifications WHERE user_id = $1 LIMIT 1",
-          [user.id]
-        );
-        // If a verification row exists and confirmed_at is NULL, account is unconfirmed
-        if (verificationCheck.rows.length > 0 && verificationCheck.rows[0].confirmed_at == null) {
-          return "EMAIL_NOT_VERIFIED";
-        }
-      }
     }
+
 
     // Return a mocked decoded token matching the previous Auth interface
     return { uid: user.id, email: user.email, email_verified: user.email_confirmed_at != null };
