@@ -42,7 +42,12 @@ interface RoomInfo {
   requiresPasscode: boolean;
   participantsLocked?: boolean;
   maxParticipants?: number;
+  // isOwner: true when the caller is the room creator (DB owner_id match).
+  // isHost: true for the DB owner OR any in-room promoted co-host.
+  // Use isHost as the canonical privilege gate everywhere; isOwner is retained
+  // only for personalizing UI copy ("You're the host" vs "You're co-hosting").
   isOwner: boolean;
+  isHost: boolean;
 }
 
 const normalizeRoomId = (value: string): string => {
@@ -192,8 +197,8 @@ export const Join: React.FC = () => {
       return;
     }
 
-    // If caller is host, advance directly to preflight green room
-    if (roomInfo?.isOwner) {
+    // If caller is a host (owner or promoted co-host), advance directly to preflight
+    if (roomInfo?.isHost) {
       history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`);
       return;
     }
@@ -423,14 +428,14 @@ export const Join: React.FC = () => {
                   className={styles.form}
                   noValidate
                 >
-                  {roomInfo?.isOwner ? (
+                  {roomInfo?.isHost ? (
                     <div className={styles.ownerNotice}>
                       <div className={styles.ownerNoticeIconBox}>
                         <IconShield size={18} />
                       </div>
                       <div className={styles.ownerNoticeContent}>
                         <span className={styles.ownerNoticeTitle}>
-                          You're the host
+                          {roomInfo?.isOwner ? "You're the host" : "You're co-hosting"}
                         </span>
                         <span className={styles.ownerNoticeDesc}>
                           You can start and control this session.
@@ -500,7 +505,7 @@ export const Join: React.FC = () => {
                     variant="gradient"
                     gradient={{ from: "violet", to: "indigo", deg: 135 }}
                     rightSection={
-                      roomInfo?.isOwner ? (
+                      roomInfo?.isHost ? (
                         <IconPlayerPlay size={18} />
                       ) : !user ? (
                         <IconLogin size={18} />
@@ -514,11 +519,11 @@ export const Join: React.FC = () => {
                     disabled={
                       verifying ||
                       roomInfo?.status === "expired" ||
-                      (!roomInfo?.isOwner && Boolean(roomInfo?.participantsLocked))
+                      (!roomInfo?.isHost && Boolean(roomInfo?.participantsLocked))
                     }
                     className={styles.submitBtn}
                   >
-                    {roomInfo?.isOwner
+                    {roomInfo?.isHost
                       ? "Start Room"
                       : roomInfo?.status === "expired"
                         ? "Room Expired"
