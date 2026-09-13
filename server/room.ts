@@ -2,7 +2,14 @@ import config from "./config.ts";
 import axios from "axios";
 import { Server, Socket } from "socket.io";
 import { randomUUID } from "crypto";
-import { getUser, validateUserToken } from "./utils/supabase.ts";
+import { getUser, validateUserToken, validateToken } from "./utils/supabase.ts";
+import {
+  authorizeRoomAction as pureAuthorizeRoomAction,
+  type RoomAction,
+  type AuthorizationContext,
+  type ActionTarget,
+  type AuthorizationResult,
+} from "./roomAuthorization.ts";
 import { redis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
@@ -146,17 +153,7 @@ export interface AdmittedParticipantRecord {
 
 export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
 
-export type RoomAction =
-  | "chat:send"
-  | "chat:delete_own"
-  | "chat:delete_other"
-  | "chat:clear"
-  | "user:kick"
-  | "user:ban"
-  | "room:transfer_host"
-  | "room:lock"
-  | "room:lock_participants"
-  | "room:playback";
+export type { RoomAction, AuthorizationContext, ActionTarget, AuthorizationResult };
 
 export interface AuthorizeActionParams {
   actorSocket: Socket | null | undefined;
@@ -164,12 +161,6 @@ export interface AuthorizeActionParams {
   targetUserId?: string;
   targetMessageAuthorId?: string;
   targetMessageRoomId?: string;
-}
-
-export interface AuthorizationResult {
-  allowed: boolean;
-  code?: "FORBIDDEN" | "UNAUTHENTICATED" | "ROOM_MISMATCH" | "NOT_FOUND";
-  reason?: string;
 }
 
 export class Room {
@@ -210,6 +201,8 @@ export class Room {
   public currentHostClientId: string = '';
   public currentHostUid: string = '';
   public hostMode: HostMode = "none";
+  public hostEpoch: number = 1;
+  public admittedMembers: Set<string> = new Set();
   private nextAdmissionSequence: number = 1;
   private clientToUidMap: StringDict = {};
   public roomTitle: string | undefined = undefined;
@@ -230,99 +223,76 @@ export class Room {
     return false;
   };
 
+  public buildAuthorizationContext = (socket: Socket | null | undefined): AuthorizationContext => {
+    if (!socket) {
+      return {
+        actorUid: "",
+        actorClientId: "",
+        roomId: this.roomId,
+        isMember: false,
+        isHost: false,
+        isOwner: false,
+        isLockHolder: false,
+        chatEnabled: !this.isChatDisabled,
+        playbackLocked: Boolean(this.lock),
+        hostEpoch: this.hostEpoch,
+      };
+    }
+
+    const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
+    const isHost = this.isHost(socket);
+    const isMember =
+      isOwner ||
+      isHost ||
+      (Boolean(socket.uid) && this.admittedMembers.has(socket.uid)) ||
+      (Boolean(socket.clientId) && this.admittedParticipants.has(socket.clientId)) ||
+      this.roster.some((u) => u.id === socket.clientId) ||
+      (this.roster.length === 0 && Boolean(socket.uid || socket.clientId));
+    const isLockHolder = Boolean(this.lock && socket.uid && socket.uid === this.lock);
+
+    return {
+      actorUid: socket.uid || "",
+      actorClientId: socket.clientId || "",
+      roomId: this.roomId,
+      isMember,
+      isHost,
+      isOwner,
+      isLockHolder,
+      chatEnabled: !this.isChatDisabled,
+      playbackLocked: Boolean(this.lock),
+      hostEpoch: this.hostEpoch,
+    };
+  };
+
   public authorizeRoomAction = (params: AuthorizeActionParams): AuthorizationResult => {
     const { actorSocket, action, targetUserId, targetMessageAuthorId, targetMessageRoomId } = params;
     if (!actorSocket) {
-      return { allowed: false, code: "UNAUTHENTICATED", reason: "No socket provided" };
+      return { allowed: false, code: "FORBIDDEN", reason: "UNAUTHENTICATED" };
     }
 
-    // Strict Room Scoping
+    // Target Room Scoping (Anti-Probing Defense)
     if (targetMessageRoomId && targetMessageRoomId !== this.roomId) {
-      return { allowed: false, code: "ROOM_MISMATCH", reason: "Target resource does not belong to this room" };
+      return { allowed: false, code: "ROOM_MISMATCH", reason: "ROOM_MISMATCH" };
     }
 
-    const isHost = this.isHost(actorSocket);
-    const isOwner = Boolean(this.owner_id && actorSocket.uid && actorSocket.uid === this.owner_id);
-    const hasHostAuthority = isHost || isOwner;
-
-    switch (action) {
-      case "chat:send":
-        if (this.isChatDisabled && !hasHostAuthority) {
-          return { allowed: false, code: "FORBIDDEN", reason: "Chat is disabled in this room" };
-        }
-        return { allowed: true };
-
-      case "chat:delete_own":
-        if (
-          targetMessageAuthorId &&
-          (targetMessageAuthorId === actorSocket.uid ||
-            targetMessageAuthorId === actorSocket.clientId ||
-            hasHostAuthority)
-        ) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Cannot delete message authored by another user" };
-
-      case "chat:delete_other":
-      case "chat:clear":
-        if (hasHostAuthority) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can moderate or clear chat" };
-
-      case "user:kick":
-        if (!hasHostAuthority) {
-          return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can kick participants" };
-        }
-        if (
-          targetUserId &&
+    const context = this.buildAuthorizationContext(actorSocket);
+    const target: ActionTarget = {
+      targetMessage: targetMessageAuthorId
+        ? {
+            id: "unknown",
+            roomId: targetMessageRoomId || this.roomId,
+            authorUid: targetMessageAuthorId,
+          }
+        : undefined,
+      targetUserId,
+      targetIsOwner: Boolean(
+        targetUserId &&
           this.owner_id &&
           (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
-        ) {
-          return { allowed: false, code: "FORBIDDEN", reason: "Room owner cannot be kicked" };
-        }
-        return { allowed: true };
+      ),
+    };
 
-      case "user:ban":
-        if (!hasHostAuthority) {
-          return { allowed: false, code: "FORBIDDEN", reason: "Only the room host can ban participants" };
-        }
-        if (
-          targetUserId &&
-          this.owner_id &&
-          (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
-        ) {
-          return { allowed: false, code: "FORBIDDEN", reason: "Room owner cannot be banned" };
-        }
-        return { allowed: true };
-
-      case "room:transfer_host":
-        if (isHost) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Only the current room host can transfer host authority" };
-
-      case "room:lock":
-        if (hasHostAuthority || (this.lock && actorSocket.uid === this.lock)) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Only the room host or lock holder can change playback lock" };
-
-      case "room:lock_participants":
-        if (hasHostAuthority) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Only the room owner or host can lock participants" };
-
-      case "room:playback":
-        if (this.canControlPlayback(actorSocket)) {
-          return { allowed: true };
-        }
-        return { allowed: false, code: "FORBIDDEN", reason: "Playback is locked" };
-
-      default:
-        return { allowed: false, code: "FORBIDDEN", reason: "Unknown room action" };
-    }
+    return pureAuthorizeRoomAction(context, action, target);
   };
 
   public canModerate = (socket: Socket | null | undefined): boolean => {
@@ -334,11 +304,9 @@ export class Room {
 
   public canControlPlayback = (socket: Socket | null | undefined): boolean => {
     if (!socket) return false;
-    if (this.lock) {
-      const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
-      return this.isHost(socket) || isOwner;
-    }
-    return true;
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "room:play");
+    return auth.allowed;
   };
 
   public isRoomFull = (_isOwner?: boolean, clientId?: string, sessionId?: string): boolean => {
@@ -897,19 +865,23 @@ export class Room {
         this.changeUserPicture(socket, String(data)),
       );
       socket.on("CMD:uid", async (raw: unknown) => {
-        let data = raw as { uid: string; token: string };
-        // Called when the user logs in, sets the socket's auth state
-        if (!data || !data.uid || !data.token) {
+        // Identity is immutable per connection
+        if (socket.uid) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Identity is immutable" });
           return;
         }
-        const decoded = await validateUserToken(data.uid, data.token);
+        let data = raw as { token?: string };
+        if (!data || !data.token) {
+          return;
+        }
+        const decoded = await validateToken(data.token);
         if (decoded === "EMAIL_NOT_VERIFIED") {
-          socket.emit("CMD:error", "Email verification is required.");
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Email verification is required." });
           return;
         }
         if (decoded?.uid) {
-          // This socket is now confirmed to be this UID
-          socket.uid = decoded?.uid;
+          socket.uid = decoded.uid;
+          this.admittedMembers.add(decoded.uid);
           this.clientToUidMap[socket.clientId] = decoded.uid;
           if (this.owner_id && decoded.uid === this.owner_id) {
             this.reclaimHostForOwner(socket);
@@ -939,22 +911,70 @@ export class Room {
         }
       });
       socket.on("CMD:host", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.startHosting(socket, String(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:set_media");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.startHosting(socket, String(data));
       });
       socket.on("CMD:play", (data?: unknown) => {
-        validateLock() && validateNotExpired() && this.playVideo(socket, (data as any)?.operationId);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:play");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Playback controls are locked to the host." });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.playVideo(socket, (data as any)?.operationId);
       });
       socket.on("CMD:pause", (data?: unknown) => {
-        validateLock() && validateNotExpired() && this.pauseVideo(socket, (data as any)?.operationId);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:pause");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Playback controls are locked to the host." });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.pauseVideo(socket, (data as any)?.operationId);
       });
       socket.on("CMD:seek", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.seekVideo(socket, data as any);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:seek");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Playback controls are locked to the host." });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.seekVideo(socket, data as any);
       });
       socket.on("CMD:playbackRate", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.setPlaybackRate(socket, data as any);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:change_rate");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Playback controls are locked to the host." });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.setPlaybackRate(socket, data as any);
       });
       socket.on("CMD:loop", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.setLoop(Boolean(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:play");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Playback controls are locked to the host." });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.setLoop(Boolean(data));
       });
       socket.on("CMD:ts", (data: unknown) =>
         validateNotExpired() && this.setTimestamp(socket, Number(data)),
@@ -995,52 +1015,84 @@ export class Room {
       socket.on("CMD:joinVideo", () => validateNotExpired() && this.joinVideo(socket));
       socket.on("CMD:leaveVideo", () => validateNotExpired() && this.leaveVideo(socket));
       socket.on("CMD:joinScreenShare", (data) => {
-        validateLock() && validateNotExpired() && this.joinScreenSharing(socket, data);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:set_media");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.joinScreenSharing(socket, data);
       });
       socket.on("CMD:userMute", (data: unknown) =>
         validateNotExpired() && this.setUserMute(socket, data),
       );
       socket.on("CMD:leaveScreenShare", () => validateNotExpired() && this.leaveScreenSharing(socket));
       socket.on("CMD:startVBrowser", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.startVBrowser(socket, data);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "vbrowser:start");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.startVBrowser(socket, data);
       });
       socket.on("CMD:stopVBrowser", () => {
-        validateLock() && validateNotExpired() && this.stopVBrowser();
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "vbrowser:stop");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.stopVBrowser();
       });
       socket.on("CMD:changeController", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.changeController(String(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "vbrowser:control");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.changeController(String(data));
       });
       socket.on("CMD:subtitle", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.addSubtitles(String(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:subtitle_change");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.addSubtitles(String(data));
       });
       socket.on("CMD:lock", async (data: unknown) => {
         if (!validateNotExpired()) return;
-        // Guests (unauthenticated sockets) can never acquire or release the lock.
-        if (!socket.uid) {
-          socket.emit("errorMessage", "You must be signed in to change the room lock");
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:lock");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room host or lock holder can change playback lock" });
+          socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        const isHost = this.isHost(socket);
-        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
-        const isCurrentLockHolder = Boolean(this.lock && socket.uid === this.lock);
-        // Only the active host, the room owner, or the current lock holder (to unlock
-        // their own lock) may change the lock state.
-        if (isHost || isOwner || isCurrentLockHolder) {
-          await this.lockRoom(socket, data);
-        } else {
-          socket.emit("errorMessage", "Only the room host can change the lock");
-        }
+        await this.lockRoom(socket, data);
       });
       socket.on("CMD:setParticipantsLock", async (data: unknown) => {
         if (!validateNotExpired()) return;
-        const isHost = this.isHost(socket);
-        const isOwner = Boolean(this.owner_id && socket.uid === this.owner_id);
-        // Authorization: Owner or host EXCLUSIVELY. Playback lock holders and ordinary users denied.
-        if (!isOwner && !isHost) {
-          socket.emit("errorMessage", "Only the room owner or host can lock participants.");
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:lock_participants");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room owner or host can lock participants." });
+          socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-
         const locked = Boolean((data as any)?.locked);
         await this.setParticipantsLock(socket, locked);
       });
@@ -1095,35 +1147,61 @@ export class Room {
         socket.emit("errorMessage", "Room settings cannot be changed while the room is active");
       });
       socket.on("CMD:playlistNext", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.playlistNext(data);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "playlist:next");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.playlistNext(data);
       });
       socket.on("CMD:playlistAdd", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.playlistAdd(socket, String(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "playlist:add");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.playlistAdd(socket, String(data));
       });
       socket.on("CMD:playlistMove", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.playlistMove(data);
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "playlist:move");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.playlistMove(data);
       });
       socket.on("CMD:playlistDelete", (data: unknown) => {
-        validateLock() && validateNotExpired() && this.playlistDelete(Number(data));
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "playlist:delete");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          socket.emit("errorMessage", "FORBIDDEN");
+          return;
+        }
+        this.playlistDelete(Number(data));
       });
       socket.on("CMD:kickUser", async (data: unknown) => {
-        if (this.canModerate(socket) && validateNotExpired()) {
-          const payload = data as { userToBeKicked: string; reason?: string; operationId?: string };
-          if (payload?.userToBeKicked) {
-            await this.kickUser(socket, payload.userToBeKicked, payload.reason, payload.operationId);
-          }
-        } else {
-          socket.emit("errorMessage", "Only the room host can kick participants");
+        if (!validateNotExpired()) return;
+        const payload = data as { userToBeKicked: string; reason?: string; operationId?: string };
+        if (payload?.userToBeKicked) {
+          await this.kickUser(socket, payload.userToBeKicked, payload.reason, payload.operationId);
         }
       });
       socket.on("CMD:banUser", async (data: unknown) => {
-        if (this.canModerate(socket) && validateNotExpired()) {
-          const payload = data as { userToBeBanned: string; reason?: string; operationId?: string };
-          if (payload?.userToBeBanned) {
-            await this.banUser(socket, payload.userToBeBanned, payload.reason, payload.operationId);
-          }
-        } else {
-          socket.emit("errorMessage", "Only the room host can ban participants");
+        if (!validateNotExpired()) return;
+        const payload = data as { userToBeBanned: string; reason?: string; operationId?: string };
+        if (payload?.userToBeBanned) {
+          await this.banUser(socket, payload.userToBeBanned, payload.reason, payload.operationId);
         }
       });
       socket.on("CMD:deleteChatMessage", async (data: unknown) => {
@@ -1436,6 +1514,7 @@ export class Room {
 
     return await this.withHostTransitionLease(async () => {
       const previousHostClientId = this.currentHostClientId;
+      this.hostEpoch += 1;
       this.currentHostClientId = ownerSocket.clientId;
       this.currentHostUid = ownerSocket.uid;
       this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
@@ -1481,6 +1560,7 @@ export class Room {
       }
 
       const previousHostName = this.getHostDisplayName();
+      this.hostEpoch += 1;
       this.currentHostClientId = targetClientId;
       this.currentHostUid = this.clientToUidMap[targetClientId] || "";
       this.hostMode = this.getHostMode();
@@ -1979,8 +2059,25 @@ export class Room {
       return;
     }
 
+    // Step 1: Pure authorization for chat:send
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "chat:send");
+    if (!auth.allowed) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      socket.emit("errorMessage", "FORBIDDEN");
+      return;
+    }
+
     // Validate supported fields.
     const data = payload as Record<string, unknown>;
+
+    // Step 2: Explicitly reject any client-supplied userId, uid, roomId, or author spoofing
+    if (data.userId || data.uid || data.roomId || data.author) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      socket.emit("errorMessage", "FORBIDDEN");
+      return;
+    }
+
     const msg = typeof data.msg === "string" ? data.msg : undefined;
     const replyToId =
       typeof data.replyToId === "string" ? data.replyToId : undefined;
@@ -2011,8 +2108,6 @@ export class Room {
       return;
     }
 
-    // We no longer have target message in memory for reply text rendering on the server
-    // For now we just emit the reply and let the client handle it if needed
     emitChatMessage({
       ...baseMsg,
       replyToId,
@@ -2023,7 +2118,10 @@ export class Room {
   };
 
   private editMessage = async (socket: Socket, raw: unknown) => {
-    if (!socket.uid) return; // Must be authenticated to edit
+    if (!socket.uid) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      return;
+    }
     const data = raw as { messageId: string; newMessage: string };
     if (!data || typeof data.messageId !== 'string' || typeof data.newMessage !== 'string') return;
     const trimmedMsg = data.newMessage.trim();
@@ -2031,7 +2129,42 @@ export class Room {
 
     if (!postgres) return;
 
+    const context = this.buildAuthorizationContext(socket);
+    const hostEpochSnapshot = context.hostEpoch;
+
     try {
+      // Step 1: Fetch target message to verify room and authorship
+      const existing = await postgres.query(
+        `SELECT id, room_id, user_id FROM room_messages WHERE id = $1`,
+        [data.messageId]
+      );
+      if (existing.rowCount === 0) {
+        socket.emit("CMD:error", { code: "FORBIDDEN" });
+        return;
+      }
+      const targetRow = existing.rows[0];
+
+      // Step 2: Host epoch revalidation after async retrieval
+      if (this.hostEpoch !== hostEpochSnapshot) {
+        socket.emit("CMD:error", { code: "FORBIDDEN" });
+        return;
+      }
+
+      // Step 3: Pure authorization - Author ONLY. Neither Host nor Owner can edit other users' messages!
+      const target: ActionTarget = {
+        targetMessage: {
+          id: targetRow.id,
+          roomId: targetRow.room_id,
+          authorUid: targetRow.user_id,
+        },
+      };
+      const auth = pureAuthorizeRoomAction(context, "chat:edit", target);
+      if (!auth.allowed) {
+        socket.emit("CMD:error", { code: "FORBIDDEN" });
+        return;
+      }
+
+      // Step 4: Mutate atomically
       const query = `
         UPDATE room_messages
         SET message = $1, updated_at = NOW()
@@ -2041,11 +2174,11 @@ export class Room {
       const result = await postgres.query(query, [trimmedMsg, data.messageId, this.roomId, socket.uid]);
 
       if (result.rowCount === 0) {
-        return; // Message not found or not owned by user
+        socket.emit("CMD:error", { code: "FORBIDDEN" });
+        return;
       }
 
       const row = result.rows[0];
-      // Fetch profile data just like loadRoomMessages does, for the broadcast
       let profile_name, profile_picture;
       const profileResult = await postgres.query('SELECT display_name, avatar_url FROM profiles WHERE id = $1', [row.user_id]);
       if ((profileResult.rowCount ?? 0) > 0) {
@@ -2068,7 +2201,8 @@ export class Room {
 
       this.io.of(this.roomId).emit("REC:editMessage", updatedMsg);
     } catch (e) {
-      console.error("Failed to edit message:", e);
+      console.error("Failed to edit message in postgres:", e);
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
     }
   };
 
@@ -2445,11 +2579,32 @@ export class Room {
       participantsLocked: Boolean(first?.participants_locked ?? this.participantsLocked),
       maxParticipants: typeof first?.max_participants === "number" ? first.max_participants : this.maxParticipants,
       capabilities: {
+        // Unidirectional UI Presentation Hints ONLY (server never relies on client capabilities)
         moderateChat: this.canModerate(socket),
         kickParticipants: this.canModerate(socket),
         banParticipants: this.canModerate(socket),
         transferHost: this.isHost(socket),
         lockRoom: this.canControlPlayback(socket),
+        playback: {
+          canControl: this.canControlPlayback(socket),
+          canLock: this.canModerate(socket),
+        },
+        chat: {
+          canSend: !this.isChatDisabled || this.canModerate(socket),
+          canModerate: this.canModerate(socket),
+          canClear: this.canModerate(socket),
+        },
+        playlist: {
+          canAdd: this.canControlPlayback(socket),
+          canMove: this.canControlPlayback(socket),
+          canDelete: this.canControlPlayback(socket),
+          canNext: this.canControlPlayback(socket),
+        },
+        vbrowser: {
+          canStart: this.canControlPlayback(socket),
+          canStop: this.canModerate(socket),
+          canControl: this.canControlPlayback(socket),
+        },
       },
     });
   };
@@ -2520,6 +2675,7 @@ export class Room {
             // Deterministic lowest admissionSequence ASC
             const nextHost = eligible[0];
             const oldHostName = this.getHostDisplayName();
+            this.hostEpoch += 1;
             this.currentHostClientId = nextHost.clientId;
             this.currentHostUid = this.clientToUidMap[nextHost.clientId] || "";
             this.hostMode = this.getHostMode();
@@ -2534,6 +2690,7 @@ export class Room {
             this.addChatMessage(null, chatMsg);
           } else {
             // No eligible participants remaining
+            this.hostEpoch += 1;
             this.currentHostClientId = "";
             this.currentHostUid = "";
             this.hostMode = "none";
@@ -2578,6 +2735,7 @@ export class Room {
     });
     if (!auth.allowed) {
       actorSocket.emit("errorMessage", "FORBIDDEN");
+      actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
     if (!targetIdentity) return;
@@ -2651,6 +2809,7 @@ export class Room {
     });
     if (!auth.allowed) {
       actorSocket.emit("errorMessage", "FORBIDDEN");
+      actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
     if (!targetIdentity) return;
@@ -2760,63 +2919,82 @@ export class Room {
     }
 
     if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
+      const context = this.buildAuthorizationContext(actorSocket);
+      const hostEpochSnapshot = context.hostEpoch;
+      const uniqueIds = [...new Set(data.messageIds)];
+
       if (postgres) {
+        const client = await postgres.connect();
         try {
-          // Fetch target messages to verify existence, room scoping, and authorship
-          const checkRes = await postgres.query(
-            `SELECT id, room_id, user_id, metadata FROM room_messages WHERE id = ANY($1::uuid[])`,
-            [data.messageIds]
+          await client.query("BEGIN");
+
+          // Row lock target messages within the scope of this room
+          const checkRes = await client.query(
+            `SELECT id, room_id, user_id, metadata FROM room_messages 
+             WHERE id = ANY($1::uuid[]) AND room_id = $2 
+             FOR UPDATE`,
+            [uniqueIds, this.roomId]
           );
 
-          if (checkRes.rows.length === 0) {
-            actorSocket.emit("errorMessage", "Messages not found");
+          // All-or-nothing check: if row count does not match requested unique IDs, foreign or non-existent IDs are present
+          if (checkRes.rows.length !== uniqueIds.length) {
+            await client.query("ROLLBACK");
+            actorSocket.emit("errorMessage", "FORBIDDEN");
+            actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
             return;
           }
 
-          // Strict Room Scoping: Verify every target message belongs to this room
-          for (const row of checkRes.rows) {
-            if (row.room_id !== this.roomId) {
-              actorSocket.emit("errorMessage", "FORBIDDEN");
-              return; // Zero mutation on denial
-            }
+          // Host epoch revalidation after async row acquisition
+          if (this.hostEpoch !== hostEpochSnapshot) {
+            await client.query("ROLLBACK");
+            actorSocket.emit("errorMessage", "FORBIDDEN");
+            actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
+            return;
           }
 
-          // Strict Authorization: Authorize each target message
+          // Authorize every message individually
           for (const row of checkRes.rows) {
-            const authorId = row.user_id || row.metadata?.clientId;
-            const isOwn = Boolean(
-              (actorSocket.uid && row.user_id && actorSocket.uid === row.user_id) ||
-              (actorSocket.clientId && row.metadata?.clientId && actorSocket.clientId === row.metadata.clientId)
-            );
+            const isOwn = Boolean(actorSocket.uid && row.user_id && actorSocket.uid === row.user_id);
             const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
-            const auth = this.authorizeRoomAction({
-              actorSocket,
-              action,
-              targetMessageAuthorId: authorId,
-              targetMessageRoomId: row.room_id,
-            });
-
+            const target: ActionTarget = {
+              targetMessage: {
+                id: row.id,
+                roomId: row.room_id,
+                authorUid: row.user_id,
+              },
+            };
+            const auth = pureAuthorizeRoomAction(context, action, target);
             if (!auth.allowed) {
+              await client.query("ROLLBACK");
               actorSocket.emit("errorMessage", "FORBIDDEN");
-              return; // Zero mutation on denial
+              actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
+              return; // All-or-nothing guarantee: zero rows modified on partial denial
             }
           }
 
-          await postgres.query(
+          await client.query(
             `UPDATE room_messages 
              SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
              WHERE room_id = $1 AND id = ANY($3::uuid[])`,
-            [this.roomId, actorSocket.clientId || actorSocket.uid || "host", data.messageIds]
+            [this.roomId, actorSocket.clientId || actorSocket.uid || "host", uniqueIds]
           );
+
+          await client.query("COMMIT");
         } catch (err) {
-          console.error("Failed to soft-delete chat messages:", err);
+          await client.query("ROLLBACK").catch(() => {});
+          console.error("Failed transactional batch deleteChatMessages:", err);
+          actorSocket.emit("errorMessage", "FORBIDDEN");
+          actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
           return;
+        } finally {
+          client.release();
         }
       } else {
         // Fallback in memory without postgres
         const isHost = this.canModerate(actorSocket);
         if (!isHost) {
           actorSocket.emit("errorMessage", "FORBIDDEN");
+          actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
           return;
         }
       }
@@ -2824,7 +3002,7 @@ export class Room {
       this.io.of(this.roomId).emit("REC:chatMessagesDeleted", {
         eventId: randomUUID(),
         roomId: this.roomId,
-        messageIds: data.messageIds,
+        messageIds: uniqueIds,
         deletedBy: actorSocket.clientId,
         timestamp: Date.now(),
       });

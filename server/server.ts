@@ -1498,9 +1498,10 @@ app.post("/createRoom", async (req, res) => {
 });
 
 app.post("/updateRoomCover", async (req, res) => {
-  const decoded = await validateUserToken(req.body?.uid, req.body?.token, false);
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
+  const decoded = await validateUserToken("", String(token), false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(400).json({ error: "invalid user token" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
   }
 
@@ -1508,12 +1509,12 @@ app.post("/updateRoomCover", async (req, res) => {
   const coverPhoto = req.body?.coverPhoto;
 
   if (!rawRoomId || coverPhoto === undefined) {
-    res.status(400).json({ error: "missing roomId or coverPhoto" });
+    res.status(400).json({ error: { code: "FORBIDDEN", message: "Missing parameters" } });
     return;
   }
 
   if (!postgres) {
-    res.status(500).json({ error: "Database not configured" });
+    res.status(500).json({ error: { code: "FORBIDDEN", message: "Database not configured" } });
     return;
   }
 
@@ -1527,7 +1528,7 @@ app.post("/updateRoomCover", async (req, res) => {
   );
 
   if (roomCheck.rowCount === 0) {
-    res.status(404).json({ error: "Room not found or unauthorized" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
   }
 
@@ -1538,7 +1539,10 @@ app.post("/updateRoomCover", async (req, res) => {
 
   if (isDbActive || isMemActive) {
     res.status(403).json({
-      error: "Cannot change room cover while the room is active. Please end the watch session or wait until all participants leave.",
+      error: {
+        code: "FORBIDDEN",
+        message: "Cannot change room cover while the room is active. Please end the watch session or wait until all participants leave.",
+      },
     });
     return;
   }
@@ -1550,16 +1554,17 @@ app.post("/updateRoomCover", async (req, res) => {
     [decoded.uid, cleanRoomId, coverPhoto]
   );
   if (result.rowCount === 0) {
-    res.status(404).json({ error: "Room not found or unauthorized" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
   }
   res.json({ success: true });
 });
 
 app.post("/updateRoomSettings", async (req, res) => {
-  const decoded = await validateUserToken(req.body?.uid, req.body?.token, false);
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
+  const decoded = await validateUserToken("", String(token), false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(400).json({ error: "invalid user token" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
   }
 
@@ -1618,7 +1623,7 @@ app.post("/updateRoomSettings", async (req, res) => {
 
     if (existingRoom.rowCount === 0) {
       await client.query('ROLLBACK');
-      res.status(404).json({ error: "Room not found or unauthorized" });
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }
 
@@ -2368,29 +2373,27 @@ app.get("/roomDetails", async (req, res) => {
 });
 
 app.post("/extendRoom", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.body?.uid),
-    String(req.body?.token),
-  );
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
+  const decoded = await validateUserToken("", String(token));
   if (decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
     return;
   }
   if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Invalid user token" } });
     return;
   }
   const rawRoomId = req.body?.roomId;
   const durationSeconds = Number(req.body?.durationSeconds);
   if (!rawRoomId || !durationSeconds) {
-    res.status(400).json({ error: "missing parameters" });
+    res.status(400).json({ error: { code: "FORBIDDEN", message: "Missing parameters" } });
     return;
   }
   const roomId = sanitizeRoomId(rawRoomId);
 
   // max duration 3 hours = 10800s
   if (durationSeconds > 10800 || durationSeconds < 0) {
-    res.status(400).json({ error: "invalid duration" });
+    res.status(400).json({ error: { code: "FORBIDDEN", message: "Invalid duration" } });
     return;
   }
 
@@ -2401,13 +2404,13 @@ app.post("/extendRoom", async (req, res) => {
     );
 
     if (!selectResult || selectResult.rows.length === 0) {
-      res.status(400).json({ error: "Room not found or unowned" });
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }
 
     const roomRow = selectResult.rows[0];
     if (roomRow.status !== "active" && roomRow.status !== "scheduled" && roomRow.status !== "inactive") {
-      res.status(400).json({ error: "Room cannot be extended in its current state" });
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Room cannot be extended in its current state" } });
       return;
     }
 
@@ -2439,37 +2442,35 @@ app.post("/extendRoom", async (req, res) => {
       }
       res.json({ expiresAt: newExpiresAt });
     } else {
-      res.status(400).json({ error: "Room not found, unowned, or cannot be extended" });
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     }
   } catch (e) {
     console.error("Error extending room:", e);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: { code: "FORBIDDEN", message: "Internal server error" } });
   }
 });
 
 app.post("/endRoom", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.body?.uid),
-    String(req.body?.token),
-  );
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
+  const decoded = await validateUserToken("", String(token));
   if (decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
     return;
   }
   if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Invalid user token" } });
     return;
   }
   const rawRoomId = typeof req.body?.roomId === "string" ? req.body.roomId : "";
   if (!rawRoomId) {
-    res.status(400).json({ error: "missing roomId" });
+    res.status(400).json({ error: { code: "FORBIDDEN", message: "Missing roomId" } });
     return;
   }
   const roomId = sanitizeRoomId(rawRoomId);
 
   try {
     if (!postgres) {
-      res.status(503).json({ error: "Database unavailable" });
+      res.status(503).json({ error: { code: "FORBIDDEN", message: "Database unavailable" } });
       return;
     }
 
@@ -2480,12 +2481,8 @@ app.post("/endRoom", async (req, res) => {
         [decoded.uid, roomId]
       );
     } catch (dbErr: any) {
-      const msg = dbErr?.message || "";
-      if (msg.includes("ROOM_NOT_FOUND")) {
-        res.status(404).json({ error: "Room not found or unauthorized" });
-        return;
-      }
-      throw dbErr;
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
+      return;
     }
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect

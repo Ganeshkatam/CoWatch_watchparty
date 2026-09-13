@@ -22,6 +22,28 @@ export const supabaseAdmin = supabaseUrl && supabaseSecretKey
   ? createClient(supabaseUrl, supabaseSecretKey) 
   : null as any;
 
+/**
+ * Pure token validation extracting the verified user subject from Supabase Auth.
+ */
+export async function validateToken(token: string, requireConfirmation: boolean = true) {
+  if (!supabaseUrl || !supabaseSecretKey || !token) {
+    return undefined;
+  }
+  try {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) {
+      return undefined;
+    }
+    if (requireConfirmation && user.email_confirmed_at == null) {
+      return "EMAIL_NOT_VERIFIED";
+    }
+    return { uid: user.id, email: user.email, email_verified: user.email_confirmed_at != null };
+  } catch (e) {
+    console.log(e);
+    return undefined;
+  }
+}
+
 export async function validateUserToken(uid: string, token: string, requireConfirmation: boolean = true) {
   if (!supabaseUrl || !supabaseSecretKey || !token) {
     return undefined;
@@ -32,8 +54,8 @@ export async function validateUserToken(uid: string, token: string, requireConfi
     if (error || !user) {
       return undefined;
     }
-    if (uid !== user.id) {
-      // Valid but for wrong user
+    if (uid && uid !== user.id) {
+      // Caller specified a target uid that does not match the token's user.id
       return undefined;
     }
 
@@ -44,8 +66,6 @@ export async function validateUserToken(uid: string, token: string, requireConfi
       }
     }
 
-
-    // Return a mocked decoded token matching the previous Auth interface
     return { uid: user.id, email: user.email, email_verified: user.email_confirmed_at != null };
   } catch (e) {
     console.log(e);
