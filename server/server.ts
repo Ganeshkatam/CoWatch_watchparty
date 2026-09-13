@@ -52,7 +52,6 @@ import { createNotificationRouter } from "./notifications/notificationRouter.ts"
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
-import { getDeliveryProfile } from "./notifications/deliveryProfiles.ts";
 import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
 import {
   type WebhookVerifier,
@@ -2657,7 +2656,7 @@ app.post("/api/auth/send-google-confirmation", async (req, res) => {
     const originUrl = new URL(clientOrigin).origin;
     const confirmationUrl = `${originUrl}/confirm-google-signup?token=${rawToken}`;
 
-    // Send authentication confirmation email using Supabase Auth
+    // Send authentication confirmation email strictly and exclusively via Supabase Auth
     const { error: resendError } = await supabaseAdmin.auth.resend({
       type: "signup",
       email: user.email,
@@ -2667,37 +2666,15 @@ app.post("/api/auth/send-google-confirmation", async (req, res) => {
     });
 
     if (resendError) {
-      console.warn("Supabase Auth resend warning, falling back to transactional email dispatcher:", resendError);
-      // Fallback to transactional security email provider if Supabase Auth resend reports an error
-      const securityProfile = getDeliveryProfile("transactional_security");
-      const provider = EmailProviderRegistry.getProviderForProfile(securityProfile.id);
-      const fromEmail = securityProfile.fromName
-        ? `"${securityProfile.fromName}" <${securityProfile.fromAddress}>`
-        : securityProfile.fromAddress;
-
-      await provider.send({
-        to: user.email,
-        from: fromEmail,
-        replyTo: securityProfile.replyTo,
-        subject: "Confirm your Google signup for CoWatch",
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-            <h2 style="color: #6366f1;">Welcome to CoWatch</h2>
-            <p>Thank you for signing up with Google. To complete your registration and activate your account, please confirm your email address by clicking the link below:</p>
-            <div style="margin: 32px 0;">
-              <a href="${confirmationUrl}" style="background-color: #7950f2; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
-                Confirm Email Address
-              </a>
-            </div>
-            <p style="color: #6b7280; font-size: 14px;">This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.</p>
-          </div>
-        `,
-        text: `Welcome to CoWatch!\n\nPlease confirm your email address by visiting this link:\n${confirmationUrl}\n\nThis link will expire in 24 hours.`,
-        idempotencyKey: `google-signup-confirm:${user.id}:${Date.now()}`,
+      console.error("Supabase Auth failed to dispatch confirmation email:", resendError);
+      res.status(502).json({
+        error: "Supabase authentication service failed to send confirmation email. Please try again.",
+        details: resendError.message,
       });
+      return;
     }
 
-    res.json({ success: true, message: "Confirmation email sent." });
+    res.json({ success: true, message: "Confirmation email sent via Supabase." });
   } catch (error: any) {
     console.error("Error in /api/auth/send-google-confirmation:", error);
     res.status(500).json({ error: "Failed to dispatch confirmation email" });
