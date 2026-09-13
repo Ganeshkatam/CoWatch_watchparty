@@ -584,6 +584,13 @@ async function runTests() {
     'Firewall Violation: server/room.ts must NOT register CMD:uid listener'
   );
 
+  // 1.5 Scan server/server.ts for untrusted user_metadata authorization bypasses
+  const serverMainSource = fs.readFileSync(path.join(projectRoot, 'server/server.ts'), 'utf-8');
+  assert(
+    !serverMainSource.includes('user.user_metadata?.is_admin') && !serverMainSource.includes('user_metadata?.role'),
+    'Firewall Violation: server/server.ts must NOT use client-writable user_metadata for operator or role authorization'
+  );
+
   // 2. Scan src/components/App/App.tsx
   const appFile = fs.readFileSync(path.join(projectRoot, 'src/components/App/App.tsx'), 'utf-8');
   assert(

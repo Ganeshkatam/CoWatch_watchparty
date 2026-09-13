@@ -929,7 +929,7 @@ async function authenticateOperator(req: any): Promise<{ authorized: boolean; op
     try {
       const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
       if (!error && user) {
-        const isAdmin = user.app_metadata?.role === "admin" || user.user_metadata?.is_admin === true;
+        const isAdmin = user.app_metadata?.role === "admin" || user.app_metadata?.is_admin === true;
         if (isAdmin) {
           return { authorized: true, operatorId: user.id };
         }
