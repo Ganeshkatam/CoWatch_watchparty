@@ -39,6 +39,8 @@ interface SettingsModalProps {
   mediaPath?: string | undefined;
   setMediaPath?: (path: string) => void;
   maxParticipants?: number;
+  isHost?: boolean;
+  isOwner?: boolean;
 }
 
 export const SettingsModal = ({
@@ -48,9 +50,14 @@ export const SettingsModal = ({
   setRoomLock,
   owner,
   maxParticipants = 10,
+  isHost,
+  isOwner: propIsOwner,
 }: SettingsModalProps) => {
   const { user, profile } = useContext(MetadataContext);
   const settingsOp = useOperationState("settings", "save-room-settings");
+
+  const isOwner = Boolean(propIsOwner || (owner && user && owner === user.id));
+  const canManageRoom = Boolean(isHost || isOwner);
 
   // -- DRAFT STATE --
   const [draftLock, setDraftLock] = useState(Boolean(roomLock));
@@ -83,8 +90,8 @@ export const SettingsModal = ({
     try {
       if (!user) throw new Error("Not logged in");
 
-      // 1. Live Runtime Lock (in-memory control for active playback)
-      if (draftLock !== Boolean(roomLock)) {
+      // 1. Live Runtime Lock (in-memory control for active playback) - restricted to room managers
+      if (canManageRoom && draftLock !== Boolean(roomLock)) {
         await setRoomLock(draftLock);
       }
 
@@ -116,14 +123,12 @@ export const SettingsModal = ({
     }
   };
 
-  const isOwner = Boolean(owner && user && owner === user.id);
-
   return (
     <Modal
       opened={modalOpen}
       onClose={() => setModalOpen(false)}
       centered
-      title="Room Settings"
+      title={canManageRoom ? "Room Settings" : "Preferences"}
       radius="md"
       size={MODAL_SIZES.md}
       styles={{
@@ -148,7 +153,9 @@ export const SettingsModal = ({
     >
       <div style={{ padding: "20px 22px" }}>
         <Text size="sm" c="dimmed" mb="lg">
-          Manage playback permissions and your personal watch preferences.
+          {canManageRoom
+            ? "Manage playback permissions and your personal watch preferences."
+            : "Manage your personal watch preferences."}
         </Text>
 
         {error && (
@@ -158,51 +165,54 @@ export const SettingsModal = ({
         )}
 
         <Stack gap="xl">
-          {/* ROOM PLAYBACK CONTROLS */}
-          <div>
-            <Text fw={700} size="xs" mb="sm" c="dimmed" style={{ letterSpacing: "0.08em" }}>
-              ROOM CONTROLS
-            </Text>
-            <Stack gap="md">
-              <Switch
-                label="Lock Playback Controls"
-                description={
-                  isOwner
-                    ? "Only you (the room host) can play, pause, seek, and change media."
-                    : "Only the room host can modify playback lock permissions."
-                }
-                checked={draftLock}
-                onChange={(e) => setDraftLock(e.currentTarget.checked)}
-                disabled={!isOwner}
-                size="md"
-              />
-              <div
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: "8px",
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border-subtle)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <Text size="sm" fw={600} c="var(--text-primary)">
-                    Participant Capacity
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Capacity is fixed for temporary rooms.
-                  </Text>
-                </div>
-                <Text size="sm" fw={700} c="violet">
-                  {maxParticipants} participants
+          {/* ROOM PLAYBACK CONTROLS - Strictly excluded for non-hosts/non-owners */}
+          {canManageRoom && (
+            <>
+              <div>
+                <Text fw={700} size="xs" mb="sm" c="dimmed" style={{ letterSpacing: "0.08em" }}>
+                  ROOM CONTROLS
                 </Text>
+                <Stack gap="md">
+                  <Switch
+                    label="Lock Playback Controls"
+                    description={
+                      isOwner
+                        ? "Only you (the room host) can play, pause, seek, and change media."
+                        : "Only the room host can modify playback lock permissions."
+                    }
+                    checked={draftLock}
+                    onChange={(e) => setDraftLock(e.currentTarget.checked)}
+                    size="md"
+                  />
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "8px",
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <Text size="sm" fw={600} c="var(--text-primary)">
+                        Participant Capacity
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Capacity is fixed for temporary rooms.
+                      </Text>
+                    </div>
+                    <Text size="sm" fw={700} c="violet">
+                      {maxParticipants} participants
+                    </Text>
+                  </div>
+                </Stack>
               </div>
-            </Stack>
-          </div>
 
-          <Divider />
+              <Divider />
+            </>
+          )}
 
           {/* LOCAL PREFERENCES */}
           <div>

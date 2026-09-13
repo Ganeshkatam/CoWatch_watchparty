@@ -47,6 +47,8 @@ interface RoomHeaderProps {
   participantsLocked?: boolean;
   onToggleParticipantsLock?: () => void;
   canManageParticipantsLock?: boolean;
+  isHost?: boolean;
+  isOwner?: boolean;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
@@ -69,7 +71,10 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   participantsLocked,
   onToggleParticipantsLock,
   canManageParticipantsLock,
+  isHost,
+  isOwner,
 }) => {
+  const canManageRoom = Boolean(isHost || isOwner);
   const [copied, setCopied] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -84,7 +89,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   };
 
   const cleanRoomId = getCleanRoomId();
-  const resolvedPasscode = propPasscode || "";
+  // Passcode is strictly available to host or room owner
+  const resolvedPasscode = canManageRoom ? (propPasscode || "") : "";
 
   const roomUrl = getRoomUrl(cleanRoomId);
   const hostDisplayName = hostName || "Host";
@@ -96,11 +102,15 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   };
 
   const handleCopyInviteMessage = () => {
-    const msg = getInviteMessage(cleanRoomId, resolvedPasscode);
+    // Non-hosts must NEVER leak the passcode in invite messages
+    const msg = canManageRoom && resolvedPasscode
+      ? getInviteMessage(cleanRoomId, resolvedPasscode)
+      : `Hey! Join my watch party on CoWatch:\n\nLink: ${roomUrl}\nRoom ID: ${cleanRoomId}`;
     navigator.clipboard.writeText(msg);
     setCopiedMsg(true);
     setTimeout(() => setCopiedMsg(false), 2000);
   };
+
 
   const { isReady } = useRoomInitStage();
   const lockOp = useOperationState("participant-authority", "lock");
@@ -180,105 +190,113 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 </div>
               </div>
 
-              {/* Password Row */}
-              <div className={styles.roomInfoRow}>
-                <span className={styles.roomInfoLabel}>
-                  <IconKey size={14} /> Password
-                </span>
-                <div className={styles.roomInfoValueWithCopy}>
-                  {resolvedPasscode ? (
-                    <>
-                      <span
-                        className={styles.codeSnippet}
-                        title={showPassword ? resolvedPasscode : "Password hidden"}
-                      >
-                        {showPassword ? resolvedPasscode : "••••••••"}
-                      </span>
-                      <Tooltip label={showPassword ? "Hide password" : "Show password"} withArrow position="top">
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color="gray"
-                          onClick={() => setShowPassword(!showPassword)}
-                          aria-label="Toggle password visibility"
-                        >
-                          {showPassword ? <IconEyeOff size={12} /> : <IconEye size={12} />}
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label={copiedPass ? "Copied!" : "Copy password"} withArrow position="top">
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color={copiedPass ? "green" : "gray"}
-                          onClick={handleCopyPasscode}
-                          aria-label="Copy Password"
-                        >
-                          {copiedPass ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                        </ActionIcon>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>None (Open)</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Room Link Row */}
-              <div className={styles.roomInfoRow}>
-                <span className={styles.roomInfoLabel}>
-                  <IconLink size={14} /> Room Link
-                </span>
-                <div className={styles.roomInfoValueWithCopy}>
-                  <span
-                    className={styles.codeSnippet}
-                    style={{ maxWidth: "120px" }}
-                    title={roomUrl}
-                  >
-                    {roomUrl}
+              {/* Password Row - Strictly Host/Owner Only */}
+              {canManageRoom && (
+                <div className={styles.roomInfoRow}>
+                  <span className={styles.roomInfoLabel}>
+                    <IconKey size={14} /> Password
                   </span>
-                  <Tooltip label={copied ? "Copied!" : "Copy Link"} withArrow position="top">
-                    <ActionIcon
-                      size="xs"
-                      variant="subtle"
-                      color={copied ? "green" : "violet"}
-                      onClick={handleCopyLink}
-                      aria-label="Copy Room Link"
-                    >
-                      {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                    </ActionIcon>
-                  </Tooltip>
+                  <div className={styles.roomInfoValueWithCopy}>
+                    {resolvedPasscode ? (
+                      <>
+                        <span
+                          className={styles.codeSnippet}
+                          title={showPassword ? resolvedPasscode : "Password hidden"}
+                        >
+                          {showPassword ? resolvedPasscode : "••••••••"}
+                        </span>
+                        <Tooltip label={showPassword ? "Hide password" : "Show password"} withArrow position="top">
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => setShowPassword(!showPassword)}
+                            aria-label="Toggle password visibility"
+                          >
+                            {showPassword ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label={copiedPass ? "Copied!" : "Copy password"} withArrow position="top">
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color={copiedPass ? "green" : "gray"}
+                            onClick={handleCopyPasscode}
+                            aria-label="Copy Password"
+                          >
+                            {copiedPass ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                          </ActionIcon>
+                        </Tooltip>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>None (Open)</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Room Link Row - Strictly Host/Owner Only */}
+              {canManageRoom && (
+                <div className={styles.roomInfoRow}>
+                  <span className={styles.roomInfoLabel}>
+                    <IconLink size={14} /> Room Link
+                  </span>
+                  <div className={styles.roomInfoValueWithCopy}>
+                    <span
+                      className={styles.codeSnippet}
+                      style={{ maxWidth: "120px" }}
+                      title={roomUrl}
+                    >
+                      {roomUrl}
+                    </span>
+                    <Tooltip label={copied ? "Copied!" : "Copy Link"} withArrow position="top">
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color={copied ? "green" : "violet"}
+                        onClick={handleCopyLink}
+                        aria-label="Copy Room Link"
+                      >
+                        {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Menu.Divider />
 
             <Menu.Label>Room Options</Menu.Label>
-            <Menu.Item
-              leftSection={
-                copied ? (
-                  <IconCheck size={16} color="var(--color-live)" />
-                ) : (
-                  <IconCopy size={16} />
-                )
-              }
-              onClick={handleCopyLink}
-            >
-              {copied ? "Link Copied!" : "Copy room link"}
-            </Menu.Item>
-            <Menu.Item
-              leftSection={
-                copiedMsg ? (
-                  <IconCheck size={16} color="var(--color-live)" />
-                ) : (
-                  <IconMessageShare size={16} />
-                )
-              }
-              onClick={handleCopyInviteMessage}
-            >
-              {copiedMsg ? "Invite Copied!" : "Copy invite message"}
-            </Menu.Item>
-            {onToggleLock && (
+            {canManageRoom && (
+              <>
+                <Menu.Item
+                  leftSection={
+                    copied ? (
+                      <IconCheck size={16} color="var(--color-live)" />
+                    ) : (
+                      <IconCopy size={16} />
+                    )
+                  }
+                  onClick={handleCopyLink}
+                >
+                  {copied ? "Link Copied!" : "Copy room link"}
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={
+                    copiedMsg ? (
+                      <IconCheck size={16} color="var(--color-live)" />
+                    ) : (
+                      <IconMessageShare size={16} />
+                    )
+                  }
+                  onClick={handleCopyInviteMessage}
+                >
+                  {copiedMsg ? "Invite Copied!" : "Copy invite message"}
+                </Menu.Item>
+              </>
+            )}
+            {canManageRoom && onToggleLock && (
               <Menu.Item
                 disabled={!haveLock || !isReady || lockOp.isPending}
                 leftSection={
@@ -320,7 +338,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               leftSection={<IconSettings size={16} />}
               onClick={onOpenSettings}
             >
-              Room settings
+              {canManageRoom ? "Room settings" : "Preferences"}
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item

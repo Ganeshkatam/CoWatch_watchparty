@@ -16,7 +16,7 @@ export const UserMenu = ({
   userToManage,
   trigger,
   displayName,
-  disabled,
+  disabled = false,
   timestamp,
   isChatMessage,
   isHost,
@@ -27,7 +27,7 @@ export const UserMenu = ({
   trigger: React.ReactNode;
   icon?: string;
   displayName?: string;
-  disabled: boolean;
+  disabled?: boolean;
   timestamp?: string;
   isChatMessage?: boolean;
   isHost?: boolean;
@@ -81,29 +81,33 @@ export const UserMenu = ({
             </>
           )}
 
-          {isChatMessage && (
-            <Menu.Item
-              leftSection={<IconX size={16} />}
-              onClick={async () => {
-                socket.emit("CMD:deleteChatMessages", {
-                  author: userToManage,
-                  timestamp: timestamp,
-                });
-              }}
-            >
-              Delete Message
-            </Menu.Item>
+          {isHost && (
+            <>
+              {isChatMessage && (
+                <Menu.Item
+                  leftSection={<IconX size={16} />}
+                  onClick={async () => {
+                    socket.emit("CMD:deleteChatMessages", {
+                      author: userToManage,
+                      timestamp: timestamp,
+                    });
+                  }}
+                >
+                  Delete Message
+                </Menu.Item>
+              )}
+              <Menu.Item
+                leftSection={<IconTrashFilled size={16} />}
+                onClick={async () => {
+                  socket.emit("CMD:deleteChatMessages", {
+                    author: userToManage,
+                  });
+                }}
+              >
+                Delete User's Messages
+              </Menu.Item>
+            </>
           )}
-          <Menu.Item
-            leftSection={<IconTrashFilled size={16} />}
-            onClick={async () => {
-              socket.emit("CMD:deleteChatMessages", {
-                author: userToManage,
-              });
-            }}
-          >
-            Delete User's Messages
-          </Menu.Item>
           {isHost && !isCurrentTargetHost && userToManage !== clientId && !isChatMessage && (
             <>
               <Menu.Item

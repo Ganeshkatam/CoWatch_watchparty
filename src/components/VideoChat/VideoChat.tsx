@@ -98,6 +98,11 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   private handleOpenInvite = () => {
+    const canInvite = Boolean(
+      this.props.isHost ||
+      (this.props.owner && this.context.user?.id && this.props.owner === this.context.user.id)
+    );
+    if (!canInvite) return;
     if (this.props.onOpenInviteModal) {
       this.props.onOpenInviteModal();
     } else {
@@ -106,6 +111,11 @@ export class VideoChat extends React.Component<VideoChatProps> {
   };
 
   private handleCopyInvite = () => {
+    const canInvite = Boolean(
+      this.props.isHost ||
+      (this.props.owner && this.context.user?.id && this.props.owner === this.context.user.id)
+    );
+    if (!canInvite) return;
     navigator.clipboard.writeText(window.location.href);
     this.setState({ copied: true });
     setTimeout(() => this.setState({ copied: false }), 2000);
@@ -533,6 +543,8 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
     const selfId = getOrCreateClientId();
+    const isRoomOwner = Boolean(owner && this.context.user?.id && owner === this.context.user.id);
+    const canInvite = Boolean(this.props.isHost || isRoomOwner);
 
     return (
       <div className={styles.container}>
@@ -632,28 +644,24 @@ export class VideoChat extends React.Component<VideoChatProps> {
                   {isSelf && <span className={styles.youBadge}>You</span>}
                 </div>
 
-                <UserMenu
-                  displayName={displayName}
-                  disabled={!Boolean(this.props.isHost)}
-                  socket={socket}
-                  userToManage={p.id}
-                  isHost={this.props.isHost}
-                  isCurrentTargetHost={p.id === this.props.currentHostClientId}
-                  trigger={
-                    <button
-                      type="button"
-                      className={styles.menuTrigger}
-                      title="User options"
-                      style={{
-                        visibility: Boolean(this.props.isHost)
-                          ? "visible"
-                          : "hidden",
-                      }}
-                    >
-                      <IconDotsVertical size={15} />
-                    </button>
-                  }
-                />
+                {(this.props.isHost || isSelf) && (
+                  <UserMenu
+                    displayName={displayName}
+                    socket={socket}
+                    userToManage={p.id}
+                    isHost={this.props.isHost}
+                    isCurrentTargetHost={p.id === this.props.currentHostClientId}
+                    trigger={
+                      <button
+                        type="button"
+                        className={styles.menuTrigger}
+                        title="User options"
+                      >
+                        <IconDotsVertical size={15} />
+                      </button>
+                    }
+                  />
+                )}
               </div>
 
               {/* Bottom Bar: Timestamp and Video/Audio Controls */}
@@ -748,37 +756,41 @@ export class VideoChat extends React.Component<VideoChatProps> {
           );
         })}
 
-        <div
-          className={`${styles.inviteCard} ${participants.length === 1 ? styles.inviteCardSlot : ""}`}
-          onClick={this.handleOpenInvite}
-          role="button"
-          tabIndex={0}
-          title="Click to invite friends"
-        >
+        {canInvite && (
           <div
-            className={styles.inviteIconBadge}
-            style={{
-              backgroundColor: "var(--bg-surface)",
-              color: "var(--color-violet)",
-            }}
+            className={`${styles.inviteCard} ${participants.length === 1 ? styles.inviteCardSlot : ""}`}
+            onClick={this.handleOpenInvite}
+            role="button"
+            tabIndex={0}
+            title="Click to invite friends"
           >
-            <IconUserPlus size={18} />
+            <div
+              className={styles.inviteIconBadge}
+              style={{
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--color-violet)",
+              }}
+            >
+              <IconUserPlus size={18} />
+            </div>
+            <div className={styles.inviteMeta}>
+              <span className={styles.inviteTitle}>
+                Invite people
+              </span>
+              <span className={styles.inviteSubtitle}>
+                Share a link to bring friends into the room
+              </span>
+            </div>
+            <IconChevronRight size={16} color="var(--text-muted)" className={styles.inviteChevron} />
           </div>
-          <div className={styles.inviteMeta}>
-            <span className={styles.inviteTitle}>
-              Invite people
-            </span>
-            <span className={styles.inviteSubtitle}>
-              Share a link to bring friends into the room
-            </span>
-          </div>
-          <IconChevronRight size={16} color="var(--text-muted)" className={styles.inviteChevron} />
-        </div>
+        )}
 
-        {this.state.isInviteModalOpen && (
+        {this.state.isInviteModalOpen && canInvite && (
           <InviteModal
             roomId={this.props.roomId || ""}
             passcode={this.props.passcode}
+            isHost={this.props.isHost}
+            isOwner={isRoomOwner}
             closeInviteModal={() => this.setState({ isInviteModalOpen: false })}
           />
         )}

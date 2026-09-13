@@ -1188,6 +1188,8 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         <InviteModal
           roomId={room.roomId}
           passcode={room.currentPasscode || undefined}
+          isHost={true}
+          isOwner={true}
           closeInviteModal={() => actions.setInviteModalOpened(false)}
         />
       )}
@@ -1418,6 +1420,8 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         <InviteModal
           roomId={room.roomId}
           passcode={room.currentPasscode || undefined}
+          isHost={true}
+          isOwner={true}
           closeInviteModal={() => actions.setInviteModalOpened(false)}
         />
       )}

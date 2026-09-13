@@ -28,13 +28,18 @@ interface InviteModalProps {
   roomId?: string;
   passcode?: string;
   closeInviteModal: () => void;
+  isHost?: boolean;
+  isOwner?: boolean;
 }
 
 export const InviteModal: React.FC<InviteModalProps> = ({
   roomId,
   passcode: propPasscode,
   closeInviteModal,
+  isHost,
+  isOwner,
 }) => {
+  const canManageCredentials = Boolean(isHost || isOwner);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [inviteMsgCopied, setInviteMsgCopied] = useState(false);
   const [passcodeCopied, setPasscodeCopied] = useState(false);
@@ -45,6 +50,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const [passcodePrompt, setPasscodePrompt] = useState(false);
   const [targetUsername, setTargetUsername] = useState("");
   const [sendingInvite, setSendingInvite] = useState(false);
+
+  // Non-hosts are strictly forbidden from inviting users
+  if (!canManageCredentials) {
+    return null;
+  }
 
   const handleSendDirectInvite = async () => {
     if (!targetUsername.trim()) return;
@@ -102,13 +112,16 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
   const cleanId = roomIdOrVanity.replace(/^\//, "");
 
-  const resolvedPasscode = (propPasscode || manualPasscode).trim();
+  // Passcode is strictly visible/manageable by host or room owner
+  const resolvedPasscode = canManageCredentials ? (propPasscode || manualPasscode).trim() : "";
 
   const baseUrl = `${window.location.origin}/join/${cleanId}`;
   const fullUrl = baseUrl;
 
-  // Enforce passcode inclusion in every generated invite message
-  const inviteMessage = `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
+  // Non-hosts must never leak passcode in invite messages
+  const inviteMessage = canManageCredentials && resolvedPasscode
+    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -117,7 +130,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const handleCopyInviteMessage = () => {
-    if (!resolvedPasscode) {
+    if (canManageCredentials && !resolvedPasscode) {
       setPasscodePrompt(true);
     }
     navigator.clipboard.writeText(inviteMessage);
@@ -126,7 +139,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const handleCopyPasscode = () => {
-    if (!resolvedPasscode) return;
+    if (!canManageCredentials || !resolvedPasscode) return;
     navigator.clipboard.writeText(resolvedPasscode);
     setPasscodeCopied(true);
     setTimeout(() => setPasscodeCopied(false), 2000);
@@ -138,17 +151,23 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     setTimeout(() => setRoomIdCopied(false), 2000);
   };
 
-  const whatsappText = `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
+  const whatsappText = canManageCredentials && resolvedPasscode
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
 
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
 
-  const telegramText = `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
+  const telegramText = canManageCredentials && resolvedPasscode
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
 
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
     fullUrl
   )}&text=${encodeURIComponent(telegramText)}`;
 
-  const twitterText = `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`;
+  const twitterText = canManageCredentials && resolvedPasscode
+    ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+    : `Join my watch party on CoWatch!\nRoom ID: ${cleanId}`;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     twitterText
   )}&url=${encodeURIComponent(fullUrl)}`;
@@ -169,7 +188,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     navigator
       .share({
         title: "Join my CoWatch Party",
-        text: `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode || "[Passcode Required - Ask Host]"}`,
+        text: canManageCredentials && resolvedPasscode
+          ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
+          : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`,
         url: fullUrl,
       })
       .catch(() => { });
@@ -199,7 +220,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       <div className={styles.container}>
 
 
-        {!propPasscode && (
+        {canManageCredentials && !propPasscode && (
           <PasswordInput
             size="sm"
             label="Room Passcode (Required for Invite)"
@@ -305,66 +326,68 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             <div className={styles.credentialValue}>{cleanId}</div>
           </div>
 
-          {/* Passcode Card */}
-          {resolvedPasscode ? (
-            <div
-              className={styles.credentialCard}
-              onClick={() => {
-                const sel = window.getSelection()?.toString();
-                if (sel && sel.length > 0) return;
-                handleCopyPasscode();
-              }}
-              title="Click to copy, or select Passcode"
-            >
-              <div className={styles.credentialHeader}>
-                <span className={styles.credentialTitle}>
-                  <IconKey size={13} />
-                  Room Passcode
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <ActionIcon
-                    size="xs"
-                    variant="transparent"
-                    color="gray"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPasscode(!showPasscode);
-                    }}
-                    title={showPasscode ? "Hide Passcode" : "Show Passcode"}
-                  >
-                    {showPasscode ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-                  </ActionIcon>
-                  <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
+          {/* Passcode Card - Strictly restricted to host or room owner */}
+          {canManageCredentials && (
+            resolvedPasscode ? (
+              <div
+                className={styles.credentialCard}
+                onClick={() => {
+                  const sel = window.getSelection()?.toString();
+                  if (sel && sel.length > 0) return;
+                  handleCopyPasscode();
+                }}
+                title="Click to copy, or select Passcode"
+              >
+                <div className={styles.credentialHeader}>
+                  <span className={styles.credentialTitle}>
+                    <IconKey size={13} />
+                    Room Passcode
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <ActionIcon
                       size="xs"
                       variant="transparent"
-                      color={passcodeCopied ? "green" : "gray"}
+                      color="gray"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopyPasscode();
+                        setShowPasscode(!showPasscode);
                       }}
+                      title={showPasscode ? "Hide Passcode" : "Show Passcode"}
                     >
-                      {passcodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                      {showPasscode ? <IconEyeOff size={14} /> : <IconEye size={14} />}
                     </ActionIcon>
-                  </Tooltip>
+                    <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"}>
+                      <ActionIcon
+                        size="xs"
+                        variant="transparent"
+                        color={passcodeCopied ? "green" : "gray"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopyPasscode();
+                        }}
+                      >
+                        {passcodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className={styles.credentialValue}>
+                  {showPasscode ? resolvedPasscode : "••••••••"}
                 </div>
               </div>
-              <div className={styles.credentialValue}>
-                {showPasscode ? resolvedPasscode : "••••••••"}
+            ) : (
+              <div className={styles.credentialCard} style={{ cursor: "default", opacity: 0.9 }}>
+                <div className={styles.credentialHeader}>
+                  <span className={styles.credentialTitle}>
+                    <IconKey size={13} />
+                    Room Passcode
+                  </span>
+                </div>
+                <div className={styles.credentialValue} style={{ color: "#fbbf24", fontSize: "12px" }}>
+                  Required (Enter above)
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className={styles.credentialCard} style={{ cursor: "default", opacity: 0.9 }}>
-              <div className={styles.credentialHeader}>
-                <span className={styles.credentialTitle}>
-                  <IconKey size={13} />
-                  Room Passcode
-                </span>
-              </div>
-              <div className={styles.credentialValue} style={{ color: "#fbbf24", fontSize: "12px" }}>
-                Required (Enter above)
-              </div>
-            </div>
+            )
           )}
         </div>
 

@@ -281,6 +281,14 @@ export class Room {
     return false;
   };
 
+  public isHostUid = (uid: string): boolean => {
+    if (!uid) return false;
+    if (this.owner_id && this.owner_id === uid) return true;
+    if (this.currentHostUid && this.currentHostUid === uid) return true;
+    if (this.currentHostClientId && this.clientToUidMap[this.currentHostClientId] === uid) return true;
+    return false;
+  };
+
   public getConnectedParticipantUids = (): string[] => {
     const uids = new Set<string>();
     if (this.owner_id) uids.add(this.owner_id);

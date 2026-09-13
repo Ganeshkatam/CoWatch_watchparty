@@ -696,25 +696,34 @@ const ChatMessage = ({
             fontSize: 14,
           }}
         >
-          <UserMenu
-            displayName={nameMap[id] || name || 'Unknown'}
-            timestamp={timestamp}
-            socket={socket}
-            userToManage={id}
-            isChatMessage
-            isHost={isHost}
-            disabled={!Boolean(isHost)}
-            trigger={
-              <div
-                style={{ cursor: "pointer", fontWeight: 700 }}
-                title={""}
-                className={`${styles.light} ${styles.hoverEffect}`}
-              >
-                {Boolean(system) && "System"}
-                {nameMap[id] || name || 'Unknown'}
-              </div>
-            }
-          />
+          {isHost || id === clientId ? (
+            <UserMenu
+              displayName={nameMap[id] || name || 'Unknown'}
+              timestamp={timestamp}
+              socket={socket}
+              userToManage={id}
+              isChatMessage
+              isHost={isHost}
+              trigger={
+                <div
+                  style={{ cursor: "pointer", fontWeight: 700 }}
+                  title={""}
+                  className={`${styles.light} ${styles.hoverEffect}`}
+                >
+                  {Boolean(system) && "System"}
+                  {nameMap[id] || name || 'Unknown'}
+                </div>
+              }
+            />
+          ) : (
+            <div
+              style={{ fontWeight: 700 }}
+              className={styles.light}
+            >
+              {Boolean(system) && "System"}
+              {nameMap[id] || name || 'Unknown'}
+            </div>
+          )}
           <div className={styles.small + " " + styles.dark}>
             <div title={new Date(timestamp).toLocaleDateString()}>
               {new Date(timestamp).toLocaleTimeString()} {updatedAt ? "· edited" : ""}

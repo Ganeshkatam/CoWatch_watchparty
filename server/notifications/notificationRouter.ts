@@ -270,17 +270,21 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
         return;
       }
 
-      // Authorize caller: must be owner or active participant
-      let isAuthorized = room.owner_id === callerUid;
+      // Authorize caller: must be room owner or active host (non-hosts cannot invite users)
+      let isAuthorized = Boolean(room.owner_id && room.owner_id === callerUid);
       if (!isAuthorized && roomLookup) {
         const liveRoom = roomLookup(cleanRoomId);
-        if (liveRoom && typeof liveRoom.hasParticipantUid === 'function') {
-          isAuthorized = liveRoom.hasParticipantUid(callerUid);
+        if (liveRoom) {
+          if (typeof liveRoom.isHostUid === 'function') {
+            isAuthorized = liveRoom.isHostUid(callerUid);
+          } else if (liveRoom.currentHostUid) {
+            isAuthorized = liveRoom.currentHostUid === callerUid;
+          }
         }
       }
 
       if (!isAuthorized) {
-        res.status(403).json({ error: 'You must be a member or host of this room to send invitations' });
+        res.status(403).json({ error: 'Only the room host or owner can send invitations' });
         return;
       }
 

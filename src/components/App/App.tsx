@@ -3172,7 +3172,8 @@ export class App extends React.Component<AppProps, AppState> {
           setIsChatDisabled={this.setIsChatDisabled}
           owner={this.state.owner}
           setOwner={this.setOwner}
-
+          isHost={this.state.isHost}
+          isOwner={this.isRoomOwner()}
 
           inviteLink={this.state.inviteLink}
           passcode={this.state.passcode}
@@ -3212,6 +3213,8 @@ export class App extends React.Component<AppProps, AppState> {
         <RoomRecoveryOverlay />
         {!this.state.fullScreen && (
           <RoomHeader
+            isHost={this.state.isHost}
+            isOwner={this.isRoomOwner()}
             roomTitle={this.state.roomTitle}
             participantCount={this.state.participants.length}
             currentTab={this.state.currentTab as "people" | "chat"}
