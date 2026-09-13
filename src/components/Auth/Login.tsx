@@ -48,6 +48,9 @@ export const Login = () => {
     } else if (errorParam === "access_denied" && errorDesc) {
       setError(decodeURIComponent(errorDesc.replace(/\+/g, " ")));
       history.replace(location.pathname);
+    } else if (errorDesc || errorParam) {
+      setError(decodeURIComponent((errorDesc || errorParam || "Authentication failed").replace(/\+/g, " ")));
+      history.replace(location.pathname);
     }
   }, [location.search, location.hash, location.pathname, history]);
 
@@ -64,7 +67,7 @@ export const Login = () => {
       
       const params = new URLSearchParams(location.search);
       const redirect = params.get("redirect") || params.get("next") || "/";
-      history.push(redirect);
+      history.push(redirect.startsWith("/") ? redirect : `/${redirect}`);
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message);
@@ -77,6 +80,9 @@ export const Login = () => {
     setError("");
     setGoogleLoading(true);
     try {
+      try {
+        window.sessionStorage?.setItem("cowatch_pending_oauth", "google");
+      } catch (e) { }
       const params = new URLSearchParams(location.search);
       const redirect = params.get("redirect") || params.get("next") || "/";
       const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
@@ -91,6 +97,9 @@ export const Login = () => {
       if (error) throw error;
     } catch (err: any) {
       console.error("Google Auth error:", err);
+      try {
+        window.sessionStorage?.removeItem("cowatch_pending_oauth");
+      } catch (e) { }
       setError(err.message);
       setGoogleLoading(false);
     }

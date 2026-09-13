@@ -183,6 +183,9 @@ export const Signup = () => {
     setError(null);
     setGoogleLoading(true);
     try {
+      try {
+        window.sessionStorage?.setItem("cowatch_pending_oauth", "google");
+      } catch (e) { }
       const params = new URLSearchParams(location.search);
       const redirect = params.get("redirect") || params.get("next") || "/";
       const redirectTarget = redirect.startsWith("/") ? redirect : `/${redirect}`;
@@ -197,6 +200,9 @@ export const Signup = () => {
       if (error) throw error;
     } catch (err: any) {
       console.error("Google Auth error:", err);
+      try {
+        window.sessionStorage?.removeItem("cowatch_pending_oauth");
+      } catch (e) { }
       setError(err.message);
       setGoogleLoading(false);
     }

@@ -24,7 +24,7 @@ import { AuthContext } from "./context/AuthContext";
 import { AppShell } from "./components/Layout/AppShell";
 import { RootErrorBoundary } from "./components/Layout/RootErrorBoundary";
 import { createTheme, MantineProvider, Loader, Center } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
+import { Notifications, notifications } from "@mantine/notifications";
 import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -139,18 +139,27 @@ const Debug = lazy(() => import("./components/Debug/Debug"));
 
 const supabaseUrl = config.VITE_SUPABASE_URL;
 
-// Redirect old-style URLs, but ignore Supabase auth hashes
-if (window.location.hash && window.location.pathname === "/") {
-  if (window.location.hash.startsWith("#error=")) {
+// Redirect old-style URLs or forward OAuth error parameters
+if (typeof window !== "undefined" && window.location.pathname === "/") {
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+  if (hash.startsWith("#error=") || search.includes("error=")) {
     try {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const errorDesc = hashParams.get("error_description") || "";
+      if (window.sessionStorage) {
+        window.sessionStorage.removeItem("cowatch_pending_oauth");
+      }
+      const hashParams = new URLSearchParams(hash.startsWith("#") ? hash.substring(1) : "");
+      const searchParams = new URLSearchParams(search);
+      const errorParam = hashParams.get("error") || searchParams.get("error") || "oauth_error";
+      const errorDesc = hashParams.get("error_description") || searchParams.get("error_description") || "";
       if (errorDesc.includes("Email provider is not supported") || errorDesc.includes("Database error saving new user")) {
         window.location.href = "/login?error=unsupported_email";
+      } else {
+        window.location.href = `/login?error=${encodeURIComponent(errorParam)}&error_description=${encodeURIComponent(errorDesc)}`;
       }
     } catch (e) { }
-  } else if (!window.location.hash.startsWith("#access_token=")) {
-    const hashRoomId = window.location.hash.substring(1).replace(/^\//, '');
+  } else if (hash && !hash.startsWith("#access_token=")) {
+    const hashRoomId = hash.substring(1).replace(/^\//, "");
     window.location.href = "/join/" + hashRoomId;
   }
 }
@@ -431,6 +440,23 @@ class CoWatch extends React.Component {
               capabilities: metadata?.capabilities || DEFAULT_STATE.capabilities,
               userAppearance: activeAppearance,
             });
+
+            // Notify user upon returning from an external OAuth sign-in flow
+            try {
+              const pendingOAuth = typeof window !== "undefined" ? window.sessionStorage?.getItem("cowatch_pending_oauth") : null;
+              if (pendingOAuth) {
+                window.sessionStorage?.removeItem("cowatch_pending_oauth");
+                const providerName = pendingOAuth === "google" ? "Google" : "OAuth";
+                setTimeout(() => {
+                  notifications.show({
+                    title: "Welcome to CoWatch",
+                    message: `Signed in successfully with ${providerName}.`,
+                    color: "teal",
+                    autoClose: 4500,
+                  });
+                }, 250);
+              }
+            } catch (e) { }
           } else {
             try {
               window.localStorage.removeItem("cowatch-cached-profile");
