@@ -16,6 +16,8 @@ if (!supabaseUrl || !supabaseSecretKey) {
 // but for standard getUser(jwt), it doesn't matter since it sends the JWT directly.
 // Actually, to validate a JWT securely, we use supabase.auth.getUser(jwt).
 
+import { postgres } from "./postgres.ts";
+
 export const supabaseAdmin = supabaseUrl && supabaseSecretKey 
   ? createClient(supabaseUrl, supabaseSecretKey) 
   : null as any;
@@ -35,8 +37,30 @@ export async function validateUserToken(uid: string, token: string, requireConfi
       return undefined;
     }
 
-    if (requireConfirmation && user.email_confirmed_at == null) {
-      return "EMAIL_NOT_VERIFIED";
+    if (requireConfirmation) {
+      // Standard email confirmation check
+      if (user.email_confirmed_at == null) {
+        return "EMAIL_NOT_VERIFIED";
+      }
+
+      // Provider-aware Google OAuth confirmation check
+      const appMetadata = user.app_metadata || {};
+      const identities = user.identities || [];
+      const isGoogleUser =
+        appMetadata.provider === "google" ||
+        (Array.isArray(appMetadata.providers) && appMetadata.providers.includes("google")) ||
+        identities.some((id: any) => id.provider === "google");
+
+      if (isGoogleUser && postgres) {
+        const verificationCheck = await postgres.query(
+          "SELECT confirmed_at FROM public.google_signup_verifications WHERE user_id = $1 LIMIT 1",
+          [user.id]
+        );
+        // If a verification row exists and confirmed_at is NULL, account is unconfirmed
+        if (verificationCheck.rows.length > 0 && verificationCheck.rows[0].confirmed_at == null) {
+          return "EMAIL_NOT_VERIFIED";
+        }
+      }
     }
 
     // Return a mocked decoded token matching the previous Auth interface
@@ -46,8 +70,6 @@ export async function validateUserToken(uid: string, token: string, requireConfi
     return undefined;
   }
 }
-
-import { postgres } from "./postgres.ts";
 
 // Administrative operations (bypass RLS)
 export async function getUserByEmail(email: string) {

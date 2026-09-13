@@ -185,6 +185,7 @@ export const Signup = () => {
     try {
       try {
         window.sessionStorage?.setItem("cowatch_pending_oauth", "google");
+        window.sessionStorage?.setItem("cowatch_pending_oauth_signup", "google");
       } catch (e) { }
       const params = new URLSearchParams(location.search);
       const redirect = params.get("redirect") || params.get("next") || "/";
@@ -202,6 +203,7 @@ export const Signup = () => {
       console.error("Google Auth error:", err);
       try {
         window.sessionStorage?.removeItem("cowatch_pending_oauth");
+        window.sessionStorage?.removeItem("cowatch_pending_oauth_signup");
       } catch (e) { }
       setError(err.message);
       setGoogleLoading(false);

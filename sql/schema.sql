@@ -315,6 +315,28 @@ CREATE TABLE IF NOT EXISTS public.active_user (
 
 COMMENT ON TABLE public.active_user IS 'Tracks live socket activity timestamps for users.';
 
+-- 2.14 Google Signup Verifications Table (Mandatory Verification Authority)
+CREATE TABLE IF NOT EXISTS public.google_signup_verifications (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  consumed_at timestamp with time zone,
+  confirmed_at timestamp with time zone,
+  last_sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  send_count integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.google_signup_verifications IS 'Server-only authoritative verification records and token hashes for Google OAuth signups.';
+COMMENT ON COLUMN public.google_signup_verifications.user_id IS 'Unique user ID linked to auth.users.';
+COMMENT ON COLUMN public.google_signup_verifications.token_hash IS 'SHA-256 hash of the cryptographically random confirmation token.';
+COMMENT ON COLUMN public.google_signup_verifications.expires_at IS 'Timestamp when the token expires (24h).';
+COMMENT ON COLUMN public.google_signup_verifications.consumed_at IS 'Timestamp when the token was atomically consumed.';
+COMMENT ON COLUMN public.google_signup_verifications.confirmed_at IS 'Timestamp when the Google account was verified.';
+COMMENT ON COLUMN public.google_signup_verifications.last_sent_at IS 'Timestamp of the most recent email dispatch for cooldown enforcement.';
+COMMENT ON COLUMN public.google_signup_verifications.send_count IS 'Number of confirmation emails dispatched to this user.';
+COMMENT ON COLUMN public.google_signup_verifications.created_at IS 'Timestamp when the verification requirement was initialized.';
+
 -- ----------------------------------------------------------------------------
 -- 3. INDEXES
 -- ----------------------------------------------------------------------------
@@ -360,6 +382,9 @@ CREATE INDEX IF NOT EXISTS vbrowser_reservations_expiry_idx ON public.vbrowser_r
 -- Room Quota Events
 CREATE INDEX IF NOT EXISTS idx_room_quota_events_account ON public.room_quota_events USING btree (account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_room_quota_events_room_id ON public.room_quota_events USING btree (room_id);
+
+-- Google Signup Verifications
+CREATE INDEX IF NOT EXISTS idx_google_signup_verifications_token_hash ON public.google_signup_verifications USING btree (token_hash);
 
 -- ----------------------------------------------------------------------------
 -- 4. FUNCTIONS & PROCEDURES
@@ -1757,6 +1782,7 @@ CREATE POLICY "vbrowser_pools_deny_client_access" ON public.vbrowser_pools FOR A
 CREATE POLICY "vbrowser_providers_deny_client_access" ON public.vbrowser_providers FOR ALL TO public USING (false) WITH CHECK (false);
 CREATE POLICY "vbrowser_reservations_deny_client_access" ON public.vbrowser_reservations FOR ALL TO public USING (false) WITH CHECK (false);
 CREATE POLICY "webhook_events_deny_client_access" ON public.webhook_events FOR ALL TO public USING (false) WITH CHECK (false);
+CREATE POLICY "google_signup_verifications_deny_client_access" ON public.google_signup_verifications FOR ALL TO public USING (false) WITH CHECK (false);
 
 
 -- ----------------------------------------------------------------------------
@@ -1844,6 +1870,8 @@ GRANT ALL ON TABLE public.vbrowser TO service_role;
 GRANT ALL ON TABLE public.vbrowser_reservations TO service_role;
 GRANT ALL ON TABLE public.profiles TO service_role;
 GRANT ALL ON TABLE public.active_user TO service_role;
+REVOKE ALL ON TABLE public.google_signup_verifications FROM anon, authenticated, PUBLIC;
+GRANT ALL ON TABLE public.google_signup_verifications TO service_role;
 
 -- Revoke execute on authoritative procedures from public/anon/authenticated
 REVOKE EXECUTE ON FUNCTION public.create_room_authoritative FROM PUBLIC, anon, authenticated;

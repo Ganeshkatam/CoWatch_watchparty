@@ -52,6 +52,7 @@ import { createNotificationRouter } from "./notifications/notificationRouter.ts"
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
+import { getDeliveryProfile } from "./notifications/deliveryProfiles.ts";
 import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
 import {
   type WebhookVerifier,
@@ -2560,6 +2561,188 @@ app.delete("/deleteRoom", async (req, res) => {
   }
 });
 
+// Google OAuth Signup Confirmation Dispatch Endpoint
+app.post("/api/auth/send-google-confirmation", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized: Missing or invalid authorization token" });
+      return;
+    }
+    const token = authHeader.split(" ")[1];
+    if (!supabaseAdmin) {
+      res.status(503).json({ error: "Authentication service unavailable" });
+      return;
+    }
+
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !user || !user.email) {
+      res.status(401).json({ error: "Unauthorized: Invalid session" });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database service unavailable" });
+      return;
+    }
+
+    // Provider check: ensure user is indeed an unconfirmed Google user
+    const appMetadata = user.app_metadata || {};
+    const identities = user.identities || [];
+    const isGoogleUser =
+      appMetadata.provider === "google" ||
+      (Array.isArray(appMetadata.providers) && appMetadata.providers.includes("google")) ||
+      identities.some((id: any) => id.provider === "google");
+
+    if (!isGoogleUser) {
+      res.status(400).json({ error: "Account does not require Google signup confirmation" });
+      return;
+    }
+
+    // Inspect current verification status
+    const existingRec = await postgres.query(
+      "SELECT confirmed_at, last_sent_at, send_count FROM public.google_signup_verifications WHERE user_id = $1",
+      [user.id]
+    );
+
+    if (existingRec.rows.length > 0 && existingRec.rows[0].confirmed_at != null) {
+      res.status(400).json({ error: "Google account is already confirmed" });
+      return;
+    }
+
+    // Server-enforced rate limiting & cooldown
+    if (existingRec.rows.length > 0) {
+      const row = existingRec.rows[0];
+      const nowMs = Date.now();
+      const lastSentMs = new Date(row.last_sent_at).getTime();
+      const elapsedSeconds = Math.floor((nowMs - lastSentMs) / 1000);
+
+      if (elapsedSeconds < 60) {
+        res.status(429).json({
+          error: "Cooldown active",
+          retryAfterSeconds: 60 - elapsedSeconds,
+        });
+        return;
+      }
+
+      if (row.send_count >= 5) {
+        res.status(429).json({
+          error: "Maximum daily confirmation emails sent. Please try again tomorrow.",
+        });
+        return;
+      }
+    }
+
+    // Cryptographically secure 32-byte token
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    // Atomic upsert into public.google_signup_verifications
+    await postgres.query(
+      `INSERT INTO public.google_signup_verifications (
+        user_id, token_hash, expires_at, last_sent_at, send_count, created_at
+      )
+      VALUES ($1, $2, $3, clock_timestamp(), 1, clock_timestamp())
+      ON CONFLICT (user_id) DO UPDATE SET
+        token_hash = EXCLUDED.token_hash,
+        expires_at = EXCLUDED.expires_at,
+        last_sent_at = clock_timestamp(),
+        send_count = public.google_signup_verifications.send_count + 1`,
+      [user.id, tokenHash, expiresAt.toISOString()]
+    );
+
+    // Build confirmation URL
+    const clientOrigin = req.get("origin") || req.get("referrer") || config.APP_URL || "http://localhost:3000";
+    const originUrl = new URL(clientOrigin).origin;
+    const confirmationUrl = `${originUrl}/confirm-google-signup?token=${rawToken}`;
+
+    // Send authentication confirmation email using Supabase Auth
+    const { error: resendError } = await supabaseAdmin.auth.resend({
+      type: "signup",
+      email: user.email,
+      options: {
+        emailRedirectTo: `${originUrl}/confirm-google-signup?token=${rawToken}`,
+      },
+    });
+
+    if (resendError) {
+      console.warn("Supabase Auth resend warning, falling back to transactional email dispatcher:", resendError);
+      // Fallback to transactional security email provider if Supabase Auth resend reports an error
+      const securityProfile = getDeliveryProfile("transactional_security");
+      const provider = EmailProviderRegistry.getProviderForProfile(securityProfile.id);
+      const fromEmail = securityProfile.fromName
+        ? `"${securityProfile.fromName}" <${securityProfile.fromAddress}>`
+        : securityProfile.fromAddress;
+
+      await provider.send({
+        to: user.email,
+        from: fromEmail,
+        replyTo: securityProfile.replyTo,
+        subject: "Confirm your Google signup for CoWatch",
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #6366f1;">Welcome to CoWatch</h2>
+            <p>Thank you for signing up with Google. To complete your registration and activate your account, please confirm your email address by clicking the link below:</p>
+            <div style="margin: 32px 0;">
+              <a href="${confirmationUrl}" style="background-color: #7950f2; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
+                Confirm Email Address
+              </a>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.</p>
+          </div>
+        `,
+        text: `Welcome to CoWatch!\n\nPlease confirm your email address by visiting this link:\n${confirmationUrl}\n\nThis link will expire in 24 hours.`,
+        idempotencyKey: `google-signup-confirm:${user.id}:${Date.now()}`,
+      });
+    }
+
+    res.json({ success: true, message: "Confirmation email sent." });
+  } catch (error: any) {
+    console.error("Error in /api/auth/send-google-confirmation:", error);
+    res.status(500).json({ error: "Failed to dispatch confirmation email" });
+  }
+});
+
+// Single-purpose confirmation consumption endpoint (POST only, atomic)
+app.post("/api/auth/confirm-google-signup", async (req, res) => {
+  try {
+    const rawToken = req.body?.token;
+    if (!rawToken || typeof rawToken !== "string" || rawToken.length < 32) {
+      res.status(400).json({ error: "Invalid confirmation token" });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: "Database service unavailable" });
+      return;
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+    // Atomic consumption query: guarantees single-use, non-replayed, and unexpired
+    const updateResult = await postgres.query(
+      `UPDATE public.google_signup_verifications
+       SET consumed_at = clock_timestamp(),
+           confirmed_at = clock_timestamp()
+       WHERE token_hash = $1
+         AND consumed_at IS NULL
+         AND expires_at > clock_timestamp()
+       RETURNING user_id`,
+      [tokenHash]
+    );
+
+    if (updateResult.rows.length === 0) {
+      res.status(400).json({ error: "Token is invalid, already used, or expired." });
+      return;
+    }
+
+    res.json({ success: true, message: "Google signup verified successfully." });
+  } catch (error: any) {
+    console.error("Error in /api/auth/confirm-google-signup:", error);
+    res.status(500).json({ error: "Failed to confirm Google signup" });
+  }
+});
 
 app.get("/generateName", async (req, res) => {
   res.send(makeUserName());

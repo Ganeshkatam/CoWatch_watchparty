@@ -49,6 +49,7 @@ const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ defa
 const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
 const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
+const ConfirmGoogleSignup = lazy(() => import("./components/Auth/ConfirmGoogleSignup").then((m) => ({ default: m.ConfirmGoogleSignup })));
 const Join = lazy(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
 const PostRoom = lazy(() => import("./components/PostRoom/PostRoom").then((m) => ({ default: m.PostRoom })));
 const MediaPreflight = lazy(() => import("./components/Preflight/MediaPreflight").then((m) => ({ default: m.MediaPreflight })));
@@ -168,6 +169,8 @@ const ThemeConsumer = ({ children }: { children: (resolvedColorScheme: "light" |
   const { resolvedColorScheme } = useAppearance();
   return <>{children(resolvedColorScheme)}</>;
 };
+
+let isDispatchingGoogleConfirmation = false;
 
 const cachedUser = getCachedSupabaseUser();
 let cachedProfileData: { displayName?: string; avatarUrl?: string | null; pref_appearance_mode?: AppearanceMode } = {};
@@ -443,8 +446,64 @@ class CoWatch extends React.Component {
 
             // Notify user upon returning from an external OAuth sign-in flow
             try {
+              const pendingOAuthSignup = typeof window !== "undefined" ? window.sessionStorage?.getItem("cowatch_pending_oauth_signup") : null;
               const pendingOAuth = typeof window !== "undefined" ? window.sessionStorage?.getItem("cowatch_pending_oauth") : null;
-              if (pendingOAuth) {
+
+              if (pendingOAuthSignup === "google" && user && token) {
+                // Consume immediately to enforce single-flight
+                window.sessionStorage?.removeItem("cowatch_pending_oauth_signup");
+                window.sessionStorage?.removeItem("cowatch_pending_oauth");
+
+                if (!isDispatchingGoogleConfirmation) {
+                  isDispatchingGoogleConfirmation = true;
+                  fetch(`${serverPath}/api/auth/send-google-confirmation`, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  })
+                    .then(async (res) => {
+                      const data = await res.json().catch(() => ({}));
+                      if (res.ok) {
+                        notifications.show({
+                          title: "Confirmation link sent",
+                          message: "We sent a confirmation link to your email. Please confirm to activate your account.",
+                          color: "violet",
+                          autoClose: 8000,
+                        });
+                        // Redirect to /verify-email if on home or auth route
+                        if (window.location.pathname === "/" || window.location.pathname.startsWith("/login") || window.location.pathname.startsWith("/signup")) {
+                          window.location.href = "/verify-email";
+                        }
+                      } else {
+                        notifications.show({
+                          title: "Verification email notice",
+                          message: data.error || "Please verify your email from the verification screen.",
+                          color: "yellow",
+                          autoClose: 6000,
+                        });
+                        if (window.location.pathname === "/" || window.location.pathname.startsWith("/login") || window.location.pathname.startsWith("/signup")) {
+                          window.location.href = "/verify-email";
+                        }
+                      }
+                    })
+                    .catch((err) => {
+                      console.warn("Failed to trigger initial Google confirmation email:", err);
+                      notifications.show({
+                        title: "Email verification required",
+                        message: "We could not automatically send the email. Please use the resend button on the verification page.",
+                        color: "red",
+                        autoClose: 8000,
+                      });
+                      if (window.location.pathname === "/" || window.location.pathname.startsWith("/login") || window.location.pathname.startsWith("/signup")) {
+                        window.location.href = "/verify-email";
+                      }
+                    })
+                    .finally(() => {
+                      isDispatchingGoogleConfirmation = false;
+                    });
+                }
+              } else if (pendingOAuth) {
                 window.sessionStorage?.removeItem("cowatch_pending_oauth");
                 const providerName = pendingOAuth === "google" ? "Google" : "OAuth";
                 setTimeout(() => {
@@ -587,6 +646,7 @@ class CoWatch extends React.Component {
                               </RequireGuest>
                             </Route>
                             <Route path="/verify-email" exact component={VerifyEmail} />
+                            <Route path="/confirm-google-signup" exact component={ConfirmGoogleSignup} />
                             <Route
                               path={["/join", "/join/:roomId"]}
                               exact
