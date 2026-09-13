@@ -25,6 +25,7 @@ import {
   getNotFoundUrl,
 } from '../src/utils/routeParams.js';
 import { Room, type AuthorizeActionParams, type RoomAction } from './room.js';
+import { authenticateOperator } from './utils/operatorAuth.js';
 import type { Socket } from 'socket.io';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -972,6 +973,117 @@ async function runTests() {
   assert(testRoom.currentHostUid === snapshotHost, 'transferHost: Zero mutation on denial violated: host modified');
 
   console.log('✓ 8.6 Dynamic Zero-Mutation on Denial Verified: 0 DB mutations, 0 room state mutations, 0 broadcasts on denial');
+
+  // --- 8.7: Centralized Operator Authorization & Behavioral Verification ---
+  console.log('\n--- Section 8.7: Centralized Operator Authorization & Behavioral Verification ---');
+
+  // Behavioral Test 8.7A: Client-writable user_metadata with is_admin: true MUST BE REJECTED
+  const mockAttackerSupabase = {
+    auth: {
+      getUser: async (token: string) => ({
+        data: {
+          user: {
+            id: 'attacker-uid',
+            app_metadata: {},
+            user_metadata: { is_admin: true, role: 'admin' },
+          },
+        },
+        error: null,
+      }),
+    },
+  };
+
+  const attackerReq = {
+    headers: { authorization: 'Bearer spoofed-token' },
+    query: {},
+  };
+  const attackerResult = await authenticateOperator(attackerReq as any, mockAttackerSupabase);
+  assert(
+    attackerResult.authorized === false,
+    '[Firewall 8.7A Failure] Attacker with client-writable user_metadata.is_admin was authorized as operator!'
+  );
+
+  // Behavioral Test 8.7B: Server-managed app_metadata with role: "admin" MUST BE ACCEPTED
+  const mockAdminSupabase = {
+    auth: {
+      getUser: async (token: string) => ({
+        data: {
+          user: {
+            id: 'legit-admin-uid',
+            app_metadata: { role: 'admin' },
+            user_metadata: {},
+          },
+        },
+        error: null,
+      }),
+    },
+  };
+
+  const adminReq = {
+    headers: { authorization: 'Bearer admin-token' },
+    query: {},
+  };
+  const adminResult = await authenticateOperator(adminReq as any, mockAdminSupabase);
+  assert(
+    adminResult.authorized === true && adminResult.operatorId === 'legit-admin-uid',
+    '[Firewall 8.7B Failure] Legit admin with app_metadata.role: "admin" was rejected!'
+  );
+
+  // Behavioral Test 8.7C: Server-managed app_metadata with is_admin: true MUST BE ACCEPTED
+  const mockAdmin2Supabase = {
+    auth: {
+      getUser: async (token: string) => ({
+        data: {
+          user: {
+            id: 'legit-admin-2-uid',
+            app_metadata: { is_admin: true },
+            user_metadata: {},
+          },
+        },
+        error: null,
+      }),
+    },
+  };
+  const admin2Result = await authenticateOperator(adminReq as any, mockAdmin2Supabase);
+  assert(
+    admin2Result.authorized === true && admin2Result.operatorId === 'legit-admin-2-uid',
+    '[Firewall 8.7C Failure] Legit admin with app_metadata.is_admin: true was rejected!'
+  );
+
+  // Behavioral Test 8.7D: Unauthenticated requests MUST BE REJECTED
+  const emptyReq = { headers: {}, query: {} };
+  const emptyResult = await authenticateOperator(emptyReq as any, mockAttackerSupabase);
+  assert(
+    emptyResult.authorized === false,
+    '[Firewall 8.7D Failure] Unauthenticated request without token or key was authorized!'
+  );
+
+  // Static Firewall 8.7E: Every /api/admin/* route must invoke authenticateOperator
+  const adminRouteMatches = [...serverSource.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*["'](\/api\/admin\/[^"']+)["']([\s\S]*?)(?=\n\s*app\.|\n\s*router\.|\n\s*\/\/|\Z)/g)];
+  assert(adminRouteMatches.length >= 3, `Expected at least 3 /api/admin routes, found ${adminRouteMatches.length}`);
+
+  for (const match of adminRouteMatches) {
+    const routePath = match[1];
+    const routeBody = match[2];
+    assert(
+      routeBody.includes('authenticateOperator'),
+      `[Firewall 8.7E Failure] Admin route ${routePath} does not invoke centralized authenticateOperator!`
+    );
+  }
+
+  // Static Firewall 8.7F: Operational metrics and stats routes must also invoke centralized authenticateOperator
+  const operationalRoutes = ['/stats', '/stats/redis', '/timeSeries'];
+  for (const opRoute of operationalRoutes) {
+    const regex = new RegExp(`app\\.(?:get|post|put|patch|delete)\\(\\s*["']${opRoute}["']([\\s\\S]*?)(?=\\n\\s*app\\.|\\n\\s*router\\.|\\n\\s*\\/\\/|\\Z)`);
+    const match = serverSource.match(regex);
+    assert(match, `[Firewall 8.7F Failure] Operational route ${opRoute} not found in server.ts`);
+    assert(
+      match[1].includes('authenticateOperator'),
+      `[Firewall 8.7F Failure] Operational route ${opRoute} does not invoke centralized authenticateOperator!`
+    );
+  }
+
+  console.log(`✓ 8.7 Centralized Operator Authorization Verified: Behavioral rejection of user_metadata and static gating across all ${adminRouteMatches.length} /api/admin routes, plus ${operationalRoutes.length} operational routes`);
   console.log('✓ Mechanical Authorization Completeness Invariant certified: All privileged mutations permanently gated against regression');
 
   console.log('\n=================================================================');

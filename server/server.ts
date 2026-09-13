@@ -43,6 +43,7 @@ import {
 } from "./utils/abuseReportRateLimit.ts";
 import { checkDurableAbuseReportRateLimit } from "./utils/durableRateLimit.ts";
 import { feedbackTelemetry } from "./utils/feedbackTelemetry.ts";
+import { authenticateOperator } from "./utils/operatorAuth.ts";
 import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
@@ -477,16 +478,18 @@ app.get("/searchSubtitles", async (req, res) => {
 });
 
 app.get("/stats", async (req, res) => {
-  if (req.query.key && req.query.key === config.STATS_KEY) {
-    const stats = await getStats();
-    res.json(stats);
-  } else {
+  const auth = await authenticateOperator(req);
+  if (!auth.authorized) {
     res.status(403).json({ error: "Access Denied" });
+    return;
   }
+  const stats = await getStats();
+  res.json(stats);
 });
 
-app.get("/stats/redis", (req, res) => {
-  if (config.STATS_KEY && req.headers["x-stats-key"] !== config.STATS_KEY && req.query.key !== config.STATS_KEY) {
+app.get("/stats/redis", async (req, res) => {
+  const auth = await authenticateOperator(req);
+  if (!auth.authorized) {
     res.status(403).json({ error: "Access Denied" });
     return;
   }
@@ -917,31 +920,6 @@ app.post("/api/feedback", async (req, res) => {
 // FEEDBACK-003: Internal Operations, Review Boundary & Signal Aggregation
 // ============================================================================
 
-async function authenticateOperator(req: any): Promise<{ authorized: boolean; operatorId?: string }> {
-  const operatorKey = req.headers["x-operator-key"] || req.headers["x-stats-key"] || req.query.key;
-  if (config.STATS_KEY && operatorKey === config.STATS_KEY) {
-    return { authorized: true, operatorId: "system-operator" };
-  }
-
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.split(" ")[1];
-    try {
-      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-      if (!error && user) {
-        const isAdmin = user.app_metadata?.role === "admin" || user.app_metadata?.is_admin === true;
-        if (isAdmin) {
-          return { authorized: true, operatorId: user.id };
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return { authorized: false };
-}
-
 // 1. Operational List Query (Paginated, Filtered, Operator-Only)
 app.get("/api/admin/feedback", async (req, res) => {
   try {
@@ -1237,13 +1215,14 @@ app.get("/health/:metric", async (req, res) => {
 });
 
 app.get("/timeSeries", async (req, res) => {
-  if (req.query.key && req.query.key === config.STATS_KEY && redis) {
-    const timeSeriesData = await redis.lrange("timeSeries", 0, -1);
-    const timeSeries = timeSeriesData.map((entry) => JSON.parse(entry));
-    res.json(timeSeries);
-  } else {
+  const auth = await authenticateOperator(req);
+  if (!auth.authorized || !redis) {
     res.status(403).json({ error: "Access Denied" });
+    return;
   }
+  const timeSeriesData = await redis.lrange("timeSeries", 0, -1);
+  const timeSeries = timeSeriesData.map((entry) => JSON.parse(entry));
+  res.json(timeSeries);
 });
 
 app.get("/youtube", async (req, res) => {
