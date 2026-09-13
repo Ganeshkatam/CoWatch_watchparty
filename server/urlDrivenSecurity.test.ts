@@ -26,6 +26,7 @@ import {
 } from '../src/utils/routeParams.js';
 import { Room, type AuthorizeActionParams, type RoomAction } from './room.js';
 import { authenticateOperator } from './utils/operatorAuth.js';
+import config from './config.js';
 import type { Socket } from 'socket.io';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -1084,6 +1085,98 @@ async function runTests() {
   }
 
   console.log(`✓ 8.7 Centralized Operator Authorization Verified: Behavioral rejection of user_metadata and static gating across all ${adminRouteMatches.length} /api/admin routes, plus ${operationalRoutes.length} operational routes`);
+
+  // --- Section 8.8: ARCH-008 Header-Only Operator Credentials & Secret-in-URL Firewall ---
+  console.log('\n--- Section 8.8: ARCH-008 Header-Only Operator Credentials & Secret-in-URL Firewall ---');
+
+  const validStatsKey = config.STATS_KEY || 'test-stats-key-xyz';
+  const originalStatsKey = config.STATS_KEY;
+  (config as any).STATS_KEY = validStatsKey;
+
+  try {
+    // 8.8A Negative Behavioral Test: Query-string ?key=... MUST BE REJECTED with authorized: false
+    const queryKeyReq = {
+      headers: {},
+      query: { key: validStatsKey },
+    };
+    const queryKeyResult = await authenticateOperator(queryKeyReq as any);
+    assert(
+      queryKeyResult.authorized === false,
+      '[Firewall 8.8A Failure] Operator key supplied via URL query parameter was accepted! ARCH-008 requires header-only credentials.'
+    );
+
+    // 8.8B Positive Behavioral Test: x-operator-key header MUST BE ACCEPTED
+    const headerOperatorKeyReq = {
+      headers: { 'x-operator-key': validStatsKey },
+      query: {},
+    };
+    const headerOperatorResult = await authenticateOperator(headerOperatorKeyReq as any);
+    assert(
+      headerOperatorResult.authorized === true && headerOperatorResult.operatorId === 'system-operator',
+      '[Firewall 8.8B Failure] Valid operator key supplied via x-operator-key header was rejected!'
+    );
+
+    // 8.8C Positive Behavioral Test: x-stats-key header MUST BE ACCEPTED
+    const headerStatsKeyReq = {
+      headers: { 'x-stats-key': validStatsKey },
+      query: {},
+    };
+    const headerStatsResult = await authenticateOperator(headerStatsKeyReq as any);
+    assert(
+      headerStatsResult.authorized === true && headerStatsResult.operatorId === 'system-operator',
+      '[Firewall 8.8C Failure] Valid operator key supplied via x-stats-key header was rejected!'
+    );
+
+    // 8.8D Static Firewall: server/utils/operatorAuth.ts must NOT reference req.query
+    const operatorAuthSource = fs.readFileSync(path.join(projectRoot, 'server/utils/operatorAuth.ts'), 'utf-8');
+    assert(
+      !operatorAuthSource.includes('req.query'),
+      '[Firewall 8.8D Failure] server/utils/operatorAuth.ts references req.query! Operator authorization must be strictly header-based.'
+    );
+    assert(
+      !operatorAuthSource.includes('query.key'),
+      '[Firewall 8.8D Failure] server/utils/operatorAuth.ts references query.key!'
+    );
+
+    // 8.8E Static Firewall: src/components/Debug/Debug.tsx must NOT construct URLs with window.location.search for /stats or /timeSeries
+    const debugSource = fs.readFileSync(path.join(projectRoot, 'src/components/Debug/Debug.tsx'), 'utf-8');
+    assert(
+      !debugSource.includes('/timeSeries${window.location.search}'),
+      '[Firewall 8.8E Failure] Debug.tsx appends window.location.search to /timeSeries URL!'
+    );
+    assert(
+      !debugSource.includes('/stats${window.location.search}'),
+      '[Firewall 8.8E Failure] Debug.tsx appends window.location.search to /stats URL!'
+    );
+    assert(
+      debugSource.includes('x-stats-key') && debugSource.includes('x-operator-key'),
+      '[Firewall 8.8E Failure] Debug.tsx does not transmit x-stats-key / x-operator-key headers!'
+    );
+    assert(
+      debugSource.includes('window.history.replaceState'),
+      '[Firewall 8.8E Failure] Debug.tsx does not sanitize transient query secrets from browser history via replaceState!'
+    );
+
+    // 8.8F Production Code Invariant: No production operator or administrative endpoint derives authority from req.query.key
+    assert(
+      !serverSource.includes('req.query.key'),
+      '[Firewall 8.8F Failure] server.ts references req.query.key! All operator endpoints must use header-based authenticateOperator.'
+    );
+    assert(
+      !serverSource.includes('req.query?.key'),
+      '[Firewall 8.8F Failure] server.ts references req.query?.key!'
+    );
+
+    console.log('✓ 8.8 ARCH-008 Header-Only Operator Credentials & Secret-in-URL Firewall Verified:');
+    console.log('  - Query parameter ?key=... strictly rejected');
+    console.log('  - Header credentials (x-operator-key, x-stats-key) strictly verified');
+    console.log('  - operatorAuth.ts contains 0 references to req.query');
+    console.log('  - Debug.tsx verified free of query parameters, with header transmission and URL scrubbing');
+    console.log('  - server.ts verified free of req.query.key');
+  } finally {
+    (config as any).STATS_KEY = originalStatsKey;
+  }
+
   console.log('✓ Mechanical Authorization Completeness Invariant certified: All privileged mutations permanently gated against regression');
 
   console.log('\n=================================================================');

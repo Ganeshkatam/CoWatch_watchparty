@@ -3,11 +3,12 @@
  *
  * INVARIANTS:
  * 1. Derives operator identity and admin authority strictly from server-managed claims:
- *    - Valid STATS_KEY operator header
+ *    - Valid STATS_KEY passed exclusively via HTTP headers (x-operator-key, x-stats-key)
  *    - Supabase verified JWT with server-controlled app_metadata.role === 'admin'
  *    - Supabase verified JWT with server-controlled app_metadata.is_admin === true
- * 2. NEVER trusts client-writable claims (such as user_metadata).
- * 3. All administrative REST routes (/api/admin/*) must flow through this choke-point.
+ * 2. NEVER derives operator credentials from URL query parameters (?key=...).
+ * 3. NEVER trusts client-writable claims (such as user_metadata).
+ * 4. All administrative REST routes (/api/admin/*) and operational metrics endpoints must flow through this choke-point.
  */
 
 import type { Request } from 'express';
@@ -20,13 +21,14 @@ export interface OperatorAuthResult {
 }
 
 export async function authenticateOperator(
-  req: Request | { headers?: Record<string, any>; query?: Record<string, any> },
+  req: Request | { headers?: Record<string, any> },
   customSupabaseClient?: any
 ): Promise<OperatorAuthResult> {
+  // Enforce: Operator keys are accepted EXCLUSIVELY via HTTP headers.
+  // Query parameters (?key=...) are strictly forbidden to prevent credential leakage in logs, history, and referrers.
   const operatorKey =
     req.headers?.["x-operator-key"] ||
-    req.headers?.["x-stats-key"] ||
-    (req.query as any)?.key;
+    req.headers?.["x-stats-key"];
 
   if (config.STATS_KEY && operatorKey === config.STATS_KEY) {
     return { authorized: true, operatorId: "system-operator" };
