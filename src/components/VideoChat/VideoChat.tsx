@@ -93,7 +93,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
   socket = this.props.socket;
 
   state = {
-    copied: false,
     isInviteModalOpen: false,
   };
 
@@ -110,16 +109,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
     }
   };
 
-  private handleCopyInvite = () => {
-    const canInvite = Boolean(
-      this.props.isHost ||
-      (this.props.owner && this.context.user?.id && this.props.owner === this.context.user.id)
-    );
-    if (!canInvite) return;
-    navigator.clipboard.writeText(window.location.href);
-    this.setState({ copied: true });
-    setTimeout(() => this.setState({ copied: false }), 2000);
-  };
 
   private lastPrefCameraOn: boolean = false;
   private lastPrefMicOn: boolean = false;
