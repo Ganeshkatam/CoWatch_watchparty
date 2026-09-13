@@ -43,9 +43,10 @@ interface MockSocket {
 }
 
 function createMockSocket(clientId: string, uid?: string): MockSocket {
+  const effectiveUid = uid !== undefined ? uid : `uid_${clientId}`;
   return {
     clientId,
-    uid,
+    uid: effectiveUid,
     emitted: [],
     disconnected: false,
     emit(event: string, data?: any) {
@@ -60,7 +61,14 @@ function createMockSocket(clientId: string, uid?: string): MockSocket {
 class MockAuthoritativeRoom {
   public roomId: string;
   public owner_id?: string;
-  public currentHostClientId?: string;
+  private _currentHostClientId?: string;
+  public get currentHostClientId(): string | undefined {
+    return this._currentHostClientId;
+  }
+  public set currentHostClientId(val: string | undefined) {
+    this._currentHostClientId = val;
+    this.currentHostUid = val ? `uid_${val}` : undefined;
+  }
   public currentHostUid?: string;
   public roster: string[] = [];
   public bannedIdentities: Set<string> = new Set();
@@ -73,18 +81,13 @@ class MockAuthoritativeRoom {
   }
 
   public isHost(socket: MockSocket | null | undefined): boolean {
-    if (!socket) return false;
-    return Boolean(
-      (this.currentHostClientId && socket.clientId === this.currentHostClientId) ||
-      (this.currentHostUid && socket.uid && socket.uid === this.currentHostUid)
-    );
+    if (!socket?.uid || !this.currentHostUid) return false;
+    return socket.uid === this.currentHostUid;
   }
 
   public canModerate(socket: MockSocket | null | undefined): boolean {
     if (!socket) return false;
-    const isHost = this.isHost(socket);
-    const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
-    return isHost || isOwner;
+    return this.isHost(socket);
   }
 
   public isBanned(clientId?: string, uid?: string): boolean {
@@ -695,7 +698,38 @@ class MockAuthoritativeRoom {
   console.log("  PASS [Test 25]: Ban vs. reconnect concurrency race resolves atomically fail-closed.");
 }
 
+// -------------------------------------------------------------
+// Test 26: ClientId spoofing cannot confer moderation authority
+// -------------------------------------------------------------
+{
+  const room = new MockAuthoritativeRoom("room-1");
+  const host = createMockSocket("host-1", "uid_host_verified");
+  const target = createMockSocket("user-target", "uid_target");
+  room.currentHostClientId = "host-1";
+  room.currentHostUid = "uid_host_verified";
+  room.roster = ["host-1", "user-target"];
+
+  // Attacker socket presenting the host's clientId but with wrong/guest uid
+  const attacker = createMockSocket("host-1", "uid_attacker");
+  const guestAttacker = createMockSocket("host-1", "");
+
+  assert(!room.isHost(attacker), "Test 26: Attacker with host clientId is NOT host");
+  assert(!room.canModerate(attacker), "Test 26: Attacker with host clientId cannot moderate");
+  assert(!room.isHost(guestAttacker), "Test 26: Guest attacker with host clientId is NOT host");
+  assert(!room.canModerate(guestAttacker), "Test 26: Guest attacker with host clientId cannot moderate");
+
+  const kickAttempt = await room.kickUser(attacker, target);
+  assert(!kickAttempt, "Test 26: Spoofed kick rejected");
+  assertEqual(room.roster.includes("user-target"), true, "Test 26: Target not kicked by spoofed socket");
+
+  const banAttempt = await room.banUser(attacker, target);
+  assert(!banAttempt, "Test 26: Spoofed ban rejected");
+  assertEqual(room.isBanned("user-target"), false, "Test 26: Target not banned by spoofed socket");
+
+  console.log("  PASS [Test 26]: Host clientId spoofing strictly rejected; host authority requires verified UID.");
+}
+
 console.log("----------------------------------------------------------------");
-console.log("ALL 25 MODERATION-001 TESTS PASSED WITH ZERO FAILURES.");
+console.log("ALL 26 MODERATION-001 TESTS PASSED WITH ZERO FAILURES.");
 console.log("----------------------------------------------------------------");
 

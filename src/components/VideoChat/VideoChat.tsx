@@ -1,10 +1,9 @@
 import React from "react";
-import { ActionIcon, Button } from "@mantine/core";
+import { ActionIcon, Avatar, Button } from "@mantine/core";
 import { Socket } from "socket.io-client";
 
 import {
   formatTimestamp,
-  getOrCreateClientId,
   getColorForStringHex,
   getDefaultPicture,
   iceServers,
@@ -47,6 +46,7 @@ interface VideoChatProps {
   micDeviceId?: string;
   isHost?: boolean;
   currentHostClientId?: string;
+  selfClientId?: string;
 }
 
 export class VideoChatErrorBoundary extends React.Component<
@@ -91,6 +91,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
   declare context: React.ContextType<typeof MetadataContext>;
 
   socket = this.props.socket;
+  getSelfId = () => this.props.selfClientId || this.props.socket?.id || "";
 
   state = {
     isInviteModalOpen: false,
@@ -170,7 +171,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     // Handle messages received from signaling server
     const msg = data.msg;
     const from = data.from;
-    const selfId = getOrCreateClientId();
+    const selfId = this.getSelfId();
 
     let pc = window.cowatch.videoPCs[from];
     if (!pc) {
@@ -447,7 +448,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     };
 
     // For each pair, have the lexicographically smaller ID be the offerer
-    const selfId = getOrCreateClientId();
+    const selfId = this.getSelfId();
     const isOfferer = selfId < id;
     if (isOfferer) {
       pc.onnegotiationneeded = async () => {
@@ -478,7 +479,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         // We haven't started video chat, exit
         return;
       }
-      const selfId = getOrCreateClientId();
+      const selfId = this.getSelfId();
 
       // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
       // This allows them to rejoin later
@@ -531,7 +532,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       this.props;
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
-    const selfId = getOrCreateClientId();
+    const selfId = this.getSelfId();
     const isRoomOwner = Boolean(owner && this.context.user?.id && owner === this.context.user.id);
     const canInvite = Boolean(this.props.isHost || isRoomOwner);
 
@@ -543,60 +544,54 @@ export class VideoChat extends React.Component<VideoChatProps> {
             (isSelf ? this.context.displayName : null) ||
             nameMap[p.id] ||
             p.id;
-          const rawPhoto = isSelf
-            ? pictureMap[p.id] || this.context.avatarUrl
-            : pictureMap[p.id];
-          const fallbackPhoto = getDefaultPicture(
-            displayName,
-            getColorForStringHex(p.id),
-          );
-          const userPhoto = rawPhoto || fallbackPhoto;
-
-          const isSelfInCall = Boolean(isSelf && ourStream);
-          const isSelfVideoActive = Boolean(isSelfInCall && this.getVideoWebRTC());
-          const isPeerInCall = Boolean(!isSelf && p.isVideoChat);
-          const showVideoFeed = isSelf ? isSelfVideoActive : isPeerInCall;
-
+          const videoTS = tsMap[p.id];
+          const hasVideo = p.isVideoChat;
+          const isLeader =
+            this.props.getLeaderTime() &&
+            Math.abs(videoTS - this.props.getLeaderTime()) < 1;
+          const isSelected = false;
+          const isCurrentTargetHost = p.id === this.props.currentHostClientId;
+          const isSelfVideoActive = Boolean(ourStream && ourStream.getVideoTracks().some(t => t.enabled));
           return (
-            <div key={p.id} className={styles.videoTile}>
-              {(isSelfInCall || p.isVideoChat) && (
-                <video
-                  ref={(el) => {
-                    if (el) {
-                      videoRefs[p.id] = el;
-                      if (isSelf && ourStream && el.srcObject !== ourStream) {
-                        try {
+            <div
+              key={p.id}
+              className={`${styles.participantTile} ${isSelf ? styles.selfTile : ""} ${hasVideo ? styles.hasVideo : styles.noVideo}`}
+            >
+              {/* Media Container: Camera Stream or Fallback Avatar */}
+              {hasVideo ? (
+                <div className={styles.videoWrapper}>
+                  <video
+                    ref={(el) => {
+                      if (el) {
+                        videoRefs[p.id] = el;
+                        if (isSelf && ourStream) {
                           el.srcObject = ourStream;
-                        } catch (e) {
-                          console.warn("Error assigning srcObject to local video:", e);
                         }
                       }
-                    } else {
-                      delete videoRefs[p.id];
-                    }
-                  }}
-                  className={styles.videoElement}
-                  style={{
-                    display: showVideoFeed ? "block" : "none",
-                    transform: `scaleX(${isSelf ? "-1" : "1"})`,
-                  }}
-                  autoPlay
-                  playsInline
-                  muted={isSelf}
-                  data-id={p.id}
-                />
-              )}
-
-              {!showVideoFeed && (
-                <div className={styles.avatarPlaceholder}>
-                  <img
-                    className={styles.largeAvatar}
-                    src={userPhoto}
+                    }}
+                    autoPlay
+                    playsInline
+                    muted={isSelf} // Mute self to prevent acoustic feedback
+                    className={styles.videoElement}
+                  />
+                  {/* Subtle audio indicator if unmuted */}
+                  <div className={styles.videoOverlayBadges}>
+                    {/* Placeholder for audio meter or active speaking pulse */}
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.avatarWrapper}>
+                  <Avatar
+                    src={pictureMap[p.id] || getDefaultPicture(displayName, getColorForStringHex(p.id))}
                     alt={displayName}
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      if (target.src !== fallbackPhoto) {
-                        target.src = fallbackPhoto;
+                    size={84}
+                    radius="100%"
+                    className={styles.avatarImage}
+                    imageProps={{
+                      onError: (e: any) => {
+                        // Resilient fallback if custom avatar 404s
+                        const target = e.target as HTMLImageElement;
+                        target.src = getDefaultPicture(displayName, getColorForStringHex(p.id));
                       }
                     }}
                   />
@@ -640,6 +635,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                     userToManage={p.id}
                     isHost={this.props.isHost}
                     isCurrentTargetHost={p.id === this.props.currentHostClientId}
+                    selfClientId={selfId}
                     trigger={
                       <button
                         type="button"

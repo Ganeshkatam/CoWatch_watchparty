@@ -131,7 +131,6 @@ import {
   formatTimestamp,
   getColorForStringHex,
   getDefaultPicture,
-  getOrCreateClientId,
   isEmojiString,
 } from "../../utils/utils";
 import { UserMenu } from "../UserMenu/UserMenu";
@@ -143,7 +142,6 @@ import {
 } from "react-transition-group";
 import { MetadataContext } from "../../MetadataContext";
 
-const clientId = getOrCreateClientId();
 const truncateReply = (input?: string, max = 30) =>
   input && input.length > max ? `${input.slice(0, max)}...` : input || "";
 
@@ -159,6 +157,7 @@ interface ChatProps {
   isChatDisabled?: boolean;
   owner: string | undefined;
   isHost?: boolean;
+  myClientId?: string;
   onEdit?: (messageId: string, newMessage: string) => void;
   clearChat?: () => void;
 }
@@ -220,6 +219,8 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
     });
   };
 
+  getMyClientId = () => this.props.myClientId || this.props.socket?.id || "";
+
   handleReactionClick = (value: string, id?: string, timestamp?: string) => {
     const msg = this.props.chat.find(
       (m) => m.id === id && m.timestamp === timestamp,
@@ -229,7 +230,8 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
       msgId: id || this.state.reactionMenu.selectedMsgId,
       msgTimestamp: timestamp || this.state.reactionMenu.selectedMsgTimestamp,
     };
-    if (msg?.reactions?.[value].includes(clientId)) {
+    const myId = this.getMyClientId();
+    if (msg?.reactions?.[value].includes(myId)) {
       this.props.socket.emit("CMD:removeReaction", data);
     } else {
       this.props.socket.emit("CMD:addReaction", data);
@@ -467,6 +469,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
                 handleReactionClick={this.handleReactionClick}
                 onReply={this.setReplyTo}
                 onEdit={this.props.onEdit}
+                myClientId={this.getMyClientId()}
               />
             ))}
             {/* <div ref={this.messagesEndRef} /> */}
@@ -638,6 +641,7 @@ const ChatMessage = ({
   onReply,
   onEdit,
   className,
+  myClientId,
 }: {
   message: ChatMessage;
   nameMap: StringDict;
@@ -658,8 +662,10 @@ const ChatMessage = ({
   onReply: (id: string, timestamp: string, msg?: string) => void;
   onEdit?: (messageId: string, newMessage: string) => void;
   className: string;
+  myClientId?: string;
 }) => {
   const { user, avatarUrl } = useContext(MetadataContext);
+  const myId = myClientId || socket?.id || "";
   const { id, timestamp, cmd, msg, system, isSub, reactions, videoTS, name, picture, userId, updatedAt } =
     message;
   const [isEditing, setIsEditing] = useState(false);
@@ -675,13 +681,13 @@ const ChatMessage = ({
         position: "relative",
         overflowWrap: "anywhere",
       }}
-      className={`${styles.comment} ${className} ${message.replyToUserId === clientId ? styles.replyMessage : ""
+      className={`${styles.comment} ${className} ${message.replyToUserId === myId ? styles.replyMessage : ""
         }`}
     >
       {id ? (
         <Avatar
           src={
-            (id === clientId ? (pictureMap[id] || avatarUrl) : pictureMap[id]) ||
+            (id === myId ? (pictureMap[id] || avatarUrl) : pictureMap[id]) ||
             picture ||
             getDefaultPicture(nameMap[id] || name || 'Unknown', getColorForStringHex(id))
           }
@@ -696,7 +702,7 @@ const ChatMessage = ({
             fontSize: 14,
           }}
         >
-          {isHost || id === clientId ? (
+          {isHost || id === myId ? (
             <UserMenu
               displayName={nameMap[id] || name || 'Unknown'}
               timestamp={timestamp}
@@ -704,6 +710,7 @@ const ChatMessage = ({
               userToManage={id}
               isChatMessage
               isHost={isHost}
+              selfClientId={myId}
               trigger={
                 <div
                   style={{ cursor: "pointer", fontWeight: 700 }}
@@ -824,7 +831,7 @@ const ChatMessage = ({
               </span>
             </ActionIcon>
           )}
-          {id && id !== clientId && (
+          {id && id !== myId && (
             <ActionIcon
               onClick={() => onReply(id, timestamp, msg)}
               disabled={isChatDisabled}
@@ -887,7 +894,7 @@ const ChatMessage = ({
                 <HoverCard>
                   <HoverCard.Target>
                     <div
-                      className={`${styles.reactionContainer} ${reactions[key].includes(clientId)
+                      className={`${styles.reactionContainer} ${reactions[key].includes(myId)
                         ? styles.highlighted
                         : ""
                         }`}

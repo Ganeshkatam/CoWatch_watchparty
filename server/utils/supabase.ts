@@ -44,18 +44,25 @@ export async function validateToken(token: string, requireConfirmation: boolean 
   }
 }
 
-export async function validateUserToken(uid: string, token: string, requireConfirmation: boolean = true) {
-  if (!supabaseUrl || !supabaseSecretKey || !token) {
+/**
+ * Authoritative JWT token validation. Identity is derived strictly from the verified
+ * Supabase Auth user subject (user.id). Any caller-supplied UID parameter is strictly
+ * checked against user.id and rejected on mismatch.
+ */
+export async function validateUserToken(uidOrToken: string, token?: string, requireConfirmation: boolean = true) {
+  const actualToken = token || uidOrToken;
+  const claimedUid = token ? uidOrToken : undefined;
+  if (!supabaseUrl || !supabaseSecretKey || !actualToken) {
     return undefined;
   }
   try {
-    // getUser(token) validates the JWT against the Supabase Auth server directly.
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    // getUser(actualToken) validates the JWT against the Supabase Auth server directly.
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(actualToken);
     if (error || !user) {
       return undefined;
     }
-    if (uid && uid !== user.id) {
-      // Caller specified a target uid that does not match the token's user.id
+    if (claimedUid && claimedUid !== user.id) {
+      // Caller specified a target uid that does not match the authoritative token's user.id
       return undefined;
     }
 

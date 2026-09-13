@@ -3,13 +3,10 @@ import { Menu, Loader, Modal, Button, Group, Text, Stack } from "@mantine/core";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
 import { IconBan, IconCrown, IconTrashFilled, IconUserX, IconX, IconAlertTriangle } from "@tabler/icons-react";
-import { getOrCreateClientId } from "../../utils/utils";
 import { ThemeMenuItems } from "../TopBar/TopBar";
 import { useOperationState, useRoomInitStage } from "../../hooks/useOperationState";
 import { operationCoordinator } from "../../utils/operationState";
 import { ReportModal } from "../Report/ReportModal";
-
-const clientId = getOrCreateClientId();
 
 export const UserMenu = ({
   socket,
@@ -21,6 +18,7 @@ export const UserMenu = ({
   isChatMessage,
   isHost,
   isCurrentTargetHost,
+  selfClientId,
 }: {
   socket: Socket;
   userToManage: string;
@@ -32,7 +30,9 @@ export const UserMenu = ({
   isChatMessage?: boolean;
   isHost?: boolean;
   isCurrentTargetHost?: boolean;
+  selfClientId?: string;
 }) => {
+  const selfId = selfClientId || socket?.id || "";
   const { user } = useContext(MetadataContext);
   const { isReady } = useRoomInitStage();
   const hostAssignOp = useOperationState("host-authority", "assign", userToManage);
@@ -73,7 +73,7 @@ export const UserMenu = ({
         <Menu.Dropdown>
           <Menu.Label>{displayName || userToManage}</Menu.Label>
 
-          {userToManage === clientId && (
+          {userToManage === selfId && (
             <>
               <Menu.Divider />
               <ThemeMenuItems />
@@ -108,7 +108,7 @@ export const UserMenu = ({
               </Menu.Item>
             </>
           )}
-          {isHost && !isCurrentTargetHost && userToManage !== clientId && !isChatMessage && (
+          {isHost && !isCurrentTargetHost && userToManage !== selfId && !isChatMessage && (
             <>
               <Menu.Item
                 disabled={!isReady || hostAssignOp.isPending}
@@ -165,7 +165,7 @@ export const UserMenu = ({
             </>
           )}
 
-          {userToManage !== clientId && (
+          {userToManage !== selfId && (
             <>
               <Menu.Divider />
               <Menu.Item

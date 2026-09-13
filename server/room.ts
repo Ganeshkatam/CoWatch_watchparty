@@ -223,6 +223,18 @@ export class Room {
     return false;
   };
 
+  public hasParticipantUid = (uid: string): boolean => {
+    if (!uid) return false;
+    if (this.owner_id && this.owner_id === uid) return true;
+    if (this.admittedMembers.has(uid)) return true;
+    for (const rec of this.admittedParticipants.values()) {
+      if (rec.uid === uid && rec.state === 'connected' && !rec.isKicked) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   public buildAuthorizationContext = (socket: Socket | null | undefined): AuthorizationContext => {
     if (!socket) {
       return {
@@ -244,10 +256,7 @@ export class Room {
     const isMember =
       isOwner ||
       isHost ||
-      (Boolean(socket.uid) && this.admittedMembers.has(socket.uid)) ||
-      (Boolean(socket.clientId) && this.admittedParticipants.has(socket.clientId)) ||
-      this.roster.some((u) => u.id === socket.clientId) ||
-      (this.roster.length === 0 && Boolean(socket.uid || socket.clientId));
+      (Boolean(socket.uid) && (this.admittedMembers.has(socket.uid) || this.hasParticipantUid(socket.uid)));
     const isLockHolder = Boolean(this.lock && socket.uid && socket.uid === this.lock);
 
     return {
@@ -309,16 +318,17 @@ export class Room {
     return auth.allowed;
   };
 
-  public isRoomFull = (_isOwner?: boolean, clientId?: string, sessionId?: string): boolean => {
-    // Reconnecting participant within grace period does not consume an extra slot
-    if (clientId && sessionId && this.verifyAdmittedParticipant(clientId, sessionId)) {
+  public isRoomFull = (isOwner?: boolean, sessionHint?: string, uid?: string): boolean => {
+    if (isOwner) return false;
+    // Reconnecting participant with server-recognized session does not consume an extra slot
+    if (this.verifyAdmittedSession(sessionHint, uid)) {
       return false;
     }
 
     // Active admitted participants calculation: connected or within 10-minute grace period
     const now = Date.now();
     let activeAdmittedCount = 0;
-    for (const [cId, rec] of this.admittedParticipants.entries()) {
+    for (const [, rec] of this.admittedParticipants.entries()) {
       if (rec.state === 'connected') {
         activeAdmittedCount++;
       } else if (rec.state === 'disconnected' && rec.lastDisconnectedAt) {
@@ -332,12 +342,22 @@ export class Room {
   };
 
   public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string) => {
-    if (!clientId || !sessionId) return;
+    if (!clientId) return;
     const now = Date.now();
+
+    // Clean up any stale participant records for the same sessionId to prevent duplicates
+    if (sessionId) {
+      for (const [oldClientId, rec] of this.admittedParticipants.entries()) {
+        if (oldClientId !== clientId && rec.sessionId === sessionId) {
+          this.admittedParticipants.delete(oldClientId);
+        }
+      }
+    }
+
     const existing = this.admittedParticipants.get(clientId);
     const admissionSequence = existing?.admissionSequence || (this.nextAdmissionSequence++);
     this.admittedParticipants.set(clientId, {
-      sessionId,
+      sessionId: sessionId || "",
       uid: uid || existing?.uid || undefined,
       admittedAt: existing?.admittedAt || now,
       lastConnectedAt: now,
@@ -356,25 +376,16 @@ export class Room {
     if (!rec || rec.state !== 'connected') return false;
     if (rec.isKicked) return false;
     if (!rec.sessionId) return false;
-    return true;
-  };
-
-  public hasParticipantUid = (uid: string): boolean => {
+    // Must be authenticated with verified UID to hold host authority
+    const uid = rec.uid || this.clientToUidMap[clientId];
     if (!uid) return false;
-    if (this.owner_id === uid) return true;
-    for (const rec of this.admittedParticipants.values()) {
-      if (rec.uid === uid && rec.state === 'connected' && !rec.isKicked) {
-        return true;
-      }
-    }
-    return false;
+    return true;
   };
 
   public isHostUid = (uid: string): boolean => {
     if (!uid) return false;
     if (this.owner_id && this.owner_id === uid) return true;
     if (this.currentHostUid && this.currentHostUid === uid) return true;
-    if (this.currentHostClientId && this.clientToUidMap[this.currentHostClientId] === uid) return true;
     return false;
   };
 
@@ -403,13 +414,10 @@ export class Room {
   };
 
   public getHostMode = (): HostMode => {
-    if (!this.currentHostClientId) {
+    if (!this.currentHostUid && !this.currentHostClientId) {
       return "none";
     }
-    const isOwner = Boolean(
-      (this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id) ||
-      (this.owner_id && this.clientToUidMap[this.currentHostClientId] === this.owner_id)
-    );
+    const isOwner = Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id);
     return isOwner ? "owner" : "temporary";
   };
 
@@ -434,25 +442,36 @@ export class Room {
     return await action();
   };
 
-
-  public verifyAdmittedParticipant = (clientId: string, sessionId?: string): boolean => {
-    if (!clientId || !sessionId) return false;
-    const record = this.admittedParticipants.get(clientId);
-    if (!record) {
-      return false;
+  public verifyAdmittedSession = (sessionHint?: string, uid?: string): boolean => {
+    if (uid) {
+      if (this.owner_id && uid === this.owner_id) return true;
+      if (this.admittedMembers.has(uid)) return true;
+      if (this.hasParticipantUid(uid)) return true;
     }
-    // Strict session token matching: prevents impersonation of admitted clientId
-    if (!record.sessionId || record.sessionId !== sessionId) {
-      return false;
-    }
-    // Disconnect grace period validation: expired disconnected entries are invalidated
-    if (record.state === 'disconnected' && record.lastDisconnectedAt) {
-      if (Date.now() - record.lastDisconnectedAt > ADMISSION_DISCONNECT_GRACE_MS) {
-        this.admittedParticipants.delete(clientId);
-        return false;
+    if (!sessionHint) return false;
+    const now = Date.now();
+    for (const [cId, record] of this.admittedParticipants.entries()) {
+      if (record.sessionId === sessionHint) {
+        if (record.isKicked) return false;
+        if (record.state === 'connected') return true;
+        if (record.state === 'disconnected' && record.lastDisconnectedAt) {
+          if (now - record.lastDisconnectedAt <= ADMISSION_DISCONNECT_GRACE_MS) {
+            return true;
+          } else {
+            this.admittedParticipants.delete(cId);
+            return false;
+          }
+        }
       }
     }
-    return true;
+    return false;
+  };
+
+  public verifyAdmittedParticipant = (clientIdOrSessionHint: string, sessionId?: string): boolean => {
+    if (sessionId) {
+      return this.verifyAdmittedSession(sessionId);
+    }
+    return this.verifyAdmittedSession(clientIdOrSessionHint);
   };
   private preventTSUpdate = false;
   // Not really a queue since there's no ordering, we just retry as long as this is set
@@ -535,16 +554,15 @@ export class Room {
           this.startedAt = new Date(roomRow.startedAt);
         }
 
-        const uid = socket.handshake.auth?.uid;
         const token = socket.handshake.auth?.token;
 
-        // Authenticate the user first, then check ownership
-        if (uid && token) {
+        // Authenticate the user strictly from token, never from client-provided UID
+        if (token) {
           try {
-            const decoded = await validateUserToken(uid, token);
-            if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
-              socket.uid = uid;
-              isOwner = Boolean(owner_id && owner_id === uid);
+            const decoded = await validateToken(token);
+            if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
+              socket.uid = decoded.uid;
+              isOwner = Boolean(owner_id && owner_id === decoded.uid);
             }
           } catch (e) {
             console.error("Token validation failed in socket connect", e);
@@ -606,7 +624,7 @@ export class Room {
             try {
               const activateResult = await postgres.query(
                 "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
-                [this.roomId, uid]
+                [this.roomId, socket.uid]
               );
 
               if (activateResult.rows && activateResult.rows.length > 0) {
@@ -659,49 +677,21 @@ export class Room {
       // On connection, compute hmac of clear clientId and verify it matches what client sent
       // We can accept query param clientHmac?
 
-      const clientId = socket.handshake.query?.clientId;
-      const sessionId = socket.handshake.auth.sessionId;
-      if (typeof clientId !== "string") {
-        next(new Error("Invalid clientId type"));
-        return;
-      }
-      // validate clientId is UUID, prevents prototype pollution
-      if (!isValidUUID(clientId)) {
-        next(new Error("Invalid clientId format"));
-        return;
-      }
-      // If Redis isn't enabled we'll just allow
-      if (redis) {
-        const key = "session:" + clientId;
-        const savedSession = await redis.get(key);
-        if (savedSession) {
-          // passed ID must match, otherwise error
-          if (savedSession !== sessionId) {
-            next(new Error("Incorrect sessionId"));
-            return;
-          } else {
-            // Refresh expiry
-            await redis.expire(key, 60 * 24 * 7);
-          }
-        } else {
-          // Create new session
-          if (sessionId) {
-            await redis.setex(key, 60 * 24 * 7, sessionId);
-          }
-        }
-      }
+      // Server assigns unpredictable, ephemeral connection identity
+      const clientId = randomUUID();
+      socket.clientId = clientId;
+      const sessionId = typeof socket.handshake.auth?.sessionId === "string" ? socket.handshake.auth.sessionId : undefined;
 
       // MODERATION-001 Invariant: Banned Participant Authority
       // Check PostgreSQL room_bans table and L1 cache
-      const authUid = socket.uid || (socket.handshake.auth?.uid as string | undefined);
+      const authUid = socket.uid || undefined;
       if (postgres) {
         try {
           const banRes = await postgres.query(
-            `SELECT client_identity, user_id FROM room_bans WHERE room_id = $1 AND (client_identity = $2 OR (user_id IS NOT NULL AND user_id = $3))`,
-            [this.roomId, clientId, authUid || null]
+            `SELECT client_identity, user_id FROM room_bans WHERE room_id = $1 AND (user_id IS NOT NULL AND user_id = $2)`,
+            [this.roomId, authUid || null]
           );
           if (banRes.rowCount && banRes.rowCount > 0) {
-            if (clientId) this.bannedIdentities.add(clientId);
             if (authUid) this.bannedIdentities.add(authUid);
             const err = new Error("BANNED_FROM_ROOM");
             (err as any).data = {
@@ -731,7 +721,7 @@ export class Room {
       // - False: admit.
       // - True: admit ONLY IF owner OR authoritative server-side existing identity. Otherwise, reject PARTICIPANTS_LOCKED.
       if (this.participantsLocked && !isOwner) {
-        const isAdmitted = this.verifyAdmittedParticipant(clientId, sessionId);
+        const isAdmitted = this.verifyAdmittedSession(sessionId, authUid);
         if (!isAdmitted) {
           const err = new Error("PARTICIPANTS_LOCKED");
           (err as any).data = {
@@ -746,7 +736,7 @@ export class Room {
       // MEMBER-001 Invariant: Capacity Authority
       // Flow: Creds -> Lock Policy -> Existing Session -> Capacity Check -> ADMIT or ROOM_FULL
       // - If room is full, reject with ROOM_FULL unless owner or existing admitted session reconnecting
-      if (this.isRoomFull(isOwner, clientId, sessionId)) {
+      if (this.isRoomFull(isOwner, sessionId, authUid)) {
         const err = new Error("ROOM_FULL");
         (err as any).data = {
           code: "ROOM_FULL",
@@ -759,13 +749,9 @@ export class Room {
       next();
     });
     io.of(roomId).on("connection", async (socket: Socket) => {
-      const clientId = socket.handshake.query?.clientId;
-      if (typeof clientId !== "string") {
-        // We already validated in middleware above, this is just to satisfy TS
-        return;
-      }
-
+      const clientId = socket.clientId || randomUUID();
       socket.clientId = clientId;
+      socket.emit("REC:assignedClientId", clientId);
       const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
       this.recordAdmittedParticipant(clientId, handshakeSessionId, socket.uid);
 
@@ -799,10 +785,10 @@ export class Room {
       // Check if this socket is the room owner (creator) returning to the room
       if (socket.uid && this.owner_id && socket.uid === this.owner_id) {
         this.reclaimHostForOwner(socket);
-      } else if (!this.currentHostClientId && this.roster.length > 0) {
-        // Initial room participant or session reconstruction
-        this.currentHostClientId = this.roster[0].id;
-        this.currentHostUid = this.clientToUidMap[this.roster[0].id] || "";
+      } else if (!this.currentHostUid && socket.uid) {
+        // Initial room participant becomes host ONLY IF authenticated with verified UID
+        this.currentHostUid = socket.uid;
+        this.currentHostClientId = clientId;
       }
 
       redisCount("connectStarts");
@@ -864,52 +850,7 @@ export class Room {
       socket.on("CMD:picture", (data: unknown) =>
         this.changeUserPicture(socket, String(data)),
       );
-      socket.on("CMD:uid", async (raw: unknown) => {
-        // Identity is immutable per connection
-        if (socket.uid) {
-          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Identity is immutable" });
-          return;
-        }
-        let data = raw as { token?: string };
-        if (!data || !data.token) {
-          return;
-        }
-        const decoded = await validateToken(data.token);
-        if (decoded === "EMAIL_NOT_VERIFIED") {
-          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Email verification is required." });
-          return;
-        }
-        if (decoded?.uid) {
-          socket.uid = decoded.uid;
-          this.admittedMembers.add(decoded.uid);
-          this.clientToUidMap[socket.clientId] = decoded.uid;
-          if (this.owner_id && decoded.uid === this.owner_id) {
-            this.reclaimHostForOwner(socket);
-          }
-          if (postgres) {
-            try {
-              const profileRes = await postgres.query(
-                "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
-                [decoded.uid]
-              );
-              if (profileRes.rows && profileRes.rows.length > 0) {
-                const profile = profileRes.rows[0];
-                const resolvedName = profile.display_name?.trim() || profile.username?.trim();
-                if (resolvedName && (!this.nameMap[socket.clientId] || this.nameMap[socket.clientId].startsWith("Guest") || this.nameMap[socket.clientId] === socket.clientId)) {
-                  this.nameMap[socket.clientId] = resolvedName;
-                  this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
-                }
-                if (profile.avatar_url && !this.pictureMap[socket.clientId]) {
-                  this.pictureMap[socket.clientId] = profile.avatar_url;
-                  this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
-                }
-              }
-            } catch (err) {
-              console.warn("Failed to fetch profile in CMD:uid", err);
-            }
-          }
-        }
-      });
+
       socket.on("CMD:host", (data: unknown) => {
         if (!validateNotExpired()) return;
         const context = this.buildAuthorizationContext(socket);
@@ -1225,37 +1166,32 @@ export class Room {
         validateNotExpired() && this.sendSignal(socket, data, "signalSS"),
       );
 
-      // Attempt to resolve profile from auth token if passed in handshake
-      const authUid = socket.handshake.auth?.uid;
-      const authToken = socket.handshake.auth?.token;
-      if (authUid && authToken) {
-        try {
-          const decoded = await validateUserToken(authUid, authToken);
-          if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
-            socket.uid = decoded.uid;
-            this.clientToUidMap[clientId] = decoded.uid;
-            if (this.owner_id && decoded.uid === this.owner_id) {
-              this.reclaimHostForOwner(socket);
-            }
-            if (postgres) {
-              const profileRes = await postgres.query(
-                "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
-                [decoded.uid]
-              );
-              if (profileRes.rows && profileRes.rows.length > 0) {
-                const profile = profileRes.rows[0];
-                const resolvedName = profile.display_name?.trim() || profile.username?.trim();
-                if (resolvedName && (!this.nameMap[clientId] || this.nameMap[clientId].startsWith("Guest") || this.nameMap[clientId] === clientId)) {
-                  this.nameMap[clientId] = resolvedName;
-                }
-                if (profile.avatar_url && !this.pictureMap[clientId]) {
-                  this.pictureMap[clientId] = profile.avatar_url;
-                }
+      // Resolve profile for authenticated socket
+      if (socket.uid) {
+        this.clientToUidMap[clientId] = socket.uid;
+        this.admittedMembers.add(socket.uid);
+        if (this.owner_id && socket.uid === this.owner_id) {
+          this.reclaimHostForOwner(socket);
+        }
+        if (postgres) {
+          try {
+            const profileRes = await postgres.query(
+              "SELECT display_name, username, avatar_url FROM profiles WHERE id = $1 LIMIT 1",
+              [socket.uid]
+            );
+            if (profileRes.rows && profileRes.rows.length > 0) {
+              const profile = profileRes.rows[0];
+              const resolvedName = profile.display_name?.trim() || profile.username?.trim();
+              if (resolvedName && (!this.nameMap[clientId] || this.nameMap[clientId].startsWith("Guest") || this.nameMap[clientId] === clientId)) {
+                this.nameMap[clientId] = resolvedName;
+              }
+              if (profile.avatar_url && !this.pictureMap[clientId]) {
+                this.pictureMap[clientId] = profile.avatar_url;
               }
             }
+          } catch (e) {
+            console.warn("Failed resolving profile on connection", e);
           }
-        } catch (e) {
-          console.warn("Failed resolving auth on connection", e);
         }
       }
 
@@ -1444,11 +1380,8 @@ export class Room {
   };
 
   public isHost = (socket: Socket | null | undefined): boolean => {
-    if (!socket) return false;
-    if (this.currentHostUid && socket.uid && socket.uid === this.currentHostUid) {
-      return true;
-    }
-    return Boolean(this.currentHostClientId && socket.clientId === this.currentHostClientId);
+    if (!socket?.uid || !this.currentHostUid) return false;
+    return socket.uid === this.currentHostUid;
   };
 
   public getHostDisplayName = (): string => {
@@ -1743,9 +1676,9 @@ export class Room {
     }
     this.nameMap[socket.clientId] = data;
     this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
-    if (socket.clientId === this.currentHostClientId) {
+    if (this.isHost(socket)) {
       this.io.of(this.roomId).emit("REC:hostChange", {
-        hostId: this.currentHostUid || this.currentHostClientId,
+        hostId: this.currentHostUid,
         hostClientId: this.currentHostClientId,
         hostName: data,
         isOwner: Boolean(this.owner_id && this.currentHostUid === this.owner_id),

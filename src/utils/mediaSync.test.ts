@@ -44,15 +44,15 @@ class MockServerRoom {
   public processedOperationIds: Set<string> = new Set();
   public emittedEvents: { event: string; data: any; recipient?: string }[] = [];
 
-  public isHost(socket: { clientId: string; uid?: string }): boolean {
-    return socket.clientId === this.currentHostClientId;
+  public isHost(socket: { clientId: string; uid?: string } | null | undefined): boolean {
+    if (!socket?.uid || !this.currentHostUid) return false;
+    return socket.uid === this.currentHostUid;
   }
 
   public canControlPlayback(socket: { clientId: string; uid?: string } | null | undefined): boolean {
     if (!socket) return false;
     if (this.lock) {
-      const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
-      return this.isHost(socket) || isOwner;
+      return this.isHost(socket);
     }
     return true;
   }
@@ -403,11 +403,13 @@ async function runMediaSyncTests() {
 
     const hostSocket = { clientId: "host_client_1", uid: "host_uid_1" };
     const guestSocket = { clientId: "guest_2", uid: "guest_uid_2" };
+    const spoofedClientSocket = { clientId: "host_client_1", uid: "attacker_uid" };
 
     const hostCan = room.canControlPlayback(hostSocket);
     const guestCan = room.canControlPlayback(guestSocket);
+    const spoofCan = room.canControlPlayback(spoofedClientSocket);
 
-    assert(hostCan && !guestCan, "Test 16: Locked-Room Authority Enforcement", `hostCan=${hostCan}, guestCan=${guestCan}`);
+    assert(hostCan && !guestCan && !spoofCan, "Test 16: Locked-Room Authority Enforcement", `hostCan=${hostCan}, guestCan=${guestCan}, spoofCan=${spoofCan}`);
   }
 
   // Test 17: Mutation Idempotency

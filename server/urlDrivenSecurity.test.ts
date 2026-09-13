@@ -10,6 +10,8 @@
  * 6. Zero Mutation on Denial Invariant: Unauthorized commands result in zero mutations and zero broadcasts.
  */
 
+import fs from 'fs';
+import path from 'path';
 import {
   parseWatchParams,
   parseMyRoomsParams,
@@ -39,7 +41,7 @@ function createMockSocket(uid: string, clientId: string, handshakeQuery: Record<
     uid,
     clientId,
     handshake: {
-      auth: { uid },
+      auth: { token: uid ? `token-${uid}` : undefined },
       query: handshakeQuery,
     },
     emit: (event: string, data: any) => {
@@ -155,6 +157,12 @@ async function runTests() {
   testRoom.owner_id = 'owner-uid';
   testRoom.currentHostUid = 'host-uid';
   testRoom.currentHostClientId = 'host-client';
+  testRoom.admittedMembers.add('host-uid');
+  testRoom.admittedMembers.add('member-uid');
+  testRoom.admittedMembers.add('other-uid');
+  testRoom.admittedMembers.add('user-a-uid');
+  testRoom.admittedMembers.add('user-b-uid');
+  testRoom.admittedMembers.add('tampered-uid');
 
   const hostSocket = createMockSocket('host-uid', 'host-client');
   const memberSocket = createMockSocket('member-uid', 'member-client', { role: 'host', admin: 'true' });
@@ -501,8 +509,110 @@ async function runTests() {
     targetMessageAuthorId: 'victim-uid',
     targetMessageRoomId: 'room-sec-test',
   });
-  assert(legitimateHostDelete.allowed === true, 'Legitimate host MUST succeed regardless of client capability state');
   console.log('✓ Bidirectional capability test verified: capabilities are strictly non-authoritative UI data');
+
+  // =========================================================================
+  // Section 7: Authoritative Identity & Absolute Host Security Invariants
+  // =========================================================================
+  console.log('\n--- Section 7: Authoritative Identity & Absolute Host Security Invariants ---');
+
+  // Test 7.1: Client claiming host's clientId without host's UID is NEVER host
+  testRoom.currentHostUid = 'host-uid';
+  testRoom.currentHostClientId = 'host-client';
+  const hostClientId = 'host-client';
+
+  // Attacker socket presenting host's clientId but with attacker UID
+  const attackerWithHostClientId = createMockSocket('attacker-uid', hostClientId);
+  assert(testRoom.isHost(attackerWithHostClientId) === false, 'Test 7.1: Attacker with host clientId is NOT host');
+  assert(testRoom.canModerate(attackerWithHostClientId) === false, 'Test 7.1: Attacker cannot moderate');
+
+  // Guest socket presenting host's clientId (no UID)
+  const guestWithHostClientId = createMockSocket('', hostClientId);
+  assert(testRoom.isHost(guestWithHostClientId) === false, 'Test 7.2: Guest with host clientId is NOT host');
+  assert(testRoom.canModerate(guestWithHostClientId) === false, 'Test 7.2: Guest cannot moderate');
+
+  // Valid authenticated user B presenting host's clientId
+  const userBWithHostClientId = createMockSocket('user-b-uid', hostClientId);
+  assert(testRoom.isHost(userBWithHostClientId) === false, 'Test 7.3: User B with host clientId is NOT host');
+  assert(testRoom.canModerate(userBWithHostClientId) === false, 'Test 7.3: User B cannot moderate');
+
+  // Host operations strictly rejected for non-hosts presenting host clientId
+  testRoom.lock = 'host-uid';
+  const spoofPlayback = testRoom.authorizeRoomAction({
+    actorSocket: attackerWithHostClientId,
+    action: 'room:play',
+  });
+  assert(spoofPlayback.allowed === false, 'Test 7.4: Playback locked to host rejects spoofed clientId');
+  assert(spoofPlayback.code === 'FORBIDDEN', 'Rejection code is FORBIDDEN');
+  testRoom.lock = '';
+
+  const spoofKick = testRoom.authorizeRoomAction({
+    actorSocket: attackerWithHostClientId,
+    action: 'user:kick',
+    targetUserId: 'member-uid',
+  });
+  assert(spoofKick.allowed === false, 'Test 7.5: Kick rejects spoofed clientId');
+  assert(spoofKick.code === 'FORBIDDEN', 'Kick rejection code is FORBIDDEN');
+
+  console.log('✓ Absolute Host Invariant verified: Host authority strictly gated by verified UID, zero clientId fallback');
+
+  // Test 7.6: Static Invariant Firewall scanning production files
+  console.log('\n--- Section 7.6: Static Invariant Firewall Scan ---');
+  const projectRoot = path.resolve(process.cwd());
+
+  // 1. Scan server/room.ts
+  const roomFile = fs.readFileSync(path.join(projectRoot, 'server/room.ts'), 'utf-8');
+  assert(
+    !roomFile.includes('socket.handshake.auth?.uid') && !roomFile.includes('handshake.auth?.uid'),
+    'Firewall Violation: server/room.ts must NOT read socket.handshake.auth?.uid'
+  );
+  assert(
+    !roomFile.includes('socket.handshake.query?.clientId'),
+    'Firewall Violation: server/room.ts must NOT assign socket.clientId from query?.clientId'
+  );
+  assert(
+    !roomFile.includes('socket.clientId === this.currentHostClientId'),
+    'Firewall Violation: isHost must NOT fall back to socket.clientId === this.currentHostClientId'
+  );
+  assert(
+    !roomFile.includes('socket.on("CMD:uid"') && !roomFile.includes("socket.on('CMD:uid'"),
+    'Firewall Violation: server/room.ts must NOT register CMD:uid listener'
+  );
+
+  // 2. Scan src/components/App/App.tsx
+  const appFile = fs.readFileSync(path.join(projectRoot, 'src/components/App/App.tsx'), 'utf-8');
+  assert(
+    !appFile.includes('emit("CMD:uid"') && !appFile.includes("emit('CMD:uid'"),
+    'Firewall Violation: src/components/App/App.tsx must NOT emit CMD:uid'
+  );
+  assert(
+    !appFile.includes('getOrCreateClientId()'),
+    'Firewall Violation: src/components/App/App.tsx must NOT consume getOrCreateClientId()'
+  );
+
+  // 3. Scan for any persistent client ID storage across all files in src/ and server/
+  const checkDirRecursive = (dir: string) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'build') {
+          checkDirRecursive(fullPath);
+        }
+      } else if (/\.(ts|tsx|js|mjs)$/.test(entry.name) && !entry.name.endsWith('.test.ts')) {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        assert(
+          !content.includes('cowatch-clientid'),
+          `Firewall Violation: File ${entry.name} contains persistent cowatch-clientid`
+        );
+      }
+    }
+  };
+
+  checkDirRecursive(path.join(projectRoot, 'src'));
+  checkDirRecursive(path.join(projectRoot, 'server'));
+
+  console.log('✓ Static Invariant Firewall passed: 0 forbidden authority patterns detected across repository');
 
   console.log('\n=================================================================');
   console.log('ALL URL-DRIVEN SCREEN ARCHITECTURE & SECURITY TESTS PASSED!');

@@ -9,7 +9,6 @@ import {
   serverPath,
   testAutoplay,
   openFileSelector,
-  getOrCreateClientId,
   getOrCreateSessionId,
   calculateMedian,
   isYouTube,
@@ -132,8 +131,6 @@ window.cowatch = {
   iceQueues: {},
 };
 
-const clientId = getOrCreateClientId();
-
 interface AppProps {
   urlRoomId?: string;
   location?: any;
@@ -226,6 +223,7 @@ interface AppState {
   isFeedbackModalOpen: boolean;
   feedbackInitialContext?: FeedbackContext;
   feedbackInitialType?: FeedbackType;
+  myClientId: string;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -234,6 +232,7 @@ export class App extends React.Component<AppProps, AppState> {
   state: AppState = {
     state: "starting",
     initStage: "booting",
+    myClientId: "",
     roomMedia: "",
     roomPaused: false,
     roomSubtitle: "",
@@ -880,18 +879,20 @@ export class App extends React.Component<AppProps, AppState> {
         randomizationFactor: 0.5,
         timeout: 10000,
         query: {
-          clientId,
           passcode,
           shard,
           roomId: cleanRoomId,
         },
         auth: {
           sessionId: getOrCreateSessionId(),
-          uid,
           token,
         },
       });
       this.socket = socket;
+
+      socket.on("REC:assignedClientId", (assignedClientId: string) => {
+        this.setState({ myClientId: assignedClientId });
+      });
 
       socket.on("connect", async () => {
         operationCoordinator.beginConnectionEpoch();
@@ -1026,10 +1027,9 @@ export class App extends React.Component<AppProps, AppState> {
           return;
         }
         operationCoordinator.resolveDomainOperations("host-authority");
-        const selfClientId = getOrCreateClientId();
-        const isSelfHost =
-          data.hostClientId === selfClientId ||
-          (this.context.user?.id && data.hostId === this.context.user.id);
+        const isSelfHost = Boolean(
+          this.context.user?.id && data.hostId && data.hostId === this.context.user.id
+        );
         const wasHost = this.state.isHost;
 
         this.setState({
@@ -1493,7 +1493,7 @@ export class App extends React.Component<AppProps, AppState> {
             this.state.roomPlaybackRate === 0
           ) {
             const leader = this.getLeaderTime();
-            const delta = leader - data[clientId];
+            const delta = leader - (data[this.state.myClientId] || 0);
             // Set leader pbr to 1
             let pbr = 1;
             // Add .01 pbr for each 100ms delay
@@ -1508,7 +1508,7 @@ export class App extends React.Component<AppProps, AppState> {
           }
           if (this.state.roomSubtitle) {
             const sharer = this.state.participants.find((p) => p.isScreenShare);
-            if (sharer && sharer.id !== clientId) {
+            if (sharer && sharer.id !== this.state.myClientId) {
               // Sync only if someone is sharing and it's not us
               const sharerTime = this.state.tsMap[sharer.id];
               this.Player().syncSubtitles(sharerTime);
@@ -1877,11 +1877,9 @@ export class App extends React.Component<AppProps, AppState> {
     }
     this.setIsChatDisabled(data.isChatDisabled);
     this.setOwner(data.owner);
-    const selfClientId = getOrCreateClientId();
-    const isSelfHost =
-      (data.currentHostClientId && data.currentHostClientId === selfClientId) ||
-      (this.context.user?.id && data.currentHostId && data.currentHostId === this.context.user.id) ||
-      Boolean(data.isHost);
+    const isSelfHost = Boolean(
+      this.context.user?.id && data.currentHostId && data.currentHostId === this.context.user.id
+    );
 
     if (data.currentHostClientId || data.currentHostId) {
       this.setState({
@@ -2514,7 +2512,7 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
     const sharer = this.state.participants.find((p) => p.isScreenShare);
-    const selfId = getOrCreateClientId();
+    const selfId = this.state.myClientId;
     const localTrack = this.localStreamToPublish?.getVideoTracks()[0];
     if (localTrack && !localTrack.onended) {
       // Stop sharing if the local stream stops
@@ -2867,7 +2865,7 @@ export class App extends React.Component<AppProps, AppState> {
       myName: name,
       nameMap: {
         ...prev.nameMap,
-        [clientId]: name,
+        ...(prev.myClientId ? { [prev.myClientId]: name } : {}),
       },
     }));
     this.socket?.emit("CMD:name", name);
@@ -2878,17 +2876,19 @@ export class App extends React.Component<AppProps, AppState> {
       myPicture: url,
       pictureMap: {
         ...prev.pictureMap,
-        [clientId]: url,
+        ...(prev.myClientId ? { [prev.myClientId]: url } : {}),
       },
     }));
     this.socket?.emit("CMD:picture", url);
   };
 
-  updateUid = async (user: User) => {
-    const uid = user.id;
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    this.socket?.emit("CMD:uid", { uid, token });
+  updateUid = async (_user: User) => {
+    // Post-connection identity mutation is eliminated.
+    // In order to update authentication, socket cleanly reconnects with session token.
+    if (this.socket?.connected) {
+      this.socket.disconnect();
+      this.join(this.state.roomId);
+    }
   };
 
   getMediaDisplayName = (input?: string) => {
@@ -3210,7 +3210,7 @@ export class App extends React.Component<AppProps, AppState> {
           participants={this.state.participants}
           nameMap={this.state.nameMap}
           pictureMap={this.state.pictureMap}
-          currentClientId={getOrCreateClientId()}
+          currentClientId={this.state.myClientId}
           onAssignAndLeave={(targetClientId: string) => {
             operationCoordinator.startOperation("host-authority", "transfer", targetClientId);
             this.socket.emit("CMD:transferHost", { participantId: targetClientId });
@@ -3505,10 +3505,10 @@ export class App extends React.Component<AppProps, AppState> {
                       this.getVBrowserPass() &&
                       this.getVBrowserHost() ? (
                       <VBrowser
-                        username={clientId}
+                        username={this.state.myClientId}
                         password={this.getVBrowserPass()}
                         hostname={this.getVBrowserHost()}
-                        controlling={this.state.controller === clientId}
+                        controlling={this.state.controller === this.state.myClientId}
                         resolution={this.state.vBrowserResolution}
                         quality={this.state.vBrowserQuality}
                         doPlay={this.localPlay}
@@ -3705,6 +3705,7 @@ export class App extends React.Component<AppProps, AppState> {
                       initialMicOn={this.state.initialMicOn}
                       cameraDeviceId={this.state.cameraDeviceId}
                       micDeviceId={this.state.micDeviceId}
+                      selfClientId={this.state.myClientId}
                     />
                   </VideoChatErrorBoundary>
                 </Tabs.Panel>
@@ -3737,6 +3738,7 @@ export class App extends React.Component<AppProps, AppState> {
                     onEdit={(messageId, newMessage) => {
                       this.socket.emit("CMD:editMessage", { messageId, newMessage });
                     }}
+                    myClientId={this.state.myClientId}
                   />
                 </Tabs.Panel>
               </Tabs>

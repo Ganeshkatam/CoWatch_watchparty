@@ -54,7 +54,8 @@ class SimulatedRoom {
   }
 
   public isHost(socket: SocketMock): boolean {
-    return Boolean(this.currentHostClientId && socket.clientId === this.currentHostClientId);
+    if (!socket?.uid || !this.currentHostUid) return false;
+    return socket.uid === this.currentHostUid;
   }
 
   public getHostDisplayName(): string {
@@ -387,7 +388,28 @@ async function runTests() {
     console.log("  Passed");
   }
 
-  console.log("\nAll 8 host delegation, race-condition, and invariant tests PASSED successfully!");
+  // Invariant 7: Client ID spoofing does not confer host authority
+  {
+    console.log("Test 9: Socket with host's clientId but wrong/missing UID is NOT host");
+    const room = new SimulatedRoom("owner_user_123");
+    const host = createSocketMock("client_host", "user_host");
+    room.connect(host);
+    assert.strictEqual(room.isHost(host), true);
+
+    // Attacker claims the same clientId but has guest / different UID
+    const attacker = createSocketMock("client_host", "attacker_uid");
+    assert.strictEqual(room.isHost(attacker), false);
+
+    const guestAttacker = createSocketMock("client_host", "");
+    assert.strictEqual(room.isHost(guestAttacker), false);
+
+    // Attempting host action must fail
+    const kickResult = room.kickUser(attacker, "some_target");
+    assert.strictEqual(kickResult, false);
+    console.log("  Passed");
+  }
+
+  console.log("\nAll 9 host delegation, race-condition, and invariant tests PASSED successfully!");
 }
 
 runTests().catch((err) => {

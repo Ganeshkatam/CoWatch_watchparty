@@ -497,15 +497,12 @@ export async function openFileSelector(accept?: string) {
   });
 }
 
+let ephemeralClientId: string | null = null;
 export function getOrCreateClientId() {
-  let clientId = window.localStorage.getItem("cowatch-clientid");
-  if (!clientId) {
-    // Generate a new clientID and save it
-    // This requires https, so fallback to JS implementation if needed
-    clientId = createUuid();
-    window.localStorage.setItem("cowatch-clientid", clientId);
+  if (!ephemeralClientId) {
+    ephemeralClientId = createUuid();
   }
-  return clientId;
+  return ephemeralClientId;
 }
 
 export function getOrCreateSessionId() {

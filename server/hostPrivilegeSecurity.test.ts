@@ -154,7 +154,7 @@ async function runTests() {
   console.log('Checking src/components/Chat/Chat.tsx...');
   const chatSource = fs.readFileSync(path.resolve('src/components/Chat/Chat.tsx'), 'utf-8');
   assert(
-    chatSource.includes('{isHost || id === clientId ? ('),
+    chatSource.includes('{isHost || id === myId ? (') || chatSource.includes('{isHost || id === clientId ? ('),
     'Test 9.1 Failed: Chat renders UserMenu component for regular messages to non-hosts'
   );
 

@@ -91,20 +91,18 @@ export function authorizeRoomAction(
     return { allowed: false, reason: "NOT_MEMBER", code: "FORBIDDEN" };
   }
 
-  const isHostOrOwner = context.isHost || context.isOwner;
-
   // 3. Action-Specific Pure Evaluation
   switch (action) {
     case "chat:send":
     case "chat:reaction":
-      if (!context.chatEnabled && !isHostOrOwner) {
+      if (!context.chatEnabled && !context.isHost) {
         return { allowed: false, reason: "CHAT_DISABLED", code: "FORBIDDEN" };
       }
       return { allowed: true, code: "OK" };
 
     case "chat:edit":
-      // Host or Room Owner has complete chat moderation authority (including editing)
-      if (isHostOrOwner) {
+      // Host has complete chat moderation authority (including editing)
+      if (context.isHost) {
         return { allowed: true, code: "OK" };
       }
       // Author self-editing strictly by verified UID
@@ -122,15 +120,15 @@ export function authorizeRoomAction(
 
     case "chat:delete_other":
     case "chat:clear":
-      // Host or Room Owner moderation authority
-      if (isHostOrOwner) {
+      // Host has exclusive moderation authority
+      if (context.isHost) {
         return { allowed: true, code: "OK" };
       }
       return { allowed: false, reason: "NOT_HOST", code: "FORBIDDEN" };
 
     case "user:kick":
     case "user:ban":
-      if (!isHostOrOwner) {
+      if (!context.isHost) {
         return { allowed: false, reason: "NOT_HOST", code: "FORBIDDEN" };
       }
       // Target Protection Invariant: Room Owner can never be kicked or banned
@@ -148,7 +146,7 @@ export function authorizeRoomAction(
 
     case "room:lock":
     case "room:lock_participants":
-      if (isHostOrOwner) {
+      if (context.isHost) {
         return { allowed: true, code: "OK" };
       }
       return { allowed: false, reason: "NOT_HOST", code: "FORBIDDEN" };
@@ -170,7 +168,7 @@ export function authorizeRoomAction(
       if (!context.playbackLocked) {
         return { allowed: true, code: "OK" };
       }
-      if (isHostOrOwner || context.isLockHolder) {
+      if (context.isHost || context.isLockHolder) {
         return { allowed: true, code: "OK" };
       }
       return { allowed: false, reason: "PLAYBACK_LOCKED", code: "FORBIDDEN" };
