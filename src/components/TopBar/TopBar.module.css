@@ -19,6 +19,8 @@
   transform: translateZ(0);
   will-change: transform;
   isolation: isolate;
+  width: 100%;
+  max-width: 100vw;
 }
 
 .brandGroup {
@@ -26,6 +28,8 @@
   align-items: center;
   gap: 12px;
   text-decoration: none;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .logo {
@@ -97,6 +101,44 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.desktopOnlyAction {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mobileHideSignIn {
+  display: inline-flex;
+  align-items: center;
+}
+
+.topBarRoomTitleWrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.topBarRoomTitleText {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topBarRoomDescText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* User Avatar Button */
@@ -410,18 +452,89 @@
 }
 
 @media (max-width: 768px) {
+  .topBar {
+    padding: 8px 16px;
+    height: 56px;
+    min-height: 56px;
+    max-height: 56px;
+  }
+
   .desktopButtons {
-    display: none;
+    display: none !important;
+  }
+
+  .desktopOnlyAction {
+    display: none !important;
   }
 }
 
 @media (max-width: 640px) {
   .topBar {
-    padding: 8px 14px;
+    padding: 8px 12px;
     min-height: 56px;
+  }
+
+  .brandGroup {
+    gap: 8px;
+  }
+
+  .logo {
+    width: 32px;
+    height: 32px;
+  }
+
+  .brandName {
+    font-size: 20px;
   }
 
   .actionsGroup {
     gap: 8px;
+  }
+
+  .topBarRoomTitleWrapper {
+    margin: 0 6px;
+  }
+
+  .topBarRoomTitleText {
+    font-size: 15px;
+    line-height: 18px;
+    max-width: 140px;
+  }
+
+  .topBarRoomDescText {
+    display: none;
+  }
+}
+
+@media (max-width: 540px) {
+  .mobileHideSignIn {
+    display: none !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .topBar {
+    padding: 8px 8px;
+  }
+
+  .brandGroup {
+    gap: 6px;
+  }
+
+  .logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .brandName {
+    font-size: 18px;
+  }
+
+  .actionsGroup {
+    gap: 6px;
+  }
+
+  .topBarRoomTitleText {
+    max-width: 100px;
   }
 }

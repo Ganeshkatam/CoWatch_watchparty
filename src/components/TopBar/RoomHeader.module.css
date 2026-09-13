@@ -12,6 +12,8 @@
   top: 0;
   z-index: 100;
   box-sizing: border-box;
+  width: 100%;
+  max-width: 100vw;
 }
 
 .leftSection {
@@ -303,19 +305,24 @@
 @media only screen and (max-width: 768px) {
   .header {
     padding: 0 8px;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
   }
 
   .leftSection {
     gap: 6px;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .rightSection {
     gap: 4px;
+    flex-shrink: 0;
   }
 
   .centerSection {
-    margin: 0;
-    flex: 0 0 auto;
+    display: none;
   }
 
   .divider {
@@ -343,6 +350,17 @@
   }
 
   .exitBtn {
+    padding: 0;
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+  }
+
+  .lockBtn span {
+    display: none;
+  }
+
+  .lockBtn {
     padding: 0;
     width: 34px;
     height: 34px;

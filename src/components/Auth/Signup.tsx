@@ -13,6 +13,7 @@ import {
   Tooltip,
   Divider,
   Badge,
+  Checkbox,
 } from "@mantine/core";
 import { IconPhoto, IconCheck, IconX, IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
@@ -21,6 +22,7 @@ import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { autoCreateUsername, openFileSelector } from "../../utils/utils";
 import { calculateAge } from "../../utils/age";
+import { PremiumDatePicker } from "./PremiumDatePicker";
 
 export const SIGNUP_AVATAR_PRESETS = [
   { id: "avatar-1", label: "Neon Pop", url: "/avatars/avatar_1.jpg" },
@@ -59,6 +61,8 @@ export const Signup = () => {
   const [password, setPassword] = useState("");
   const [dob, setDob] = useState("");
   const [dobError, setDobError] = useState<string | null>(null);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   const [isAgeEligible, setIsAgeEligible] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -141,10 +145,16 @@ export const Signup = () => {
     e.preventDefault();
     setError(null);
     setDobError(null);
+    setTermsError(null);
 
     if (!dob) {
       const msg = "Please enter your date of birth";
       setDobError(msg);
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setTermsError("Please agree to the Terms of Service and Privacy Policy to continue.");
       return;
     }
 
@@ -228,6 +238,11 @@ export const Signup = () => {
 
     if (password.length < 6) {
       setError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setError("Please agree to the Terms of Service and Privacy Policy to create an account.");
       return;
     }
 
@@ -352,46 +367,59 @@ export const Signup = () => {
 
             <form onSubmit={handleVerifyAge} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
               <div className={styles.dateInputWrapper}>
-                <TextInput
+                <PremiumDatePicker
                   label="Date of birth"
-                  type="date"
                   required
                   value={dob}
-                  onChange={(e) => {
-                    setDob(e.target.value);
+                  onChange={(val) => {
+                    setDob(val);
                     if (dobError) setDobError(null);
                   }}
-                  onClick={(e) => {
-                    try {
-                      (e.target as any).showPicker?.();
-                    } catch (err) { }
-                  }}
                   error={dobError}
-                  max={new Date().toISOString().split("T")[0]}
-                  classNames={{
-                    input: styles.dateInputControl,
-                  }}
+                  maxDate={new Date().toISOString().split("T")[0]}
+                />
+                {/* Embedded input preserving type="date" and form autofill parity */}
+                <input
+                  type="date"
+                  name="dob"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  style={{ display: "none" }}
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
                 <Text size="xs" c="dimmed" mt={4}>
                   Your date of birth is not stored, transmitted, or shared.
                 </Text>
               </div>
 
+              <Checkbox
+                checked={agreedToTerms}
+                onChange={(e) => {
+                  setAgreedToTerms(e.currentTarget.checked);
+                  if (termsError) setTermsError(null);
+                }}
+                error={termsError}
+                color="violet"
+                mt="xs"
+                label={
+                  <Text size="xs" c="dimmed">
+                    I agree to the{" "}
+                    <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer">
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </Text>
+                }
+              />
+
               <Button fullWidth type="submit" mt="md">
                 Verify and continue
               </Button>
-
-              <Text size="xs" c="dimmed" ta="center" mt="xs">
-                By continuing, you acknowledge that you are at least 18 years old in accordance with our{" "}
-                <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                  Privacy Policy
-                </Link>
-                .
-              </Text>
             </form>
           </Paper>
         </>
@@ -440,9 +468,6 @@ export const Signup = () => {
                     <Badge color="teal" variant="filled" size="sm">
                       18+ eligibility confirmed
                     </Badge>
-                    <Text size="xs" c="dimmed">
-                      Local check passed
-                    </Text>
                   </Group>
                   <Button variant="subtle" size="compact-xs" color="gray" onClick={handleResetAgeGate}>
                     Edit date
@@ -548,18 +573,27 @@ export const Signup = () => {
                     </div>
                     <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
 
+                    <Checkbox
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.currentTarget.checked)}
+                      color="violet"
+                      mt="xs"
+                      label={
+                        <Text size="xs" c="dimmed">
+                          I agree to the{" "}
+                          <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer">
+                            Terms of Service
+                          </Link>{" "}
+                          and{" "}
+                          <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer">
+                            Privacy Policy
+                          </Link>
+                          .
+                        </Text>
+                      }
+                    />
+
                     <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
-                    <Text size="xs" c="dimmed" ta="center" mt="xs">
-                      By creating an account, you agree to our{" "}
-                      <Link to="/terms" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                        Terms of Service
-                      </Link>{" "}
-                      and{" "}
-                      <Link to="/privacy" style={{ color: "var(--color-violet)", textDecoration: "underline" }}>
-                        Privacy Policy
-                      </Link>
-                      .
-                    </Text>
                   </form>
                 )}
               </div>

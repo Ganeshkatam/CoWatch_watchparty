@@ -19,6 +19,9 @@
   position: sticky;
   top: 0;
   z-index: 20;
+  width: 100%;
+  max-width: 100vw;
+  box-sizing: border-box;
 }
 
 .brandLink {
@@ -375,5 +378,16 @@
     grid-template-columns: 1fr;
     max-width: 580px;
     gap: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    height: 56px;
+    padding: 0 14px;
+  }
+
+  .roomTitleText {
+    max-width: 140px;
   }
 }

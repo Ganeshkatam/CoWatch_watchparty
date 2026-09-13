@@ -186,11 +186,22 @@ html[data-color-scheme="light"] {
   --scrollbar-thumb-hover: rgba(112, 72, 232, 0.65);
 }
 
-html body {
+html,
+body {
   margin: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
   background-color: var(--bg-app);
   color: var(--text-primary);
+}
+
+#root {
+  max-width: 100%;
+  width: 100%;
+  overflow-x: clip;
 }
 
 /* Sleek Global Custom Scrollbars */

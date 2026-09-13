@@ -556,28 +556,12 @@ export const TopBar = (props: {
         )}
       </Link>
       {props.roomTitle || props.roomDescription ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            marginRight: 10,
-            marginLeft: 10,
-          }}
-        >
-          <div
-            style={{
-              fontSize: "24px",
-              lineHeight: "26px",
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              color: "var(--text-primary)",
-            }}
-          >
+        <div className={styles.topBarRoomTitleWrapper}>
+          <div className={styles.topBarRoomTitleText}>
             {props.roomTitle?.toUpperCase()}
           </div>
           {props.roomDescription && (
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="dimmed" className={styles.topBarRoomDescText}>
               {props.roomDescription}
             </Text>
           )}
@@ -633,6 +617,7 @@ export const TopBar = (props: {
 
         {props.showExit && (
           <Button
+            className={styles.desktopOnlyAction}
             color="red"
             variant="light"
             onClick={() => {
@@ -645,6 +630,7 @@ export const TopBar = (props: {
         )}
         {props.onOpenSettings && (
           <Button
+            className={styles.desktopOnlyAction}
             color="violet"
             variant="light"
             onClick={props.onOpenSettings}
@@ -653,12 +639,20 @@ export const TopBar = (props: {
             Room Settings
           </Button>
         )}
-        {!props.hideGetStarted && !context.user && <GetStartedButton />}
+        {!props.hideGetStarted && !context.user && (
+          <div className={styles.desktopOnlyAction}>
+            <GetStartedButton />
+          </div>
+        )}
         {/* Notification center bell for authenticated users */}
         {context.user && <NotificationBell />}
 
         {/* User Avatar linking to Settings or Sign in button */}
-        {!props.hideSignin && <SignInButton />}
+        {!props.hideSignin && (
+          <div className={!context.user ? styles.mobileHideSignIn : undefined}>
+            <SignInButton />
+          </div>
+        )}
 
         {/* Desktop / Laptop Dropdown vs Mobile Drawer */}
         {!isMobile ? (
