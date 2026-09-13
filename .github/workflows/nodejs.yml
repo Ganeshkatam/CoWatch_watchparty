@@ -32,10 +32,11 @@ jobs:
       - name: Push to remote
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
-          git config --global user.name "github-actions[bot]"	
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"	
-          rm -f .gitignore	
-          git checkout -b release
-          git add --all
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release
+          sed -i '/^\/build$/d' .gitignore
+          git add .gitignore
+          git add -f build
           git commit --quiet -m "Built from ${{ github.sha }}" || echo "No changes to commit"
           git push origin release -f
