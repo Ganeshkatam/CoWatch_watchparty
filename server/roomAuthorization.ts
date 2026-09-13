@@ -103,7 +103,11 @@ export function authorizeRoomAction(
       return { allowed: true, code: "OK" };
 
     case "chat:edit":
-      // Speech Impersonation Defense: Author ONLY. Neither Host nor Owner can edit other users' messages.
+      // Host or Room Owner has complete chat moderation authority (including editing)
+      if (isHostOrOwner) {
+        return { allowed: true, code: "OK" };
+      }
+      // Author self-editing strictly by verified UID
       if (!context.actorUid || !target?.targetMessage?.authorUid || context.actorUid !== target.targetMessage.authorUid) {
         return { allowed: false, reason: "NOT_AUTHOR", code: "FORBIDDEN" };
       }

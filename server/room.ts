@@ -1445,6 +1445,9 @@ export class Room {
 
   public isHost = (socket: Socket | null | undefined): boolean => {
     if (!socket) return false;
+    if (this.currentHostUid && socket.uid && socket.uid === this.currentHostUid) {
+      return true;
+    }
     return Boolean(this.currentHostClientId && socket.clientId === this.currentHostClientId);
   };
 
@@ -1537,8 +1540,11 @@ export class Room {
     socket: Socket,
     targetClientId: string,
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!this.isHost(socket)) {
-      return { success: false, error: "NOT_HOST" };
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "room:transfer_host");
+    if (!auth.allowed) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      return { success: false, error: "FORBIDDEN" };
     }
     if (!targetClientId) {
       return { success: false, error: "TARGET_REQUIRED" };
@@ -2165,13 +2171,24 @@ export class Room {
       }
 
       // Step 4: Mutate atomically
-      const query = `
-        UPDATE room_messages
-        SET message = $1, updated_at = NOW()
-        WHERE id = $2 AND room_id = $3 AND user_id = $4 AND message_type = 'user'
-        RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
-      `;
-      const result = await postgres.query(query, [trimmedMsg, data.messageId, this.roomId, socket.uid]);
+      const isHostOrOwner = context.isHost || context.isOwner;
+      const query = isHostOrOwner
+        ? `
+          UPDATE room_messages
+          SET message = $1, updated_at = NOW()
+          WHERE id = $2 AND room_id = $3 AND message_type = 'user'
+          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
+        `
+        : `
+          UPDATE room_messages
+          SET message = $1, updated_at = NOW()
+          WHERE id = $2 AND room_id = $3 AND user_id = $4 AND message_type = 'user'
+          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
+        `;
+      const queryParams = isHostOrOwner
+        ? [trimmedMsg, data.messageId, this.roomId]
+        : [trimmedMsg, data.messageId, this.roomId, socket.uid];
+      const result = await postgres.query(query, queryParams);
 
       if (result.rowCount === 0) {
         socket.emit("CMD:error", { code: "FORBIDDEN" });
@@ -2207,6 +2224,12 @@ export class Room {
   };
 
   private addReaction = (socket: Socket, raw: unknown) => {
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "chat:reaction");
+    if (!auth.allowed) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      return;
+    }
     const data = raw as { value: string; msgId: string; msgTimestamp: string };
     if (!data || !data.value || !data.msgId || !data.msgTimestamp) {
       return;
@@ -2221,6 +2244,12 @@ export class Room {
   };
 
   private removeReaction = (socket: Socket, raw: unknown) => {
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "chat:reaction");
+    if (!auth.allowed) {
+      socket.emit("CMD:error", { code: "FORBIDDEN" });
+      return;
+    }
     const data = raw as { value: string; msgId: string; msgTimestamp: string };
     if (!data || !data.value || !data.msgId || !data.msgTimestamp) {
       return;

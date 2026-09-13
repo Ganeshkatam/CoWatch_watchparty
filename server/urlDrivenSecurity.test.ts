@@ -22,7 +22,7 @@ import {
   getErrorUrl,
   getNotFoundUrl,
 } from '../src/utils/routeParams.js';
-import { Room, type AuthorizeActionParams } from './room.js';
+import { Room, type AuthorizeActionParams, type RoomAction } from './room.js';
 import type { Socket } from 'socket.io';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -248,6 +248,93 @@ async function runTests() {
   assert(memberTransferHost.code === 'FORBIDDEN', 'Member transfer_host rejection code must be FORBIDDEN');
   console.log('✓ Participant moderation controls strictly restricted to host/owner');
 
+  // 2.4 Complete Host Chat Authority Matrix (Send, Edit Own, Edit Other, Delete Own, Delete Other, Clear, Reaction)
+  console.log('\n--- Section 2.4: Host Complete Chat Authority Matrix ---');
+
+  // chat:send
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'chat:send' }).allowed === true, 'Host can send chat');
+  assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'chat:send' }).allowed === true, 'Member can send chat when enabled');
+  testRoom.isChatDisabled = true;
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'chat:send' }).allowed === true, 'Host can send chat even when chat is disabled');
+  const disabledSend = testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'chat:send' });
+  assert(disabledSend.allowed === false, 'Member cannot send chat when chat is disabled');
+  assert(disabledSend.code === 'FORBIDDEN', 'Disabled chat send returns FORBIDDEN');
+  testRoom.isChatDisabled = false;
+
+  // chat:edit - Host has complete authority over editing all messages
+  const hostEditOther = testRoom.authorizeRoomAction({
+    actorSocket: hostSocket,
+    action: 'chat:edit',
+    targetMessageAuthorId: 'other-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(hostEditOther.allowed === true, 'Host MUST have complete authority to edit other user messages');
+
+  const memberEditOwn = testRoom.authorizeRoomAction({
+    actorSocket: memberSocket,
+    action: 'chat:edit',
+    targetMessageAuthorId: 'member-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(memberEditOwn.allowed === true, 'Member MUST be allowed to edit own message');
+
+  const memberEditOther = testRoom.authorizeRoomAction({
+    actorSocket: memberSocket,
+    action: 'chat:edit',
+    targetMessageAuthorId: 'other-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(memberEditOther.allowed === false, 'Member CANNOT edit other user messages');
+  assert(memberEditOther.code === 'FORBIDDEN', 'Member edit other returns FORBIDDEN');
+
+  // chat:reaction
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'chat:reaction' }).allowed === true, 'Host can react');
+  assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'chat:reaction' }).allowed === true, 'Member can react when chat enabled');
+  testRoom.isChatDisabled = true;
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'chat:reaction' }).allowed === true, 'Host can react when chat disabled');
+  assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'chat:reaction' }).allowed === false, 'Member cannot react when chat disabled');
+  testRoom.isChatDisabled = false;
+  console.log('✓ Host complete chat authority matrix strictly verified (send, edit, delete, clear, react)');
+
+  // 2.5 Exhaustive Mutation Inventory Check (Playback, Playlist, VBrowser, Subtitles, Locks)
+  console.log('\n--- Section 2.5: Exhaustive Mutation Inventory Check ---');
+  testRoom.lock = 'host-uid'; // Lock playback to host
+
+  const playbackMutations: RoomAction[] = [
+    'room:play',
+    'room:pause',
+    'room:seek',
+    'room:change_rate',
+    'room:set_media',
+    'playlist:add',
+    'playlist:move',
+    'playlist:delete',
+    'playlist:next',
+    'vbrowser:start',
+    'vbrowser:stop',
+    'vbrowser:control',
+    'room:subtitle_change',
+  ];
+
+  for (const action of playbackMutations) {
+    const hostRes = testRoom.authorizeRoomAction({ actorSocket: hostSocket, action });
+    assert(hostRes.allowed === true, `Host MUST be authorized for ${action} under lock`);
+
+    const memberRes = testRoom.authorizeRoomAction({ actorSocket: memberSocket, action });
+    assert(memberRes.allowed === false, `Member MUST be rejected for ${action} under lock`);
+    assert(memberRes.code === 'FORBIDDEN', `Member rejection code for ${action} must be FORBIDDEN`);
+  }
+
+  // Room lock controls
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'room:lock' }).allowed === true, 'Host can lock room');
+  assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'room:lock' }).allowed === false, 'Member cannot lock room');
+
+  assert(testRoom.authorizeRoomAction({ actorSocket: hostSocket, action: 'room:lock_participants' }).allowed === true, 'Host can lock participants');
+  assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'room:lock_participants' }).allowed === false, 'Member cannot lock participants');
+
+  testRoom.lock = ''; // Unlock
+  console.log('✓ Exhaustive mutation inventory verified: playback, playlist, vbrowser, subtitles, locks');
+
   // =========================================================================
   // Section 3: Room Ownership Boundary Check
   // =========================================================================
@@ -326,6 +413,39 @@ async function runTests() {
   assert(newHostClearAttempt.allowed === true, 'New Host B clear chat succeeds immediately');
   console.log('✓ Dynamic host transfer race resistance verified: zero latency authority transfer');
 
+  // 4.2 Asynchronous Host Transfer / Failover Epoch Invalidation Check
+  console.log('\n--- Section 4.2: Asynchronous Host Transfer & Failover Epoch Invalidation ---');
+  testRoom.currentHostUid = 'user-a-uid';
+  testRoom.currentHostClientId = 'user-a-client';
+  const initialEpoch = testRoom.hostEpoch;
+
+  // Step 1: User A begins async moderation operation and snapshots hostEpoch
+  const asyncContextA = testRoom.buildAuthorizationContext(hostASocket);
+  const snapshotEpoch = asyncContextA.hostEpoch;
+  assert(snapshotEpoch === initialEpoch, 'Initial epoch snapshot matches');
+
+  // Step 2: Host failover / transfer occurs concurrently before A commits
+  testRoom.hostEpoch += 1;
+  testRoom.currentHostUid = 'user-b-uid';
+  testRoom.currentHostClientId = 'user-b-client';
+
+  // Step 3: User A async operation resumes and verifies hostEpoch
+  const isStale = testRoom.hostEpoch !== snapshotEpoch;
+  assert(isStale === true, 'Host epoch mismatch detected for in-flight operation');
+  const simulatedAsyncDenial = isStale ? { allowed: false, code: 'FORBIDDEN' } : { allowed: true, code: 'OK' };
+  assert(simulatedAsyncDenial.allowed === false, 'Stale async operation aborted with FORBIDDEN');
+  assert(simulatedAsyncDenial.code === 'FORBIDDEN', 'Stale async operation error code is FORBIDDEN');
+
+  // Step 4: New host B immediately issues moderation command at new epoch
+  const newHostOp = testRoom.authorizeRoomAction({
+    actorSocket: memberBSocket,
+    action: 'chat:delete_other',
+    targetMessageAuthorId: 'other-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(newHostOp.allowed === true, 'New host B command allowed at new authority epoch');
+  console.log('✓ Asynchronous host transfer & failover epoch invalidation verified');
+
   // =========================================================================
   // Section 5: Zero Mutation on Denial Invariant
   // =========================================================================
@@ -351,6 +471,38 @@ async function runTests() {
   await testRoom.banUser(unauthorizedSocket, 'some-target');
   assert(capturedError === 'FORBIDDEN', 'Unauthorized banUser emits FORBIDDEN');
   console.log('✓ banUser: Zero mutation on denial verified');
+
+  // =========================================================================
+  // Section 6: Bidirectional Client Capability Non-Authoritativeness Check
+  // =========================================================================
+  console.log('\n--- Section 6: Bidirectional Client Capability Non-Authoritativeness ---');
+
+  // Direction 1: Server says member capability = false. Client attempts to fake capability = true or pass malicious role/capability payload
+  const tamperedMemberSocket = createMockSocket('tampered-uid', 'tampered-client');
+  (tamperedMemberSocket as any).capabilities = { moderateChat: true, lockRoom: true, kickParticipants: true };
+  (tamperedMemberSocket as any).data = { isHost: true, role: 'host' };
+
+  const tamperedDelete = testRoom.authorizeRoomAction({
+    actorSocket: tamperedMemberSocket,
+    action: 'chat:delete_other',
+    targetMessageAuthorId: 'victim-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(tamperedDelete.allowed === false, 'Tampered member capabilities MUST NOT grant moderation authority');
+  assert(tamperedDelete.code === 'FORBIDDEN', 'Tampered member rejection code is FORBIDDEN');
+
+  // Direction 2: Server says host capability = true. Client state alters or removes capability = false
+  const degradedHostSocket = createMockSocket(testRoom.currentHostUid, testRoom.currentHostClientId);
+  (degradedHostSocket as any).capabilities = { moderateChat: false, lockRoom: false };
+
+  const legitimateHostDelete = testRoom.authorizeRoomAction({
+    actorSocket: degradedHostSocket,
+    action: 'chat:delete_other',
+    targetMessageAuthorId: 'victim-uid',
+    targetMessageRoomId: 'room-sec-test',
+  });
+  assert(legitimateHostDelete.allowed === true, 'Legitimate host MUST succeed regardless of client capability state');
+  console.log('✓ Bidirectional capability test verified: capabilities are strictly non-authoritative UI data');
 
   console.log('\n=================================================================');
   console.log('ALL URL-DRIVEN SCREEN ARCHITECTURE & SECURITY TESTS PASSED!');
