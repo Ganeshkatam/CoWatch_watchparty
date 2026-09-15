@@ -333,7 +333,7 @@ export const Create = () => {
               <div className={styles.cardHeaderMeta}>
                 <span className={styles.cardTitle}>Room Details</span>
                 <span className={styles.cardSubtitle}>
-                  Enter a room name, optional description, and cover picture.
+                  Enter a room name, optional description, cover picture, and session duration.
                 </span>
               </div>
             </div>
@@ -449,6 +449,50 @@ export const Create = () => {
                   </div>
                 </div>
               </div>
+
+              <div className={styles.settingCard}>
+                <div className={styles.settingMeta}>
+                  <span className={styles.settingLabel}>Keep room permanent</span>
+                  <span className={styles.settingDescription}>
+                    Keep this room open indefinitely without automatic expiration.
+                  </span>
+                </div>
+                <Switch
+                  checked={isPermanent}
+                  onChange={(e) => setIsPermanent(e.currentTarget.checked)}
+                  size="md"
+                  color="violet"
+                  withThumbIndicator={false}
+                  aria-label="Keep room permanent"
+                />
+              </div>
+
+              {!isPermanent && (
+                <div className={styles.settingCard}>
+                  <div className={styles.settingMeta}>
+                    <span className={styles.settingLabel}>Session duration</span>
+                    <span className={styles.settingDescription}>
+                      Choose how long this temporary watch room remains active before closing (max 6 hours).
+                    </span>
+                  </div>
+                  <Select
+                    value={durationHours}
+                    onChange={(val) => {
+                      if (val) {
+                        setDurationHours(val);
+                      }
+                    }}
+                    leftSection={<IconClock size={16} />}
+                    data={DURATION_OPTIONS}
+                    size="sm"
+                    styles={{
+                      root: { minWidth: 190, maxWidth: 220 },
+                      input: { fontWeight: 500 },
+                    }}
+                    aria-label="Select session duration"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -525,7 +569,7 @@ export const Create = () => {
               <div className={styles.cardHeaderMeta}>
                 <span className={styles.cardTitle}>Room Settings</span>
                 <span className={styles.cardSubtitle}>
-                  Choose who can control videos, chat, and room duration.
+                  Choose who can control videos and text chat.
                 </span>
               </div>
             </div>
@@ -564,50 +608,6 @@ export const Create = () => {
                   aria-label="Turn off chat"
                 />
               </div>
-
-              <div className={styles.settingCard}>
-                <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Keep room permanent</span>
-                  <span className={styles.settingDescription}>
-                    Keep this room open indefinitely without automatic expiration.
-                  </span>
-                </div>
-                <Switch
-                  checked={isPermanent}
-                  onChange={(e) => setIsPermanent(e.currentTarget.checked)}
-                  size="md"
-                  color="violet"
-                  withThumbIndicator={false}
-                  aria-label="Keep room permanent"
-                />
-              </div>
-
-              {!isPermanent && (
-                <div className={styles.settingCard}>
-                  <div className={styles.settingMeta}>
-                    <span className={styles.settingLabel}>Session duration</span>
-                    <span className={styles.settingDescription}>
-                      Choose how long this temporary watch room remains active before closing (max 6 hours).
-                    </span>
-                  </div>
-                  <Select
-                    value={durationHours}
-                    onChange={(val) => {
-                      if (val) {
-                        setDurationHours(val);
-                      }
-                    }}
-                    leftSection={<IconClock size={16} />}
-                    data={DURATION_OPTIONS}
-                    size="sm"
-                    styles={{
-                      root: { minWidth: 190, maxWidth: 220 },
-                      input: { fontWeight: 500 },
-                    }}
-                    aria-label="Select session duration"
-                  />
-                </div>
-              )}
             </div>
           </div>
 
