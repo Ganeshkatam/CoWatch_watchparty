@@ -443,12 +443,26 @@ class CoWatch extends React.Component {
               userAppearance: activeAppearance,
             });
 
-            // Notify user upon returning from an external OAuth sign-in flow
+            // Notify user and sync terms agreement upon returning from an external OAuth sign-in flow
             try {
               const pendingOAuth = typeof window !== "undefined" ? window.sessionStorage?.getItem("cowatch_pending_oauth") : null;
               if (pendingOAuth) {
                 window.sessionStorage?.removeItem("cowatch_pending_oauth");
                 const providerName = pendingOAuth === "google" ? "Google" : "OAuth";
+
+                // Sync terms agreement to user metadata if accepted prior to OAuth redirect
+                const termsAgreed = window.sessionStorage?.getItem("cowatch_signup_terms_agreed") === "true";
+                if (termsAgreed && user && !user.user_metadata?.terms_agreed) {
+                  supabase.auth.updateUser({
+                    data: {
+                      terms_agreed: true,
+                      terms_agreed_at: new Date().toISOString(),
+                    },
+                  }).catch((err: any) => console.warn("Could not sync OAuth terms agreement to metadata:", err));
+                }
+                window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+                window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+
                 setTimeout(() => {
                   notifications.show({
                     title: "Welcome to CoWatch",
