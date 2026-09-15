@@ -7,7 +7,7 @@ import {
   Switch,
   Alert,
   Loader,
-  FileInput,
+  FileButton,
   Text,
   ActionIcon,
   Tooltip,
@@ -379,34 +379,38 @@ export const Create = () => {
                       )}
                     </div>
                     <div className={styles.coverMeta}>
-                      <Text size="xs" fw={500} c="dimmed">
-                        {coverPreview
-                          ? "Custom uploaded picture"
-                          : "Upload a picture for your room cover"}
-                      </Text>
-                      {coverPreview ? (
-                        <Button
-                          variant="subtle"
-                          color="gray"
-                          size="xs"
-                          p={0}
-                          onClick={handleClearAvatar}
-                          style={{ height: "auto", alignSelf: "flex-start" }}
-                        >
-                          Remove picture
-                        </Button>
-                      ) : (
-                        <FileInput
-                          placeholder="Upload picture"
-                          accept="image/jpeg,image/png,image/webp"
+                      <div className={styles.coverButtonRow}>
+                        <FileButton
                           onChange={setCoverPhotoFile}
-                          value={coverPhotoFile}
-                          clearable
-                          leftSection={<IconPhoto size={16} />}
-                          size="sm"
-                          styles={{ root: { maxWidth: 240 } }}
-                        />
-                      )}
+                          accept="image/jpeg,image/png,image/webp"
+                        >
+                          {(props) => (
+                            <Button
+                              {...props}
+                              variant="default"
+                              size="sm"
+                              leftSection={<IconPhoto size={16} />}
+                              className={styles.uploadBtn}
+                            >
+                              {coverPreview ? "Change picture" : "Upload picture"}
+                            </Button>
+                          )}
+                        </FileButton>
+                        {coverPreview && (
+                          <Button
+                            variant="subtle"
+                            color="red"
+                            size="sm"
+                            onClick={handleClearAvatar}
+                            className={styles.removeCoverBtn}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <Text size="xs" c="dimmed">
+                        {coverPhotoFile ? coverPhotoFile.name : "Recommended: JPG, PNG, or WebP (max 5MB)"}
+                      </Text>
                     </div>
                   </div>
                 </div>

@@ -223,7 +223,34 @@
 .coverMeta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.coverButtonRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.uploadBtn {
+  font-weight: 500;
+  border-radius: 8px;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.uploadBtn:hover {
+  border-color: var(--color-violet, #8b5cf6);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.removeCoverBtn {
+  font-size: 12px;
+  padding: 0 6px;
+  height: 28px;
 }
 
 /* Passcode Row */
