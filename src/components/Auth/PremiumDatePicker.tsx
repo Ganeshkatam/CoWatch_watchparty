@@ -224,19 +224,7 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
         shadow="xl"
         withinPortal
         zIndex={9999}
-        middlewares={{
-          flip: {
-            fallbackPlacements: ["bottom-start", "top-start"],
-            padding: 10,
-          },
-          shift: {
-            padding: 10,
-            limiter: {
-              fn: ({ x, y }) => ({ x, y }),
-            },
-          },
-          size: true,
-        }}
+        hideDetached={false}
       >
         <Popover.Target>
           <button
