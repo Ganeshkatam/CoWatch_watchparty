@@ -72,9 +72,9 @@ export const Create = () => {
     { value: "1", label: "1 hour" },
     { value: "2", label: "2 hours" },
     { value: "3", label: "3 hours (Standard)" },
-    { value: "6", label: "6 hours" },
-    { value: "12", label: "12 hours (Extended)" },
-    { value: "24", label: "24 hours (Full day)" },
+    { value: "4", label: "4 hours" },
+    { value: "5", label: "5 hours" },
+    { value: "6", label: "6 hours (Maximum)" },
   ];
 
   // Cover picture states
