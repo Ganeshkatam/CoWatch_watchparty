@@ -14,6 +14,7 @@ import {
   Textarea,
   Select,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   IconCirclePlusFilled,
   IconArrowLeft,
@@ -126,6 +127,24 @@ export const Create = () => {
     };
   }, [passcode]);
 
+  const handleCoverPhotoChange = (file: File | null) => {
+    if (!file) {
+      setCoverPhotoFile(null);
+      setCoverPreview(null);
+      return;
+    }
+    if (file.size >= 1 * 1024 * 1024) {
+      notifications.show({
+        title: "File Too Large",
+        message: "Room picture must be less than 1MB.",
+        color: "red",
+        autoClose: 4000,
+      });
+      return;
+    }
+    setCoverPhotoFile(file);
+  };
+
   const handleClearAvatar = () => {
     setCoverPhotoFile(null);
     setCoverPreview(null);
@@ -182,8 +201,10 @@ export const Create = () => {
       );
 
       if (coverPhotoFile && user) {
-        if (coverPhotoFile.size > 5 * 1024 * 1024) {
-          console.error("Cover photo too large (max 5MB).");
+        if (coverPhotoFile.size >= 1 * 1024 * 1024) {
+          setError("Room picture must be less than 1MB.");
+          setLoading(false);
+          return;
         } else {
           const fileExt = coverPhotoFile.name.split(".").pop();
           const safeRoomId = roomName.startsWith("/")
@@ -394,7 +415,7 @@ export const Create = () => {
                     <div className={styles.coverMeta}>
                       <div className={styles.coverButtonRow}>
                         <FileButton
-                          onChange={setCoverPhotoFile}
+                          onChange={handleCoverPhotoChange}
                           accept="image/jpeg,image/png,image/webp"
                         >
                           {(props) => (
@@ -422,7 +443,7 @@ export const Create = () => {
                         )}
                       </div>
                       <Text size="xs" c="dimmed">
-                        {coverPhotoFile ? coverPhotoFile.name : "Recommended: JPG, PNG, or WebP (max 5MB)"}
+                        {coverPhotoFile ? coverPhotoFile.name : "Recommended: JPG, PNG, or WebP (less than 1MB)"}
                       </Text>
                     </div>
                   </div>
