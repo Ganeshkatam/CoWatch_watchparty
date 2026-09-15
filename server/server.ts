@@ -2925,23 +2925,27 @@ async function minuteMetrics() {
       );
 
       // Phase 8: In critical budget state, degrade non-essential analytics tracking
-      if (!RedisMetrics.isDegradedMode() && redis) {
-        const expireTime = getStartOfDay() / 1000 + 86400;
-        if (room.vBrowser?.creatorClientID) {
-          await redis.zincrby(
-            "vBrowserClientIDMinutes",
-            1,
-            room.vBrowser.creatorClientID,
-          );
-          await redis.expireat("vBrowserClientIDMinutes", expireTime);
-        }
-        if (room.vBrowser?.creatorUID) {
-          await redis.zincrby(
-            "vBrowserUIDMinutes",
-            1,
-            room.vBrowser?.creatorUID,
-          );
-          await redis.expireat("vBrowserUIDMinutes", expireTime);
+      if (!RedisMetrics.isDegradedMode() && redis && redis.status === "ready") {
+        try {
+          const expireTime = getStartOfDay() / 1000 + 86400;
+          if (room.vBrowser?.creatorClientID) {
+            await redis.zincrby(
+              "vBrowserClientIDMinutes",
+              1,
+              room.vBrowser.creatorClientID,
+            );
+            await redis.expireat("vBrowserClientIDMinutes", expireTime);
+          }
+          if (room.vBrowser?.creatorUID) {
+            await redis.zincrby(
+              "vBrowserUIDMinutes",
+              1,
+              room.vBrowser?.creatorUID,
+            );
+            await redis.expireat("vBrowserUIDMinutes", expireTime);
+          }
+        } catch (err) {
+          // Redis metrics degradation fallback
         }
       }
     }
@@ -2982,11 +2986,17 @@ async function minuteMetrics() {
     users: io.engine.clientsCount,
     vbWaiting,
   };
-  await redis?.setex(
-    `shardMetrics:${config.SHARD ?? 0}`,
-    120,
-    JSON.stringify(obj),
-  );
+  try {
+    if (redis && redis.status === "ready") {
+      await redis.setex(
+        `shardMetrics:${config.SHARD ?? 0}`,
+        120,
+        JSON.stringify(obj),
+      );
+    }
+  } catch (err) {
+    // Redis shard metrics degradation fallback
+  }
 }
 
 function computeOpenSubtitlesHash(first: Buffer, last: Buffer, size: number) {

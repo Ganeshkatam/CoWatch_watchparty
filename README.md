@@ -88,8 +88,8 @@ CoWatch is a private, proprietary synchronized video streaming and watch party p
 ### 2. Repository Access
 Clone the repository:
 ```bash
-git clone https://github.com/Ganeshkatam/CoWatch_watchparty.git
-cd CoWatch_watchparty
+git clone <your-remote-url>
+cd cowatch
 ```
 
 ### 3. Install Dependencies

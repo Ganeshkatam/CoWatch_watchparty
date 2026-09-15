@@ -69,7 +69,6 @@ export const Login = () => {
       const redirect = params.get("redirect") || params.get("next") || "/";
       history.push(redirect.startsWith("/") ? redirect : `/${redirect}`);
     } catch (err: any) {
-      console.error("Login error:", err);
       const msg = err?.message || "";
       if (msg.toLowerCase().includes("invalid login credentials")) {
         setError("Invalid email or password. If you do not have an account yet, kindly create an account.");

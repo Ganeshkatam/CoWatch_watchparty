@@ -1,7 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Container, Group, Text, ActionIcon } from "@mantine/core";
-import { IconBrandTwitter, IconBrandGithub, IconBrandDiscord } from "@tabler/icons-react";
+import { Container, Group, Text } from "@mantine/core";
 
 export const Footer = () => (
   <div style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-app)" }}>
@@ -47,15 +46,6 @@ export const Footer = () => (
           <Text component={Link} to="/community-guidelines" size="sm" c="dimmed" style={{ textDecoration: "none" }}>
             Guidelines
           </Text>
-        </Group>
-
-        <Group gap="xs">
-          {/* <ActionIcon size="lg" color="gray" variant="subtle">
-            <IconBrandTwitter size={18} stroke={1.5} />
-          </ActionIcon> */}
-          {/* <ActionIcon size="lg" color="gray" variant="subtle">
-            <IconBrandGithub size={18} stroke={1.5} />
-          </ActionIcon> */}
         </Group>
 
       </Group>

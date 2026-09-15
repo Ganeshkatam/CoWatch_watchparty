@@ -79,7 +79,9 @@ function createRedisClient(url: string | undefined, name: string): Redis | undef
   try {
     const client = new Redis(url, {
       maxRetriesPerRequest: 1,
-      retryStrategy: () => null,
+      retryStrategy: (times) => {
+        return Math.min(times * 200, 3000);
+      },
       enableReadyCheck: true,
       lazyConnect: false,
     });
@@ -150,7 +152,7 @@ export async function waitForRedisReady(timeoutMs = 5000): Promise<boolean> {
 // =====================================================================
 export const redisCore = {
   isAvailable(): boolean {
-    return Boolean(rawCoreClient && rawCoreClient.status !== "end" && rawCoreClient.status !== "close");
+    return Boolean(rawCoreClient && rawCoreClient.status === "ready");
   },
 
   async setLease(key: string, value: string, ttlSeconds: number): Promise<boolean> {
@@ -188,7 +190,7 @@ export const redisCore = {
 // =====================================================================
 export const redisEdge = {
   isAvailable(): boolean {
-    return Boolean(rawEdgeClient && rawEdgeClient.status !== "end" && rawEdgeClient.status !== "close");
+    return Boolean(rawEdgeClient && rawEdgeClient.status === "ready");
   },
 
   async get<T = string>(key: string): Promise<T | null> {
@@ -297,7 +299,7 @@ class MetricsBatchBuffer {
   }
 
   public async flush(): Promise<void> {
-    if (!rawMetricsClient || (this.countBuffer.size === 0 && this.distinctBuffer.size === 0)) {
+    if (!rawMetricsClient || rawMetricsClient.status !== "ready" || (this.countBuffer.size === 0 && this.distinctBuffer.size === 0)) {
       return;
     }
     const counts = Array.from(this.countBuffer.entries());
@@ -325,7 +327,7 @@ export const metricsBuffer = new MetricsBatchBuffer();
 // redisMetrics service wrapper
 export const redisMetricsClient = {
   isAvailable(): boolean {
-    return Boolean(rawMetricsClient && rawMetricsClient.status !== "end" && rawMetricsClient.status !== "close");
+    return Boolean(rawMetricsClient && rawMetricsClient.status === "ready");
   },
 
   async flush(): Promise<void> {

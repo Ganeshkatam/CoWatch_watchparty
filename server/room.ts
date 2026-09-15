@@ -423,22 +423,26 @@ export class Room {
 
   public withHostTransitionLease = async <T>(action: () => Promise<T>): Promise<T> => {
     const isMultiInstance = Boolean(config.REDIS_CORE_URL || config.REDIS_URL);
-    if (isMultiInstance) {
-      if (!redisCore.isAvailable()) {
-        throw new Error("REDIS_CORE_UNAVAILABLE: Cannot serialize host transition.");
-      }
+    if (isMultiInstance && redisCore.isAvailable()) {
       const leaseKey = `room:host:${this.roomId}`;
       const leaseVal = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-      const acquired = await redisCore.setLease(leaseKey, leaseVal, 5);
-      if (!acquired) {
-        throw new Error("HOST_TRANSITION_CONFLICT: Concurrent host transition in progress.");
-      }
+      let acquired = false;
       try {
-        return await action();
-      } finally {
-        await redisCore.delLease(leaseKey);
+        acquired = await redisCore.setLease(leaseKey, leaseVal, 5);
+      } catch (err: any) {
+        console.warn(`[REDIS LEASE ERROR] Failed to acquire host lease in room ${this.roomId}:`, err.message);
+      }
+      if (acquired) {
+        try {
+          return await action();
+        } finally {
+          try {
+            await redisCore.delLease(leaseKey);
+          } catch {}
+        }
       }
     }
+    // Graceful fallback to local in-process execution when redis is unavailable or in single node
     return await action();
   };
 
@@ -784,7 +788,7 @@ export class Room {
 
       // Check if this socket is the room owner (creator) returning to the room
       if (socket.uid && this.owner_id && socket.uid === this.owner_id) {
-        this.reclaimHostForOwner(socket);
+        this.reclaimHostForOwner(socket).catch(() => {});
       } else if (!this.currentHostUid && socket.uid) {
         // Initial room participant becomes host ONLY IF authenticated with verified UID
         this.currentHostUid = socket.uid;
@@ -1171,7 +1175,7 @@ export class Room {
         this.clientToUidMap[clientId] = socket.uid;
         this.admittedMembers.add(socket.uid);
         if (this.owner_id && socket.uid === this.owner_id) {
-          this.reclaimHostForOwner(socket);
+          this.reclaimHostForOwner(socket).catch(() => {});
         }
         if (postgres) {
           try {
@@ -1448,25 +1452,30 @@ export class Room {
       return true;
     }
 
-    return await this.withHostTransitionLease(async () => {
-      const previousHostClientId = this.currentHostClientId;
-      this.hostEpoch += 1;
-      this.currentHostClientId = ownerSocket.clientId;
-      this.currentHostUid = ownerSocket.uid;
-      this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
-      this.hostMode = "owner";
+    try {
+      return await this.withHostTransitionLease(async () => {
+        const previousHostClientId = this.currentHostClientId;
+        this.hostEpoch += 1;
+        this.currentHostClientId = ownerSocket.clientId;
+        this.currentHostUid = ownerSocket.uid;
+        this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
+        this.hostMode = "owner";
 
-      this.broadcastHostChange("owner_regain");
-      if (previousHostClientId && previousHostClientId !== ownerSocket.clientId) {
-        const chatMsg = {
-          id: ownerSocket.clientId,
-          cmd: "system",
-          msg: "The room creator has returned and resumed hosting.",
-        };
-        this.addChatMessage(ownerSocket, chatMsg);
-      }
-      return true;
-    });
+        this.broadcastHostChange("owner_regain");
+        if (previousHostClientId && previousHostClientId !== ownerSocket.clientId) {
+          const chatMsg = {
+            id: ownerSocket.clientId,
+            cmd: "system",
+            msg: "The room creator has returned and resumed hosting.",
+          };
+          this.addChatMessage(ownerSocket, chatMsg);
+        }
+        return true;
+      });
+    } catch (err: any) {
+      console.warn(`[RECLAIM HOST WARNING] Failed to reclaim host in room ${this.roomId}:`, err.message);
+      return false;
+    }
   };
 
   public transferHost = async (
