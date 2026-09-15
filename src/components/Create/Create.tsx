@@ -47,7 +47,7 @@ export const Create = () => {
   });
 
   // Form states
-  const [roomTitle, setRoomTitle] = useState("");
+  const [roomTitle, setRoomTitle] = useState("My Watch Party");
   const [roomDescription, setRoomDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
   const generatePasscode = () => {
@@ -343,7 +343,7 @@ export const Create = () => {
                 label="Room name"
                 required
                 withAsterisk
-                placeholder="e.g. Movie night with friends"
+                placeholder="e.g. My Watch Party"
                 value={roomTitle}
                 onChange={(e) => setRoomTitle(e.target.value)}
                 maxLength={50}
