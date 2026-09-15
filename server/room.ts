@@ -2517,23 +2517,30 @@ export class Room {
   };
 
   private getRoomState = async (socket: Socket) => {
-    if (!postgres) {
-      return;
-    }
-    const result = await postgres.query(
-      `SELECT passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked FROM rooms where "roomId" = $1`,
-      [this.roomId],
-    );
-    const first = result.rows[0];
-    if (this.isChatDisabled === undefined) {
-      this.isChatDisabled = Boolean(first?.isChatDisabled);
-    }
-    if (first?.roomTitle !== undefined) this.roomTitle = first.roomTitle;
-    if (first?.roomDescription !== undefined) this.roomDescription = first.roomDescription;
-    if (first?.mediaPath !== undefined) this.mediaPath = first.mediaPath;
-    if (first?.owner_id) this.owner_id = first.owner_id;
-    if (first?.participants_locked !== undefined) {
-      this.participantsLocked = Boolean(first.participants_locked);
+    let first: any = null;
+    if (postgres) {
+      try {
+        const result = await postgres.query(
+          `SELECT passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where "roomId" = $1`,
+          [this.roomId],
+        );
+        first = result.rows[0];
+        if (this.isChatDisabled === undefined) {
+          this.isChatDisabled = Boolean(first?.isChatDisabled);
+        }
+        if (first?.roomTitle !== undefined) this.roomTitle = first.roomTitle;
+        if (first?.roomDescription !== undefined) this.roomDescription = first.roomDescription;
+        if (first?.mediaPath !== undefined) this.mediaPath = first.mediaPath;
+        if (first?.owner_id) this.owner_id = first.owner_id;
+        if (first?.participants_locked !== undefined) {
+          this.participantsLocked = Boolean(first.participants_locked);
+        }
+        if (first?.max_participants !== undefined) {
+          this.maxParticipants = first.max_participants;
+        }
+      } catch (err) {
+        console.warn("Failed fetching room details from database in getRoomState:", err);
+      }
     }
 
     socket.emit("REC:getRoomState", {
@@ -2543,10 +2550,10 @@ export class Room {
       hostName: this.getHostDisplayName(),
       hostMode: this.getHostMode(),
       isHost: this.isHost(socket),
-      isChatDisabled: first?.isChatDisabled,
-      roomTitle: first?.roomTitle,
-      roomDescription: first?.roomDescription,
-      mediaPath: first?.mediaPath,
+      isChatDisabled: first?.isChatDisabled ?? this.isChatDisabled,
+      roomTitle: first?.roomTitle ?? this.roomTitle,
+      roomDescription: first?.roomDescription ?? this.roomDescription,
+      mediaPath: first?.mediaPath ?? this.mediaPath,
       participantsLocked: Boolean(first?.participants_locked ?? this.participantsLocked),
       maxParticipants: typeof first?.max_participants === "number" ? first.max_participants : this.maxParticipants,
       capabilities: {

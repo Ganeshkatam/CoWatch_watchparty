@@ -1023,7 +1023,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
       const handleHostUpdate = (data: any) => {
         if (!data) return;
-        if (!operationCoordinator.canAcceptMutationEvent(data.__epoch)) {
+        if (!operationCoordinator.canAcceptSyncEvent(data.__epoch)) {
           return;
         }
         operationCoordinator.resolveDomainOperations("host-authority");
@@ -1072,17 +1072,17 @@ export class App extends React.Component<AppProps, AppState> {
         window.location.assign("/");
       });
       socket.on("REC:play", (data?: any) => {
-        if (!operationCoordinator.canAcceptMutationEvent(data?.__epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(data?.__epoch)) return;
         this.localPlay();
       });
       socket.on("REC:pause", (data?: any) => {
-        if (!operationCoordinator.canAcceptMutationEvent(data?.__epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(data?.__epoch)) return;
         this.localPause();
       });
       socket.on("REC:playbackSync", (data: any) => {
         if (!data) return;
         const epoch = typeof data === "object" ? data?.epoch : undefined;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         if (data.serverTime) {
           clockSynchronizer.recordSample(data.serverTime, Date.now() - 50, Date.now());
         }
@@ -1091,13 +1091,13 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:seek", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const time = typeof data === "object" ? data?.time : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.localSeek(time);
       });
       socket.on("REC:playbackRate", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const rate = typeof data === "object" ? data?.rate : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ roomPlaybackRate: rate });
         if (rate > 0) {
           this.Player().setPlaybackRate(rate);
@@ -1106,7 +1106,7 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:subtitle", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const sub = typeof data === "object" ? data?.subtitle : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ roomSubtitle: sub }, () => {
           this.Player().loadSubtitles(sub);
         });
@@ -1114,21 +1114,24 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:loop", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const loop = typeof data === "object" ? data?.loop : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ roomLoop: loop });
       });
       socket.on("REC:changeController", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const ctrl = typeof data === "object" ? data?.controller : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ controller: ctrl });
       });
       socket.on("REC:host", async (data: HostState) => {
         if (!data) return;
-        if (!operationCoordinator.canAcceptMutationEvent((data as any).__epoch)) {
+        const epoch = (data as any)?.__epoch;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) {
           return;
         }
         operationCoordinator.resolveDomainOperations("media-playback", "set-media");
+        operationCoordinator.recordRoomStateReceived(epoch ?? operationCoordinator.getConnectionEpoch());
+        this.checkAndAdvanceToReady();
         let currentMedia = data.video || "";
         if (this.state.pipState?.active && this.state.roomMedia !== currentMedia) {
           pipManager.restoreAndClose().catch(console.warn);
@@ -1525,14 +1528,14 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:lock", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const lock = typeof data === "object" ? data?.lock : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         operationCoordinator.resolveDomainOperations("participant-authority", "lock");
         this.setState({ roomLock: lock });
       });
       socket.on("REC:participantsLock", (data: any) => {
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const locked = typeof data === "object" ? data?.locked : data;
-        if (!operationCoordinator.canAcceptMutationEvent(epoch)) return;
+        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         operationCoordinator.resolveDomainOperations("participant-authority", "participants-lock");
         this.setState({ participantsLocked: Boolean(locked) });
       });
