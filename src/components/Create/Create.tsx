@@ -546,41 +546,9 @@ export const Create = () => {
 
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Session duration</span>
-                  <span className={styles.settingDescription}>
-                    {isPermanent
-                      ? "Disabled because the room is set to permanent."
-                      : "Choose how long this watch party room remains active before closing."}
-                  </span>
-                </div>
-                <Select
-                  value={isPermanent ? "permanent" : durationHours}
-                  onChange={(val) => {
-                    if (val && val !== "permanent") {
-                      setDurationHours(val);
-                    }
-                  }}
-                  disabled={isPermanent}
-                  leftSection={<IconClock size={16} />}
-                  data={
-                    isPermanent
-                      ? [{ value: "permanent", label: "Permanent (Never expires)" }]
-                      : DURATION_OPTIONS
-                  }
-                  size="sm"
-                  styles={{
-                    root: { minWidth: 190, maxWidth: 220 },
-                    input: { fontWeight: 500 },
-                  }}
-                  aria-label="Select session duration"
-                />
-              </div>
-
-              <div className={styles.settingCard}>
-                <div className={styles.settingMeta}>
                   <span className={styles.settingLabel}>Keep room permanent</span>
                   <span className={styles.settingDescription}>
-                    Keep this room open permanently without automatic expiration.
+                    Keep this room open indefinitely without automatic expiration.
                   </span>
                 </div>
                 <Switch
@@ -592,6 +560,33 @@ export const Create = () => {
                   aria-label="Keep room permanent"
                 />
               </div>
+
+              {!isPermanent && (
+                <div className={styles.settingCard}>
+                  <div className={styles.settingMeta}>
+                    <span className={styles.settingLabel}>Session duration</span>
+                    <span className={styles.settingDescription}>
+                      Choose how long this temporary watch room remains active before closing (max 6 hours).
+                    </span>
+                  </div>
+                  <Select
+                    value={durationHours}
+                    onChange={(val) => {
+                      if (val) {
+                        setDurationHours(val);
+                      }
+                    }}
+                    leftSection={<IconClock size={16} />}
+                    data={DURATION_OPTIONS}
+                    size="sm"
+                    styles={{
+                      root: { minWidth: 190, maxWidth: 220 },
+                      input: { fontWeight: 500 },
+                    }}
+                    aria-label="Select session duration"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
