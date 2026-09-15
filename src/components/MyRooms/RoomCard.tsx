@@ -18,6 +18,8 @@ import {
   FileButton,
   Tooltip,
   Alert,
+  Loader,
+  Center,
 } from "@mantine/core";
 import editModalStyles from "./EditRoomModal.module.css";
 import {
@@ -139,6 +141,8 @@ export const EditRoomModal = ({
   const [coverPreview, setCoverPreview] = useState<string | null>(room.coverPhoto || null);
   const [removeCover, setRemoveCover] = useState(false);
 
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
   useEffect(() => {
     if (opened) {
       const saved = room.currentPasscode || "";
@@ -156,6 +160,34 @@ export const EditRoomModal = ({
       setCoverPreview(room.coverPhoto || null);
       setCoverFile(null);
       setRemoveCover(false);
+
+      if (room.isPasscodeProtected && !room.currentPasscode) {
+        setIsLoadingDetails(true);
+        (async () => {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const token = await getAccessToken();
+            if (user && token) {
+              const res = await fetch(`${serverPath}/roomDetails?uid=${user.id}&token=${token}&roomId=${encodeURIComponent(room.roomId)}`);
+              if (res.ok) {
+                const freshData = await res.json();
+                if (freshData.currentPasscode) {
+                  setCurrentPassword(freshData.currentPasscode);
+                }
+                if (freshData.roomTitle) setTitle(freshData.roomTitle);
+                if (freshData.roomDescription !== undefined) setDescription(freshData.roomDescription || "");
+                if (freshData.isPermanent !== undefined) setIsPermanent(Boolean(freshData.isPermanent));
+                if (freshData.isChatDisabled !== undefined) setIsChatDisabled(Boolean(freshData.isChatDisabled));
+                if (freshData.coverPhoto !== undefined) setCoverPreview(freshData.coverPhoto || null);
+              }
+            }
+          } catch (e) {
+            console.warn("Could not fetch latest room details:", e);
+          } finally {
+            setIsLoadingDetails(false);
+          }
+        })();
+      }
     }
   }, [opened, room, cleanId]);
 
@@ -309,28 +341,35 @@ export const EditRoomModal = ({
       }
     >
       <div className={editModalStyles.modalBodyContent}>
-        {isRoomActive && (
-          <Alert
-            color="yellow"
-            variant="light"
-            icon={<IconAlertTriangle size={18} />}
-            title="Room is Currently Active"
-          >
-            Room details (title, description, cover photo, behavior, and passcode) cannot be changed while a watch session is actively running. Please end the session or wait until all participants leave before editing.
-          </Alert>
-        )}
+        {isLoadingDetails ? (
+          <Center style={{ minHeight: "220px", flexDirection: "column", gap: 12 }}>
+            <Loader size="md" color="violet" />
+            <Text size="sm" c="dimmed">Loading room settings...</Text>
+          </Center>
+        ) : (
+          <>
+            {isRoomActive && (
+              <Alert
+                color="yellow"
+                variant="light"
+                icon={<IconAlertTriangle size={18} />}
+                title="Room is Currently Active"
+              >
+                Room details (title, description, cover photo, behavior, and passcode) cannot be changed while a watch session is actively running. Please end the session or wait until all participants leave before editing.
+              </Alert>
+            )}
 
-        {error && (
-          <Alert color="red" variant="light" title="Unable to save changes">
-            {error}
-          </Alert>
-        )}
+            {error && (
+              <Alert color="red" variant="light" title="Unable to save changes">
+                {error}
+              </Alert>
+            )}
 
-        {/* SECTION 1: IDENTITY */}
-        <div className={editModalStyles.section}>
-          <div className={editModalStyles.sectionHeader}>
-            <span className={editModalStyles.sectionTitle}>Room Identity</span>
-          </div>
+            {/* SECTION 1: IDENTITY */}
+            <div className={editModalStyles.section}>
+              <div className={editModalStyles.sectionHeader}>
+                <span className={editModalStyles.sectionTitle}>Room Identity</span>
+              </div>
           <Stack gap="md">
             <TextInput
               label="Room Title"
@@ -388,7 +427,7 @@ export const EditRoomModal = ({
                     )}
                   </Group>
                   <Text size="xs" c="dimmed">
-                    JPG, PNG, or WEBP (max 5MB). 16:9 recommended.
+                    JPG, PNG, or WEBP (less than 1MB). 16:9 recommended.
                   </Text>
                 </div>
               </div>
@@ -590,6 +629,8 @@ export const EditRoomModal = ({
             )}
           </Stack>
         </div>
+        </>
+        )}
       </div>
 
       {/* FIXED STICKY FOOTER */}
@@ -597,7 +638,7 @@ export const EditRoomModal = ({
         <Button variant="default" onClick={onClose} disabled={isSaving}>
           {isRoomActive ? "Close" : "Cancel"}
         </Button>
-        <Button color="violet" onClick={handleSave} loading={isSaving} disabled={isSaving || isRoomActive}>
+        <Button color="violet" onClick={handleSave} loading={isSaving} disabled={isSaving || isRoomActive || isLoadingDetails}>
           Save Changes
         </Button>
       </div>

@@ -291,7 +291,29 @@ export const MyRooms = () => {
               setFilterOption={setFilterOption}
             />
 
-            <div className={styles.roomSection}>
+            <div className={styles.roomSection} style={{ position: "relative", opacity: loading ? 0.65 : 1, transition: "opacity 0.2s ease" }}>
+              {loading && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    zIndex: 10,
+                    background: "var(--bg-surface)",
+                    padding: "6px 16px",
+                    borderRadius: "20px",
+                    border: "1px solid var(--border-subtle)",
+                    boxShadow: "var(--shadow-md)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Loader size="xs" color="violet" />
+                  <Text size="xs" fw={500} c="dimmed">Loading rooms...</Text>
+                </div>
+              )}
               <div className={viewMode === 'grid' ? styles.roomGrid : styles.roomList}>
                 {rooms.map(room => (
                   <RoomCard
