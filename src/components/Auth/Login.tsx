@@ -64,7 +64,7 @@ export const Login = () => {
         password,
       });
       if (error) throw error;
-      
+
       const params = new URLSearchParams(location.search);
       const redirect = params.get("redirect") || params.get("next") || "/";
       history.push(redirect.startsWith("/") ? redirect : `/${redirect}`);
@@ -117,49 +117,14 @@ export const Login = () => {
       <Title order={2} ta="left" fw={800} style={{ color: "var(--text-primary)" }}>
         Welcome back
       </Title>
-      <Text c="dimmed" size="sm" ta="left" mt={5}>
-        Sign in to your account, or{" "}
-        <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
-          create an account
-        </Link>{" "}
-        if you are new.
-      </Text>
 
-      <Paper 
-        withBorder 
-        p={30} 
-        mt={30} 
-        radius="lg" 
+      <Paper
+        withBorder
+        p={30}
+        mt={30}
+        radius="lg"
         className={styles.authCard}
       >
-        <div
-          style={{
-            padding: "10px 14px",
-            marginBottom: "16px",
-            borderRadius: "var(--mantine-radius-md)",
-            background: "var(--color-violet-light, rgba(139, 92, 246, 0.08))",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "8px",
-            flexWrap: "wrap",
-          }}
-        >
-          <Text size="xs" c="dimmed">
-            If you do not have an account, kindly create an account first.
-          </Text>
-          <Button
-            component={Link}
-            to={{ pathname: "/signup", search: location.search }}
-            size="compact-xs"
-            variant="light"
-            color="violet"
-          >
-            Create account
-          </Button>
-        </div>
-
         {error && (
           <Alert color="red" mb="md" title="Sign In Notice">
             <div>{error}</div>
@@ -181,24 +146,15 @@ export const Login = () => {
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {enabledOptions.includes("google") && (
-            <div>
-              <Button
-                leftSection={<IconBrandGoogleFilled />}
-                onClick={handleGoogleSignIn}
-                variant="default"
-                fullWidth
-                loading={googleLoading}
-              >
-                Continue with Google
-              </Button>
-              <Text size="xs" c="dimmed" ta="center" mt={6}>
-                If you do not have an account, kindly{" "}
-                <Link to={{ pathname: "/signup", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
-                  create an account
-                </Link>{" "}
-                first.
-              </Text>
-            </div>
+            <Button
+              leftSection={<IconBrandGoogleFilled />}
+              onClick={handleGoogleSignIn}
+              variant="default"
+              fullWidth
+              loading={googleLoading}
+            >
+              Continue with Google
+            </Button>
           )}
 
           {enabledOptions.includes("email") && enabledOptions.includes("google") && (
