@@ -189,70 +189,70 @@ export const Create = () => {
     setError("");
 
     try {
-        const finalCoverUrl = selectedAvatarUrl;
-        const roomName = await createRoom(
-          user,
-          false,
-          new URLSearchParams(window.location.search).get("video") ?? "",
-          {
-            roomTitle: roomTitle.trim(),
-            roomDescription: roomDescription || undefined,
-            coverPhoto: finalCoverUrl || undefined,
-            passcode: passcode || undefined,
-            isPermanent,
-            isChatDisabled,
-            lock,
-            noRedirect: true,
-          }
-        );
-
-        if (coverPhotoFile && user) {
-          if (coverPhotoFile.size > 5 * 1024 * 1024) {
-            console.error("Cover photo too large (max 5MB).");
-          } else {
-            const fileExt = coverPhotoFile.name.split(".").pop();
-            const safeRoomId = roomName.startsWith("/")
-              ? roomName.substring(1)
-              : roomName;
-            const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
-            const { error: uploadError } = await supabase.storage
-              .from("room_covers")
-              .upload(filePath, coverPhotoFile);
-
-            if (!uploadError) {
-              const { data: publicUrlData } = supabase.storage
-                .from("room_covers")
-                .getPublicUrl(filePath);
-              await fetch(`${serverPath}/updateRoomCover`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  uid: user.id,
-                  token: await getAccessToken(),
-                  roomId: roomName,
-                  coverPhoto: publicUrlData.publicUrl,
-                }),
-              }).catch((err) =>
-                console.error("Failed to update room cover", err)
-              );
-            } else {
-              console.error("Cover upload failed", uploadError);
-            }
-          }
-        } else if (finalCoverUrl && user) {
-          await fetch(`${serverPath}/updateRoomCover`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              uid: user.id,
-              token: await getAccessToken(),
-              roomId: roomName,
-              coverPhoto: finalCoverUrl,
-            }),
-          }).catch((err) =>
-            console.error("Failed to update room cover", err)
-          );
+      const finalCoverUrl = selectedAvatarUrl;
+      const roomName = await createRoom(
+        user,
+        false,
+        new URLSearchParams(window.location.search).get("video") ?? "",
+        {
+          roomTitle: roomTitle.trim(),
+          roomDescription: roomDescription || undefined,
+          coverPhoto: finalCoverUrl || undefined,
+          passcode: passcode || undefined,
+          isPermanent,
+          isChatDisabled,
+          lock,
+          noRedirect: true,
         }
+      );
+
+      if (coverPhotoFile && user) {
+        if (coverPhotoFile.size > 5 * 1024 * 1024) {
+          console.error("Cover photo too large (max 5MB).");
+        } else {
+          const fileExt = coverPhotoFile.name.split(".").pop();
+          const safeRoomId = roomName.startsWith("/")
+            ? roomName.substring(1)
+            : roomName;
+          const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from("room_covers")
+            .upload(filePath, coverPhotoFile);
+
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage
+              .from("room_covers")
+              .getPublicUrl(filePath);
+            await fetch(`${serverPath}/updateRoomCover`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                uid: user.id,
+                token: await getAccessToken(),
+                roomId: roomName,
+                coverPhoto: publicUrlData.publicUrl,
+              }),
+            }).catch((err) =>
+              console.error("Failed to update room cover", err)
+            );
+          } else {
+            console.error("Cover upload failed", uploadError);
+          }
+        }
+      } else if (finalCoverUrl && user) {
+        await fetch(`${serverPath}/updateRoomCover`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: user.id,
+            token: await getAccessToken(),
+            roomId: roomName,
+            coverPhoto: finalCoverUrl,
+          }),
+        }).catch((err) =>
+          console.error("Failed to update room cover", err)
+        );
+      }
 
       const finalRoomId = roomName.startsWith("/")
         ? roomName.substring(1)
@@ -435,8 +435,8 @@ export const Create = () => {
                           ? selectedAvatarUrl === avatarUrl
                             ? "Using your profile avatar"
                             : selectedAvatarUrl
-                            ? "Selected preset avatar"
-                            : "Custom uploaded picture"
+                              ? "Selected preset avatar"
+                              : "Custom uploaded picture"
                           : "Select an avatar below or upload your own"}
                       </Text>
                       {coverPreview && (
@@ -464,9 +464,8 @@ export const Create = () => {
                         <Tooltip key={preset.id} label={preset.label} withArrow>
                           <button
                             type="button"
-                            className={`${styles.avatarOptionBtn} ${
-                              isSelected ? styles.avatarOptionBtnActive : ""
-                            }`}
+                            className={`${styles.avatarOptionBtn} ${isSelected ? styles.avatarOptionBtnActive : ""
+                              }`}
                             onClick={() => handleSelectPresetAvatar(preset.url)}
                             aria-label={`Select ${preset.label} avatar`}
                           >
@@ -491,11 +490,10 @@ export const Create = () => {
                     {avatarUrl && (
                       <button
                         type="button"
-                        className={`${styles.ownAvatarBtn} ${
-                          selectedAvatarUrl === avatarUrl && !coverPhotoFile
+                        className={`${styles.ownAvatarBtn} ${selectedAvatarUrl === avatarUrl && !coverPhotoFile
                             ? styles.ownAvatarBtnActive
                             : ""
-                        }`}
+                          }`}
                         onClick={handleSelectOwnAvatar}
                         title="Use your profile picture as room cover"
                       >
