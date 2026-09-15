@@ -116,7 +116,8 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
     }
 
     // Next month padding days to complete grid (multiples of 7)
-    const remaining = 42 - days.length;
+    const targetLength = days.length <= 35 ? 35 : 42;
+    const remaining = targetLength - days.length;
     for (let d = 1; d <= remaining; d++) {
       const nextMonth = viewMonth === 11 ? 0 : viewMonth + 1;
       const nextYear = viewMonth === 11 ? viewYear + 1 : viewYear;
@@ -218,10 +219,24 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
         opened={opened}
         onChange={setOpened}
         position="bottom-start"
-        offset={8}
+        offset={6}
         radius="lg"
         shadow="xl"
         withinPortal
+        zIndex={9999}
+        middlewares={{
+          flip: {
+            fallbackPlacements: ["bottom-start", "top-start"],
+            padding: 10,
+          },
+          shift: {
+            padding: 10,
+            limiter: {
+              fn: ({ x, y }) => ({ x, y }),
+            },
+          },
+          size: true,
+        }}
       >
         <Popover.Target>
           <button

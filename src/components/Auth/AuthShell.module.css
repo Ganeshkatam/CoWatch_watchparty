@@ -5,7 +5,8 @@
   padding: 48px 24px;
   background-color: var(--bg-app);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   isolation: isolate;
   transition: background-color 0.2s ease;
 }
