@@ -466,6 +466,10 @@
   .desktopOnlyAction {
     display: none !important;
   }
+
+  .brandName {
+    display: none !important;
+  }
 }
 
 @media (max-width: 640px) {
@@ -481,10 +485,6 @@
   .logo {
     width: 32px;
     height: 32px;
-  }
-
-  .brandName {
-    font-size: 20px;
   }
 
   .actionsGroup {
@@ -524,10 +524,6 @@
   .logo {
     width: 28px;
     height: 28px;
-  }
-
-  .brandName {
-    font-size: 18px;
   }
 
   .actionsGroup {

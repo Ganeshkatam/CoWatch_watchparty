@@ -610,7 +610,13 @@ class CoWatch extends React.Component {
                             <Route
                               path={["/join", "/join/:roomId"]}
                               exact
-                              component={Join}
+                              render={() => (
+                                <React.Fragment>
+                                  <TopBar />
+                                  <Join />
+                                  <Footer />
+                                </React.Fragment>
+                              )}
                             />
                             <Route
                               path="/preflight/:roomId"

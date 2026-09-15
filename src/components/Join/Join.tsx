@@ -284,42 +284,6 @@ export const Join: React.FC = () => {
 
   return (
     <div className={styles.page}>
-      {/* Minimal Header */}
-      <header className={styles.header}>
-        <Link to="/" className={styles.brandLink}>
-          <img src="/logo192.png" alt="CoWatch" className={styles.logo} />
-          <span className={styles.brandName}>CoWatch</span>
-        </Link>
-        <div className={styles.headerActions}>
-          <Link to="/faq" className={styles.headerLink}>
-            Support
-          </Link>
-          {user ? (
-            <Button
-              component={Link}
-              to="/create"
-              size="xs"
-              variant="default"
-              className={styles.headerBtn}
-            >
-              Create Room
-            </Button>
-          ) : (
-            <Button
-              component={Link}
-              to={`/login?redirect=${encodeURIComponent(
-                cleanRouteRoomId ? `/join/${encodeURIComponent(cleanRouteRoomId)}` : "/join"
-              )}`}
-              size="xs"
-              variant="default"
-              className={styles.headerAuthBtn}
-            >
-              Sign In
-            </Button>
-          )}
-        </div>
-      </header>
-
       {/* Main Content Area */}
       <main className={styles.main}>
         <div className={styles.contentWrapper}>
@@ -600,35 +564,8 @@ export const Join: React.FC = () => {
             </>
           )}
 
-          <div className={styles.legalLinksRow}>
-            <Link to="/terms" className={styles.legalLink}>
-              Terms
-            </Link>
-            <span className={styles.legalDot}>·</span>
-            <Link to="/privacy" className={styles.legalLink}>
-              Privacy
-            </Link>
-          </div>
         </div>
       </main>
-
-      {/* Minimal Footer */}
-      <footer className={styles.footer}>
-        <span className={styles.copyright}>
-          © {new Date().getFullYear()} CoWatch
-        </span>
-        <div className={styles.footerLinks}>
-          <Link to="/privacy" className={styles.footerLink}>
-            Privacy
-          </Link>
-          <Link to="/terms" className={styles.footerLink}>
-            Terms
-          </Link>
-          <Link to="/faq" className={styles.footerLink}>
-            Support
-          </Link>
-        </div>
-      </footer>
     </div>
   );
 };
