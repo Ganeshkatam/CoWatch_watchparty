@@ -3538,8 +3538,6 @@ export class App extends React.Component<AppProps, AppState> {
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
                         playsInline
                         onClick={this.roomTogglePlay}
-                        //@ts-expect-error autoPictureInPicture is standard in modern HTMLVideoElement
-                        autoPictureInPicture={pipManager.isSmartPiPEnabled()}
                       ></video>
                     )}
                     {Boolean(this.state.total) && (
