@@ -1,5 +1,4 @@
 import React from "react";
-import { Skeleton } from "@mantine/core";
 import { type RoomSummary } from "./MyRooms";
 import styles from "./MyRooms.module.css";
 
@@ -68,12 +67,12 @@ export const RoomStats: React.FC<RoomStatsProps> = ({
           <div
             key={stat.label}
             onClick={() => {
-              if (onSelectStatus) {
+              if (onSelectStatus && !loading) {
                 onSelectStatus(isSelected ? "all" : stat.id);
               }
             }}
-            className={`${styles.statItemMinimal} ${isSelected ? styles.statItemActive : ""} ${isDimmed ? styles.statItemDimmed : ""}`}
-            title={isClickable ? `Filter by ${stat.label}` : undefined}
+            className={`${styles.statItemMinimal} ${isSelected ? styles.statItemActive : ""} ${isDimmed ? styles.statItemDimmed : ""} ${loading ? styles.statItemLoading : ""}`}
+            title={isClickable && !loading ? `Filter by ${stat.label}` : undefined}
           >
             <div
               className={styles.statLabelMinimal}
@@ -83,12 +82,7 @@ export const RoomStats: React.FC<RoomStatsProps> = ({
             </div>
             <div className={styles.statValueMinimal}>
               {loading ? (
-                <Skeleton
-                  height={22}
-                  width={32}
-                  radius="sm"
-                  style={{ opacity: 0.5 }}
-                />
+                <div className={styles.statValueSkeleton} aria-label="Loading statistic..." />
               ) : (
                 stat.value.toString().padStart(2, "0")
               )}
