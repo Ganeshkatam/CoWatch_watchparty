@@ -9,13 +9,12 @@ import {
   Alert,
   TextInput,
   Avatar,
-  Group,
   Tooltip,
   Divider,
   Badge,
   Checkbox,
 } from "@mantine/core";
-import { IconPhoto, IconCheck, IconX, IconBrandGoogleFilled } from "@tabler/icons-react";
+import { IconPhoto, IconX, IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
@@ -25,8 +24,8 @@ import { calculateAge } from "../../utils/age";
 import { PremiumDatePicker } from "./PremiumDatePicker";
 
 export const SIGNUP_AVATAR_PRESETS = [
-  { id: "avatar-1", label: "Neon Pop", url: "/avatars/avatar_1.jpg" },
-  { id: "avatar-2", label: "Cosmic", url: "/avatars/avatar_2.jpg" },
+  { id: "avatar-1", label: "Cosmic", url: "/avatars/avatar_2.jpg" },
+  { id: "avatar-2", label: "Neon Pop", url: "/avatars/avatar_1.jpg" },
   { id: "avatar-3", label: "Cyberpunk", url: "/avatars/avatar_3.jpg" },
   { id: "avatar-4", label: "Anime Chill", url: "/avatars/avatar_4.jpg" },
   { id: "avatar-5", label: "Retro Synth", url: "/avatars/avatar_5.jpg" },
@@ -460,26 +459,7 @@ export const Signup = () => {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "8px 12px",
-                    borderRadius: "var(--mantine-radius-md)",
-                    background: "rgba(20, 184, 166, 0.08)",
-                    border: "1px solid rgba(20, 184, 166, 0.25)",
-                  }}
-                >
-                  <Group gap="xs">
-                    <Badge color="teal" variant="filled" size="sm">
-                      18+ eligibility confirmed
-                    </Badge>
-                  </Group>
-                  <Button variant="subtle" size="compact-xs" color="gray" onClick={handleResetAgeGate}>
-                    Edit date
-                  </Button>
-                </div>
+                {/* 18+ eligibility confirmed internally */}
 
                 {enabledOptions.includes("google") && (
                   <Button
@@ -500,74 +480,64 @@ export const Signup = () => {
                 {enabledOptions.includes("email") && (
                   <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
                     <div className={styles.avatarSection}>
-                      <div className={styles.avatarPreviewRing}>
-                        <Avatar
-                          src={activeAvatarPreview}
-                          alt={name || "Profile avatar"}
-                          size={70}
-                          radius="50%"
-                          className={styles.avatarPreviewItem}
-                        />
-                      </div>
-
-                      <div style={{ textAlign: "center" }}>
-                        <Text size="xs" fw={600} c="dimmed" mb={6}>
-                          Choose your avatar
-                        </Text>
-                        <div className={styles.avatarPresetsRow}>
-                          {SIGNUP_AVATAR_PRESETS.map((preset) => {
-                            const isActive = selectedAvatarUrl === preset.url;
-                            return (
-                              <Tooltip label={preset.label} key={preset.id} withArrow>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSelectPreset(preset.url)}
-                                  className={`${styles.avatarPresetButton} ${isActive ? styles.avatarPresetButtonActive : ""}`}
-                                  aria-label={preset.label}
-                                >
-                                  <Avatar src={preset.url} size={36} radius="50%" alt={preset.label} />
-                                  {isActive && (
-                                    <span className={styles.presetCheckBadge}>
-                                      <IconCheck size={11} stroke={3} />
-                                    </span>
-                                  )}
-                                </button>
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <Group gap="xs" justify="center">
-                        <Button
+                      <Tooltip label="Upload custom photo" withArrow position="top">
+                        <button
                           type="button"
-                          variant="subtle"
-                          size="xs"
-                          leftSection={<IconPhoto size={14} />}
+                          className={styles.avatarUploadTrigger}
                           onClick={handleUploadCustomPhoto}
+                          aria-label="Upload custom photo"
                         >
-                          {customAvatarFile ? "Change custom photo" : "Upload photo"}
-                        </Button>
-                        {(selectedAvatarUrl || customAvatarFile) && (
-                          <Button
-                            type="button"
-                            variant="subtle"
-                            color="gray"
-                            size="xs"
-                            leftSection={<IconX size={14} />}
-                            onClick={handleClearAvatar}
-                          >
-                            Reset
-                          </Button>
-                        )}
-                      </Group>
+                          <Avatar
+                            src={activeAvatarPreview}
+                            alt={name || "Profile avatar"}
+                            size={42}
+                            radius="50%"
+                          />
+                          <span className={styles.avatarUploadBadge}>
+                            <IconPhoto size={11} stroke={2.5} />
+                          </span>
+                        </button>
+                      </Tooltip>
 
-                      {avatarError && (
-                        <Text size="xs" c="red" ta="center">
-                          {avatarError}
-                        </Text>
-                      )}
+                      <div className={styles.avatarDivider} />
+
+                      <div className={styles.avatarPresetsInline}>
+                        {SIGNUP_AVATAR_PRESETS.map((preset) => {
+                          const isActive = selectedAvatarUrl === preset.url && !customAvatarFile;
+                          return (
+                            <Tooltip label={preset.label} key={preset.id} withArrow position="top">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectPreset(preset.url)}
+                                className={`${styles.avatarPresetMini} ${isActive ? styles.avatarPresetMiniActive : ""}`}
+                                aria-label={preset.label}
+                              >
+                                <Avatar src={preset.url} size={28} radius="50%" alt={preset.label} />
+                              </button>
+                            </Tooltip>
+                          );
+                        })}
+
+                        {(customAvatarFile || (selectedAvatarUrl && selectedAvatarUrl !== SIGNUP_AVATAR_PRESETS[0].url)) && (
+                          <Tooltip label="Reset avatar" withArrow position="top">
+                            <button
+                              type="button"
+                              onClick={handleClearAvatar}
+                              className={styles.avatarResetMini}
+                              aria-label="Reset avatar"
+                            >
+                              <IconX size={12} stroke={2.5} />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
                     </div>
+
+                    {avatarError && (
+                      <Text size="xs" c="red" ta="center">
+                        {avatarError}
+                      </Text>
+                    )}
 
                     <div>
                       <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />

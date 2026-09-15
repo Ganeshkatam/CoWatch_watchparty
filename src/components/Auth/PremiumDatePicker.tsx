@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Popover, Text } from "@mantine/core";
 import { IconCalendar, IconChevronDown, IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import styles from "./PremiumDatePicker.module.css";
@@ -28,6 +28,11 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
   required = false,
 }) => {
   const [opened, setOpened] = useState(false);
+  const [isMonthOpen, setIsMonthOpen] = useState(false);
+  const [isYearOpen, setIsYearOpen] = useState(false);
+  const monthDropdownRef = useRef<HTMLDivElement | null>(null);
+  const yearDropdownRef = useRef<HTMLDivElement | null>(null);
+  const yearListRef = useRef<HTMLDivElement | null>(null);
 
   // Parse initial selected date or default view date (18 years ago from today)
   const defaultYear = useMemo(() => {
@@ -45,6 +50,50 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
 
   const [viewYear, setViewYear] = useState(parsedInitial.year);
   const [viewMonth, setViewMonth] = useState(parsedInitial.month);
+
+  // Close month/year dropdowns when clicking outside
+  useEffect(() => {
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        monthDropdownRef.current &&
+        !monthDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsMonthOpen(false);
+      }
+      if (
+        yearDropdownRef.current &&
+        !yearDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsYearOpen(false);
+      }
+    };
+    if (isMonthOpen || isYearOpen) {
+      document.addEventListener("mousedown", handlePointerDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isMonthOpen, isYearOpen]);
+
+  // When popover closes, close sub-dropdowns
+  useEffect(() => {
+    if (!opened) {
+      setIsMonthOpen(false);
+      setIsYearOpen(false);
+    }
+  }, [opened]);
+
+  // Auto-scroll selected year into view when year dropdown opens
+  useEffect(() => {
+    if (isYearOpen && yearListRef.current) {
+      const activeEl = yearListRef.current.querySelector(
+        `.${styles.dropdownOptionActive}`
+      ) as HTMLElement;
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "center", behavior: "auto" });
+      }
+    }
+  }, [isYearOpen]);
 
   // Sync view when value changes externally
   useEffect(() => {
@@ -261,31 +310,81 @@ export const PremiumDatePicker: React.FC<PremiumDatePickerProps> = ({
             </button>
 
             <div className={styles.headerSelectors}>
-              <select
-                className={styles.selectInput}
-                value={viewMonth}
-                onChange={(e) => setViewMonth(Number(e.target.value))}
-                aria-label="Select month"
-              >
-                {MONTH_NAMES.map((m, idx) => (
-                  <option key={m} value={idx}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              {/* Custom Month Selector */}
+              <div className={styles.customSelectWrapper} ref={monthDropdownRef}>
+                <button
+                  type="button"
+                  className={`${styles.selectorButton} ${isMonthOpen ? styles.selectorButtonActive : ""}`}
+                  onClick={() => {
+                    setIsMonthOpen((prev) => !prev);
+                    setIsYearOpen(false);
+                  }}
+                  aria-label="Select month"
+                  aria-expanded={isMonthOpen}
+                >
+                  <span>{MONTH_NAMES[viewMonth]}</span>
+                  <IconChevronDown
+                    size={13}
+                    className={`${styles.selectChevron} ${isMonthOpen ? styles.selectChevronOpen : ""}`}
+                  />
+                </button>
 
-              <select
-                className={styles.selectInput}
-                value={viewYear}
-                onChange={(e) => setViewYear(Number(e.target.value))}
-                aria-label="Select year"
-              >
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
+                {isMonthOpen && (
+                  <div className={styles.customDropdown}>
+                    {MONTH_NAMES.map((m, idx) => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`${styles.dropdownOption} ${idx === viewMonth ? styles.dropdownOptionActive : ""}`}
+                        onClick={() => {
+                          setViewMonth(idx);
+                          setIsMonthOpen(false);
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Custom Year Selector */}
+              <div className={styles.customSelectWrapper} ref={yearDropdownRef}>
+                <button
+                  type="button"
+                  className={`${styles.selectorButton} ${isYearOpen ? styles.selectorButtonActive : ""}`}
+                  onClick={() => {
+                    setIsYearOpen((prev) => !prev);
+                    setIsMonthOpen(false);
+                  }}
+                  aria-label="Select year"
+                  aria-expanded={isYearOpen}
+                >
+                  <span>{viewYear}</span>
+                  <IconChevronDown
+                    size={13}
+                    className={`${styles.selectChevron} ${isYearOpen ? styles.selectChevronOpen : ""}`}
+                  />
+                </button>
+
+                {isYearOpen && (
+                  <div className={`${styles.customDropdown} ${styles.yearDropdown}`} ref={yearListRef}>
+                    {yearOptions.map((y) => (
+                      <button
+                        key={y}
+                        type="button"
+                        className={`${styles.dropdownOption} ${y === viewYear ? styles.dropdownOptionActive : ""}`}
+                        onClick={() => {
+                          setViewYear(y);
+                          setIsYearOpen(false);
+                        }}
+                      >
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <button

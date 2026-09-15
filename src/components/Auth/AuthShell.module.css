@@ -5,8 +5,7 @@
   padding: 48px 24px;
   background-color: var(--bg-app);
   position: relative;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   isolation: isolate;
   transition: background-color 0.2s ease;
 }
@@ -196,82 +195,121 @@
   }
 }
 
-/* Avatar Selection Section for Signup */
+/* Avatar Selection Section for Signup - Minimal */
 .avatarSection {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 12px;
+  padding: 6px 12px;
   border-radius: var(--mantine-radius-md);
   background: rgba(139, 92, 246, 0.04);
-  border: 1px dashed rgba(139, 92, 246, 0.20);
+  border: 1px solid rgba(139, 92, 246, 0.12);
 }
 
-.avatarPreviewRing {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
-  padding: 3px;
-  background: linear-gradient(135deg, var(--color-violet), var(--color-teal));
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.25);
+:global([data-color-scheme="light"]) .avatarSection,
+:global(html[data-color-scheme="light"]) .avatarSection {
+  background: rgba(139, 92, 246, 0.03);
+  border-color: rgba(139, 92, 246, 0.14);
 }
 
-.avatarPreviewItem {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--bg-card);
-}
-
-.avatarPresetsRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.avatarPresetButton {
+.avatarUploadTrigger {
   position: relative;
   background: none;
-  border: 2px solid transparent;
-  padding: 2px;
-  border-radius: 50%;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
   line-height: 0;
 }
 
-.avatarPresetButton:hover {
-  transform: scale(1.10);
-  border-color: var(--color-violet);
+.avatarUploadTrigger:hover {
+  transform: scale(1.06);
 }
 
-.avatarPresetButtonActive {
-  border-color: var(--color-teal) !important;
-  box-shadow: 0 0 10px rgba(20, 184, 166, 0.55);
-  transform: scale(1.08);
-}
-
-.presetCheckBadge {
+.avatarUploadBadge {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  background: var(--color-teal);
-  color: #fff;
+  bottom: -2px;
+  right: -2px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
-  width: 16px;
-  height: 16px;
+  background: var(--color-violet, #8b5cf6);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  border: 1.5px solid var(--bg-card, #171b2a);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+:global([data-color-scheme="light"]) .avatarUploadBadge,
+:global(html[data-color-scheme="light"]) .avatarUploadBadge {
+  border-color: #ffffff;
+}
+
+.avatarDivider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.avatarPresetsInline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.avatarPresetMini {
+  position: relative;
+  background: none;
+  border: 2px solid transparent;
+  padding: 1px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+  line-height: 0;
+  opacity: 0.75;
+}
+
+.avatarPresetMini:hover {
+  opacity: 1;
+  transform: scale(1.1);
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+.avatarPresetMiniActive {
+  opacity: 1;
+  border-color: var(--color-teal, #14b8a6) !important;
+  box-shadow: 0 0 8px rgba(20, 184, 166, 0.5);
+  transform: scale(1.08);
+}
+
+.avatarResetMini {
+  background: none;
+  border: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.2));
+  color: var(--text-secondary, #94a3b8);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  line-height: 0;
+}
+
+.avatarResetMini:hover {
+  color: var(--color-pink, #ec4899);
+  border-color: var(--color-pink, #ec4899);
+  transform: scale(1.1);
 }
 
 /* Datepicker & Age Gate Input Styling */
