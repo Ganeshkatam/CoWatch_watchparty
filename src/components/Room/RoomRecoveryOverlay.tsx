@@ -6,9 +6,14 @@ import { getLifecycleStageMessage } from "../../utils/userMessages";
 import styles from "./RoomRecoveryOverlay.module.css";
 
 export const RoomRecoveryOverlay: React.FC = () => {
-  const { stage } = useRoomInitStage();
+  const { stage, isRecovering } = useRoomInitStage();
 
-  if (stage === "ready" || stage === "booting" || stage === "authenticating") {
+  if (
+    stage === "ready" ||
+    stage === "booting" ||
+    stage === "authenticating" ||
+    !isRecovering
+  ) {
     return null;
   }
 

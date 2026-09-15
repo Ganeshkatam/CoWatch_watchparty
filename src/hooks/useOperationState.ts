@@ -37,10 +37,12 @@ export function useOperationState(domain: OperationDomain, type?: string, target
 
 export function useRoomInitStage() {
   const [stage, setStage] = useState<RoomInitStage>(() => operationCoordinator.getInitStage());
+  const [isRecovering, setIsRecovering] = useState<boolean>(() => operationCoordinator.isRecovering());
 
   useEffect(() => {
     return operationCoordinator.onInitStageChange((newStage) => {
       setStage(newStage);
+      setIsRecovering(operationCoordinator.isRecovering());
     });
   }, []);
 
@@ -50,6 +52,7 @@ export function useRoomInitStage() {
     isConnecting: stage === "connecting" || stage === "synchronizing" || stage === "authenticating" || stage === "booting",
     isFailed: stage === "failed",
     isDegraded: stage === "degraded",
+    isRecovering,
   };
 }
 

@@ -92,6 +92,15 @@ export class OperationCoordinator {
     return this.recoveryStartTime;
   }
 
+  public isRecovering(): boolean {
+    return (
+      this.recoveryStartTime > 0 ||
+      this.reconnectAttempts > 0 ||
+      this.initStage === "degraded" ||
+      this.initStage === "failed"
+    );
+  }
+
   /**
    * SOLE authority for advancing connection epochs.
    * Increments epoch, resets sync barriers, clears recovery timers, and begins synchronization.
