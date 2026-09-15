@@ -12,6 +12,7 @@ import {
   ActionIcon,
   Tooltip,
   Textarea,
+  Select,
 } from "@mantine/core";
 import {
   IconCirclePlusFilled,
@@ -23,6 +24,7 @@ import {
   IconShieldCheck,
   IconSettings,
   IconPlus,
+  IconClock,
 } from "@tabler/icons-react";
 import { createRoom } from "../TopBar/TopBar";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
@@ -64,6 +66,16 @@ export const Create = () => {
   const [isChatDisabled, setIsChatDisabled] = useState(false);
   const [lock, setLock] = useState(false);
   const [isPermanent, setIsPermanent] = useState(false);
+  const [durationHours, setDurationHours] = useState<string>("3");
+
+  const DURATION_OPTIONS = [
+    { value: "1", label: "1 hour" },
+    { value: "2", label: "2 hours" },
+    { value: "3", label: "3 hours (Standard)" },
+    { value: "6", label: "6 hours" },
+    { value: "12", label: "12 hours (Extended)" },
+    { value: "24", label: "24 hours (Full day)" },
+  ];
 
   // Cover picture states
   const [coverPhotoFile, setCoverPhotoFile] = useState<File | null>(null);
@@ -162,6 +174,7 @@ export const Create = () => {
           roomDescription: roomDescription || undefined,
           passcode: passcode || undefined,
           isPermanent,
+          durationHours: isPermanent ? undefined : parseInt(durationHours, 10) || 3,
           isChatDisabled,
           lock,
           noRedirect: true,
@@ -533,9 +546,41 @@ export const Create = () => {
 
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
+                  <span className={styles.settingLabel}>Session duration</span>
+                  <span className={styles.settingDescription}>
+                    {isPermanent
+                      ? "Disabled because the room is set to permanent."
+                      : "Choose how long this watch party room remains active before closing."}
+                  </span>
+                </div>
+                <Select
+                  value={isPermanent ? "permanent" : durationHours}
+                  onChange={(val) => {
+                    if (val && val !== "permanent") {
+                      setDurationHours(val);
+                    }
+                  }}
+                  disabled={isPermanent}
+                  leftSection={<IconClock size={16} />}
+                  data={
+                    isPermanent
+                      ? [{ value: "permanent", label: "Permanent (Never expires)" }]
+                      : DURATION_OPTIONS
+                  }
+                  size="sm"
+                  styles={{
+                    root: { minWidth: 190, maxWidth: 220 },
+                    input: { fontWeight: 500 },
+                  }}
+                  aria-label="Select session duration"
+                />
+              </div>
+
+              <div className={styles.settingCard}>
+                <div className={styles.settingMeta}>
                   <span className={styles.settingLabel}>Keep room permanent</span>
                   <span className={styles.settingDescription}>
-                    Keep this room open permanently instead of closing after 3 hours.
+                    Keep this room open permanently without automatic expiration.
                   </span>
                 </div>
                 <Switch

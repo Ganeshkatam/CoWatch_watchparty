@@ -370,6 +370,12 @@
     padding: 16px 14px;
   }
 
+  .settingCard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
   .coverContainer {
     flex-direction: column;
     align-items: flex-start;

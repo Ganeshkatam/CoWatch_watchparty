@@ -1410,7 +1410,13 @@ app.post("/createRoom", async (req, res) => {
   const isPermanent = Boolean(req.body?.isPermanent);
   const roomKind = isPermanent ? "permanent" : "watch";
   const now = new Date();
-  const expiresAt = isPermanent ? null : new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
+  let requestedDurationHours = 3;
+  if (typeof req.body?.durationHours === "number" && req.body.durationHours > 0) {
+    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.durationHours)), 24);
+  } else if (typeof req.body?.sessionTimeHours === "number" && req.body.sessionTimeHours > 0) {
+    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.sessionTimeHours)), 24);
+  }
+  const expiresAt = isPermanent ? null : new Date(now.getTime() + requestedDurationHours * 60 * 60 * 1000);
 
   if (postgres) {
     try {

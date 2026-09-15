@@ -111,6 +111,7 @@ export async function createRoom(
     coverPhoto?: string;
     passcode?: string;
     isPermanent?: boolean;
+    durationHours?: number;
     isChatDisabled?: boolean;
     lock?: boolean;
     noRedirect?: boolean;
