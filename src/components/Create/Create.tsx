@@ -12,6 +12,7 @@ import {
   ActionIcon,
   Tooltip,
   Avatar,
+  Textarea,
 } from "@mantine/core";
 import {
   IconCirclePlusFilled,
@@ -22,6 +23,7 @@ import {
   IconCheck,
   IconShieldCheck,
   IconSettings,
+  IconPlus,
 } from "@tabler/icons-react";
 import { createRoom } from "../TopBar/TopBar";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
@@ -53,6 +55,7 @@ export const Create = () => {
   // Form states
   const [roomTitle, setRoomTitle] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
+  const [showDescription, setShowDescription] = useState(false);
   const generatePasscode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
@@ -364,14 +367,47 @@ export const Create = () => {
                 size="md"
               />
 
-              <TextInput
-                label="Description"
-                placeholder="e.g. Watching movies, videos, and music together"
-                value={roomDescription}
-                onChange={(e) => setRoomDescription(e.target.value)}
-                maxLength={500}
-                size="md"
-              />
+              {!showDescription && !roomDescription ? (
+                <div className={styles.addDescriptionRow}>
+                  <button
+                    type="button"
+                    className={styles.addDescriptionBtn}
+                    onClick={() => setShowDescription(true)}
+                  >
+                    <IconPlus size={14} />
+                    <span>Add room description (optional)</span>
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.descriptionContainer}>
+                  <div className={styles.descriptionHeader}>
+                    <Text size="sm" fw={500} c="var(--text-primary)">
+                      Description
+                    </Text>
+                    <button
+                      type="button"
+                      className={styles.removeDescriptionBtn}
+                      onClick={() => {
+                        setRoomDescription("");
+                        setShowDescription(false);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <Textarea
+                    placeholder="e.g. Watching movies, videos, and music together"
+                    value={roomDescription}
+                    onChange={(e) => setRoomDescription(e.target.value)}
+                    maxLength={500}
+                    size="md"
+                    minRows={2}
+                    maxRows={4}
+                    autosize
+                    autoFocus
+                  />
+                </div>
+              )}
 
               <div>
                 <Text size="sm" fw={500} mb={6}>
@@ -583,6 +619,7 @@ export const Create = () => {
                   onChange={(e) => setLock(e.currentTarget.checked)}
                   size="md"
                   color="violet"
+                  withThumbIndicator={false}
                   aria-label="Lock video controls"
                 />
               </div>
@@ -599,6 +636,7 @@ export const Create = () => {
                   onChange={(e) => setIsChatDisabled(e.currentTarget.checked)}
                   size="md"
                   color="violet"
+                  withThumbIndicator={false}
                   aria-label="Turn off chat"
                 />
               </div>
@@ -615,6 +653,7 @@ export const Create = () => {
                   onChange={(e) => setIsPermanent(e.currentTarget.checked)}
                   size="md"
                   color="violet"
+                  withThumbIndicator={false}
                   aria-label="Keep room permanent"
                 />
               </div>

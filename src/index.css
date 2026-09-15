@@ -477,21 +477,37 @@ html[data-color-scheme="light"] .mantine-Menu-dropdown {
 
 .mantine-Switch-track {
   cursor: pointer !important;
-  background-color: rgba(255, 255, 255, 0.12) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  background-color: rgba(255, 255, 255, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 9999px !important;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .mantine-Switch-root:hover .mantine-Switch-track {
-  background-color: rgba(255, 255, 255, 0.18) !important;
-  border-color: rgba(255, 255, 255, 0.28) !important;
+  background-color: rgba(255, 255, 255, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
 }
 
 .mantine-Switch-thumb {
   background-color: #FFFFFF !important;
   border: none !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease !important;
+}
+
+/* Remove Mantine 8 inner bullseye dot indicator for a clean, sleek modern switch */
+.mantine-Switch-thumb::before,
+.mantine-Switch-thumb::after,
+[data-with-thumb-indicator]::before,
+[data-with-thumb-indicator]::after,
+.m_93039a1d:where([data-with-thumb-indicator])::before,
+.m_93039a1d:where([data-with-thumb-indicator])::after {
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Checked / Active State */
