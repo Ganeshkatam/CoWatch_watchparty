@@ -10,7 +10,7 @@ import { Server } from "socket.io";
 import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
 import { redis, redisCount, redisCache, RedisMetrics } from "./utils/redis.ts";
-import { deleteUser, validateUserToken, supabaseAdmin } from "./utils/supabase.ts";
+import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { getSessionLimitSeconds } from "./vm/utils.ts";
 import { postgres, upsertObject } from "./utils/postgres.ts";
@@ -32,7 +32,10 @@ import {
   checkPasscodeRateLimits,
   recordPasscodeFailure,
   resetPasscodeLimits,
+  checkRateLimit,
+  recordAttempt,
 } from "./utils/rateLimit.ts";
+import { sendDuplicateSignupSecurityAlert } from "./notifications/securityAlerts.ts";
 import {
   checkFeedbackRateLimit,
   recordFeedbackAttempt,
@@ -508,6 +511,60 @@ app.post("/api/auth/validate-email", async (req, res) => {
     return;
   }
   res.json({ valid: true });
+});
+
+app.post("/api/auth/duplicate-signup-alert", async (req, res) => {
+  try {
+    const rawEmail = req.body?.email;
+    if (!rawEmail || typeof rawEmail !== "string") {
+      res.json({ success: true });
+      return;
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+    if (!isAllowedEmailDomain(email)) {
+      res.json({ success: true });
+      return;
+    }
+
+    const clientIp = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+    const userAgent = String(req.headers["user-agent"] || "");
+
+    // Rate limit per email (max 3 in 15 min) and per IP (max 10 in 10 min) to prevent abuse
+    const emailRateLimit = await checkRateLimit(`dup-signup:email:${email}`, 3, 15 * 60);
+    const ipRateLimit = await checkRateLimit(`dup-signup:ip:${clientIp || 'unknown'}`, 10, 10 * 60);
+
+    if (!emailRateLimit.allowed || !ipRateLimit.allowed) {
+      res.json({ success: true });
+      return;
+    }
+
+    await recordAttempt(`dup-signup:email:${email}`, 15 * 60);
+    await recordAttempt(`dup-signup:ip:${clientIp || 'unknown'}`, 10 * 60);
+
+    // Verify whether account exists before sending notification
+    const existingUser = await getUserByEmail(email);
+    if (!existingUser) {
+      // Do not send alert if user does not exist (prevents unsolicited notifications)
+      res.json({ success: true });
+      return;
+    }
+
+    // Trigger security alert email asynchronously without blocking the client response
+    sendDuplicateSignupSecurityAlert({
+      email,
+      ipAddress: clientIp || undefined,
+      userAgent: userAgent || undefined,
+      attemptedAt: new Date(),
+    }).catch((err) => {
+      console.error("[Auth] Duplicate signup alert dispatch error:", err);
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Auth] Duplicate signup alert handler exception:", err);
+    res.json({ success: true });
+  }
 });
 
 app.post("/api/account/delete", async (req, res) => {

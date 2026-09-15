@@ -19,7 +19,7 @@ import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
-import { autoCreateUsername, openFileSelector } from "../../utils/utils";
+import { autoCreateUsername, openFileSelector, serverPath } from "../../utils/utils";
 import { calculateAge } from "../../utils/age";
 import { PremiumDatePicker } from "./PremiumDatePicker";
 
@@ -97,6 +97,7 @@ export const Signup = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [usernameSuffix] = useState(() => Math.floor(1000 + Math.random() * 9000));
@@ -269,6 +270,7 @@ export const Signup = () => {
     setError(null);
     setDobError(null);
     setSuccess(null);
+    setIsDuplicate(false);
 
     if (!name.trim()) {
       setError("Please enter your name");
@@ -310,8 +312,9 @@ export const Signup = () => {
     setSubmitting(true);
     try {
       const avatarUrlPayload = selectedAvatarUrl ? selectedAvatarUrl : undefined;
+      const cleanEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         options: {
           data: {
@@ -325,11 +328,47 @@ export const Signup = () => {
           },
         },
       });
+
+      let isDuplicateAccount = false;
       if (error) {
-        if (error.message.includes(EMAIL_PROVIDER_ERROR)) {
-          throw new Error(EMAIL_PROVIDER_ERROR);
+        const lowerMsg = (error.message || "").toLowerCase();
+        const errCode = ((error as any).code || "").toLowerCase();
+        if (
+          lowerMsg.includes("already registered") ||
+          lowerMsg.includes("already exists") ||
+          errCode === "user_already_exists"
+        ) {
+          isDuplicateAccount = true;
+        } else {
+          if (error.message.includes(EMAIL_PROVIDER_ERROR)) {
+            throw new Error(EMAIL_PROVIDER_ERROR);
+          }
+          throw error;
         }
-        throw error;
+      } else if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        isDuplicateAccount = true;
+      }
+
+      if (isDuplicateAccount) {
+        // Send duplicate signup security alert email to existing account holder
+        try {
+          await fetch(`${serverPath}/api/auth/duplicate-signup-alert`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: cleanEmail }),
+          });
+        } catch (alertErr) {
+          console.warn("Failed to dispatch duplicate signup security alert:", alertErr);
+        }
+
+        try {
+          window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+          window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+        } catch {}
+
+        setIsDuplicate(true);
+        setSuccess("We've sent a confirmation link to your email address. Please confirm your email to sign in.");
+        return;
       }
 
       // Handle custom avatar file upload / persistence
@@ -396,14 +435,23 @@ export const Signup = () => {
   };
 
   const handleResend = useCallback(async () => {
-    if (resendCooldown > 0 || !email) return;
+    if (isDuplicate || resendCooldown > 0 || !email) return;
     setError(null);
     try {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: email.trim(),
       });
-      if (error) throw error;
+      if (error) {
+        const lowerMsg = (error.message || "").toLowerCase();
+        if (lowerMsg.includes("already") || lowerMsg.includes("registered") || lowerMsg.includes("exists")) {
+          // Anti-enumeration: preserve standard feedback
+          setSuccess("Confirmation email resent. Please check your inbox.");
+          setResendCooldown(60);
+          return;
+        }
+        throw error;
+      }
       setSuccess("Confirmation email resent. Please check your inbox.");
       setResendCooldown(60);
     } catch (err: any) {
@@ -518,10 +566,12 @@ export const Signup = () => {
 
             {success ? (
               <div>
-                <Alert color="green" title="Check your email" mb="md">{success}</Alert>
-                <Button fullWidth variant="default" onClick={handleResend} disabled={resendCooldown > 0}>
-                  {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend confirmation email"}
-                </Button>
+                <Alert color="green" title="Check your email" mb={!isDuplicate ? "md" : 0}>{success}</Alert>
+                {!isDuplicate && (
+                  <Button fullWidth variant="default" onClick={handleResend} disabled={resendCooldown > 0}>
+                    {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend confirmation email"}
+                  </Button>
+                )}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

@@ -83,16 +83,32 @@ export async function validateUserToken(uidOrToken: string, token?: string, requ
 // Administrative operations (bypass RLS)
 export async function getUserByEmail(email: string) {
   if (!supabaseUrl || !supabaseSecretKey) return null;
+  const cleanEmail = email.trim().toLowerCase();
   try {
     // Supabase JS doesn't have a direct getUserByEmail, but we can query auth.users directly since we have pg connected as superuser.
-    const result = await postgres?.query("SELECT id, email FROM auth.users WHERE email = $1 LIMIT 1", [email]);
+    const result = await postgres?.query("SELECT id, email FROM auth.users WHERE lower(email) = $1 LIMIT 1", [cleanEmail]);
     if (result && result.rows.length > 0) {
       return { uid: result.rows[0].id, email: result.rows[0].email };
     }
-    return null;
   } catch (e: any) {
     console.log(email, e.message);
   }
+
+  // Fallback to Supabase Admin API
+  try {
+    if (supabaseAdmin?.auth?.admin?.listUsers) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 100 });
+      if (!error && data?.users) {
+        const found = data.users.find((u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail);
+        if (found) {
+          return { uid: found.id, email: found.email };
+        }
+      }
+    }
+  } catch (e: any) {
+    console.log("Supabase listUsers fallback error:", e?.message);
+  }
+
   return null;
 }
 
