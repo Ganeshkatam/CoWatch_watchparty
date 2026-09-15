@@ -77,16 +77,32 @@ export const l1Cache = new BoundedL1Cache(1000);
 function createRedisClient(url: string | undefined, name: string): Redis | undefined {
   if (!url) return undefined;
   try {
+    const isTls = url.startsWith("rediss://");
     const client = new Redis(url, {
-      maxRetriesPerRequest: 1,
+      maxRetriesPerRequest: 2,
       retryStrategy: (times) => {
         return Math.min(times * 200, 3000);
       },
+      reconnectOnError: (err) => {
+        const targetErrors = ["READONLY", "ECONNRESET", "ETIMEDOUT", "EPIPE"];
+        if (targetErrors.some((code) => err.message.includes(code))) {
+          return true;
+        }
+        return false;
+      },
+      keepAlive: 10000,
       enableReadyCheck: true,
       lazyConnect: false,
+      ...(isTls ? { tls: { rejectUnauthorized: false } } : {}),
     });
     client.on("error", (err) => {
       console.warn(`[REDIS ${name.toUpperCase()} ERROR]:`, err.message);
+    });
+    client.on("connect", () => {
+      console.log(`[REDIS ${name.toUpperCase()}]: Connected`);
+    });
+    client.on("ready", () => {
+      console.log(`[REDIS ${name.toUpperCase()}]: Ready`);
     });
     return client;
   } catch (err: any) {
