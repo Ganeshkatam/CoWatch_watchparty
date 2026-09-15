@@ -11,7 +11,6 @@ import {
   Text,
   ActionIcon,
   Tooltip,
-  Avatar,
   Textarea,
 } from "@mantine/core";
 import {
@@ -32,16 +31,8 @@ import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import styles from "./Create.module.css";
 
-const PRESET_ROOM_AVATARS = [
-  { id: "avatar-1", label: "Neon Pop", url: "/avatars/avatar_1.jpg" },
-  { id: "avatar-2", label: "Cosmic", url: "/avatars/avatar_2.jpg" },
-  { id: "avatar-3", label: "Cyberpunk", url: "/avatars/avatar_3.jpg" },
-  { id: "avatar-4", label: "Anime Chill", url: "/avatars/avatar_4.jpg" },
-  { id: "avatar-5", label: "Retro Synth", url: "/avatars/avatar_5.jpg" },
-];
-
 export const Create = () => {
-  const { user, avatarUrl } = useContext(MetadataContext);
+  const { user } = useContext(MetadataContext);
   const history = useHistory();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -74,22 +65,19 @@ export const Create = () => {
   const [lock, setLock] = useState(false);
   const [isPermanent, setIsPermanent] = useState(false);
 
-  // Avatar & Cover states
-  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
+  // Cover picture states
   const [coverPhotoFile, setCoverPhotoFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!coverPhotoFile) {
-      if (!selectedAvatarUrl) {
-        setCoverPreview(null);
-      }
+      setCoverPreview(null);
       return;
     }
     const objectUrl = URL.createObjectURL(coverPhotoFile);
     setCoverPreview(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
-  }, [coverPhotoFile, selectedAvatarUrl]);
+  }, [coverPhotoFile]);
 
   useEffect(() => {
     if (passcode.length !== 8) {
@@ -126,31 +114,7 @@ export const Create = () => {
     };
   }, [passcode]);
 
-  const handleSelectPresetAvatar = (url: string) => {
-    if (selectedAvatarUrl === url && !coverPhotoFile) {
-      setSelectedAvatarUrl(null);
-      setCoverPreview(null);
-    } else {
-      setSelectedAvatarUrl(url);
-      setCoverPhotoFile(null);
-      setCoverPreview(url);
-    }
-  };
-
-  const handleSelectOwnAvatar = () => {
-    if (!avatarUrl) return;
-    if (selectedAvatarUrl === avatarUrl && !coverPhotoFile) {
-      setSelectedAvatarUrl(null);
-      setCoverPreview(null);
-    } else {
-      setSelectedAvatarUrl(avatarUrl);
-      setCoverPhotoFile(null);
-      setCoverPreview(avatarUrl);
-    }
-  };
-
   const handleClearAvatar = () => {
-    setSelectedAvatarUrl(null);
     setCoverPhotoFile(null);
     setCoverPreview(null);
   };
@@ -189,7 +153,6 @@ export const Create = () => {
     setError("");
 
     try {
-      const finalCoverUrl = selectedAvatarUrl;
       const roomName = await createRoom(
         user,
         false,
@@ -197,7 +160,6 @@ export const Create = () => {
         {
           roomTitle: roomTitle.trim(),
           roomDescription: roomDescription || undefined,
-          coverPhoto: finalCoverUrl || undefined,
           passcode: passcode || undefined,
           isPermanent,
           isChatDisabled,
@@ -239,19 +201,6 @@ export const Create = () => {
             console.error("Cover upload failed", uploadError);
           }
         }
-      } else if (finalCoverUrl && user) {
-        await fetch(`${serverPath}/updateRoomCover`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uid: user.id,
-            token: await getAccessToken(),
-            roomId: roomName,
-            coverPhoto: finalCoverUrl,
-          }),
-        }).catch((err) =>
-          console.error("Failed to update room cover", err)
-        );
       }
 
       const finalRoomId = roomName.startsWith("/")
@@ -411,7 +360,7 @@ export const Create = () => {
 
               <div>
                 <Text size="sm" fw={500} mb={6}>
-                  Room Avatar & Picture
+                  Room Picture (optional)
                 </Text>
                 <div className={styles.coverContainer}>
                   <div className={styles.coverHeaderRow}>
@@ -432,14 +381,10 @@ export const Create = () => {
                     <div className={styles.coverMeta}>
                       <Text size="xs" fw={500} c="dimmed">
                         {coverPreview
-                          ? selectedAvatarUrl === avatarUrl
-                            ? "Using your profile avatar"
-                            : selectedAvatarUrl
-                              ? "Selected preset avatar"
-                              : "Custom uploaded picture"
-                          : "Select an avatar below or upload your own"}
+                          ? "Custom uploaded picture"
+                          : "Upload a picture for your room cover"}
                       </Text>
-                      {coverPreview && (
+                      {coverPreview ? (
                         <Button
                           variant="subtle"
                           color="gray"
@@ -450,76 +395,19 @@ export const Create = () => {
                         >
                           Remove picture
                         </Button>
+                      ) : (
+                        <FileInput
+                          placeholder="Upload picture"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={setCoverPhotoFile}
+                          value={coverPhotoFile}
+                          clearable
+                          leftSection={<IconPhoto size={16} />}
+                          size="sm"
+                          styles={{ root: { maxWidth: 240 } }}
+                        />
                       )}
                     </div>
-                  </div>
-
-                  {/* Preset Avatars Selection */}
-                  <div className={styles.coverSelectionTitle}>Choose an avatar</div>
-                  <div className={styles.avatarPresetsGrid}>
-                    {PRESET_ROOM_AVATARS.map((preset) => {
-                      const isSelected =
-                        selectedAvatarUrl === preset.url && !coverPhotoFile;
-                      return (
-                        <Tooltip key={preset.id} label={preset.label} withArrow>
-                          <button
-                            type="button"
-                            className={`${styles.avatarOptionBtn} ${isSelected ? styles.avatarOptionBtnActive : ""
-                              }`}
-                            onClick={() => handleSelectPresetAvatar(preset.url)}
-                            aria-label={`Select ${preset.label} avatar`}
-                          >
-                            <img
-                              src={preset.url}
-                              alt={preset.label}
-                              className={styles.avatarOptionImg}
-                            />
-                            {isSelected && (
-                              <span className={styles.avatarCheckBadge}>
-                                <IconCheck size={10} stroke={3} />
-                              </span>
-                            )}
-                          </button>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-
-                  {/* Own Avatar & Custom Upload */}
-                  <div className={styles.avatarActionsRow}>
-                    {avatarUrl && (
-                      <button
-                        type="button"
-                        className={`${styles.ownAvatarBtn} ${selectedAvatarUrl === avatarUrl && !coverPhotoFile
-                            ? styles.ownAvatarBtnActive
-                            : ""
-                          }`}
-                        onClick={handleSelectOwnAvatar}
-                        title="Use your profile picture as room cover"
-                      >
-                        <Avatar src={avatarUrl} size={22} radius="xl" />
-                        <span>Use my profile picture</span>
-                        {selectedAvatarUrl === avatarUrl && !coverPhotoFile && (
-                          <IconCheck size={14} stroke={2.5} />
-                        )}
-                      </button>
-                    )}
-
-                    <FileInput
-                      placeholder="Or upload custom picture"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(file) => {
-                        setCoverPhotoFile(file);
-                        if (file) {
-                          setSelectedAvatarUrl(null);
-                        }
-                      }}
-                      value={coverPhotoFile}
-                      clearable
-                      leftSection={<IconPhoto size={16} />}
-                      size="sm"
-                      styles={{ root: { maxWidth: 240 } }}
-                    />
                   </div>
                 </div>
               </div>
