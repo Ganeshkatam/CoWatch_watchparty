@@ -54,15 +54,39 @@ const isAllowedEmailDomain = (value: string) => {
   return ALLOWED_EMAIL_DOMAINS.has(email.slice(at + 1));
 };
 
+const AGE_ELIGIBILITY_WINDOW_MS = 10 * 60 * 1000; // 10 minutes window
+
+const getSessionAgeEligibility = (): boolean => {
+  try {
+    const rawExpiry = window.sessionStorage?.getItem("cowatch_signup_age_eligible_expires_at");
+    if (!rawExpiry) return false;
+    const expiresAt = parseInt(rawExpiry, 10);
+    if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+      window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+      window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const Signup = () => {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [dob, setDob] = useState("");
   const [dobError, setDobError] = useState<string | null>(null);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState<boolean>(() => {
+    try {
+      return window.sessionStorage?.getItem("cowatch_signup_terms_agreed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [termsError, setTermsError] = useState<string | null>(null);
-  const [isAgeEligible, setIsAgeEligible] = useState(false);
+  const [isAgeEligible, setIsAgeEligible] = useState<boolean>(getSessionAgeEligibility);
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // Profile photo selection state
@@ -162,17 +186,48 @@ export const Signup = () => {
       const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
       setDobError(msg);
       setIsAgeEligible(false);
+      try {
+        window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+        window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+      } catch {}
       return;
     }
 
     setIsAgeEligible(true);
+    try {
+      const expiresAt = (Date.now() + AGE_ELIGIBILITY_WINDOW_MS).toString();
+      window.sessionStorage?.setItem("cowatch_signup_age_eligible_expires_at", expiresAt);
+      window.sessionStorage?.setItem("cowatch_signup_terms_agreed", "true");
+    } catch {}
   };
 
-  const handleResetAgeGate = () => {
+  const handleResetAgeGate = useCallback(() => {
     setIsAgeEligible(false);
     setDobError(null);
     setError(null);
-  };
+    try {
+      window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+      window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isAgeEligible) return;
+    try {
+      const rawExpiry = window.sessionStorage?.getItem("cowatch_signup_age_eligible_expires_at");
+      if (!rawExpiry) return;
+      const expiresAt = parseInt(rawExpiry, 10);
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        handleResetAgeGate();
+        return;
+      }
+      const timer = setTimeout(() => {
+        handleResetAgeGate();
+      }, remaining);
+      return () => clearTimeout(timer);
+    } catch {}
+  }, [isAgeEligible, handleResetAgeGate]);
 
   const handleGoogleSignUp = async () => {
     if (!isAgeEligible) {
@@ -220,21 +275,21 @@ export const Signup = () => {
       return;
     }
 
-    if (!dob) {
-      const msg = "Please enter your date of birth";
-      setDobError(msg);
-      setError(msg);
-      setIsAgeEligible(false);
+    if (!isAgeEligible) {
+      setError("Please confirm your 18+ eligibility before continuing.");
+      handleResetAgeGate();
       return;
     }
 
-    const ageCheck = calculateAge(dob);
-    if (!ageCheck.valid || !ageCheck.isEligible) {
-      const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
-      setDobError(msg);
-      setError(msg);
-      setIsAgeEligible(false);
-      return;
+    if (dob) {
+      const ageCheck = calculateAge(dob);
+      if (!ageCheck.valid || !ageCheck.isEligible) {
+        const msg = ageCheck.error || "You must be at least 18 years of age to create an account.";
+        setDobError(msg);
+        setError(msg);
+        handleResetAgeGate();
+        return;
+      }
     }
 
     if (!isAllowedEmailDomain(email)) {
@@ -264,6 +319,8 @@ export const Signup = () => {
             full_name: name.trim(),
             display_name: name.trim(),
             username: autoUsername,
+            terms_agreed: true,
+            terms_agreed_at: new Date().toISOString(),
             ...(avatarUrlPayload ? { avatar_url: avatarUrlPayload } : {}),
           },
         },
@@ -314,9 +371,18 @@ export const Signup = () => {
       const redirect = params.get("redirect") || params.get("next") || "/";
 
       if (data.session) {
+        try {
+          window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+          window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+        } catch {}
         history.push(redirect);
         return;
       }
+
+      try {
+        window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
+        window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
+      } catch {}
 
       setSuccess("We've sent a confirmation link to your email address. Please confirm your email to sign in.");
       setResendCooldown(60);
@@ -368,10 +434,10 @@ export const Signup = () => {
             CoWatch requires all account holders to be at least 18 years of age.
           </Text>
 
-          <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
+          <Paper withBorder p={20} mt={14} radius="lg" className={styles.authCard}>
             {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
 
-            <form onSubmit={handleVerifyAge} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            <form onSubmit={handleVerifyAge} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div className={styles.dateInputWrapper}>
                 <PremiumDatePicker
                   label="Date of birth"
@@ -447,7 +513,7 @@ export const Signup = () => {
             Join CoWatch to host watch parties and watch together with friends.
           </Text>
 
-          <Paper withBorder p={30} mt={30} radius="lg" className={styles.authCard}>
+          <Paper withBorder p={20} mt={14} radius="lg" className={styles.authCard}>
             {error && <Alert color="red" mb="md" title="Error">{error}</Alert>}
 
             {success ? (
@@ -458,7 +524,7 @@ export const Signup = () => {
                 </Button>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {/* 18+ eligibility confirmed internally */}
 
                 {enabledOptions.includes("google") && (
@@ -474,11 +540,11 @@ export const Signup = () => {
                 )}
 
                 {enabledOptions.includes("google") && enabledOptions.includes("email") && (
-                  <Divider label="Or continue with email" labelPosition="center" my="xs" />
+                  <Divider label="Or continue with email" labelPosition="center" my={2} />
                 )}
 
                 {enabledOptions.includes("email") && (
-                  <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     <div className={styles.avatarSection}>
                       <Tooltip label="Upload custom photo" withArrow position="top">
                         <button
@@ -544,8 +610,8 @@ export const Signup = () => {
                     </div>
                     <div>
                       <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                      <Text size="xs" c="dimmed" mt={4}>
-                        Use Gmail, Outlook, Hotmail, Live, MSN, Yahoo, Zoho, or Proton.
+                      <Text size="xs" c="dimmed" mt={2} style={{ fontSize: "11px" }}>
+                        Supported: Gmail, Outlook, Yahoo, Zoho, Proton
                       </Text>
                     </div>
                     <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -554,7 +620,7 @@ export const Signup = () => {
                       checked={agreedToTerms}
                       onChange={(e) => setAgreedToTerms(e.currentTarget.checked)}
                       color="violet"
-                      mt="xs"
+                      mt={4}
                       label={
                         <Text size="xs" c="dimmed">
                           I agree to the{" "}
@@ -570,7 +636,7 @@ export const Signup = () => {
                       }
                     />
 
-                    <Button fullWidth type="submit" mt="md" loading={submitting}>Create account</Button>
+                    <Button fullWidth type="submit" mt="xs" loading={submitting}>Create account</Button>
                   </form>
                 )}
               </div>
@@ -579,7 +645,7 @@ export const Signup = () => {
         </>
       )}
 
-      <Text size="sm" ta="center" mt="md" c="dimmed">
+      <Text size="xs" ta="center" mt="xs" c="dimmed">
         Already have an account?{" "}
         <Link to={{ pathname: "/login", search: location.search }} style={{ color: "var(--color-violet)", textDecoration: "underline", fontWeight: 600 }}>
           Sign in
