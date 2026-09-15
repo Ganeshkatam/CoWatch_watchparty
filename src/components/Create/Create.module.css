@@ -1,7 +1,7 @@
 .page {
   min-height: calc(100vh - 80px);
   background-color: var(--bg-app);
-  padding: 24px 20px 80px;
+  padding: 24px 20px 110px;
   display: flex;
   justify-content: center;
 }
@@ -292,21 +292,26 @@
   line-height: 1.35;
 }
 
-/* Actions Footer - Sticky at bottom */
+/* Actions Footer - Fixed/Floating at bottom for anytime accessibility */
 .actionsRow {
-  position: sticky;
-  bottom: 16px;
-  z-index: 30;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 720px;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .actionsRowMeta {
@@ -331,9 +336,8 @@
 
 @media (max-width: 650px) {
   .page {
-    padding: 16px 12px 64px;
+    padding: 16px 12px 100px;
   }
-
 
   .card {
     padding: 16px 14px;
@@ -357,6 +361,8 @@
     bottom: 0;
     left: 0;
     right: 0;
+    transform: none;
+    width: 100%;
     border-radius: 0;
     border-left: none;
     border-right: none;
