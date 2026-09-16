@@ -45,7 +45,6 @@ import { FileShareModal } from "../Modal/FileShareModal";
 import type { User } from "@supabase/supabase-js";
 import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
-
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
@@ -1019,7 +1018,7 @@ export class App extends React.Component<AppProps, AppState> {
         operationCoordinator.rejectDomainOperations("host-authority", sanitized);
         operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
         operationCoordinator.rejectDomainOperations("media-playback", sanitized);
-        
+
         if (this.state.state === "starting") {
           operationCoordinator.markTerminalFailure(sanitized);
           this.setState({
@@ -3124,19 +3123,19 @@ export class App extends React.Component<AppProps, AppState> {
                 {this.state.initStage === "authenticating"
                   ? "Authenticating permissions..."
                   : this.state.initStage === "connecting"
-                  ? "Connecting to room..."
-                  : this.state.initStage === "synchronizing"
-                  ? "Synchronizing room stage..."
-                  : "Preparing watch party..."}
+                    ? "Connecting to room..."
+                    : this.state.initStage === "synchronizing"
+                      ? "Synchronizing room stage..."
+                      : "Preparing watch party..."}
               </Title>
               <Text c="dimmed" size="sm">
                 {this.state.initStage === "authenticating"
                   ? "Verifying room credentials and access authority"
                   : this.state.initStage === "connecting"
-                  ? "Establishing secure realtime socket connection"
-                  : this.state.initStage === "synchronizing"
-                  ? "Synchronizing media stage, controls, and participants"
-                  : "Loading environment and initializing assets"}
+                    ? "Establishing secure realtime socket connection"
+                    : this.state.initStage === "synchronizing"
+                      ? "Synchronizing media stage, controls, and participants"
+                      : "Loading environment and initializing assets"}
               </Text>
             </div>
           </Overlay>

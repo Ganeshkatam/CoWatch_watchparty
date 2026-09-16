@@ -388,60 +388,82 @@
 
 /* Room Info Card in Dropdown */
 .roomInfoCard {
-  padding: 8px 10px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background-color: var(--bg-surface);
-  border-radius: var(--radius-sm);
+  gap: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
+  min-width: 280px;
 }
 
 .roomInfoRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 24px;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.roomInfoRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.roomInfoRow:first-child {
+  padding-top: 0;
 }
 
 .roomInfoLabel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--text-secondary);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .roomInfoValue {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 150px;
   text-align: right;
 }
 
 .roomInfoValueWithCopy {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .codeSnippet {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  background-color: var(--surface-active);
-  border: 1px solid var(--border-subtle);
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 12px;
+  background-color: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-strong);
+  padding: 4px 10px;
+  border-radius: 6px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  max-width: 130px;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.codeSnippet:hover {
+  border-color: var(--accent-primary-soft);
+  background-color: rgba(0, 0, 0, 0.35);
 }
