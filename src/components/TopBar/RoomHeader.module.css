@@ -322,7 +322,10 @@
   }
 
   .centerSection {
-    display: none;
+    display: flex;
+    align-items: center;
+    margin: 0 0 0 auto;
+    flex: 0 0 auto;
   }
 
   .divider {
@@ -382,7 +385,11 @@
 
 @media only screen and (max-width: 480px) {
   .roomDropdownBtn {
-    max-width: 90px;
+    max-width: 80px;
+  }
+
+  .nowPlayingActive {
+    max-width: 75px;
   }
 }
 

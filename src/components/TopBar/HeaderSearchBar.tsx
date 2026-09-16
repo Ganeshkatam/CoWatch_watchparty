@@ -106,7 +106,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 
   // Close dropdown on click outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (
         containerRef.current &&
         !containerRef.current.contains(e.target as Node)
@@ -116,7 +116,11 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
 
   const handlePlayNow = useCallback(
@@ -274,6 +278,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       }
     } else if (e.key === "Escape") {
       setIsOpen(false);
+      setMobileOpen(false);
       inputRef.current?.blur();
     }
   };
@@ -294,7 +299,8 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
           setIsOpen(true);
           setTimeout(() => inputRef.current?.focus(), 50);
         }}
-        title="Search or paste media link"
+        title={disabled ? "Playback locked by host" : "Search or paste media link"}
+        aria-label={disabled ? "Playback locked by host" : "Search or paste media link"}
         disabled={disabled}
       >
         <IconSearch size={16} />
