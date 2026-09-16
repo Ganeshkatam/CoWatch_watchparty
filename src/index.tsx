@@ -234,12 +234,16 @@ class CoWatch extends React.Component {
   private authSubscription: { unsubscribe: () => void } | null = null;
   private authTimeout: any = null;
   private lastSessionToken: string | null | undefined = undefined;
+  private profileChannel: any = null;
 
   componentWillUnmount() {
     if (this.authTimeout) {
       clearTimeout(this.authTimeout);
     }
     this.authSubscription?.unsubscribe();
+    if (this.profileChannel) {
+      supabase.removeChannel(this.profileChannel);
+    }
   }
 
   async componentDidMount() {
@@ -401,13 +405,16 @@ class CoWatch extends React.Component {
             } catch (e) { }
 
             const activeAppearance = (() => {
+              if (profile?.pref_appearance_mode) {
+                return profile.pref_appearance_mode as AppearanceMode;
+              }
               if (typeof window !== "undefined") {
                 const local = window.localStorage.getItem("cowatch-appearance");
                 if (local === "light" || local === "mantine" || local === "system") {
                   return local as AppearanceMode;
                 }
               }
-              return (profile?.pref_appearance_mode || "system") as AppearanceMode;
+              return "system";
             })();
 
             try {
@@ -442,6 +449,33 @@ class CoWatch extends React.Component {
               capabilities: metadata?.capabilities || DEFAULT_STATE.capabilities,
               userAppearance: activeAppearance,
             });
+
+            // Set up realtime sync for cross-device preferences
+            if (this.profileChannel) {
+              supabase.removeChannel(this.profileChannel);
+            }
+            this.profileChannel = supabase
+              .channel(`public:profiles:${user.id}`)
+              .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
+                (payload) => {
+                  const newMode = payload.new.pref_appearance_mode;
+                  if (newMode && newMode !== this.state.userAppearance) {
+                    this.setState({ userAppearance: newMode });
+                    try {
+                      window.localStorage.setItem("cowatch-appearance", newMode);
+                      const cached = window.localStorage.getItem("cowatch-cached-profile");
+                      if (cached) {
+                        const parsed = JSON.parse(cached);
+                        parsed.pref_appearance_mode = newMode;
+                        window.localStorage.setItem("cowatch-cached-profile", JSON.stringify(parsed));
+                      }
+                    } catch (e) {}
+                  }
+                }
+              )
+              .subscribe();
 
             // Notify user and sync terms agreement upon returning from an external OAuth sign-in flow
             try {

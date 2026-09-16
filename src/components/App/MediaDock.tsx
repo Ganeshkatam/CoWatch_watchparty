@@ -117,7 +117,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           className={styles.stopBtn}
           onClick={onStopVBrowser}
           disabled={!haveLock}
-          title="Stop Virtual Browser"
         >
           <IconX size={15} />
           <span>{isCompact ? "Stop" : "Stop VBrowser"}</span>
@@ -127,7 +126,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           type="button"
           className={styles.stopBtn}
           onClick={onStopScreenShare}
-          title="Stop Screenshare"
         >
           <IconX size={15} />
           <span>{isCompact ? "Stop" : "Stop Share"}</span>
@@ -138,11 +136,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           className={styles.stopBtn}
           onClick={onStopMedia}
           disabled={!haveLock}
-          title={
-            haveLock
-              ? "Stop playback and remove media"
-              : "Controls locked by host"
-          }
         >
           <IconX size={15} />
           <span>{isCompact ? "Stop" : "Stop playback"}</span>
@@ -163,7 +156,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
               type="button"
               className={styles.addMediaBtn}
               disabled={!haveLock}
-              title={haveLock ? "Add media to room" : "Controls locked by host"}
             >
               <IconPlus size={16} stroke={2.5} />
               <span>Add</span>
@@ -213,51 +205,43 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         </Menu>
       ) : (
         <>
-          <Tooltip label="Share screen" withArrow>
-            <button
-              type="button"
-              className={styles.addMediaIconBtn}
-              onClick={onOpenScreenShare}
-              disabled={!haveLock}
-            >
-              <IconScreenShare size={18} />
-            </button>
-          </Tooltip>
+          <button
+            type="button"
+            className={styles.addMediaIconBtn}
+            onClick={onOpenScreenShare}
+            disabled={!haveLock}
+          >
+            <IconScreenShare size={18} />
+          </button>
 
           {metadata.capabilities?.virtualBrowser && (
-            <Tooltip label="Browser" withArrow>
-              <button
-                type="button"
-                className={styles.addMediaIconBtn}
-                onClick={onOpenVBrowser}
-                disabled={!haveLock}
-              >
-                <IconBrowser size={18} />
-              </button>
-            </Tooltip>
+            <button
+              type="button"
+              className={styles.addMediaIconBtn}
+              onClick={onOpenVBrowser}
+              disabled={!haveLock}
+            >
+              <IconBrowser size={18} />
+            </button>
           )}
 
-          <Tooltip label="Upload file" withArrow>
-            <button
-              type="button"
-              className={styles.addMediaIconBtn}
-              onClick={onOpenFileShare}
-              disabled={!haveLock}
-            >
-              <IconFile size={18} />
-            </button>
-          </Tooltip>
+          <button
+            type="button"
+            className={styles.addMediaIconBtn}
+            onClick={onOpenFileShare}
+            disabled={!haveLock}
+          >
+            <IconFile size={18} />
+          </button>
 
-          <Tooltip label="Video URL / Search" withArrow>
-            <button
-              type="button"
-              className={styles.addMediaIconBtn}
-              onClick={onOpenQuickAdd}
-              disabled={!haveLock}
-            >
-              <IconLink size={18} />
-            </button>
-          </Tooltip>
+          <button
+            type="button"
+            className={styles.addMediaIconBtn}
+            onClick={onOpenQuickAdd}
+            disabled={!haveLock}
+          >
+            <IconLink size={18} />
+          </button>
         </>
       )}
 

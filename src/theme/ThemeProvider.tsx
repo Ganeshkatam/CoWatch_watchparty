@@ -49,18 +49,14 @@ export const ThemeProvider = ({
     return resolveInitialScheme(appearance);
   });
 
-  // Sync with userAppearance prop from DB ONLY if user has not explicitly set a local preference
+  // Sync with userAppearance prop from DB
   useEffect(() => {
-    if (userAppearance) {
-      const local = typeof window !== "undefined" ? localStorage.getItem("cowatch-appearance") : null;
-      if (!local && (userAppearance === "light" || userAppearance === "mantine" || userAppearance === "system")) {
+    if (userAppearance && userAppearance !== appearance) {
+      if (userAppearance === "light" || userAppearance === "mantine" || userAppearance === "system") {
         setAppearanceInternal(userAppearance);
-        try {
-          localStorage.setItem("cowatch-appearance", userAppearance);
-        } catch (e) {}
       }
     }
-  }, [userAppearance]);
+  }, [userAppearance, appearance]);
 
   // Resolve color scheme and update HTML data attribute
   useEffect(() => {

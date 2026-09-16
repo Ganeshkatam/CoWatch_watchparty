@@ -640,7 +640,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       <button
                         type="button"
                         className={styles.menuTrigger}
-                        title="User options"
                       >
                         <IconDotsVertical size={15} />
                       </button>
@@ -664,7 +663,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
                         color={this.getVideoWebRTC() ? "green" : "red"}
                         variant="filled"
                         onClick={this.toggleVideoWebRTC}
-                        title={this.getVideoWebRTC() ? "Turn camera off" : "Turn camera on"}
                       >
                         {this.getVideoWebRTC() ? (
                           <IconVideo size={13} />
@@ -678,7 +676,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
                         color={this.getAudioWebRTC() ? "green" : "red"}
                         variant="filled"
                         onClick={this.toggleAudioWebRTC}
-                        title={this.getAudioWebRTC() ? "Mute mic" : "Unmute mic"}
                       >
                         {this.getAudioWebRTC() ? (
                           <IconMicrophone size={13} />
@@ -692,7 +689,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
                         color="red"
                         variant="subtle"
                         onClick={this.stopWebRTC}
-                        title="Leave video call"
                       >
                         <IconX size={13} />
                       </ActionIcon>
@@ -706,7 +702,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       color="violet"
                       variant="light"
                       onClick={this.setupWebRTC}
-                      title="Join video call"
                     >
                       <IconVideo size={13} />
                     </ActionIcon>
@@ -715,21 +710,21 @@ export class VideoChat extends React.Component<VideoChatProps> {
                   {!isSelf && (
                     <div className={styles.peerIndicators}>
                       {p.isVideoChat && (
-                        <div className={styles.indicatorItem} title="Camera connected">
+                        <div className={styles.indicatorItem}>
                           <IconVideo size={13} color="var(--color-live)" />
                         </div>
                       )}
                       {p.isMuted ? (
-                        <div className={styles.indicatorItem} title="Microphone muted">
+                        <div className={styles.indicatorItem}>
                           <IconMicrophoneOff size={13} color="var(--color-danger)" />
                         </div>
                       ) : p.isVideoChat ? (
-                        <div className={styles.indicatorItem} title="Microphone on">
+                        <div className={styles.indicatorItem}>
                           <IconMicrophone size={13} color="var(--color-live)" />
                         </div>
                       ) : null}
                       {p.isScreenShare && (
-                        <div className={styles.indicatorItem} title="Sharing screen">
+                        <div className={styles.indicatorItem}>
                           <IconScreenShare size={13} color="var(--media-video)" />
                         </div>
                       )}
@@ -747,7 +742,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
             onClick={this.handleOpenInvite}
             role="button"
             tabIndex={0}
-            title="Click to invite friends"
           >
             <div
               className={styles.inviteIconBadge}
@@ -761,9 +755,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
             <div className={styles.inviteMeta}>
               <span className={styles.inviteTitle}>
                 Invite people
-              </span>
-              <span className={styles.inviteSubtitle}>
-                Share a link to bring friends into the room
               </span>
             </div>
             <IconChevronRight size={16} color="var(--text-muted)" className={styles.inviteChevron} />
