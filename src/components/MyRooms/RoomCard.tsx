@@ -1122,8 +1122,18 @@ const InfoActionModal = ({
 
 // --- View Components ---
 
-const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, onDelete: (id: string) => void, onUpdateCover?: (id: string, url: string) => void }) => {
-  const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
+const GridRoomCard = ({
+  room,
+  onDelete,
+  onUpdateCover,
+  onRefresh,
+}: {
+  room: RoomSummary;
+  onDelete: (id: string) => void;
+  onUpdateCover?: (id: string, url: string) => void;
+  onRefresh?: () => void;
+}) => {
+  const actions = useRoomActions(room, onDelete, onRefresh, onUpdateCover);
   const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const history = useHistory();
@@ -1234,7 +1244,13 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
         room={room}
         opened={actions.editModalOpened}
         onClose={() => actions.setEditModalOpened(false)}
-        onSuccess={() => window.location.reload()}
+        onSuccess={() => {
+          if (onRefresh) {
+            onRefresh();
+          } else {
+            window.location.reload();
+          }
+        }}
       />
 
       <DeleteConfirmModal
@@ -1273,8 +1289,18 @@ const GridRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, on
 
 };
 
-const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, onDelete: (id: string) => void, onUpdateCover?: (id: string, url: string) => void }) => {
-  const actions = useRoomActions(room, onDelete, undefined, onUpdateCover);
+const StackRoomCard = ({
+  room,
+  onDelete,
+  onUpdateCover,
+  onRefresh,
+}: {
+  room: RoomSummary;
+  onDelete: (id: string) => void;
+  onUpdateCover?: (id: string, url: string) => void;
+  onRefresh?: () => void;
+}) => {
+  const actions = useRoomActions(room, onDelete, onRefresh, onUpdateCover);
   const isPermanent = Boolean(room.isPermanent);
   const creationDate = new Date(room.creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const isRoomActive = room.status === "active";
@@ -1466,7 +1492,13 @@ const StackRoomCard = ({ room, onDelete, onUpdateCover }: { room: RoomSummary, o
         room={room}
         opened={actions.editModalOpened}
         onClose={() => actions.setEditModalOpened(false)}
-        onSuccess={() => window.location.reload()}
+        onSuccess={() => {
+          if (onRefresh) {
+            onRefresh();
+          } else {
+            window.location.reload();
+          }
+        }}
       />
 
       <DeleteConfirmModal
@@ -1511,15 +1543,31 @@ export const RoomCard = ({
   room,
   onDelete,
   onUpdateCover,
-  viewMode
+  viewMode,
+  onRefresh,
 }: {
   room: RoomSummary;
   onDelete: (id: string) => void;
   onUpdateCover?: (id: string, url: string) => void;
   viewMode: 'grid' | 'stack';
+  onRefresh?: () => void;
 }) => {
   if (viewMode === 'stack') {
-    return <StackRoomCard room={room} onDelete={onDelete} onUpdateCover={onUpdateCover} />;
+    return (
+      <StackRoomCard
+        room={room}
+        onDelete={onDelete}
+        onUpdateCover={onUpdateCover}
+        onRefresh={onRefresh}
+      />
+    );
   }
-  return <GridRoomCard room={room} onDelete={onDelete} onUpdateCover={onUpdateCover} />;
+  return (
+    <GridRoomCard
+      room={room}
+      onDelete={onDelete}
+      onUpdateCover={onUpdateCover}
+      onRefresh={onRefresh}
+    />
+  );
 };

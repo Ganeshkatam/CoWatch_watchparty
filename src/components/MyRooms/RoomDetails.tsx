@@ -37,6 +37,7 @@ import {
   IconInfinity,
   IconTrash,
   IconUserPlus,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { serverPath, getRoomUrl } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
@@ -150,6 +151,7 @@ export const RoomDetails = () => {
 
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [inviteModalOpened, setInviteModalOpened] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useDocumentMetadata({
     title: room?.roomTitle ? `${room.roomTitle} - Room Details` : "Room Details",
@@ -157,8 +159,12 @@ export const RoomDetails = () => {
     noIndex: true,
   }, [room?.roomTitle]);
 
-  const fetchRoomDetails = async () => {
-    setLoading(true);
+  const fetchRoomDetails = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const token = await getAccessToken();
       const user = await supabase.auth.getUser();
@@ -173,16 +179,41 @@ export const RoomDetails = () => {
       setRoom(data);
       setError(null);
     } catch (err: any) {
-      setError(sanitizeServerErrorMessage(err));
+      if (!silent) {
+        setError(sanitizeServerErrorMessage(err));
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   };
 
   const currentPasscode = room?.currentPasscode || "";
 
   useEffect(() => {
-    fetchRoomDetails();
+    fetchRoomDetails(false);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchRoomDetails(true);
+      }
+    }, 10000);
+
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchRoomDetails(true);
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
   }, [roomId]);
 
   const handleCopyUrl = () => {
@@ -370,6 +401,18 @@ export const RoomDetails = () => {
               >
                 Invite
               </Button>
+              <Tooltip label="Refresh room details" withArrow>
+                <ActionIcon
+                  size="input-md"
+                  className={styles.glassBtn}
+                  onClick={() => fetchRoomDetails(true)}
+                  loading={isRefreshing}
+                  aria-label="Refresh room details"
+                  style={{ minWidth: 42, height: 42 }}
+                >
+                  <IconRefresh size={16} />
+                </ActionIcon>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -900,7 +943,7 @@ export const RoomDetails = () => {
         }}
         opened={editModalOpened}
         onClose={() => setEditModalOpened(false)}
-        onSuccess={fetchRoomDetails}
+        onSuccess={() => fetchRoomDetails(true)}
       />
     </div>
   );

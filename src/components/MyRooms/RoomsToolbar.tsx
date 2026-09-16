@@ -8,6 +8,7 @@ import {
   Popover,
   Group,
   ActionIcon,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -19,6 +20,7 @@ import {
   IconLock,
   IconArrowsSort,
   IconChevronDown,
+  IconRefresh,
 } from "@tabler/icons-react";
 import styles from "./MyRooms.module.css";
 
@@ -70,6 +72,8 @@ export const RoomsToolbar = ({
   setFilterOption,
   viewMode,
   setViewMode,
+  onRefresh,
+  isRefreshing,
 }: {
   searchQuery: string;
   setSearchQuery: (val: string) => void;
@@ -79,6 +83,8 @@ export const RoomsToolbar = ({
   setFilterOption: (val: string) => void;
   viewMode: 'grid' | 'stack';
   setViewMode: (val: 'grid' | 'stack') => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }) => {
   const [filterOpened, setFilterOpened] = useState(false);
 
@@ -321,6 +327,32 @@ export const RoomsToolbar = ({
             }}
           />
         </div>
+
+        {onRefresh && (
+          <Tooltip label="Refresh rooms" withArrow>
+            <ActionIcon
+              variant="default"
+              size="md"
+              radius="md"
+              onClick={onRefresh}
+              loading={isRefreshing}
+              aria-label="Refresh rooms"
+              styles={{
+                root: {
+                  height: '32px',
+                  width: '32px',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                  boxShadow: 'var(--shadow-sm)',
+                },
+              }}
+            >
+              <IconRefresh size={15} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

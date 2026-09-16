@@ -126,8 +126,25 @@ const useRooms = (
 
   useEffect(() => {
     fetchRooms(false);
-    const interval = setInterval(() => fetchRooms(true), 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchRooms(true);
+      }
+    }, 15000);
+
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchRooms(true);
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
   }, [fetchRooms]);
 
   const deleteRoom = async (roomId: string) => {
@@ -168,7 +185,7 @@ const useRooms = (
     }
   };
 
-  return { rooms, totalCount, stats, loading, error, deleteRoom, updateRoomCover, refresh: fetchRooms };
+  return { rooms, totalCount, stats, loading, error, deleteRoom, updateRoomCover, refresh: () => fetchRooms(true) };
 };
 
 export const MyRooms = () => {
@@ -207,6 +224,7 @@ export const MyRooms = () => {
     error,
     deleteRoom,
     updateRoomCover,
+    refresh,
   } = useRooms(
     user,
     currentPage,
@@ -289,6 +307,7 @@ export const MyRooms = () => {
               setViewMode={setViewMode}
               filterOption={filterOption}
               setFilterOption={setFilterOption}
+              onRefresh={refresh}
             />
 
             <div className={styles.roomSection} style={{ position: "relative", opacity: loading ? 0.65 : 1, transition: "opacity 0.2s ease" }}>
@@ -322,6 +341,7 @@ export const MyRooms = () => {
                     onDelete={deleteRoom}
                     onUpdateCover={updateRoomCover}
                     viewMode={viewMode}
+                    onRefresh={refresh}
                   />
                 ))}
               </div>
