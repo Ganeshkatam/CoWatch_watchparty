@@ -139,6 +139,11 @@ export const Join: React.FC = () => {
         const data: RoomInfo = await res.json();
         if (isCancelled) return;
 
+        if (data.isHost) {
+          history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+          return;
+        }
+
         setRoomInfo(data);
         setLoadingRoom(false);
       } catch (err) {
@@ -197,9 +202,10 @@ export const Join: React.FC = () => {
       return;
     }
 
-    // If caller is a host (owner or promoted co-host), advance directly to preflight
+    // If caller is a host (owner or promoted co-host), they are auto-redirected in useEffect
+    // This block is kept as a fallback just in case
     if (roomInfo?.isHost) {
-      history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`);
+      history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
       return;
     }
 
@@ -392,21 +398,7 @@ export const Join: React.FC = () => {
                   className={styles.form}
                   noValidate
                 >
-                  {roomInfo?.isHost ? (
-                    <div className={styles.ownerNotice}>
-                      <div className={styles.ownerNoticeIconBox}>
-                        <IconShield size={18} />
-                      </div>
-                      <div className={styles.ownerNoticeContent}>
-                        <span className={styles.ownerNoticeTitle}>
-                          {roomInfo?.isOwner ? "You're the host" : "You're co-hosting"}
-                        </span>
-                        <span className={styles.ownerNoticeDesc}>
-                          You can start and control this session.
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
+                  {/* Participant Passcode Entry Form */}
                     <div className={styles.inputWrapper}>
                       {roomInfo?.participantsLocked && (
                         <div
@@ -460,7 +452,6 @@ export const Join: React.FC = () => {
                         </div>
                       )}
                     </div>
-                  )}
 
                   <Button
                     type="submit"
@@ -483,21 +474,19 @@ export const Join: React.FC = () => {
                     disabled={
                       verifying ||
                       roomInfo?.status === "expired" ||
-                      (!roomInfo?.isHost && Boolean(roomInfo?.participantsLocked))
+                      Boolean(roomInfo?.participantsLocked)
                     }
                     className={styles.submitBtn}
                   >
-                    {roomInfo?.isHost
-                      ? "Start Room"
-                      : roomInfo?.status === "expired"
-                        ? "Room Expired"
-                        : roomInfo?.participantsLocked
-                          ? "Room Locked"
-                          : !user
-                            ? "Sign in to Join"
-                            : user.email_confirmed_at == null
-                              ? "Verify Email to Join"
-                              : "Enter Watch Room"}
+                    {roomInfo?.status === "expired"
+                      ? "Room Expired"
+                      : roomInfo?.participantsLocked
+                        ? "Room Locked"
+                        : !user
+                          ? "Sign in to Join"
+                          : user.email_confirmed_at == null
+                            ? "Verify Email to Join"
+                            : "Enter Watch Room"}
                   </Button>
                 </form>
               </>
