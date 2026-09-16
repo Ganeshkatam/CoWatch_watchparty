@@ -19,7 +19,7 @@ import type {
   NotificationPreferences,
 } from './notificationTypes';
 import { NotificationItem } from './NotificationItem';
-import { NotificationPreferencesModal } from './NotificationPreferences';
+import { useHistory } from 'react-router-dom';
 import styles from './NotificationPanel.module.css';
 
 interface NotificationPanelProps {
@@ -43,7 +43,12 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   onUpdatePreferences,
   onClose,
 }) => {
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const history = useHistory();
+
+  const handleSettingsClick = () => {
+    if (onClose) onClose();
+    history.push("/account/preferences");
+  };
 
   return (
     <>
@@ -74,7 +79,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 variant="subtle"
                 color="gray"
                 size="sm"
-                onClick={() => setPrefsOpen(true)}
+                onClick={handleSettingsClick}
                 aria-label="Notification settings"
               >
                 <IconSettings size={16} stroke={1.75} />
@@ -112,13 +117,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           )}
         </div>
       </div>
-
-      <NotificationPreferencesModal
-        opened={prefsOpen}
-        onClose={() => setPrefsOpen(false)}
-        preferences={preferences}
-        onUpdate={onUpdatePreferences}
-      />
     </>
   );
 };
