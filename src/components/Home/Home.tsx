@@ -125,6 +125,9 @@ export const Home: React.FC = () => {
               </Button>
 
               <div className={styles.actionDockDivider} aria-hidden="true" />
+              <div className={styles.mobileOrDivider} aria-hidden="true">
+                <span>or join with code</span>
+              </div>
 
               <form className={styles.quickJoinForm} onSubmit={handleQuickJoinSubmit}>
                 <TextInput
