@@ -109,7 +109,10 @@ server?.listen(listenPort, listenHost, () => {
 });
 const getCorsOptions = (): cors.CorsOptions => {
   if (process.env.NODE_ENV !== "production") {
-    return { origin: true, credentials: true };
+    return {
+      origin: true,
+      credentials: true,
+    };
   }
 
   const allowedOrigins = new Set<string>([
@@ -120,37 +123,59 @@ const getCorsOptions = (): cors.CorsOptions => {
 
   if (config.APP_URL) {
     try {
-      const appOrigin = new URL(config.APP_URL).origin;
-      allowedOrigins.add(appOrigin);
+      allowedOrigins.add(new URL(config.APP_URL).origin);
     } catch {
-      // ignore malformed APP_URL
+      console.warn("[CORS] Ignoring malformed APP_URL");
     }
   }
 
   if (config.CORS_ALLOWED_ORIGINS) {
     for (const origin of config.CORS_ALLOWED_ORIGINS.split(",")) {
       const trimmed = origin.trim();
-      if (trimmed) allowedOrigins.add(trimmed);
+
+      if (!trimmed) {
+        continue;
+      }
+
+      try {
+        allowedOrigins.add(new URL(trimmed).origin);
+      } catch {
+        console.warn(`[CORS] Ignoring malformed origin: ${trimmed}`);
+      }
     }
   }
 
   return {
     origin: (origin, callback) => {
-      // Allow non-browser requests (e.g. server-to-server, curl, health probes)
+      // Server-to-server requests and health checks.
       if (!origin) {
-        return callback(null, true);
+        callback(null, true);
+        return;
       }
+
       if (allowedOrigins.has(origin)) {
-        return callback(null, true);
+        callback(null, true);
+        return;
       }
-      return callback(null, false);
+
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(new Error("CORS_ORIGIN_NOT_ALLOWED"));
     },
     credentials: true,
   };
 };
 
 const corsOptions = getCorsOptions();
-const io = new Server(server, { cors: corsOptions, transports: ["websocket"] });
+
+const io = new Server(server, {
+  cors: corsOptions,
+
+  // Allow Socket.IO to negotiate the best available transport.
+  transports: ["polling", "websocket"],
+
+  // Upgrade polling → websocket when possible.
+  allowUpgrades: true,
+});
 registerNotificationNamespace(io);
 notificationService.setIo(io);
 io.engine.use(async (req: any, res: Response, next: () => void) => {
