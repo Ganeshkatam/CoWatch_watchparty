@@ -388,14 +388,11 @@
 
 /* Room Info Card in Dropdown */
 .roomInfoCard {
-  padding: 16px;
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
-  border-radius: var(--radius-md);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
-  min-width: 280px;
+  gap: 8px;
+  min-width: 260px;
 }
 
 .roomInfoRow {
@@ -403,8 +400,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .roomInfoRow:last-child {
@@ -448,10 +445,10 @@
 
 .codeSnippet {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  background-color: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border-strong);
-  padding: 4px 10px;
+  font-size: 11.5px;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
   border-radius: 6px;
   color: var(--text-primary);
   white-space: nowrap;
@@ -459,11 +456,10 @@
   text-overflow: ellipsis;
   max-width: 130px;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .codeSnippet:hover {
-  border-color: var(--accent-primary-soft);
-  background-color: rgba(0, 0, 0, 0.35);
+  border-color: var(--border-accent, var(--accent-primary-soft));
+  background-color: var(--surface-hover, var(--bg-surface));
 }
