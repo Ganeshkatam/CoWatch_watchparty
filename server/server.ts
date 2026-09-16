@@ -2389,6 +2389,16 @@ app.get("/roomDetails", async (req, res) => {
       [roomId]
     );
 
+    // Fetch recent messages
+    const messagesResult = await postgres?.query(
+      `SELECT rm.id, rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
+       FROM room_messages rm
+       LEFT JOIN profiles p ON rm.user_id = p.id
+       WHERE rm.room_id = $1
+       ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20`,
+      [roomId]
+    );
+
     // Fetch chat summary
     const chatSummaryResult = await postgres?.query(
       `SELECT count(id)::int as "messagesCount", max(created_at) as "lastMessageAt"
@@ -2402,6 +2412,7 @@ app.get("/roomDetails", async (req, res) => {
       owner_passcode: undefined,
       currentPasscode,
       lifecycleEvents: lifecycleResult?.rows ?? [],
+      recentMessages: messagesResult?.rows.reverse() ?? [],
       chatSummary: {
         messagesCount: chatSummary.messagesCount || 0,
         lastMessageAt: chatSummary.lastMessageAt || null

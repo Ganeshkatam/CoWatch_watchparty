@@ -74,6 +74,7 @@ interface RoomDetailsData {
   owner_id?: string;
   max_participants?: number;
   lifecycleEvents: LifecycleEvent[];
+  recentMessages?: any[];
   chatSummary?: {
     messagesCount: number;
     lastMessageAt: string | null;
@@ -145,7 +146,7 @@ export const RoomDetails = () => {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedRoomId, setCopiedRoomId] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isExtending, setIsExtending] = useState(false);
+
   const [editModalOpened, setEditModalOpened] = useState(false);
 
   useDocumentMetadata({
@@ -225,28 +226,6 @@ export const RoomDetails = () => {
       console.error(e);
       setIsDeleting(false);
       setDeleteConfirm(false);
-    }
-  };
-
-  const handleExtend = async () => {
-    if (!room) return;
-    setIsExtending(true);
-    try {
-      const token = await getAccessToken();
-      const user = await supabase.auth.getUser();
-      const durationSeconds = 3600; // 1 hour
-      const response = await fetch(`${serverPath}/extendRoom`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: user.data.user?.id, token, roomId: room.roomId, durationSeconds }),
-      });
-      if (response.ok) {
-        await fetchRoomDetails();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsExtending(false);
     }
   };
 
@@ -781,19 +760,6 @@ export const RoomDetails = () => {
                   {expiresInText || "—"}
                 </div>
                 <div className={styles.countdownLabel}>Time left until room closes</div>
-                {isOpenable && (
-                  <Button
-                    variant="light"
-                    color="violet"
-                    size="sm"
-                    fullWidth
-                    mt="md"
-                    onClick={handleExtend}
-                    loading={isExtending}
-                  >
-                    Add 1 More Hour
-                  </Button>
-                )}
               </div>
             )}
 
@@ -819,38 +785,48 @@ export const RoomDetails = () => {
             </div>
           </div>
 
-          {/* Card 5: Activity History */}
+          {/* Card 5: Recent Messages */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>
                 <div className={styles.cardTitleIconWrap}>
-                  <IconActivity size={18} />
+                  <IconMessage size={18} />
                 </div>
-                <span>Activity History</span>
+                <span>Recent Messages</span>
               </div>
             </div>
 
-            {room.lifecycleEvents && room.lifecycleEvents.length > 0 ? (
+            {room.recentMessages && room.recentMessages.length > 0 ? (
               <div className={styles.timeline}>
-                {room.lifecycleEvents.slice(0, 6).map((event, index) => (
-                  <div key={event.id || index} className={styles.timelineItem}>
-                    {index < Math.min(room.lifecycleEvents.length, 6) - 1 && (
+                {room.recentMessages.slice(0, 10).map((msg, index) => (
+                  <div key={msg.id || index} className={styles.timelineItem}>
+                    {index < Math.min(room.recentMessages!.length, 10) - 1 && (
                       <div className={styles.timelineLine} />
                     )}
                     <div className={styles.timelineNode}>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          backgroundColor: "var(--color-violet)",
-                        }}
-                      />
+                      {msg.profile_picture ? (
+                        <img 
+                          src={msg.profile_picture} 
+                          alt=""
+                          style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: "var(--color-violet)",
+                          }}
+                        />
+                      )}
                     </div>
                     <div className={styles.timelineBody}>
-                      <div className={styles.timelineTitle}>{event.event}</div>
+                      <div className={styles.timelineTitle} style={{ wordBreak: 'break-word' }}>
+                        <span style={{ fontWeight: 600 }}>{msg.profile_name || "Unknown"}</span>: {msg.message}
+                      </div>
                       <div className={styles.timelineTime}>
-                        {new Date(event.timestamp).toLocaleString(undefined, {
+                        {new Date(msg.created_at).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
                           hour: "2-digit",
@@ -864,13 +840,13 @@ export const RoomDetails = () => {
             ) : (
               <div className={styles.emptyStateContainer}>
                 <div className={styles.emptyStateIconWrap}>
-                  <IconActivity size={22} color="var(--color-violet)" />
+                  <IconMessage size={22} color="var(--color-violet)" />
                 </div>
                 <Text fw={600} size="sm" c="var(--text-primary)">
-                  No Activity Recorded
+                  No Messages Yet
                 </Text>
                 <Text size="xs" c="dimmed" ta="center" style={{ maxWidth: 260 }}>
-                  Room events, status changes, and participant activity will appear here.
+                  Chat messages sent in this room will appear here.
                 </Text>
               </div>
             )}
