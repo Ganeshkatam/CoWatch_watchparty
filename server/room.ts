@@ -2781,13 +2781,17 @@ export class Room {
           console.error("Failed during host failover transition:", err);
         });
       }
-
-      if (this.roster.length === 0) {
+      const actualUsers = this.roster.filter(p => !p.isScreenShare);
+      if (actualUsers.length === 0) {
         if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
         this.inactivityTimeout = setTimeout(async () => {
-          if (this.roster.length === 0 && this.status === 'active') {
+          const currentActualUsers = this.roster.filter(p => !p.isScreenShare);
+          if (currentActualUsers.length === 0 && this.status === 'active') {
             this.status = 'inactive';
             this.lastUpdateTime = new Date();
+            if (this.vBrowser) {
+              await this.stopVBrowserInternal();
+            }
             if (postgres) {
               await postgres.query(
                 "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",
