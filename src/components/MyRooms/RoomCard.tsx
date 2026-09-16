@@ -123,6 +123,7 @@ export const EditRoomModal = ({
 
   const [title, setTitle] = useState(room.roomTitle || "");
   const [description, setDescription] = useState(room.roomDescription || "");
+  const [showDescription, setShowDescription] = useState(Boolean(room.roomDescription));
   const [isPermanent, setIsPermanent] = useState(Boolean(room.isPermanent));
   const [isChatDisabled, setIsChatDisabled] = useState(room.isChatDisabled || false);
 
@@ -380,16 +381,45 @@ export const EditRoomModal = ({
                   disabled={isRoomActive || isSaving}
                   description={`${title.length}/50 characters`}
                 />
-                <Textarea
-                  label="Description"
-                  value={description}
-                  onChange={(e) => setDescription(e.currentTarget.value)}
-                  maxLength={500}
-                  autosize
-                  minRows={2}
-                  disabled={isRoomActive || isSaving}
-                  description={`${description.length}/500 characters`}
-                />
+                {showDescription ? (
+                  <div>
+                    <Textarea
+                      label="Description"
+                      value={description}
+                      onChange={(e) => setDescription(e.currentTarget.value)}
+                      maxLength={500}
+                      autosize
+                      minRows={2}
+                      disabled={isRoomActive || isSaving}
+                      description={`${description.length}/500 characters`}
+                    />
+                    {!isRoomActive && (
+                      <Text
+                        size="xs"
+                        c="dimmed"
+                        mt={4}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => {
+                          setDescription("");
+                          setShowDescription(false);
+                        }}
+                      >
+                        Remove description
+                      </Text>
+                    )}
+                  </div>
+                ) : (
+                  <Text
+                    size="sm"
+                    c="violet"
+                    style={{ cursor: isRoomActive ? "default" : "pointer", opacity: isRoomActive ? 0.5 : 1 }}
+                    onClick={() => {
+                      if (!isRoomActive) setShowDescription(true);
+                    }}
+                  >
+                    + Add description
+                  </Text>
+                )}
 
                 <div>
                   <Text size="sm" fw={500} mb={6}>Cover Photo</Text>
