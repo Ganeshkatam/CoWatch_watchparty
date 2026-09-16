@@ -143,12 +143,12 @@ html[data-color-scheme="light"] {
   --media-magnet: #A78BFA;
   --media-file: #22D3EE;
 
-  /* Video Surface Tokens (invariant dark) */
+  /* Video Surface Tokens (Adaptive) */
   --bg-video-player: #000000;
-  --bg-video-tile: #0c0e14;
-  --bg-video-overlay: rgba(10, 12, 18, 0.82);
-  --border-video-tile: rgba(255, 255, 255, 0.08);
-  --border-video-tile-hover: rgba(139, 92, 246, 0.4);
+  --bg-video-tile: var(--bg-surface);
+  --bg-video-overlay: rgba(255, 255, 255, 0.82);
+  --border-video-tile: rgba(0, 0, 0, 0.08);
+  --border-video-tile-hover: rgba(112, 72, 232, 0.4);
 
   /* Semantic Theme Tokens */
   --accent-primary: var(--color-violet);

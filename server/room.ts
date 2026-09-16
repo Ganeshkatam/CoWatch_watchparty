@@ -14,7 +14,7 @@ import { redis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
-import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash } from "./utils/roomPasscode.ts";
+import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
 import {
   fetchYoutubeVideo,
   getYoutubeVideoID,
@@ -2614,8 +2614,8 @@ export class Room {
     if (postgres) {
       try {
         const result = await postgres.query(
-          `SELECT passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where "roomId" = $1`,
-          [this.roomId],
+          `SELECT passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where "roomId" = $1`,
+          [this.roomId]
         );
         first = result.rows[0];
         if (this.isChatDisabled === undefined) {
@@ -2636,7 +2636,17 @@ export class Room {
       }
     }
 
+    let plainPasscode = undefined;
+    if (this.isHost(socket) && first) {
+      if (first.owner_passcode) {
+        plainPasscode = decryptPasscodeForOwner(first.owner_passcode) || undefined;
+      } else if (first.passcode && !isBcryptHash(first.passcode)) {
+        plainPasscode = first.passcode;
+      }
+    }
+
     socket.emit("REC:getRoomState", {
+      passcode: plainPasscode,
       owner: first?.owner_id || this.owner_id,
       currentHostId: this.currentHostUid || this.currentHostClientId,
       currentHostClientId: this.currentHostClientId,
