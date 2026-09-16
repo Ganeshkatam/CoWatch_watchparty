@@ -1989,9 +1989,12 @@ app.get("/roomInfo/:roomId", async (req, res) => {
 
   try {
     const result = await postgres?.query(
-      `SELECT "roomId", "roomTitle", "roomDescription", "coverPhoto", status, "expiresAt", "isPermanent",
-              (passcode IS NOT NULL AND passcode <> '') as "requiresPasscode", owner_id, participants_locked, max_participants
-       FROM rooms WHERE "roomId" = $1`,
+      `SELECT r."roomId", r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
+              (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
+              p.display_name as "hostName"
+       FROM rooms r
+       LEFT JOIN profiles p ON r.owner_id = p.id
+       WHERE r."roomId" = $1`,
       [cleanRoomId],
     );
 
@@ -2014,6 +2017,10 @@ app.get("/roomInfo/:roomId", async (req, res) => {
     const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
     let isHost = isOwner;
     const memoryRoom = rooms.get(cleanRoomId);
+    let isHostPresent = false;
+    if (memoryRoom && typeof memoryRoom.isHostPresent === "function") {
+      isHostPresent = memoryRoom.isHostPresent();
+    }
     if (memoryRoom && callerUid) {
       if (typeof memoryRoom.isHostUid === "function") {
         isHost = isHost || memoryRoom.isHostUid(callerUid);
@@ -2034,6 +2041,8 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
       isOwner,
       isHost,
+      isHostPresent: Boolean(isHostPresent),
+      hostName: row.hostName || "Host",
     });
   } catch (err) {
     console.error("Error fetching roomInfo:", err);
@@ -2526,6 +2535,69 @@ app.post("/extendRoom", async (req, res) => {
     }
   } catch (e) {
     console.error("Error extending room:", e);
+    res.status(500).json({ error: { code: "FORBIDDEN", message: "Internal server error" } });
+  }
+});
+
+app.post("/startRoom", async (req, res) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
+  const decoded = await validateUserToken("", String(token));
+  if (decoded === "EMAIL_NOT_VERIFIED") {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
+    return;
+  }
+  if (!decoded) {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Invalid user token" } });
+    return;
+  }
+  const rawRoomId = typeof req.body?.roomId === "string" ? req.body.roomId : "";
+  if (!rawRoomId) {
+    res.status(400).json({ error: { code: "FORBIDDEN", message: "Missing roomId" } });
+    return;
+  }
+  const roomId = sanitizeRoomId(rawRoomId);
+
+  try {
+    const memoryRoom = rooms.get(roomId);
+    if (memoryRoom && !memoryRoom.isHostUid(decoded.uid) && memoryRoom.owner_id !== decoded.uid) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can start this room" } });
+      return;
+    }
+
+    if (!postgres) {
+      res.status(503).json({ error: { code: "FORBIDDEN", message: "Database unavailable" } });
+      return;
+    }
+
+    const activateResult = await postgres.query(
+      "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+      [roomId, decoded.uid]
+    );
+
+    const result = activateResult?.rows?.[0]?.result;
+    if (!result || result.status === "expired") {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "This room has expired." } });
+      return;
+    }
+
+    if (result.status !== "active") {
+      res.status(400).json({ error: { code: "FORBIDDEN", message: "Failed to start the session." } });
+      return;
+    }
+
+    if (memoryRoom) {
+      memoryRoom.status = 'active';
+      memoryRoom.expiresAt = result.expiresAt ? new Date(result.expiresAt) : undefined;
+      memoryRoom.lastUpdateTime = new Date();
+      io.of(memoryRoom.roomId).emit("REC:sessionStarted", {
+        status: "active",
+        startedBy: decoded.uid,
+      });
+    }
+
+    res.json({ success: true, status: 'active' });
+  } catch (error) {
+    console.error("Error starting room session:", error);
     res.status(500).json({ error: { code: "FORBIDDEN", message: "Internal server error" } });
   }
 });

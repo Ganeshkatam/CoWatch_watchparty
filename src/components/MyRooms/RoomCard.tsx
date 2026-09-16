@@ -869,7 +869,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         <Button
           size="xs"
           className={styles.primaryBtn}
-          onClick={() => history.push(urlPath)}
+          onClick={() => history.push(`/join/${room.roomId.replace(/^\//, '')}?user=host&start=waiting`)}
           leftSection={<IconPlayerPlayFilled size={12} />}
         >
           Start Session

@@ -710,8 +710,9 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ isOwner: true });
           }
           const requiresPasscode = Boolean(info.requiresPasscode);
-          const isWaiting = info.status !== "active";
-          return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting };
+          const isHostPresent = Boolean(info.isHostPresent);
+          const isWaiting = info.status !== "active" && !isHostPresent;
+          return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting, isHostPresent };
         }
       } catch (e) {
         console.warn("/roomInfo fetch failed, falling back to Supabase client:", e);
@@ -832,13 +833,11 @@ export class App extends React.Component<AppProps, AppState> {
             window.clearTimeout(this.startingTimer);
             this.startingTimer = null;
           }
-          operationCoordinator.setInitStage("ready");
-          this.setState({ isWaitingForHost: true, state: "connected", initStage: "ready", overlayMsg: "" });
-
-          if (!access.isOwner) {
-            this.startWaitingPoll(cleanRoomId);
-            return;
-          }
+          const targetUrl = access.isOwner
+            ? `/join/${encodeURIComponent(cleanRoomId)}?user=host&start=waiting`
+            : `/join/${encodeURIComponent(cleanRoomId)}?start=waiting`;
+          window.location.replace(targetUrl);
+          return;
         }
       } catch (e) {
         console.warn("Room access verification error:", e);
@@ -949,9 +948,11 @@ export class App extends React.Component<AppProps, AppState> {
         }
         const errMsg = err?.message || "";
         if (errMsg === "ROOM_NOT_STARTED") {
-          operationCoordinator.setInitStage("ready");
-          this.setState({ isWaitingForHost: true, overlayMsg: "", state: "connected", initStage: "ready" });
-          this.startWaitingPoll(cleanRoomId);
+          const targetUrl = this.state.isOwner
+            ? `/join/${encodeURIComponent(cleanRoomId)}?user=host&start=waiting`
+            : `/join/${encodeURIComponent(cleanRoomId)}?start=waiting`;
+          window.location.replace(targetUrl);
+          return;
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
           operationCoordinator.markTerminalFailure("Room not found");
           this.setState({ overlayMsg: USER_MESSAGES.ROOM_NOT_FOUND.message, state: "connected", initStage: "failed" });

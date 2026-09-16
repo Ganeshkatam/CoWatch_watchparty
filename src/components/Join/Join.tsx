@@ -27,6 +27,7 @@ import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { safeGetSession } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
+import { WaitingForHost } from "../App/WaitingForHost";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
@@ -48,6 +49,8 @@ interface RoomInfo {
   // only for personalizing UI copy ("You're the host" vs "You're co-hosting").
   isOwner: boolean;
   isHost: boolean;
+  isHostPresent?: boolean;
+  hostName?: string;
 }
 
 const normalizeRoomId = (value: string): string => {
@@ -143,7 +146,11 @@ export const Join: React.FC = () => {
         const data: RoomInfo = await res.json();
         if (isCancelled) return;
 
-        if (data.isHost) {
+        const hostPresent = Boolean(data.isHostPresent);
+        const sessionActive = data.status === "active";
+        const bypassLobby = sessionActive || hostPresent;
+
+        if (data.isHost && bypassLobby) {
           history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
           return;
         }
@@ -163,6 +170,80 @@ export const Join: React.FC = () => {
       isCancelled = true;
     };
   }, [cleanRouteRoomId]);
+
+  const isHostPresent = Boolean(roomInfo?.isHostPresent);
+  const isSessionActive = roomInfo?.status === "active";
+  const shouldBypassLobby = isSessionActive || isHostPresent;
+
+  useEffect(() => {
+    if (!cleanRouteRoomId || !roomInfo) return;
+    const hostPresent = Boolean(roomInfo.isHostPresent);
+    const sessionActive = roomInfo.status === "active";
+    if (sessionActive || hostPresent) return;
+
+    let isCancelled = false;
+    const interval = window.setInterval(async () => {
+      try {
+        const session = await safeGetSession(1000);
+        const token = session?.data?.session?.access_token;
+        const uid = session?.data?.session?.user?.id;
+
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (uid) headers["x-user-id"] = uid;
+
+        const res = await fetch(
+          `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
+          { headers }
+        );
+        if (!res.ok || isCancelled) return;
+        const freshData: RoomInfo = await res.json();
+        if (isCancelled) return;
+
+        if (freshData.status === "active" || freshData.isHostPresent) {
+          setRoomInfo(freshData);
+          if (freshData.isHost) {
+            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+          }
+        }
+      } catch {
+        // Silent poll
+      }
+    }, 3000);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [cleanRouteRoomId, roomInfo?.status, roomInfo?.isHostPresent, roomInfo?.isHost, history]);
+
+  const handleStartRoom = async () => {
+    if (!cleanRouteRoomId) return;
+    try {
+      const session = await safeGetSession(1000);
+      const token = session?.data?.session?.access_token;
+      if (!token) {
+        setFormError("Authentication required to start session.");
+        return;
+      }
+      const resp = await fetch(`${serverPath}/startRoom`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ roomId: cleanRouteRoomId }),
+      });
+      const resData = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setFormError(resData?.error?.message || "Failed to start room session.");
+        return;
+      }
+      history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+    } catch {
+      setFormError("Network error while starting room session.");
+    }
+  };
 
   // Handle submit for generic /join page (user enters room code / link)
   const handleGenericSubmit = (event: React.FormEvent) => {
@@ -315,6 +396,35 @@ export const Join: React.FC = () => {
                   Try Another Room
                 </Button>
               </div>
+            ) : roomInfo && !shouldBypassLobby ? (
+              <WaitingForHost
+                roomId={cleanRouteRoomId}
+                roomTitle={roomInfo.roomTitle}
+                hostName={roomInfo.hostName}
+                isOwner={Boolean(roomInfo.isHost)}
+                onCheckStatus={async () => {
+                  try {
+                    const session = await safeGetSession(1000);
+                    const token = session?.data?.session?.access_token;
+                    const uid = session?.data?.session?.user?.id;
+                    const headers: Record<string, string> = {};
+                    if (token) headers["Authorization"] = `Bearer ${token}`;
+                    if (uid) headers["x-user-id"] = uid;
+                    const res = await fetch(
+                      `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
+                      { headers }
+                    );
+                    if (res.ok) {
+                      const fresh = await res.json();
+                      setRoomInfo(fresh);
+                      if ((fresh.status === "active" || fresh.isHostPresent) && fresh.isHost) {
+                        history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+                      }
+                    }
+                  } catch {}
+                }}
+                onStartSession={handleStartRoom}
+              />
             ) : (
               <>
                 {/* Room Preview Card */}

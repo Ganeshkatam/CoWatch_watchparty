@@ -698,6 +698,7 @@ async function runTests() {
     'CMD:banUser': { category: 'PRIVILEGED', requiredAction: 'user:ban', delegatedInternalMethod: 'banUser' },
     'CMD:assignHost': { category: 'PRIVILEGED', requiredAction: 'room:transfer_host', delegatedInternalMethod: 'assignHost' },
     'CMD:transferHost': { category: 'PRIVILEGED', requiredAction: 'room:transfer_host', delegatedInternalMethod: 'transferHost' },
+    'CMD:startSession': { category: 'PRIVILEGED', delegatedInternalMethod: 'startSession' },
 
     // 4. Privileged Playlist Operations
     'CMD:playlistNext': { category: 'PRIVILEGED', requiredAction: 'playlist:next' },
@@ -910,6 +911,7 @@ async function runTests() {
     { name: '/updateRoomSettings', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/updateRoomCover', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/extendRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/startRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/endRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/deleteRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/api/notifications/invite', source: notificationRouterSource, requiresJwt: true, requiresHostOrOwner: true },

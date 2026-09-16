@@ -9,7 +9,7 @@ interface WaitingForHostProps {
   hostName?: string;
   onCheckStatus: () => Promise<void> | void;
   isOwner?: boolean;
-  onStartSession?: () => void;
+  onStartSession?: () => Promise<void> | void;
 }
 
 export const WaitingForHost: React.FC<WaitingForHostProps> = ({
@@ -33,13 +33,14 @@ export const WaitingForHost: React.FC<WaitingForHostProps> = ({
     }
   };
 
-  const handleStartSession = () => {
+  const handleStartSession = async () => {
     if (isStarting || !onStartSession) return;
     setIsStarting(true);
-    onStartSession();
-    // Reset after a short delay in case of failure; successful start
-    // will unmount this component via REC:sessionStarted
-    setTimeout(() => setIsStarting(false), 3000);
+    try {
+      await onStartSession();
+    } finally {
+      setTimeout(() => setIsStarting(false), 3000);
+    }
   };
 
   const displayName = roomTitle || roomId.replace(/^\//, "");

@@ -324,7 +324,9 @@ export const RoomDetails = () => {
   }
 
   const isOpenable = room.status === "active" || room.status === "expiring" || room.status === "scheduled" || room.status === "inactive";
-  const urlPath = `/watch/${room.roomId.replace(/^\//, "")}`;
+  const urlPath = room.status === "inactive"
+    ? `/join/${room.roomId.replace(/^\//, "")}?user=host&start=waiting`
+    : `/watch/${room.roomId.replace(/^\//, "")}`;
   const statusConfig = getStatusConfig(room.status);
 
   // Time remaining calculator

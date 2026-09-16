@@ -398,6 +398,23 @@ export class Room {
     return false;
   };
 
+  public isHostPresent = (): boolean => {
+    if (this.currentHostClientId) {
+      const rec = this.admittedParticipants.get(this.currentHostClientId);
+      if (rec && rec.state === 'connected' && !rec.isKicked) {
+        return true;
+      }
+    }
+    if (this.owner_id) {
+      for (const rec of this.admittedParticipants.values()) {
+        if (rec.uid === this.owner_id && rec.state === 'connected' && !rec.isKicked) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   public getConnectedParticipantUids = (): string[] => {
     const uids = new Set<string>();
     if (this.owner_id) uids.add(this.owner_id);
@@ -1120,63 +1137,7 @@ export class Room {
         socket.emit("errorMessage", "Direct host claims are not permitted.");
       });
       socket.on("CMD:startSession", async () => {
-        // 1. Server-authoritative ownership check (never trust client isHost)
-        if (!socket.uid || socket.uid !== this.owner_id) {
-          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room owner can start the session." });
-          return;
-        }
-
-        // 2. Guard: only inactive/scheduled rooms can be started
-        if (this.status !== "inactive" && this.status !== "scheduled") {
-          socket.emit("CMD:error", { code: "INVALID_STATE", message: "Room is already active or has ended." });
-          return;
-        }
-
-        // 3. Atomic DB-first transition (CAS: only transitions if current status allows)
-        if (!postgres) {
-          socket.emit("CMD:error", { code: "SERVICE_UNAVAILABLE", message: "Database unavailable." });
-          return;
-        }
-
-        try {
-          const activateResult = await postgres.query(
-            "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
-            [this.roomId, socket.uid]
-          );
-
-          const res = activateResult?.rows?.[0]?.result;
-          if (!res || res.status === "expired") {
-            this.status = "expired";
-            socket.emit("CMD:error", { code: "ROOM_EXPIRED", message: "This room has expired." });
-            return;
-          }
-
-          if (res.status !== "active") {
-            socket.emit("CMD:error", { code: "TRANSITION_FAILED", message: "Failed to start the session." });
-            return;
-          }
-
-          // 4. Only update memory AFTER DB confirms transition
-          this.status = "active";
-          this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
-          this.lastUpdateTime = new Date();
-
-          // 5. Broadcast to connected sockets (only owner is connected pre-start)
-          this.io.of(this.roomId).emit("REC:sessionStarted", {
-            status: "active",
-            startedBy: socket.uid,
-          });
-
-          // 6. System chat message
-          this.addChatMessage(null, {
-            id: socket.clientId,
-            cmd: "system",
-            msg: "Host started the watch party.",
-          });
-        } catch (err) {
-          console.error("CMD:startSession failed:", err);
-          socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
-        }
+        await this.startSession(socket);
       });
       socket.on("CMD:getRoomState", () => validateNotExpired() && this.getRoomState(socket));
       socket.on("CMD:setRoomState", async (data: unknown) => {
@@ -2037,6 +1998,66 @@ export class Room {
       msg: this.tsMap[socket.clientId]?.toString(),
     };
     this.addChatMessage(socket, chatMsg);
+  };
+
+  public startSession = async (socket: Socket): Promise<void> => {
+    // 1. Server-authoritative ownership/host check (never trust client isHost)
+    if (!socket.uid || (!this.isHostUid(socket.uid) && socket.uid !== this.owner_id)) {
+      socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room host or owner can start the session." });
+      return;
+    }
+
+    // 2. Guard: only inactive/scheduled rooms can be started
+    if (this.status !== "inactive" && this.status !== "scheduled") {
+      socket.emit("CMD:error", { code: "INVALID_STATE", message: "Room is already active or has ended." });
+      return;
+    }
+
+    // 3. Atomic DB-first transition (CAS: only transitions if current status allows)
+    if (!postgres) {
+      socket.emit("CMD:error", { code: "SERVICE_UNAVAILABLE", message: "Database unavailable." });
+      return;
+    }
+
+    try {
+      const activateResult = await postgres.query(
+        "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+        [this.roomId, socket.uid]
+      );
+
+      const res = activateResult?.rows?.[0]?.result;
+      if (!res || res.status === "expired") {
+        this.status = "expired";
+        socket.emit("CMD:error", { code: "ROOM_EXPIRED", message: "This room has expired." });
+        return;
+      }
+
+      if (res.status !== "active") {
+        socket.emit("CMD:error", { code: "TRANSITION_FAILED", message: "Failed to start the session." });
+        return;
+      }
+
+      // 4. Only update memory AFTER DB confirms transition
+      this.status = "active";
+      this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
+      this.lastUpdateTime = new Date();
+
+      // 5. Broadcast to connected sockets (only owner is connected pre-start)
+      this.io.of(this.roomId).emit("REC:sessionStarted", {
+        status: "active",
+        startedBy: socket.uid,
+      });
+
+      // 6. System chat message
+      this.addChatMessage(null, {
+        id: socket.clientId,
+        cmd: "system",
+        msg: "Host started the watch party.",
+      });
+    } catch (err) {
+      console.error("CMD:startSession failed:", err);
+      socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
+    }
   };
 
   public seekVideo = (socket: Socket, data: number | { time: number; operationId?: string }) => {
