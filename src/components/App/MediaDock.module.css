@@ -34,13 +34,31 @@
   white-space: nowrap;
 }
 
-.addMediaBtn:hover:not(:disabled) {
+.addMediaIconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-violet);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+  transition: all 0.15s ease;
+}
+
+.addMediaBtn:hover:not(:disabled),
+.addMediaIconBtn:hover:not(:disabled) {
   background: #7C3AED;
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(139, 92, 246, 0.45);
 }
 
-.addMediaBtn:disabled {
+.addMediaBtn:disabled,
+.addMediaIconBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

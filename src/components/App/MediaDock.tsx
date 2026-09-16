@@ -17,7 +17,7 @@ import {
   IconX,
   IconMessageDots,
 } from "@tabler/icons-react";
-import { Menu } from "@mantine/core";
+import { Menu, Tooltip } from "@mantine/core";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
 import styles from "./MediaDock.module.css";
@@ -213,51 +213,51 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         </Menu>
       ) : (
         <>
-          <button
-            type="button"
-            className={styles.addMediaBtn}
-            onClick={onOpenScreenShare}
-            disabled={!haveLock}
-            title={haveLock ? "Stream your screen or tab" : "Controls locked by host"}
-          >
-            <IconScreenShare size={16} />
-            <span>Share screen</span>
-          </button>
-
-          {metadata.capabilities?.virtualBrowser && (
+          <Tooltip label="Share screen" withArrow>
             <button
               type="button"
-              className={styles.addMediaBtn}
-              onClick={onOpenVBrowser}
+              className={styles.addMediaIconBtn}
+              onClick={onOpenScreenShare}
               disabled={!haveLock}
-              title={haveLock ? "Browse the web together" : "Controls locked by host"}
             >
-              <IconBrowser size={16} />
-              <span>Browser</span>
+              <IconScreenShare size={18} />
             </button>
+          </Tooltip>
+
+          {metadata.capabilities?.virtualBrowser && (
+            <Tooltip label="Browser" withArrow>
+              <button
+                type="button"
+                className={styles.addMediaIconBtn}
+                onClick={onOpenVBrowser}
+                disabled={!haveLock}
+              >
+                <IconBrowser size={18} />
+              </button>
+            </Tooltip>
           )}
 
-          <button
-            type="button"
-            className={styles.addMediaBtn}
-            onClick={onOpenFileShare}
-            disabled={!haveLock}
-            title={haveLock ? "Play a local video" : "Controls locked by host"}
-          >
-            <IconFile size={16} />
-            <span>Upload file</span>
-          </button>
+          <Tooltip label="Upload file" withArrow>
+            <button
+              type="button"
+              className={styles.addMediaIconBtn}
+              onClick={onOpenFileShare}
+              disabled={!haveLock}
+            >
+              <IconFile size={18} />
+            </button>
+          </Tooltip>
 
-          <button
-            type="button"
-            className={styles.addMediaBtn}
-            onClick={onOpenQuickAdd}
-            disabled={!haveLock}
-            title={haveLock ? "Paste link or search media" : "Controls locked by host"}
-          >
-            <IconLink size={16} />
-            <span>Video URL / Search</span>
-          </button>
+          <Tooltip label="Video URL / Search" withArrow>
+            <button
+              type="button"
+              className={styles.addMediaIconBtn}
+              onClick={onOpenQuickAdd}
+              disabled={!haveLock}
+            >
+              <IconLink size={18} />
+            </button>
+          </Tooltip>
         </>
       )}
 
@@ -270,11 +270,13 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         withinPortal
       >
         <Menu.Target>
-          <button type="button" className={styles.dockBtn} title="View playlist">
-            <IconList size={16} />
-            {!isCompact && <span>Playlist</span>}
-            <span className={styles.badge}>{playlist.length}</span>
-          </button>
+          <Tooltip label="View playlist" withArrow>
+            <button type="button" className={styles.dockBtn}>
+              <IconList size={18} />
+              {!isCompact && !isLaptop && <span>Playlist</span>}
+              <span className={styles.badge}>{playlist.length}</span>
+            </button>
+          </Tooltip>
         </Menu.Target>
         <Menu.Dropdown
           style={{
@@ -312,26 +314,30 @@ export const MediaDock: React.FC<MediaDockProps> = ({
       {isLaptop ? (
         <>
           {onToggleFullScreen && (
-            <button type="button" className={styles.dockBtn} title="Toggle Fullscreen" onClick={onToggleFullScreen}>
-              {isFullScreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
-              <span>{isFullScreen ? "Exit Fullscreen" : "Fullscreen"}</span>
-            </button>
+            <Tooltip label={isFullScreen ? "Exit Fullscreen" : "Fullscreen"} withArrow>
+              <button type="button" className={styles.iconBtn} onClick={onToggleFullScreen}>
+                {isFullScreen ? <IconMinimize size={18} /> : <IconMaximize size={18} />}
+              </button>
+            </Tooltip>
           )}
           {onToggleLock && (
-            <button type="button" className={styles.dockBtn} disabled={!haveLock} title="Lock/Unlock Controls" onClick={onToggleLock}>
-              {isLocked ? <IconLock size={16} color="var(--color-warning)" /> : <IconLockOpen size={16} />}
-              <span>{isLocked ? "Unlock controls" : "Lock controls"}</span>
-            </button>
+            <Tooltip label={isLocked ? "Unlock controls" : "Lock controls"} withArrow>
+              <button type="button" className={styles.iconBtn} disabled={!haveLock} onClick={onToggleLock}>
+                {isLocked ? <IconLock size={18} color="var(--color-warning)" /> : <IconLockOpen size={18} />}
+              </button>
+            </Tooltip>
           )}
-          <button type="button" className={styles.dockBtn} title="Copy room link" onClick={handleCopyLink}>
-            {copied ? <IconCheck size={16} color="var(--color-live)" /> : <IconCopy size={16} />}
-            <span>{copied ? "Link Copied!" : "Copy room link"}</span>
-          </button>
-          {onOpenFeedback && (
-            <button type="button" className={styles.dockBtn} title="Send feedback" onClick={onOpenFeedback}>
-              <IconMessageDots size={16} color="var(--color-violet)" />
-              <span>Send feedback</span>
+          <Tooltip label={copied ? "Link Copied!" : "Copy room link"} withArrow>
+            <button type="button" className={styles.iconBtn} onClick={handleCopyLink}>
+              {copied ? <IconCheck size={18} color="var(--color-live)" /> : <IconCopy size={18} />}
             </button>
+          </Tooltip>
+          {onOpenFeedback && (
+            <Tooltip label="Send feedback" withArrow>
+              <button type="button" className={styles.iconBtn} onClick={onOpenFeedback}>
+                <IconMessageDots size={18} color="var(--color-violet)" />
+              </button>
+            </Tooltip>
           )}
         </>
       ) : (
