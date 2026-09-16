@@ -3001,19 +3001,39 @@ export class App extends React.Component<AppProps, AppState> {
   private performCleanExit = async () => {
     if (this.cleanExitPromise) return this.cleanExitPromise;
     this.cleanExitPromise = (async () => {
-      // Mark as intentional exit to bypass reconnection loops
-      this.setState({ leavingRoom: true });
+      let leaveSuccess = true;
       
       try {
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            this.socket.emit("CMD:leaveRoom", (res: any) => resolve());
+        const result = await Promise.race([
+          new Promise<any>((resolve) => {
+            this.socket.emit("CMD:leaveRoom", resolve);
           }),
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+          new Promise<any>((resolve) => setTimeout(() => resolve({ success: false, error: "Network timeout while leaving room" }), 2000)),
         ]);
+        
+        if (result && result.success === false) {
+          leaveSuccess = false;
+          if (result.error) {
+            showUserMessage({
+              message: result.error,
+              severity: "error",
+              presentation: "toast",
+              action: "none"
+            });
+          }
+        }
       } catch (e) {
         console.warn("leaveRoom error", e);
+        leaveSuccess = false;
       }
+      
+      if (!leaveSuccess) {
+        this.cleanExitPromise = null;
+        return; // stay in room
+      }
+
+      // Mark as intentional exit to bypass reconnection loops
+      this.setState({ leavingRoom: true });
       
       this.socket.disconnect();
       window.location.href = "/";
@@ -3220,14 +3240,21 @@ export class App extends React.Component<AppProps, AppState> {
           onAssignAndLeave={async (targetClientId: string) => {
             operationCoordinator.startOperation("host-authority", "transfer", targetClientId);
             try {
-              await Promise.race([
-                new Promise<void>((resolve) => {
-                  this.socket.emit("CMD:transferHost", { targetClientId }, (res: any) => resolve());
+              const res = await Promise.race([
+                new Promise<any>((resolve) => {
+                  this.socket.emit("CMD:transferHost", { targetClientId }, resolve);
                 }),
-                new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+                new Promise<any>((resolve) => setTimeout(() => resolve({ success: false, error: "Transfer timeout" }), 2000)),
               ]);
-            } catch (e) {
+              if (res && res.success === false) {
+                 operationCoordinator.markOperationFailure("host-authority", "transfer", res.error || "Transfer failed");
+                 return; // Do NOT proceed to performCleanExit
+              }
+              operationCoordinator.markOperationSuccess("host-authority", "transfer");
+            } catch (e: any) {
               console.warn("transferHost error", e);
+              operationCoordinator.markOperationFailure("host-authority", "transfer", e.message);
+              return; // Do NOT proceed to performCleanExit
             }
             await this.performCleanExit();
           }}

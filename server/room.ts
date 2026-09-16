@@ -2736,7 +2736,7 @@ export class Room {
           cmd: "unlock",
           msg: "",
         };
-        this.addChatMessage(null as any, unlockMsg);
+        this.addChatMessage(null, unlockMsg);
       }
 
       if (wasHost) {
@@ -2758,7 +2758,7 @@ export class Room {
               cmd: "system",
               msg: `${oldHostName} disconnected. ${newHostName} is now the temporary room host.`,
             };
-            this.addChatMessage(null as any, chatMsg);
+            this.addChatMessage(null, chatMsg);
           } else {
             // No eligible participants remaining
             this.hostEpoch += 1;
