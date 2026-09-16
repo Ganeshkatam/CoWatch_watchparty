@@ -768,8 +768,9 @@ export class App extends React.Component<AppProps, AppState> {
     this.startingTimer = window.setTimeout(() => {
       if (this.state.state === "starting") {
         console.warn("Room connection starting state timed out (2500ms); forcing connected state.");
-        operationCoordinator.setInitStage(this.state.initStage === "synchronizing" ? "ready" : "degraded");
-        this.setState({ state: "connected", initStage: "ready" });
+        const nextStage = this.state.isWaitingForHost || this.state.initStage === "synchronizing" ? "ready" : "degraded";
+        operationCoordinator.setInitStage(nextStage);
+        this.setState({ state: "connected", initStage: nextStage });
       }
     }, 2500);
 
@@ -831,10 +832,13 @@ export class App extends React.Component<AppProps, AppState> {
             window.clearTimeout(this.startingTimer);
             this.startingTimer = null;
           }
-          operationCoordinator.setInitStage("degraded");
-          this.setState({ isWaitingForHost: true, state: "connected", initStage: "degraded", overlayMsg: "" });
-          this.startWaitingPoll(cleanRoomId);
-          return;
+          operationCoordinator.setInitStage("ready");
+          this.setState({ isWaitingForHost: true, state: "connected", initStage: "ready", overlayMsg: "" });
+
+          if (!access.isOwner) {
+            this.startWaitingPoll(cleanRoomId);
+            return;
+          }
         }
       } catch (e) {
         console.warn("Room access verification error:", e);
@@ -893,10 +897,14 @@ export class App extends React.Component<AppProps, AppState> {
         operationCoordinator.beginConnectionEpoch();
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
-        this.setState({
-          isWaitingForHost: false,
-          overlayMsg: "",
-        });
+        if (!this.state.isWaitingForHost) {
+          this.setState({
+            isWaitingForHost: false,
+            overlayMsg: "",
+          });
+        } else {
+          this.setState({ overlayMsg: "" });
+        }
         // Use the name in our state, generate one if empty
         const currentName = this.context.displayName || this.state.myName || (await generateName());
         this.updateName(currentName);
@@ -941,8 +949,8 @@ export class App extends React.Component<AppProps, AppState> {
         }
         const errMsg = err?.message || "";
         if (errMsg === "ROOM_NOT_STARTED") {
-          operationCoordinator.setInitStage("degraded");
-          this.setState({ isWaitingForHost: true, overlayMsg: "", state: "connected", initStage: "degraded" });
+          operationCoordinator.setInitStage("ready");
+          this.setState({ isWaitingForHost: true, overlayMsg: "", state: "connected", initStage: "ready" });
           this.startWaitingPoll(cleanRoomId);
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
           operationCoordinator.markTerminalFailure("Room not found");
@@ -3271,7 +3279,9 @@ export class App extends React.Component<AppProps, AppState> {
           initialContext={this.state.feedbackInitialContext}
           initialType={this.state.feedbackInitialType}
         />
-        <RoomRecoveryOverlay />
+        {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && (
+          <RoomRecoveryOverlay />
+        )}
         {!this.state.fullScreen && (
           <RoomHeader
             isHost={this.state.isHost}
