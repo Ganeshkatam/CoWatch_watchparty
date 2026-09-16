@@ -1509,8 +1509,9 @@ export class Room {
             targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
             reason,
             transferId,
+            hostEpoch: this.hostEpoch,
           },
-          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${transferId}`,
+          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${this.hostEpoch}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify new host:", err));
     }
