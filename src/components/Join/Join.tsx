@@ -74,10 +74,12 @@ export const Join: React.FC = () => {
   // Generic room ID input for /join without route params
   const [inputRoomId, setInputRoomId] = useState("");
 
-  // Pre-fill the passcode from query parameters if present,
-  // allowing QR code and link users to bypass manual entry.
-  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const initialPasscode = searchParams.get("passcode") || "";
+  // Pre-fill the passcode from the URL hash fragment if present.
+  // We use the hash fragment (#passcode=...) instead of query parameters (?passcode=...)
+  // so that the passcode is never sent to the server in HTTP requests,
+  // preventing it from being logged in server access logs or leaked in Referer headers.
+  const hashParams = useMemo(() => new URLSearchParams(location.hash.replace(/^#/, "")), [location.hash]);
+  const initialPasscode = hashParams.get("passcode") || "";
   const [passcode, setPasscode] = useState(initialPasscode);
 
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);

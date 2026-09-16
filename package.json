@@ -71,6 +71,7 @@
     "nodemailer": "^10.0.9",
     "pg": "^8.23.0",
     "pm2": "^7.0.4",
+    "react-qr-code": "^2.2.0",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Modal, Button, Tooltip, ActionIcon, PasswordInput, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { supabase } from "../../utils/supabaseClient";
+import QRCode from "react-qr-code";
+import { Modal, Button, Tooltip, ActionIcon } from "@mantine/core";
 import {
   IconCopy,
   IconCheck,
@@ -9,17 +8,12 @@ import {
   IconBrandTelegram,
   IconBrandX,
   IconMail,
-  IconHash,
-  IconKey,
   IconQrcode,
   IconShare,
   IconMessageShare,
   IconUsers,
-  IconEye,
-  IconEyeOff,
   IconLink,
   IconExternalLink,
-  IconUserPlus,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
 import styles from "./InviteModal.module.css";
@@ -90,9 +84,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     fullUrl
   )}&text=${encodeURIComponent(telegramText)}`;
 
-  const twitterText = canManageCredentials && resolvedPasscode
-    ? `Join my watch party on CoWatch!\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Join my watch party on CoWatch!\nRoom ID: ${cleanId}`;
+  const twitterText = `Join my watch party on CoWatch!\nRoom ID: ${cleanId}`;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     twitterText
   )}&url=${encodeURIComponent(fullUrl)}`;
@@ -102,12 +94,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   )}&body=${encodeURIComponent(inviteMessage)}`;
 
   const qrUrlWithPasscode = canManageCredentials && resolvedPasscode
-    ? `${fullUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
+    ? `${fullUrl}#passcode=${encodeURIComponent(resolvedPasscode)}`
     : fullUrl;
-
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-    qrUrlWithPasscode
-  )}`;
 
   const hasNativeShare =
     typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -273,11 +261,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
         {showQr && (
           <div className={styles.qrContainer}>
-            <div className={styles.qrFrame}>
-              <img
-                src={qrCodeUrl}
-                alt="Watch party QR Code"
-                className={styles.qrImage}
+            <div className={styles.qrFrame} style={{ padding: "16px", background: "white", borderRadius: "12px", display: "inline-block" }}>
+              <QRCode
+                value={qrUrlWithPasscode}
+                size={200}
+                style={{ width: '100%', height: 'auto', display: 'block' }}
               />
             </div>
             <span className={styles.qrCaption}>
