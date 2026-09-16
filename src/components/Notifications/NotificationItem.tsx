@@ -6,6 +6,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { ActionIcon, Tooltip } from '@mantine/core';
 import {
   IconMail,
   IconUserCheck,
@@ -15,6 +16,7 @@ import {
   IconSpeakerphone,
   IconDoorEnter,
   IconHome,
+  IconTrash,
 } from '@tabler/icons-react';
 import { resolveNotificationAction } from '../../utils/notificationAction';
 import type { NotificationItem as NotificationItemType } from './notificationTypes';
@@ -25,12 +27,14 @@ dayjs.extend(relativeTime);
 interface NotificationItemProps {
   notification: NotificationItemType;
   onMarkRead: (id: string) => void;
+  onDelete?: (id: string) => void;
   onClosePanel?: () => void;
 }
 
 export const NotificationItem: React.FC<NotificationItemProps> = ({
   notification,
   onMarkRead,
+  onDelete,
   onClosePanel,
 }) => {
   const isUnread = !notification.read_at;
@@ -114,7 +118,26 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
       <div className={styles.content}>
         <div className={styles.headerRow}>
           <div className={styles.title}>{notification.title}</div>
-          <div className={styles.time}>{timeFormatted}</div>
+          <div className={styles.headerMeta}>
+            <span className={styles.time}>{timeFormatted}</span>
+            {onDelete && (
+              <Tooltip label="Delete notification" withArrow position="left">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  className={styles.deleteButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(notification.id);
+                  }}
+                  aria-label="Delete notification"
+                >
+                  <IconTrash size={13} stroke={1.5} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </div>
         </div>
         <div className={styles.body}>{notification.body}</div>
         {resolvedAction.action !== 'dismiss' && resolvedAction.url && (

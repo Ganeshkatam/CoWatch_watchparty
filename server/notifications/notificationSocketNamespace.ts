@@ -134,3 +134,31 @@ export function emitNotificationsReadAll(io: Server, userId: string): void {
     console.error(`[notifications] Failed to emit notification:read_all for user ${userId}:`, err);
   }
 }
+
+/**
+ * Emit a notification:deleted event to a specific user's sockets.
+ * Fire-and-forget.
+ */
+export function emitNotificationDeleted(
+  io: Server,
+  userId: string,
+  notificationId: string,
+): void {
+  try {
+    io.of('/notifications').to(`user:${userId}`).emit('notification:deleted', { id: notificationId });
+  } catch (err) {
+    console.error(`[notifications] Failed to emit notification:deleted for user ${userId}:`, err);
+  }
+}
+
+/**
+ * Emit a notifications:cleared event to a specific user's sockets.
+ * Fire-and-forget.
+ */
+export function emitNotificationsCleared(io: Server, userId: string): void {
+  try {
+    io.of('/notifications').to(`user:${userId}`).emit('notifications:cleared');
+  } catch (err) {
+    console.error(`[notifications] Failed to emit notifications:cleared for user ${userId}:`, err);
+  }
+}

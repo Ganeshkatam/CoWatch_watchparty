@@ -237,6 +237,39 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
   return rowCount ?? 0;
 }
 
+/**
+ * Delete a single notification. Returns true if row was deleted.
+ * Validates ownership server-side.
+ */
+export async function deleteNotification(
+  userId: string,
+  notificationId: string,
+): Promise<boolean> {
+  if (!postgres) throw new Error('Database pool unavailable');
+
+  const { rowCount } = await postgres.query(
+    `DELETE FROM public.notifications
+     WHERE id = $1
+       AND user_id = $2`,
+    [notificationId, userId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * Delete all notifications for a user. Returns count deleted.
+ */
+export async function deleteAllNotifications(userId: string): Promise<number> {
+  if (!postgres) throw new Error('Database pool unavailable');
+
+  const { rowCount } = await postgres.query(
+    `DELETE FROM public.notifications
+     WHERE user_id = $1`,
+    [userId],
+  );
+  return rowCount ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Notification Preferences queries
 // ---------------------------------------------------------------------------

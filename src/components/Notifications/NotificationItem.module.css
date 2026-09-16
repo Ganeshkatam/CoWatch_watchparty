@@ -74,10 +74,39 @@
   text-overflow: ellipsis;
 }
 
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .time {
   font-size: 11px;
   color: var(--mantine-color-dimmed, #8e8ea0);
   flex-shrink: 0;
+}
+
+.deleteButton {
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  color: var(--mantine-color-dimmed, #8e8ea0);
+}
+
+.item:hover .deleteButton,
+.item:focus-within .deleteButton {
+  opacity: 0.75;
+}
+
+.deleteButton:hover {
+  opacity: 1 !important;
+  color: var(--mantine-color-red-6, #fa5252) !important;
+}
+
+@media (hover: none) {
+  .deleteButton {
+    opacity: 0.65;
+  }
 }
 
 .body {

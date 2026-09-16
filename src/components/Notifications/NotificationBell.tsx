@@ -22,6 +22,8 @@ export const NotificationBell: React.FC = () => {
     preferences,
     markRead,
     markAllRead,
+    deleteNotification,
+    clearAll,
     updatePreferences,
   } = useNotifications(context.user);
 
@@ -74,6 +76,8 @@ export const NotificationBell: React.FC = () => {
           preferences={preferences}
           onMarkRead={markRead}
           onMarkAllRead={markAllRead}
+          onDeleteNotification={deleteNotification}
+          onClearAll={clearAll}
           onUpdatePreferences={updatePreferences}
           onClose={() => setOpened(false)}
         />

@@ -8,11 +8,15 @@ import {
   Tooltip,
   Skeleton,
   Button,
+  Modal,
+  Text,
+  Group,
 } from '@mantine/core';
 import {
   IconChecks,
   IconSettings,
   IconBellOff,
+  IconTrash,
 } from '@tabler/icons-react';
 import type {
   NotificationItem as NotificationItemType,
@@ -20,6 +24,7 @@ import type {
 } from './notificationTypes';
 import { NotificationItem } from './NotificationItem';
 import { useHistory } from 'react-router-dom';
+import { MODAL_SIZES } from '../../utils/designSystem';
 import styles from './NotificationPanel.module.css';
 
 interface NotificationPanelProps {
@@ -29,6 +34,8 @@ interface NotificationPanelProps {
   preferences: NotificationPreferences | null;
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onClearAll?: () => void;
   onUpdatePreferences: (patch: Partial<NotificationPreferences>) => Promise<boolean>;
   onClose?: () => void;
 }
@@ -40,10 +47,13 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   preferences,
   onMarkRead,
   onMarkAllRead,
+  onDeleteNotification,
+  onClearAll,
   onUpdatePreferences,
   onClose,
 }) => {
   const history = useHistory();
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const handleSettingsClick = () => {
     if (onClose) onClose();
@@ -71,6 +81,19 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                   aria-label="Mark all as read"
                 >
                   <IconChecks size={16} stroke={1.75} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            {onClearAll && notifications.length > 0 && (
+              <Tooltip label="Clear all notifications" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={() => setConfirmClearOpen(true)}
+                  aria-label="Clear all notifications"
+                >
+                  <IconTrash size={16} stroke={1.75} />
                 </ActionIcon>
               </Tooltip>
             )}
@@ -111,12 +134,41 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 key={notif.id}
                 notification={notif}
                 onMarkRead={onMarkRead}
+                onDelete={onDeleteNotification}
                 onClosePanel={onClose}
               />
             ))
           )}
         </div>
       </div>
+
+      <Modal
+        opened={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+        title="Clear all notifications"
+        centered
+        size={MODAL_SIZES.sm}
+        zIndex={1100}
+      >
+        <Text size="sm" c="dimmed" mb="lg">
+          Are you sure you want to delete all notifications? This action cannot be undone.
+        </Text>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" size="xs" onClick={() => setConfirmClearOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            size="xs"
+            onClick={() => {
+              setConfirmClearOpen(false);
+              if (onClearAll) onClearAll();
+            }}
+          >
+            Clear all
+          </Button>
+        </Group>
+      </Modal>
     </>
   );
 };

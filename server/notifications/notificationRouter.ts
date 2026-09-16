@@ -26,10 +26,14 @@ import {
   markAllNotificationsRead,
   getPreferences,
   upsertPreferences,
+  deleteNotification,
+  deleteAllNotifications,
 } from './notificationRepository.ts';
 import {
   emitNotificationRead,
   emitNotificationsReadAll,
+  emitNotificationDeleted,
+  emitNotificationsCleared,
 } from './notificationSocketNamespace.ts';
 import type { Server } from 'socket.io';
 
@@ -215,6 +219,41 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
       emitNotificationsReadAll(io, uid);
 
       res.json({ success: true, updated: count });
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // DELETE /api/notifications/clear-all
+  // -------------------------------------------------------------------------
+  router.delete(
+    '/clear-all',
+    requireAuth(async (_req, res, uid) => {
+      const count = await deleteAllNotifications(uid);
+      emitNotificationsCleared(io, uid);
+      res.json({ success: true, deleted: count });
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // DELETE /api/notifications/:id
+  // -------------------------------------------------------------------------
+  router.delete(
+    '/:id',
+    requireAuth(async (req, res, uid) => {
+      const notifId = req.params.id;
+      if (!notifId?.match(/^[0-9a-f-]{36}$/i)) {
+        res.status(400).json({ error: 'Invalid notification ID' });
+        return;
+      }
+
+      const deleted = await deleteNotification(uid, notifId);
+      if (!deleted) {
+        res.status(404).json({ error: 'Notification not found' });
+        return;
+      }
+
+      emitNotificationDeleted(io, uid, notifId);
+      res.json({ success: true });
     }),
   );
 

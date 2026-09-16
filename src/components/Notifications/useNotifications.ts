@@ -173,6 +173,54 @@ export function useNotifications(user: User | null | undefined) {
     }
   }, [user, fetchInbox]);
 
+  const deleteNotification = useCallback(
+    async (notificationId: string) => {
+      if (!user) return;
+      // Optimistic update
+      setNotifications((prev) => {
+        const target = prev.find((n) => n.id === notificationId);
+        if (target && !target.read_at) {
+          setUnreadCount((c) => Math.max(0, c - 1));
+        }
+        return prev.filter((n) => n.id !== notificationId);
+      });
+
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+
+        await fetch(`${serverPath}/api/notifications/${encodeURIComponent(notificationId)}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.warn('[useNotifications] Failed to delete notification:', err);
+        fetchInbox();
+      }
+    },
+    [user, fetchInbox],
+  );
+
+  const clearAll = useCallback(async () => {
+    if (!user) return;
+    // Optimistic update
+    setNotifications([]);
+    setUnreadCount(0);
+
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+
+      await fetch(`${serverPath}/api/notifications/clear-all`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.warn('[useNotifications] Failed to clear notifications:', err);
+      fetchInbox();
+    }
+  }, [user, fetchInbox]);
+
   // ---------------------------------------------------------------------------
   // Realtime Socket.IO Connection & Reconnection Lifecycle
   // ---------------------------------------------------------------------------
@@ -237,6 +285,21 @@ export function useNotifications(user: User | null | undefined) {
         setUnreadCount(0);
       });
 
+      socket.on('notification:deleted', (data: { id: string }) => {
+        setNotifications((prev) => {
+          const target = prev.find((n) => n.id === data.id);
+          if (target && !target.read_at) {
+            setUnreadCount((c) => Math.max(0, c - 1));
+          }
+          return prev.filter((n) => n.id !== data.id);
+        });
+      });
+
+      socket.on('notifications:cleared', () => {
+        setNotifications([]);
+        setUnreadCount(0);
+      });
+
       socket.on('connect_error', (err) => {
         console.debug('[useNotifications] Socket connection error:', err.message);
       });
@@ -263,6 +326,8 @@ export function useNotifications(user: User | null | undefined) {
     preferences,
     markRead,
     markAllRead,
+    deleteNotification,
+    clearAll,
     refresh: fetchInbox,
     fetchPreferences,
     updatePreferences,
