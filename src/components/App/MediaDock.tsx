@@ -88,6 +88,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 
   const isCompact = viewport.width < 520;
   const isMedium = viewport.width >= 520 && viewport.width < 768;
+  const isLaptop = viewport.width > 1200;
   const isShortHeight = viewport.height < 600;
 
   const handleCopyLink = () => {
@@ -307,71 +308,98 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         </Menu.Dropdown>
       </Menu>
 
-      {/* More Options Menu */}
-      <Menu
-        shadow="xl"
-        width={moreMenuWidth}
-        position="top-end"
-        offset={8}
-        withinPortal
-      >
-        <Menu.Target>
-          <button type="button" className={styles.iconBtn} title="More actions">
-            <IconDots size={16} />
-          </button>
-        </Menu.Target>
-        <Menu.Dropdown>
+      {/* More Options Menu / Buttons */}
+      {isLaptop ? (
+        <>
           {onToggleFullScreen && (
-            <Menu.Item
-              leftSection={
-                isFullScreen ? (
-                  <IconMinimize size={16} />
-                ) : (
-                  <IconMaximize size={16} />
-                )
-              }
-              onClick={onToggleFullScreen}
-            >
-              {isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
-            </Menu.Item>
+            <button type="button" className={styles.dockBtn} title="Toggle Fullscreen" onClick={onToggleFullScreen}>
+              {isFullScreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+              <span>{isFullScreen ? "Exit Fullscreen" : "Fullscreen"}</span>
+            </button>
           )}
           {onToggleLock && (
+            <button type="button" className={styles.dockBtn} disabled={!haveLock} title="Lock/Unlock Controls" onClick={onToggleLock}>
+              {isLocked ? <IconLock size={16} color="var(--color-warning)" /> : <IconLockOpen size={16} />}
+              <span>{isLocked ? "Unlock controls" : "Lock controls"}</span>
+            </button>
+          )}
+          <button type="button" className={styles.dockBtn} title="Copy room link" onClick={handleCopyLink}>
+            {copied ? <IconCheck size={16} color="var(--color-live)" /> : <IconCopy size={16} />}
+            <span>{copied ? "Link Copied!" : "Copy room link"}</span>
+          </button>
+          {onOpenFeedback && (
+            <button type="button" className={styles.dockBtn} title="Send feedback" onClick={onOpenFeedback}>
+              <IconMessageDots size={16} color="var(--color-violet)" />
+              <span>Send feedback</span>
+            </button>
+          )}
+        </>
+      ) : (
+        <Menu
+          shadow="xl"
+          width={moreMenuWidth}
+          position="top-end"
+          offset={8}
+          withinPortal
+        >
+          <Menu.Target>
+            <button type="button" className={styles.iconBtn} title="More actions">
+              <IconDots size={16} />
+            </button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {onToggleFullScreen && (
+              <Menu.Item
+                leftSection={
+                  isFullScreen ? (
+                    <IconMinimize size={16} />
+                  ) : (
+                    <IconMaximize size={16} />
+                  )
+                }
+                onClick={onToggleFullScreen}
+              >
+                {isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+              </Menu.Item>
+            )}
+            {onToggleLock && (
+              <Menu.Item
+                disabled={!haveLock}
+                leftSection={
+                  isLocked ? (
+                    <IconLock size={16} color="var(--color-warning)" />
+                  ) : (
+                    <IconLockOpen size={16} />
+                  )
+                }
+                onClick={onToggleLock}
+              >
+                {isLocked ? "Unlock controls" : "Lock controls"}
+              </Menu.Item>
+            )}
             <Menu.Item
-              disabled={!haveLock}
               leftSection={
-                isLocked ? (
-                  <IconLock size={16} color="var(--color-warning)" />
+                copied ? (
+                  <IconCheck size={16} color="var(--color-live)" />
                 ) : (
-                  <IconLockOpen size={16} />
+                  <IconCopy size={16} />
                 )
               }
-              onClick={onToggleLock}
+              onClick={handleCopyLink}
             >
-              {isLocked ? "Unlock controls" : "Lock controls"}
+              {copied ? "Link Copied!" : "Copy room link"}
             </Menu.Item>
-          )}
-          <Menu.Item
-            leftSection={
-              copied ? (
-                <IconCheck size={16} color="var(--color-live)" />
-              ) : (
-                <IconCopy size={16} />
-              )
-            }
-            onClick={handleCopyLink}
-          >
-            {copied ? "Link Copied!" : "Copy room link"}
-          </Menu.Item>
-          {onOpenFeedback && (
-            <Menu.Item
-              leftSection={<IconMessageDots size={16} color="var(--color-violet)" />}
-              onClick={onOpenFeedback}
-            >
-              Send feedback
-            </Menu.Item>
-          )}
-        </Menu.Dropdown>
-      </Menu>
+            {onOpenFeedback && (
+              <Menu.Item
+                leftSection={<IconMessageDots size={16} color="var(--color-violet)" />}
+                onClick={onOpenFeedback}
+              >
+                Send feedback
+              </Menu.Item>
+            )}
+          </Menu.Dropdown>
+        </Menu>
+      )}
     </div>
   );
 };
