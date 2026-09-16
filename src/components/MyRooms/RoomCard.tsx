@@ -750,6 +750,8 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const [copiedPasscode, setCopiedPasscode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const history = useHistory();
+  const computedState = getComputedState(room);
+  const isEnded = computedState === 'Expired' || computedState === 'Ended' || room.status === 'ended' || room.status === 'expired';
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(getRoomUrl(room.roomId)).then(() => {
@@ -759,7 +761,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   };
 
   const handleCopyPasscode = () => {
-    if (!room.currentPasscode) return;
+    if (!room.currentPasscode || isEnded) return;
     navigator.clipboard.writeText(room.currentPasscode).then(() => {
       setCopiedPasscode(true);
       setTimeout(() => setCopiedPasscode(false), 2000);
@@ -846,7 +848,6 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     }
   };
 
-  const computedState = getComputedState(room);
   const isPermanent = computedState === 'Permanent';
   const urlPath = `/watch/${room.roomId.replace(/^\//, '')}`;
   const detailsPath = `/myrooms/${room.roomId}`;
@@ -903,7 +904,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const renderMenuItems = () => {
     const items = [];
 
-    if (room.currentPasscode) {
+    if (room.currentPasscode && !isEnded) {
       items.push(
         <Menu.Item
           key="copyPasscode"
@@ -925,7 +926,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       </Menu.Item>
     );
 
-    if (computedState !== 'Expired' && computedState !== 'Ended') {
+    if (!isEnded) {
       if (room.currentPasscode) {
         items.push(<Menu.Divider key="div1" />);
       }
@@ -1011,6 +1012,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     setInfoModalAction,
     handlePlaceholder,
     computedState,
+    isEnded,
     isPermanent,
     detailsPath,
     urlPath,
@@ -1182,7 +1184,12 @@ const GridRoomCard = ({
 
         <div className={styles.roomMetadata}>
           <div className={styles.metaItemValue}>
-            {room.isPasscodeProtected ? (
+            {actions.isEnded ? (
+              <>
+                <IconLock size={13} />
+                Ended
+              </>
+            ) : room.isPasscodeProtected ? (
               <>
                 <IconLock size={13} />
                 {room.currentPasscode ? (
@@ -1278,7 +1285,7 @@ const GridRoomCard = ({
       {actions.inviteModalOpened && (
         <InviteModal
           roomId={room.roomId}
-          passcode={room.currentPasscode || undefined}
+          passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}
           isOwner={true}
           closeInviteModal={() => actions.setInviteModalOpened(false)}
@@ -1349,7 +1356,11 @@ const StackRoomCard = ({
 
         <div className={styles.stackCardBottom}>
           <div className={styles.stackMetadata}>
-            {room.isPasscodeProtected ? (
+            {actions.isEnded ? (
+              <div className={styles.metaItemValue}>
+                <IconLock size={14} /> Ended
+              </div>
+            ) : room.isPasscodeProtected ? (
               <Tooltip
                 label={
                   actions.copiedPasscode
@@ -1426,7 +1437,7 @@ const StackRoomCard = ({
               </ActionIcon>
             </Tooltip>
 
-            {room.currentPasscode && (
+            {room.currentPasscode && !actions.isEnded && (
               <Tooltip
                 label={actions.copiedPasscode ? "Passcode Copied!" : `Copy Passcode (${room.currentPasscode})`}
                 withArrow
@@ -1526,7 +1537,7 @@ const StackRoomCard = ({
       {actions.inviteModalOpened && (
         <InviteModal
           roomId={room.roomId}
-          passcode={room.currentPasscode || undefined}
+          passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}
           isOwner={true}
           closeInviteModal={() => actions.setInviteModalOpened(false)}

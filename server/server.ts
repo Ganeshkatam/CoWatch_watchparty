@@ -2327,7 +2327,8 @@ app.get("/listRooms", async (req, res) => {
           derivedStatus = 'expiring';
         }
       }
-      const currentPasscode = r.owner_passcode ? decryptPasscodeForOwner(r.owner_passcode) : null;
+      const isEnded = derivedStatus === 'ended' || derivedStatus === 'expired';
+      const currentPasscode = (isEnded || !r.owner_passcode) ? null : decryptPasscodeForOwner(r.owner_passcode);
       return {
         ...r,
         owner_passcode: undefined,
@@ -2404,7 +2405,8 @@ app.get("/roomDetails", async (req, res) => {
     }
     room.status = derivedStatus;
 
-    const currentPasscode = room.owner_passcode ? decryptPasscodeForOwner(room.owner_passcode) : null;
+    const isEnded = derivedStatus === 'ended' || derivedStatus === 'expired';
+    const currentPasscode = (isEnded || !room.owner_passcode) ? null : decryptPasscodeForOwner(room.owner_passcode);
 
     // Fetch lifecycle events
     const lifecycleResult = await postgres?.query(

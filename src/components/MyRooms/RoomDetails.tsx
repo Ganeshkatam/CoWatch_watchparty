@@ -196,7 +196,8 @@ export const RoomDetails = () => {
     }
   }, [roomId]);
 
-  const currentPasscode = room?.currentPasscode || "";
+  const isRoomEnded = room?.status === "ended" || room?.status === "expired";
+  const currentPasscode = isRoomEnded ? "" : (room?.currentPasscode || "");
 
   useEffect(() => {
     fetchRoomDetails(false);
@@ -261,7 +262,7 @@ export const RoomDetails = () => {
   };
 
   const handleCopyPassword = () => {
-    if (!currentPasscode) return;
+    if (!currentPasscode || isRoomEnded) return;
     navigator.clipboard.writeText(currentPasscode).then(() => {
       setCopiedPassword(true);
       setTimeout(() => setCopiedPassword(false), 2000);
@@ -574,7 +575,17 @@ export const RoomDetails = () => {
                   Password
                 </span>
                 <div className={styles.tileValue}>
-                  {room.isPasscodeProtected ? (
+                  {isRoomEnded ? (
+                    <Badge
+                      color="gray"
+                      variant="light"
+                      size="md"
+                      radius="md"
+                      style={{ fontWeight: 600 }}
+                    >
+                      Unavailable (Room Ended)
+                    </Badge>
+                  ) : room.isPasscodeProtected ? (
                     currentPasscode ? (
                       <Group gap={6} align="center">
                         <span
@@ -955,7 +966,7 @@ export const RoomDetails = () => {
       {inviteModalOpened && (
         <InviteModal
           roomId={room.roomId}
-          passcode={room.currentPasscode || undefined}
+          passcode={isRoomEnded ? undefined : (room.currentPasscode || undefined)}
           closeInviteModal={() => setInviteModalOpened(false)}
           isHost={true}
           isOwner={true}
@@ -972,7 +983,7 @@ export const RoomDetails = () => {
           coverPhoto: room.coverPhoto,
           isChatDisabled: room.isChatDisabled,
           isPasscodeProtected: room.isPasscodeProtected,
-          currentPasscode: room.currentPasscode,
+          currentPasscode: isRoomEnded ? null : room.currentPasscode,
           isSubRoom: room.isSubRoom,
           status: room.status,
           startedAt: room.startedAt,
