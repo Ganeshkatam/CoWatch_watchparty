@@ -13,7 +13,7 @@ const defaults = {
   // ==========================================
   // Core CoWatch Configuration
   // ==========================================
-  NODE_ENV: "development",
+  NODE_ENV: "production",
   REDIS_URL: "", // Fallback single Redis URL
   REDIS_CORE_URL: "", // Redis Core: distributed coordination (locks, leases, idempotency)
   REDIS_EDGE_URL: "", // Redis Edge: high-volume cache (metadata, batched presence)
