@@ -1105,31 +1105,39 @@ export class Room {
           this.assignHost(socket, String(targetId));
         }
       });
-      socket.on("CMD:transferHost", async (data: unknown) => {
+      socket.on("CMD:transferHost", async (data: unknown, ack?: (res: { success: boolean; error?: string }) => void) => {
         if (!validateNotExpired()) return;
         const req = data as { participantId?: string; targetClientId?: string; newHostClientId?: string };
         const targetId = req?.participantId || req?.targetClientId || req?.newHostClientId;
         if (!targetId) {
           socket.emit("errorMessage", "Target participant ID is required.");
+          if (typeof ack === "function") ack({ success: false, error: "TARGET_REQUIRED" });
           return;
         }
         try {
           const res = await this.transferHost(socket, String(targetId));
           if (!res.success) {
             socket.emit("errorMessage", res.error || "Failed to transfer host authority.");
+            if (typeof ack === "function") ack({ success: false, error: res.error });
+          } else {
+            if (typeof ack === "function") ack({ success: true });
           }
         } catch (err: any) {
           socket.emit("errorMessage", err.message || "Failed to transfer host authority.");
+          if (typeof ack === "function") ack({ success: false, error: err.message });
         }
       });
-      socket.on("CMD:leaveRoom", (ack?: (res: { allowed: boolean; error?: string }) => void) => {
+      socket.on("CMD:leaveRoom", (ack?: (res: { success: boolean; error?: string }) => void) => {
         if (this.isHost(socket) && this.getEligibleParticipants(socket.clientId).length > 0) {
           const msg = "Host must transfer host authority before leaving the room.";
           socket.emit("errorMessage", msg);
-          if (typeof ack === "function") ack({ allowed: false, error: msg });
+          if (typeof ack === "function") ack({ success: false, error: msg });
           return;
         }
-        if (typeof ack === "function") ack({ allowed: true });
+        
+        this.performParticipantDeparture(socket);
+        
+        if (typeof ack === "function") ack({ success: true });
       });
       socket.on("CMD:becomeHost", () => {
         socket.emit("errorMessage", "Direct host claims are not permitted.");
@@ -2696,9 +2704,9 @@ export class Room {
     }
   };
 
-  private onDisconnect = (socket: Socket) => {
+  private performParticipantDeparture = (socket: Socket): void => {
     const { clientId } = socket;
-    // Disconnecting socket is the current one
+    // Disconnecting/leaving socket is the current one
     if (socket.id === this.socketIdMap[clientId]) {
       const wasHost = Boolean(this.currentHostClientId && this.currentHostClientId === clientId);
 
@@ -2728,7 +2736,7 @@ export class Room {
           cmd: "unlock",
           msg: "",
         };
-        this.addChatMessage(null, unlockMsg);
+        this.addChatMessage(null as any, unlockMsg);
       }
 
       if (wasHost) {
@@ -2750,7 +2758,7 @@ export class Room {
               cmd: "system",
               msg: `${oldHostName} disconnected. ${newHostName} is now the temporary room host.`,
             };
-            this.addChatMessage(null, chatMsg);
+            this.addChatMessage(null as any, chatMsg);
           } else {
             // No eligible participants remaining
             this.hostEpoch += 1;
@@ -2783,6 +2791,10 @@ export class Room {
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect
     // When serializing we only write values with messages in chat
     // This will keep growing in memory until the room is unloaded
+  };
+
+  private onDisconnect = (socket: Socket) => {
+    this.performParticipantDeparture(socket);
   };
 
   public kickUser = async (

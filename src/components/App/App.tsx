@@ -223,6 +223,7 @@ interface AppState {
   feedbackInitialContext?: FeedbackContext;
   feedbackInitialType?: FeedbackType;
   myClientId: string;
+  leavingRoom?: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -996,8 +997,8 @@ export class App extends React.Component<AppProps, AppState> {
       });
       socket.on("disconnect", (reason) => {
         operationCoordinator.markTransportDisconnected("Socket disconnected");
-        if (this.state.isHostSessionEnded || this.state.isWaitingForHost) {
-          // Suppress generic disconnect message if room was ended by host or waiting for host
+        if (this.state.isHostSessionEnded || this.state.isWaitingForHost || this.state.leavingRoom) {
+          // Suppress generic disconnect message if room was ended by host, waiting for host, or leaving intentionally
           return;
         }
         if (reason === "io server disconnect") {
@@ -2996,6 +2997,30 @@ export class App extends React.Component<AppProps, AppState> {
     this.setState({ settingsModalOpen });
   };
 
+  private cleanExitPromise: Promise<void> | null = null;
+  private performCleanExit = async () => {
+    if (this.cleanExitPromise) return this.cleanExitPromise;
+    this.cleanExitPromise = (async () => {
+      // Mark as intentional exit to bypass reconnection loops
+      this.setState({ leavingRoom: true });
+      
+      try {
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            this.socket.emit("CMD:leaveRoom", (res: any) => resolve());
+          }),
+          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      } catch (e) {
+        console.warn("leaveRoom error", e);
+      }
+      
+      this.socket.disconnect();
+      window.location.href = "/";
+    })();
+    return this.cleanExitPromise;
+  };
+
   render() {
     if (this.state.isErrorAuth) {
       return (
@@ -3192,14 +3217,22 @@ export class App extends React.Component<AppProps, AppState> {
           nameMap={this.state.nameMap}
           pictureMap={this.state.pictureMap}
           currentClientId={this.state.myClientId}
-          onAssignAndLeave={(targetClientId: string) => {
+          onAssignAndLeave={async (targetClientId: string) => {
             operationCoordinator.startOperation("host-authority", "transfer", targetClientId);
-            this.socket.emit("CMD:transferHost", { participantId: targetClientId });
-            this.socket.emit("CMD:assignHost", { newHostClientId: targetClientId });
-            window.location.href = "/";
+            try {
+              await Promise.race([
+                new Promise<void>((resolve) => {
+                  this.socket.emit("CMD:transferHost", { targetClientId }, (res: any) => resolve());
+                }),
+                new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+              ]);
+            } catch (e) {
+              console.warn("transferHost error", e);
+            }
+            await this.performCleanExit();
           }}
           onLeaveDirectly={() => {
-            window.location.href = "/";
+            this.performCleanExit();
           }}
         />
         <FeedbackModal
@@ -3233,7 +3266,7 @@ export class App extends React.Component<AppProps, AppState> {
               if (this.state.isHost && this.state.participants.length > 1) {
                 this.setState({ isAssignHostModalOpen: true });
               } else {
-                window.location.href = "/";
+                this.performCleanExit();
               }
             }}
             isLocked={Boolean(this.state.roomLock)}
