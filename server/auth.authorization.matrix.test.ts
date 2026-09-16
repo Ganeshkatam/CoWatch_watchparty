@@ -63,7 +63,7 @@ function createMockApp() {
   });
 
   // Simulated room moderation endpoint
-  app.post('/api/rooms/:roomId/moderation', (req, res) => {
+  app.post('/api/myrooms/:roomId/moderation', (req, res) => {
     const user = (req as any).user;
     if (!user) {
       res.status(401).json({ error: 'Authentication required' });
@@ -194,7 +194,7 @@ async function runAuthMatrixTests() {
 
     console.log('Case 3: Room moderation privilege matrix...');
     // Non-host kick attempt
-    const nonHostKick = await fetch(`${baseUrl}/api/rooms/test-room/moderation`, {
+    const nonHostKick = await fetch(`${baseUrl}/api/myrooms/test-room/moderation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -208,7 +208,7 @@ async function runAuthMatrixTests() {
     assert(nonHostKick.status === 403, 'Non-host moderation action must return 403');
 
     // Host kick attempt
-    const hostKick = await fetch(`${baseUrl}/api/rooms/test-room/moderation`, {
+    const hostKick = await fetch(`${baseUrl}/api/myrooms/test-room/moderation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -370,266 +370,266 @@ export const EditRoomModal = ({
               <div className={editModalStyles.sectionHeader}>
                 <span className={editModalStyles.sectionTitle}>Room Identity</span>
               </div>
-          <Stack gap="md">
-            <TextInput
-              label="Room Title"
-              value={title}
-              onChange={(e) => setTitle(e.currentTarget.value)}
-              maxLength={50}
-              required
-              disabled={isRoomActive || isSaving}
-              description={`${title.length}/50 characters`}
-            />
-            <Textarea
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.currentTarget.value)}
-              maxLength={500}
-              autosize
-              minRows={2}
-              disabled={isRoomActive || isSaving}
-              description={`${description.length}/500 characters`}
-            />
-
-            <div>
-              <Text size="sm" fw={500} mb={6}>Cover Photo</Text>
-              <div className={editModalStyles.coverContainer}>
-                <div className={editModalStyles.coverPreview}>
-                  {displayCover ? (
-                    <img src={displayCover} className={editModalStyles.coverImg} alt="Cover Preview" />
-                  ) : (
-                    <span className={editModalStyles.coverPlaceholder}>No cover</span>
-                  )}
-                </div>
-                <div className={editModalStyles.coverActions}>
-                  <Group gap="xs">
-                    <FileButton onChange={handleFileChange} accept="image/png,image/jpeg,image/webp" disabled={isRoomActive || isSaving}>
-                      {(props) => (
-                        <Button variant="default" size="xs" disabled={isRoomActive || isSaving} {...props}>
-                          Change cover
-                        </Button>
-                      )}
-                    </FileButton>
-                    {displayCover && (
-                      <Button
-                        variant="subtle"
-                        color="red"
-                        size="xs"
-                        disabled={isRoomActive || isSaving}
-                        onClick={() => {
-                          setCoverFile(null);
-                          setCoverPreview(null);
-                          setRemoveCover(true);
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    JPG, PNG, or WEBP (less than 1MB). 16:9 recommended.
-                  </Text>
-                </div>
-              </div>
-            </div>
-          </Stack>
-        </div>
-
-        <Divider />
-
-        {/* SECTION 2: BEHAVIOR */}
-        <div className={editModalStyles.section}>
-          <div className={editModalStyles.sectionHeader}>
-            <span className={editModalStyles.sectionTitle}>Room Behavior</span>
-          </div>
-          <Stack gap="sm">
-            <div className={editModalStyles.settingCard}>
-              <div className={editModalStyles.settingMeta}>
-                <span className={editModalStyles.settingLabel}>Permanent Room</span>
-                <span className={editModalStyles.settingDescription}>
-                  Keep this room active indefinitely without automatic expiration.
-                </span>
-              </div>
-              <Switch
-                checked={isPermanent}
-                onChange={(e) => setIsPermanent(e.currentTarget.checked)}
-                color="violet"
-                size="md"
-                disabled={isRoomActive || isSaving}
-              />
-            </div>
-
-            <div className={editModalStyles.settingCard}>
-              <div className={editModalStyles.settingMeta}>
-                <span className={editModalStyles.settingLabel}>Chat Enabled</span>
-                <span className={editModalStyles.settingDescription}>
-                  Allow room participants to exchange real-time messages and reactions.
-                </span>
-              </div>
-              <Switch
-                checked={!isChatDisabled}
-                onChange={(e) => setIsChatDisabled(!e.currentTarget.checked)}
-                color="violet"
-                size="md"
-                disabled={isRoomActive || isSaving}
-              />
-            </div>
-          </Stack>
-        </div>
-
-        <Divider />
-
-        {/* SECTION 3: ACCESS & SECURITY */}
-        <div className={editModalStyles.section}>
-          <div className={editModalStyles.sectionHeader}>
-            <span className={editModalStyles.sectionTitle}>Access & Security</span>
-            {room.isPasscodeProtected && !removeProtection ? (
-              <Badge color="violet" variant="light" leftSection={<IconLock size={12} />}>
-                Protected
-              </Badge>
-            ) : removeProtection ? (
-              <Badge color="red" variant="light" leftSection={<IconLockOpen size={12} />}>
-                Will Be Removed
-              </Badge>
-            ) : (
-              <Badge color="gray" variant="light" leftSection={<IconLockOpen size={12} />}>
-                Unprotected
-              </Badge>
-            )}
-          </div>
-
-          <Stack gap="md">
-            {room.isPasscodeProtected && (
-              <div className={editModalStyles.passwordBox}>
-                {currentPassword ? (
-                  <Stack gap="xs">
-                    <Group justify="space-between" align="center">
-                      <Text size="xs" fw={600} c="dimmed" tt="uppercase">
-                        Current Passcode
-                      </Text>
-                      <Button
-                        variant="subtle"
-                        color={removeProtection ? "violet" : "red"}
-                        size="xs"
-                        disabled={isRoomActive || isSaving}
-                        onClick={() => {
-                          setRemoveProtection(!removeProtection);
-                          if (!removeProtection) {
-                            setPassword("");
-                            setPasswordConfirm("");
-                          }
-                        }}
-                      >
-                        {removeProtection ? "Keep Password Protection" : "Remove Password"}
-                      </Button>
-                    </Group>
-                    <TextInput
-                      readOnly
-                      type={showCurrentPassword ? "text" : "password"}
-                      value={currentPassword}
-                      rightSection={
-                        <Group gap={4} pr={6}>
-                          <Tooltip label={showCurrentPassword ? "Hide passcode" : "Show passcode"} withArrow>
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              size="sm"
-                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                              aria-label="Toggle password visibility"
-                            >
-                              {showCurrentPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                            </ActionIcon>
-                          </Tooltip>
-                          <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy passcode"} withArrow>
-                            <ActionIcon
-                              variant="subtle"
-                              color={copiedCurrentPassword ? "green" : "gray"}
-                              size="sm"
-                              onClick={handleCopyCurrentPassword}
-                              aria-label="Copy current password"
-                            >
-                              {copiedCurrentPassword ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      }
-                      styles={{
-                        input: {
-                          fontFamily: showCurrentPassword ? "inherit" : "monospace",
-                          letterSpacing: showCurrentPassword ? "normal" : "2px",
-                        },
-                      }}
-                    />
-                  </Stack>
-                ) : (
-                  <Stack gap="xs">
-                    <Group justify="space-between" align="center">
-                      <Group gap={6}>
-                        <IconLock size={16} color="var(--mantine-color-violet-6)" />
-                        <Text size="sm" fw={500}>Room is passcode protected</Text>
-                      </Group>
-                      <Button
-                        variant="subtle"
-                        color={removeProtection ? "violet" : "red"}
-                        size="xs"
-                        disabled={isRoomActive || isSaving}
-                        onClick={() => {
-                          setRemoveProtection(!removeProtection);
-                          if (!removeProtection) {
-                            setPassword("");
-                            setPasswordConfirm("");
-                          }
-                        }}
-                      >
-                        {removeProtection ? "Keep Protection" : "Remove Password"}
-                      </Button>
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {removeProtection
-                        ? "Password protection will be removed when you save changes."
-                        : "Passcode is securely encrypted. Enter a new password below to update and view it, or click Remove Password to disable protection."}
-                    </Text>
-                  </Stack>
-                )}
-              </div>
-            )}
-
-            {removeProtection ? (
-              <Text size="sm" c="red" fw={500}>
-                Password protection will be removed when you click Save Changes.
-              </Text>
-            ) : (
-              <Stack gap="sm">
-                <Text size="xs" c="dimmed">
-                  {room.isPasscodeProtected
-                    ? "Enter a new password to change or update protection. Leave blank to keep current settings."
-                    : "Enter a password to require guests to enter a passcode before joining. Leave blank for an open room."}
-                </Text>
-                <PasswordInput
-                  label={room.isPasscodeProtected ? "New passcode" : "Set passcode"}
-                  placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter 8-character passcode"}
-                  value={password}
-                  minLength={8}
-                  maxLength={8}
-                  onChange={(e) => setPassword(e.currentTarget.value.slice(0, 8))}
+              <Stack gap="md">
+                <TextInput
+                  label="Room Title"
+                  value={title}
+                  onChange={(e) => setTitle(e.currentTarget.value)}
+                  maxLength={50}
+                  required
                   disabled={isRoomActive || isSaving}
+                  description={`${title.length}/50 characters`}
                 />
-                {password.length > 0 && (
-                  <PasswordInput
-                    label="Confirm passcode"
-                    placeholder="Confirm 8-character passcode"
-                    value={passwordConfirm}
-                    minLength={8}
-                    maxLength={8}
-                    onChange={(e) => setPasswordConfirm(e.currentTarget.value.slice(0, 8))}
+                <Textarea
+                  label="Description"
+                  value={description}
+                  onChange={(e) => setDescription(e.currentTarget.value)}
+                  maxLength={500}
+                  autosize
+                  minRows={2}
+                  disabled={isRoomActive || isSaving}
+                  description={`${description.length}/500 characters`}
+                />
+
+                <div>
+                  <Text size="sm" fw={500} mb={6}>Cover Photo</Text>
+                  <div className={editModalStyles.coverContainer}>
+                    <div className={editModalStyles.coverPreview}>
+                      {displayCover ? (
+                        <img src={displayCover} className={editModalStyles.coverImg} alt="Cover Preview" />
+                      ) : (
+                        <span className={editModalStyles.coverPlaceholder}>No cover</span>
+                      )}
+                    </div>
+                    <div className={editModalStyles.coverActions}>
+                      <Group gap="xs">
+                        <FileButton onChange={handleFileChange} accept="image/png,image/jpeg,image/webp" disabled={isRoomActive || isSaving}>
+                          {(props) => (
+                            <Button variant="default" size="xs" disabled={isRoomActive || isSaving} {...props}>
+                              Change cover
+                            </Button>
+                          )}
+                        </FileButton>
+                        {displayCover && (
+                          <Button
+                            variant="subtle"
+                            color="red"
+                            size="xs"
+                            disabled={isRoomActive || isSaving}
+                            onClick={() => {
+                              setCoverFile(null);
+                              setCoverPreview(null);
+                              setRemoveCover(true);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        JPG, PNG, or WEBP (less than 1MB). 16:9 recommended.
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              </Stack>
+            </div>
+
+            <Divider />
+
+            {/* SECTION 2: BEHAVIOR */}
+            <div className={editModalStyles.section}>
+              <div className={editModalStyles.sectionHeader}>
+                <span className={editModalStyles.sectionTitle}>Room Behavior</span>
+              </div>
+              <Stack gap="sm">
+                <div className={editModalStyles.settingCard}>
+                  <div className={editModalStyles.settingMeta}>
+                    <span className={editModalStyles.settingLabel}>Permanent Room</span>
+                    <span className={editModalStyles.settingDescription}>
+                      Keep this room active indefinitely without automatic expiration.
+                    </span>
+                  </div>
+                  <Switch
+                    checked={isPermanent}
+                    onChange={(e) => setIsPermanent(e.currentTarget.checked)}
+                    color="violet"
+                    size="md"
                     disabled={isRoomActive || isSaving}
                   />
+                </div>
+
+                <div className={editModalStyles.settingCard}>
+                  <div className={editModalStyles.settingMeta}>
+                    <span className={editModalStyles.settingLabel}>Chat Enabled</span>
+                    <span className={editModalStyles.settingDescription}>
+                      Allow room participants to exchange real-time messages and reactions.
+                    </span>
+                  </div>
+                  <Switch
+                    checked={!isChatDisabled}
+                    onChange={(e) => setIsChatDisabled(!e.currentTarget.checked)}
+                    color="violet"
+                    size="md"
+                    disabled={isRoomActive || isSaving}
+                  />
+                </div>
+              </Stack>
+            </div>
+
+            <Divider />
+
+            {/* SECTION 3: ACCESS & SECURITY */}
+            <div className={editModalStyles.section}>
+              <div className={editModalStyles.sectionHeader}>
+                <span className={editModalStyles.sectionTitle}>Access & Security</span>
+                {room.isPasscodeProtected && !removeProtection ? (
+                  <Badge color="violet" variant="light" leftSection={<IconLock size={12} />}>
+                    Protected
+                  </Badge>
+                ) : removeProtection ? (
+                  <Badge color="red" variant="light" leftSection={<IconLockOpen size={12} />}>
+                    Will Be Removed
+                  </Badge>
+                ) : (
+                  <Badge color="gray" variant="light" leftSection={<IconLockOpen size={12} />}>
+                    Unprotected
+                  </Badge>
+                )}
+              </div>
+
+              <Stack gap="md">
+                {room.isPasscodeProtected && (
+                  <div className={editModalStyles.passwordBox}>
+                    {currentPassword ? (
+                      <Stack gap="xs">
+                        <Group justify="space-between" align="center">
+                          <Text size="xs" fw={600} c="dimmed" tt="uppercase">
+                            Current Passcode
+                          </Text>
+                          <Button
+                            variant="subtle"
+                            color={removeProtection ? "violet" : "red"}
+                            size="xs"
+                            disabled={isRoomActive || isSaving}
+                            onClick={() => {
+                              setRemoveProtection(!removeProtection);
+                              if (!removeProtection) {
+                                setPassword("");
+                                setPasswordConfirm("");
+                              }
+                            }}
+                          >
+                            {removeProtection ? "Keep Password Protection" : "Remove Password"}
+                          </Button>
+                        </Group>
+                        <TextInput
+                          readOnly
+                          type={showCurrentPassword ? "text" : "password"}
+                          value={currentPassword}
+                          rightSection={
+                            <Group gap={4} pr={6}>
+                              <Tooltip label={showCurrentPassword ? "Hide passcode" : "Show passcode"} withArrow>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="gray"
+                                  size="sm"
+                                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                  aria-label="Toggle password visibility"
+                                >
+                                  {showCurrentPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label={copiedCurrentPassword ? "Copied!" : "Copy passcode"} withArrow>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color={copiedCurrentPassword ? "green" : "gray"}
+                                  size="sm"
+                                  onClick={handleCopyCurrentPassword}
+                                  aria-label="Copy current password"
+                                >
+                                  {copiedCurrentPassword ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          }
+                          styles={{
+                            input: {
+                              fontFamily: showCurrentPassword ? "inherit" : "monospace",
+                              letterSpacing: showCurrentPassword ? "normal" : "2px",
+                            },
+                          }}
+                        />
+                      </Stack>
+                    ) : (
+                      <Stack gap="xs">
+                        <Group justify="space-between" align="center">
+                          <Group gap={6}>
+                            <IconLock size={16} color="var(--mantine-color-violet-6)" />
+                            <Text size="sm" fw={500}>Room is passcode protected</Text>
+                          </Group>
+                          <Button
+                            variant="subtle"
+                            color={removeProtection ? "violet" : "red"}
+                            size="xs"
+                            disabled={isRoomActive || isSaving}
+                            onClick={() => {
+                              setRemoveProtection(!removeProtection);
+                              if (!removeProtection) {
+                                setPassword("");
+                                setPasswordConfirm("");
+                              }
+                            }}
+                          >
+                            {removeProtection ? "Keep Protection" : "Remove Password"}
+                          </Button>
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          {removeProtection
+                            ? "Password protection will be removed when you save changes."
+                            : "Passcode is securely encrypted. Enter a new password below to update and view it, or click Remove Password to disable protection."}
+                        </Text>
+                      </Stack>
+                    )}
+                  </div>
+                )}
+
+                {removeProtection ? (
+                  <Text size="sm" c="red" fw={500}>
+                    Password protection will be removed when you click Save Changes.
+                  </Text>
+                ) : (
+                  <Stack gap="sm">
+                    <Text size="xs" c="dimmed">
+                      {room.isPasscodeProtected
+                        ? "Enter a new password to change or update protection. Leave blank to keep current settings."
+                        : "Enter a password to require guests to enter a passcode before joining. Leave blank for an open room."}
+                    </Text>
+                    <PasswordInput
+                      label={room.isPasscodeProtected ? "New passcode" : "Set passcode"}
+                      placeholder={room.isPasscodeProtected ? "Leave blank to keep current" : "Enter 8-character passcode"}
+                      value={password}
+                      minLength={8}
+                      maxLength={8}
+                      onChange={(e) => setPassword(e.currentTarget.value.slice(0, 8))}
+                      disabled={isRoomActive || isSaving}
+                    />
+                    {password.length > 0 && (
+                      <PasswordInput
+                        label="Confirm passcode"
+                        placeholder="Confirm 8-character passcode"
+                        value={passwordConfirm}
+                        minLength={8}
+                        maxLength={8}
+                        onChange={(e) => setPasswordConfirm(e.currentTarget.value.slice(0, 8))}
+                        disabled={isRoomActive || isSaving}
+                      />
+                    )}
+                  </Stack>
                 )}
               </Stack>
-            )}
-          </Stack>
-        </div>
-        </>
+            </div>
+          </>
         )}
       </div>
 
@@ -815,7 +815,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const computedState = getComputedState(room);
   const isPermanent = computedState === 'Permanent';
   const urlPath = `/watch/${room.roomId.replace(/^\//, '')}`;
-  const detailsPath = `/rooms/${room.roomId}`;
+  const detailsPath = `/myrooms/${room.roomId}`;
 
   const renderPrimary = () => {
     if (computedState === 'Expired' || computedState === 'Ended') {

@@ -30,7 +30,7 @@ console.log("Running announcements unit tests...");
 // Test 1: Action URL validation
 console.log("Testing isValidActionUrl...");
 assert(isValidActionUrl("/create"), "Should accept relative internal path /create");
-assert(isValidActionUrl("/rooms/my-room"), "Should accept nested relative path");
+assert(isValidActionUrl("/myrooms/my-room"), "Should accept nested relative path");
 assert(isValidActionUrl("https://example.com"), "Should accept https URL");
 assert(isValidActionUrl("http://localhost:3000"), "Should accept http URL");
 
