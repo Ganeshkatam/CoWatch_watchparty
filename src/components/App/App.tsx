@@ -111,6 +111,7 @@ declare global {
       videoRefs: HTMLVideoElementDict;
       videoPCs: PCDict;
       iceQueues: Record<string, RTCIceCandidateInit[]>;
+      remoteStreams: Record<string, MediaStream>;
       webtorrent?: WebTorrent.Instance;
       hls?: Hls;
       dash?: MediaPlayerClass;
@@ -123,6 +124,7 @@ window.cowatch = {
   videoRefs: {},
   videoPCs: {},
   iceQueues: {},
+  remoteStreams: {},
 };
 
 interface AppProps {

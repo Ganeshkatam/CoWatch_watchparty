@@ -290,6 +290,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         });
       }
       window.cowatch.ourStream = undefined;
+      window.cowatch.remoteStreams = {};
       Object.keys(videoPCs).forEach((key) => {
         try {
           videoPCs[key]?.close();
@@ -401,9 +402,18 @@ export class VideoChat extends React.Component<VideoChatProps> {
     };
 
     pc.ontrack = (event: RTCTrackEvent) => {
-      if (videoRefs && videoRefs[id] && event.streams && event.streams[0]) {
+      const remoteStream = event.streams?.[0];
+      if (remoteStream) {
+        if (!window.cowatch.remoteStreams) {
+          window.cowatch.remoteStreams = {};
+        }
+        window.cowatch.remoteStreams[id] = remoteStream;
+      }
+      if (videoRefs && videoRefs[id] && remoteStream) {
         try {
-          videoRefs[id].srcObject = event.streams[0];
+          if (videoRefs[id].srcObject !== remoteStream) {
+            videoRefs[id].srcObject = remoteStream;
+          }
         } catch (e) {
           console.warn("Could not set remote stream on video element:", e);
         }
@@ -426,6 +436,9 @@ export class VideoChat extends React.Component<VideoChatProps> {
         } catch (e) { }
         delete window.cowatch.videoPCs[id];
         delete window.cowatch.iceQueues[id];
+        if (window.cowatch.remoteStreams) {
+          delete window.cowatch.remoteStreams[id];
+        }
         this.updateWebRTC();
       } else if (iceState === "closed") {
         operationCoordinator.setPeerRtcStatus(id, "closed");
@@ -493,6 +506,9 @@ export class VideoChat extends React.Component<VideoChatProps> {
           } catch (e) { }
           delete videoPCs[key];
           delete window.cowatch.iceQueues[key];
+          if (window.cowatch.remoteStreams) {
+            delete window.cowatch.remoteStreams[key];
+          }
         }
       });
 
@@ -508,7 +524,9 @@ export class VideoChat extends React.Component<VideoChatProps> {
           }
           if (videoRefs && videoRefs[id] && ourStream) {
             try {
-              videoRefs[id].srcObject = ourStream;
+              if (videoRefs[id].srcObject !== ourStream) {
+                videoRefs[id].srcObject = ourStream;
+              }
             } catch (e) {
               console.warn("Could not set local stream on video element:", e);
             }
@@ -564,9 +582,12 @@ export class VideoChat extends React.Component<VideoChatProps> {
                     ref={(el) => {
                       if (el) {
                         videoRefs[p.id] = el;
-                        if (isSelf && ourStream) {
-                          el.srcObject = ourStream;
+                        const targetStream = isSelf ? ourStream : window.cowatch.remoteStreams?.[p.id];
+                        if (targetStream && el.srcObject !== targetStream) {
+                          el.srcObject = targetStream;
                         }
+                      } else {
+                        delete videoRefs[p.id];
                       }
                     }}
                     autoPlay
