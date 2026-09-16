@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useContext } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useContext, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
 import { serverPath, serverCandidates, setServerPath } from "../../utils/utils";
@@ -52,11 +52,17 @@ const useRooms = (
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isFetchingRef = useRef(false);
+
   const fetchRooms = useCallback(async (silent = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
+    if (isFetchingRef.current) {
+      return;
+    }
+    isFetchingRef.current = true;
     if (!silent) {
       setLoading(true);
     }
@@ -120,30 +126,53 @@ const useRooms = (
     } catch (err: any) {
       setError(sanitizeServerErrorMessage(err));
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   }, [user, page, pageSize, searchQuery, sortOption, filterOption]);
 
   useEffect(() => {
     fetchRooms(false);
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        fetchRooms(true);
-      }
-    }, 15000);
 
-    const handleFocus = () => {
-      if (document.visibilityState === "visible") {
-        fetchRooms(true);
+    let intervalId: any = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            fetchRooms(true);
+          }
+        }, 15000);
       }
     };
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleFocus);
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchRooms(true);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    if (document.visibilityState === "visible") {
+      startPolling();
+    }
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleFocus);
+      stopPolling();
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
     };
   }, [fetchRooms]);
 

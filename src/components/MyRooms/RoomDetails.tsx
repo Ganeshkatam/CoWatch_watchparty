@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useHistory } from "react-router-dom";
 import {
   Title,
@@ -159,7 +159,11 @@ export const RoomDetails = () => {
     noIndex: true,
   }, [room?.roomTitle]);
 
-  const fetchRoomDetails = async (silent = false) => {
+  const isFetchingRef = useRef(false);
+
+  const fetchRoomDetails = useCallback(async (silent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (!silent) {
       setLoading(true);
     } else {
@@ -183,38 +187,61 @@ export const RoomDetails = () => {
         setError(sanitizeServerErrorMessage(err));
       }
     } finally {
+      isFetchingRef.current = false;
       if (!silent) {
         setLoading(false);
       } else {
         setIsRefreshing(false);
       }
     }
-  };
+  }, [roomId]);
 
   const currentPasscode = room?.currentPasscode || "";
 
   useEffect(() => {
     fetchRoomDetails(false);
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        fetchRoomDetails(true);
-      }
-    }, 10000);
 
-    const handleFocus = () => {
-      if (document.visibilityState === "visible") {
-        fetchRoomDetails(true);
+    let intervalId: any = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            fetchRoomDetails(true);
+          }
+        }, 10000);
       }
     };
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleFocus);
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchRoomDetails(true);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    if (document.visibilityState === "visible") {
+      startPolling();
+    }
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleFocus);
+      stopPolling();
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
     };
-  }, [roomId]);
+  }, [fetchRoomDetails]);
 
   const handleCopyUrl = () => {
     if (!room) return;
@@ -276,9 +303,20 @@ export const RoomDetails = () => {
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => history.push("/myrooms")} mb="xl">
           Back to My Rooms
         </Button>
-        <Paper withBorder p="xl" radius="md" style={{ textAlign: "center" }}>
+        <Paper withBorder p="xl" radius="md" style={{ textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
           <Title order={3} c="red" mb="sm">Something went wrong</Title>
-          <Text>{error || "Could not load this room."}</Text>
+          <Text mb="lg">{error || "Could not load this room."}</Text>
+          <Group justify="center">
+            <Button
+              variant="light"
+              color="violet"
+              leftSection={<IconRefresh size={16} />}
+              loading={loading}
+              onClick={() => fetchRoomDetails(false)}
+            >
+              Try Again
+            </Button>
+          </Group>
         </Paper>
       </div>
     );
