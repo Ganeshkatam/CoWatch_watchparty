@@ -75,8 +75,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     setInviteMsgCopied(true);
     setTimeout(() => setInviteMsgCopied(false), 2000);
   };
-    setTimeout(() => setRoomIdCopied(false), 2000);
-  };
 
   const whatsappText = canManageCredentials && resolvedPasscode
     ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
