@@ -555,11 +555,11 @@ export class VideoChat extends React.Component<VideoChatProps> {
           return (
             <div
               key={p.id}
-              className={`${styles.participantTile} ${isSelf ? styles.selfTile : ""} ${hasVideo ? styles.hasVideo : styles.noVideo}`}
+              className={`${styles.videoTile} ${isSelf ? styles.selfTile : ""} ${hasVideo ? styles.hasVideo : styles.noVideo}`}
             >
               {/* Media Container: Camera Stream or Fallback Avatar */}
               {hasVideo ? (
-                <div className={styles.videoWrapper}>
+                <div style={{ width: '100%', height: '100%', position: 'relative' }}>
                   <video
                     ref={(el) => {
                       if (el) {
@@ -580,13 +580,13 @@ export class VideoChat extends React.Component<VideoChatProps> {
                   </div>
                 </div>
               ) : (
-                <div className={styles.avatarWrapper}>
+                <div className={styles.avatarPlaceholder}>
                   <Avatar
                     src={pictureMap[p.id] || getDefaultPicture(displayName, getColorForStringHex(p.id))}
                     alt={displayName}
                     size={84}
                     radius="100%"
-                    className={styles.avatarImage}
+                    className={styles.largeAvatar}
                     imageProps={{
                       onError: (e: any) => {
                         // Resilient fallback if custom avatar 404s
