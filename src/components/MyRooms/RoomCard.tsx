@@ -507,6 +507,8 @@ export const EditRoomModal = ({
               </Stack>
             </div>
 
+            {room.isPermanent && (
+              <>
             <Divider />
 
             {/* SECTION 3: ACCESS & SECURITY */}
@@ -659,6 +661,8 @@ export const EditRoomModal = ({
                 )}
               </Stack>
             </div>
+              </>
+            )}
           </>
         )}
       </div>
