@@ -36,14 +36,15 @@ import {
   IconActivity,
   IconInfinity,
   IconTrash,
+  IconUserPlus,
 } from "@tabler/icons-react";
 import { serverPath, getRoomUrl } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
+import { InviteModal } from "../Modal/InviteModal";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
-
 interface LifecycleEvent {
   id: string;
   actor: string;
@@ -148,6 +149,7 @@ export const RoomDetails = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [editModalOpened, setEditModalOpened] = useState(false);
+  const [inviteModalOpened, setInviteModalOpened] = useState(false);
 
   useDocumentMetadata({
     title: room?.roomTitle ? `${room.roomTitle} - Room Details` : "Room Details",
@@ -363,10 +365,10 @@ export const RoomDetails = () => {
               <Button
                 size="md"
                 className={styles.glassBtn}
-                onClick={handleCopyUrl}
-                leftSection={copiedUrl ? <IconCheck size={16} color="var(--color-success)" /> : <IconCopy size={16} />}
+                onClick={() => setInviteModalOpened(true)}
+                leftSection={<IconUserPlus size={16} />}
               >
-                {copiedUrl ? "Copied!" : "Copy Link"}
+                Invite
               </Button>
             </div>
           </div>
@@ -868,6 +870,16 @@ export const RoomDetails = () => {
           </Button>
         </Group>
       </Modal>
+
+      {inviteModalOpened && (
+        <InviteModal
+          roomId={room.roomId}
+          passcode={room.currentPasscode || undefined}
+          closeInviteModal={() => setInviteModalOpened(false)}
+          isHost={true}
+          isOwner={true}
+        />
+      )}
 
       {/* EDIT ROOM MODAL */}
       <EditRoomModal
