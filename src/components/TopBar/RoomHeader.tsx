@@ -79,7 +79,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const getCleanRoomId = () => {
