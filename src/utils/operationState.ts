@@ -61,6 +61,12 @@ export interface OperationRecord {
 export type OperationListener = (domain: OperationDomain, operations: OperationRecord[]) => void;
 
 export class OperationCoordinator {
+  markOperationFailure(arg0: string, arg1: string, message: any) {
+    throw new Error("Method not implemented.");
+  }
+  markOperationSuccess(arg0: string, arg1: string) {
+    throw new Error("Method not implemented.");
+  }
   private operations: Map<string, OperationRecord> = new Map();
   private listeners: Set<OperationListener> = new Set();
   private spinnerTimers: Map<string, any> = new Map();
