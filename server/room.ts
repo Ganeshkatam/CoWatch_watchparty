@@ -1508,10 +1508,9 @@ export class Room {
             action: "open_room",
             targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
             reason,
-            transferId,
             hostEpoch: this.hostEpoch,
           },
-          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}:${this.hostEpoch}`,
+          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify new host:", err));
     }

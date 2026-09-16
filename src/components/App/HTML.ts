@@ -209,9 +209,10 @@ export class HTML implements Player {
   };
 
   togglePictureInPicture = async (autoTriggered: boolean = false): Promise<void> => {
+    const isAuto = autoTriggered === true;
     const videoEl = this.getVideoEl() as HTMLVideoElement;
     if (!videoEl) return;
     const container = (videoEl.parentElement as HTMLElement) || videoEl;
-    await pipManager.toggle(container, videoEl, autoTriggered);
+    await pipManager.toggle(container, videoEl, isAuto);
   };
 }

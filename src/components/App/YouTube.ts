@@ -239,10 +239,11 @@ export class YouTube implements Player {
   };
 
   togglePictureInPicture = async (autoTriggered: boolean = false): Promise<void> => {
+    const isAuto = autoTriggered === true;
     const container =
       document.getElementById("leftYtContainer") ||
       document.getElementById("leftYt");
     if (!container) return;
-    await pipManager.toggle(container, null, autoTriggered);
+    await pipManager.toggle(container, null, isAuto);
   };
 }
