@@ -10,6 +10,14 @@
   overflow: hidden;
 }
 
+.inlineWrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
 :global(html[data-color-scheme="dark"]) .container::before {
   content: "";
   position: absolute;

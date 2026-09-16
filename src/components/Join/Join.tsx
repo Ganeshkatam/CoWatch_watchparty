@@ -398,6 +398,7 @@ export const Join: React.FC = () => {
               </div>
             ) : roomInfo && !shouldBypassLobby ? (
               <WaitingForHost
+                isInline={true}
                 roomId={cleanRouteRoomId}
                 roomTitle={roomInfo.roomTitle}
                 hostName={roomInfo.hostName}
