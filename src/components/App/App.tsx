@@ -42,7 +42,7 @@ import { ErrorModal } from "../Modal/ErrorModal";
 import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
-import { supabase, safeGetSession } from "../../utils/supabaseClient";
+import { supabase, safeGetSession, getAccessToken } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -699,7 +699,7 @@ export class App extends React.Component<AppProps, AppState> {
 
         const infoResp = await fetch(`${serverPath}/roomInfo/${encodeURIComponent(roomId)}`, {
           headers,
-          signal: AbortSignal.timeout(1500),
+          signal: AbortSignal.timeout(4000),
         });
 
         if (infoResp.ok) {
@@ -861,8 +861,11 @@ export class App extends React.Component<AppProps, AppState> {
       let token: string | undefined;
       let uid: string | undefined;
       try {
-        const sessionData = await safeGetSession(1000);
-        token = sessionData?.data?.session?.access_token;
+        const [sessionData, freshToken] = await Promise.all([
+          safeGetSession(2000),
+          getAccessToken(2000),
+        ]);
+        token = freshToken || sessionData?.data?.session?.access_token;
         uid = sessionData?.data?.session?.user?.id;
       } catch (e) {
         console.warn("Session retrieval error:", e);
@@ -1930,7 +1933,10 @@ export class App extends React.Component<AppProps, AppState> {
     this.setRoomDescription(data.roomDescription);
     this.setMediaPath(data.mediaPath);
     this.setInviteLink(this.getInviteLink());
-    window.history.replaceState("", "", this.getInviteLink());
+    const panel = this.state.showChatColumn
+      ? (this.state.currentTab === "chat" ? "chat" : "participants")
+      : "none";
+    window.history.replaceState("", "", getWatchUrl(this.state.roomId, panel));
     operationCoordinator.recordRoomStateReceived(epoch ?? operationCoordinator.getConnectionEpoch());
     this.checkAndAdvanceToReady();
   };
