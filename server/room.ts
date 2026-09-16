@@ -1312,12 +1312,7 @@ export class Room {
               "errorMessage",
               "Unable to initialize the connection.",
             );
-            // Allow time for the errorMessage packet to flush before abruptly closing the transport
-            setTimeout(() => {
-              if (socket.connected) {
-                socket.disconnect(true);
-              }
-            }, 50);
+            socket.disconnect();
           }
         },
       );

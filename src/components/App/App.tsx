@@ -909,7 +909,6 @@ export class App extends React.Component<AppProps, AppState> {
         if (currentPicture) {
           this.updatePicture(currentPicture);
         }
-        this.loadSignInData(this.context.user);
         // Re-join video chat if we were in it before the reconnection
         if (window.cowatch.ourStream) {
           socket.emit("CMD:joinVideo");
@@ -1022,6 +1021,7 @@ export class App extends React.Component<AppProps, AppState> {
         operationCoordinator.rejectDomainOperations("media-playback", sanitized);
         
         if (this.state.state === "starting") {
+          operationCoordinator.markTerminalFailure(sanitized);
           this.setState({
             state: "connected",
             initStage: "failed",
@@ -1714,11 +1714,7 @@ export class App extends React.Component<AppProps, AppState> {
     this.setState({ settings });
   };
 
-  loadSignInData = async (user: User | null | undefined) => {
-    if (user && this.socket) {
-      this.updateUid(user);
-    }
-  };
+
 
   componentDidUpdate(_prevProps: AppProps, prevState: AppState) {
     const contextName = this.context.displayName || "";
@@ -2898,14 +2894,6 @@ export class App extends React.Component<AppProps, AppState> {
     this.socket?.emit("CMD:picture", url);
   };
 
-  updateUid = async (_user: User) => {
-    // Post-connection identity mutation is eliminated.
-    // In order to update authentication, socket cleanly reconnects with session token.
-    if (this.socket?.connected) {
-      this.socket.disconnect();
-      this.join(this.state.roomId);
-    }
-  };
 
   getMediaDisplayName = (input?: string) => {
     if (!input) {

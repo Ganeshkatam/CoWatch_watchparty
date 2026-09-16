@@ -267,6 +267,8 @@ export class OperationCoordinator {
    * Returns false if budget is exhausted (transitions to FAILED), true otherwise.
    */
   public recordReconnectAttempt(attempt?: number, now: number = Date.now()): boolean {
+    if (this.initStage === "failed") return false;
+
     if (typeof attempt === "number") {
       this.reconnectAttempts = attempt;
     } else {
