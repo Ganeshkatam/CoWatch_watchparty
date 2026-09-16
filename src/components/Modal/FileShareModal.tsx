@@ -27,12 +27,12 @@ export const FileShareModal = (props: {
             <Group justify="space-between">
               <Group gap="xs">
                 <IconServer size={18} color="var(--accent-primary)" />
-                <Text size="sm" fw={600}>Relay Streaming</Text>
+                <Text size="sm" fw={600}>Smooth Sharing</Text>
               </Group>
               <Badge color="violet" variant="light">Recommended</Badge>
             </Group>
             <Text size="xs" c="dimmed">
-              Streams through our relay server to optimize upload bandwidth from your device.
+              The best way to share! It saves your internet and plays perfectly for your friends.
             </Text>
           </Stack>
         </Card>
@@ -42,12 +42,12 @@ export const FileShareModal = (props: {
             <Group justify="space-between">
               <Group gap="xs">
                 <IconArrowsShuffle size={18} color="var(--accent-primary)" />
-                <Text size="sm" fw={600}>Auto-Transcode</Text>
+                <Text size="sm" fw={600}>Fix Video Format</Text>
               </Group>
-              <Badge color="blue" variant="light">Broad Codec Support</Badge>
+              <Badge color="blue" variant="light">Works Everywhere</Badge>
             </Group>
             <Text size="xs" c="dimmed">
-              Transcodes video in real-time to ensure playback compatibility across all browsers and devices.
+              Use this if your video won't play for everyone. We'll magically change it so it works on any phone or computer!
             </Text>
           </Stack>
         </Card>
@@ -64,7 +64,7 @@ export const FileShareModal = (props: {
               props.closeModal();
             }}
           >
-            Direct
+            Direct Share
           </Button>
           <Button
             variant="outline"
@@ -74,7 +74,7 @@ export const FileShareModal = (props: {
               props.closeModal();
             }}
           >
-            Transcode & Stream
+            Fix Format & Share
           </Button>
           <Button
             color="violet"
@@ -84,7 +84,7 @@ export const FileShareModal = (props: {
               props.closeModal();
             }}
           >
-            Share with Relay
+            Share Smoothly
           </Button>
         </Group>
       </Stack>
