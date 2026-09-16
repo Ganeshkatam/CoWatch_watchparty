@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Modal, Button, Text, Stack, Card, Group, Badge } from "@mantine/core";
 import { IconVideo, IconServer, IconArrowsShuffle } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
@@ -9,6 +9,8 @@ export const FileShareModal = (props: {
   startConvert: () => void;
 }) => {
   const { closeModal } = props;
+  const [selectedMode, setSelectedMode] = useState<"relay" | "transcode">("relay");
+
   return (
     <Modal
       opened
@@ -22,11 +24,22 @@ export const FileShareModal = (props: {
           Select a video file from your device to stream directly to everyone in this room.
         </Text>
 
-        <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+        <Card 
+          withBorder 
+          padding="sm" 
+          radius="md" 
+          style={{ 
+            background: selectedMode === "relay" ? "rgba(132, 94, 247, 0.1)" : "var(--bg-surface)",
+            borderColor: selectedMode === "relay" ? "var(--mantine-color-violet-filled)" : "var(--mantine-color-default-border)",
+            cursor: "pointer",
+            transition: "all 0.2s ease"
+          }}
+          onClick={() => setSelectedMode("relay")}
+        >
           <Stack gap="xs">
             <Group justify="space-between">
               <Group gap="xs">
-                <IconServer size={18} color="var(--accent-primary)" />
+                <IconServer size={18} color="var(--mantine-color-violet-filled)" />
                 <Text size="sm" fw={600}>Smooth Sharing</Text>
               </Group>
               <Badge color="violet" variant="light">Recommended</Badge>
@@ -37,11 +50,22 @@ export const FileShareModal = (props: {
           </Stack>
         </Card>
 
-        <Card withBorder padding="sm" radius="md" style={{ background: "var(--bg-surface)" }}>
+        <Card 
+          withBorder 
+          padding="sm" 
+          radius="md" 
+          style={{ 
+            background: selectedMode === "transcode" ? "rgba(51, 154, 240, 0.1)" : "var(--bg-surface)",
+            borderColor: selectedMode === "transcode" ? "var(--mantine-color-blue-filled)" : "var(--mantine-color-default-border)",
+            cursor: "pointer",
+            transition: "all 0.2s ease"
+          }}
+          onClick={() => setSelectedMode("transcode")}
+        >
           <Stack gap="xs">
             <Group justify="space-between">
               <Group gap="xs">
-                <IconArrowsShuffle size={18} color="var(--accent-primary)" />
+                <IconArrowsShuffle size={18} color="var(--mantine-color-blue-filled)" />
                 <Text size="sm" fw={600}>Fix Video Format</Text>
               </Group>
               <Badge color="blue" variant="light">Works Everywhere</Badge>
@@ -57,34 +81,18 @@ export const FileShareModal = (props: {
             Cancel
           </Button>
           <Button
-            variant="outline"
-            color="gray"
-            onClick={() => {
-              props.startFileShare(false);
-              props.closeModal();
-            }}
-          >
-            Direct Share
-          </Button>
-          <Button
-            variant="outline"
-            color="blue"
-            onClick={() => {
-              props.startConvert();
-              props.closeModal();
-            }}
-          >
-            Fix Format & Share
-          </Button>
-          <Button
-            color="violet"
+            color={selectedMode === "relay" ? "violet" : "blue"}
             leftSection={<IconVideo size={16} />}
             onClick={() => {
-              props.startFileShare(true);
+              if (selectedMode === "relay") {
+                props.startFileShare(true);
+              } else {
+                props.startConvert();
+              }
               props.closeModal();
             }}
           >
-            Share Smoothly
+            {selectedMode === "relay" ? "Share Smoothly" : "Fix Format & Share"}
           </Button>
         </Group>
       </Stack>
