@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Alert, Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
+import { Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -42,7 +42,6 @@ import { ErrorModal } from "../Modal/ErrorModal";
 import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
-import type { User } from "@supabase/supabase-js";
 import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
@@ -70,12 +69,9 @@ import {
 import { ActionIcon, Button } from "@mantine/core";
 import {
   IconAntennaBars5,
-  IconCheck,
   IconChevronLeft,
   IconChevronRight,
-  IconCopy,
   IconKeyboardFilled,
-  IconLink,
   IconMessage,
   IconPictureInPicture,
   IconUserScreen,
@@ -88,7 +84,6 @@ import {
   operationCoordinator,
   RETRY_ATTEMPT_BUDGET,
   type RoomInitStage,
-  type OperationDomain,
 } from "../../utils/operationState";
 import {
   USER_MESSAGES,
@@ -3002,7 +2997,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.cleanExitPromise) return this.cleanExitPromise;
     this.cleanExitPromise = (async () => {
       let leaveSuccess = true;
-      
+
       try {
         const result = await Promise.race([
           new Promise<any>((resolve) => {
@@ -3010,7 +3005,7 @@ export class App extends React.Component<AppProps, AppState> {
           }),
           new Promise<any>((resolve) => setTimeout(() => resolve({ success: false, error: "Network timeout while leaving room" }), 2000)),
         ]);
-        
+
         if (result && result.success === false) {
           leaveSuccess = false;
           if (result.error) {
@@ -3026,7 +3021,7 @@ export class App extends React.Component<AppProps, AppState> {
         console.warn("leaveRoom error", e);
         leaveSuccess = false;
       }
-      
+
       if (!leaveSuccess) {
         this.cleanExitPromise = null;
         return; // stay in room
@@ -3034,7 +3029,7 @@ export class App extends React.Component<AppProps, AppState> {
 
       // Mark as intentional exit to bypass reconnection loops
       this.setState({ leavingRoom: true });
-      
+
       this.socket.disconnect();
       window.location.href = "/";
     })();
@@ -3247,13 +3242,13 @@ export class App extends React.Component<AppProps, AppState> {
                 new Promise<any>((resolve) => setTimeout(() => resolve({ success: false, error: "Transfer timeout" }), 2000)),
               ]);
               if (res && res.success === false) {
-                 operationCoordinator.markOperationFailure("host-authority", "transfer", res.error || "Transfer failed");
-                 return; // Do NOT proceed to performCleanExit
+                operationCoordinator.rejectDomainOperations("host-authority", res.error || "Transfer failed", "transfer");
+                return; // Do NOT proceed to performCleanExit
               }
-              operationCoordinator.markOperationSuccess("host-authority", "transfer");
+              operationCoordinator.resolveDomainOperations("host-authority", "transfer");
             } catch (e: any) {
               console.warn("transferHost error", e);
-              operationCoordinator.markOperationFailure("host-authority", "transfer", e.message);
+              operationCoordinator.rejectDomainOperations("host-authority", e.message, "transfer");
               return; // Do NOT proceed to performCleanExit
             }
             await this.performCleanExit();
