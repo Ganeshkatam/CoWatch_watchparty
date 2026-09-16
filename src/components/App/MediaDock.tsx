@@ -148,80 +148,117 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         </button>
       ) : null}
 
-      {/* Add Media Dropdown Menu */}
-      <Menu
-        shadow="xl"
-        width={addMediaMenuWidth}
-        position="top-start"
-        offset={8}
-        withinPortal
-      >
-        <Menu.Target>
+      {/* Add Media Dropdown Menu or Expanded Buttons */}
+      {isCompact ? (
+        <Menu
+          shadow="xl"
+          width={addMediaMenuWidth}
+          position="top-start"
+          offset={8}
+          withinPortal
+        >
+          <Menu.Target>
+            <button
+              type="button"
+              className={styles.addMediaBtn}
+              disabled={!haveLock}
+              title={haveLock ? "Add media to room" : "Controls locked by host"}
+            >
+              <IconPlus size={16} stroke={2.5} />
+              <span>Add</span>
+            </button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>Add to watch party</Menu.Label>
+
+            <Menu.Item
+              leftSection={<IconScreenShare size={18} color="var(--media-video)" />}
+              onClick={onOpenScreenShare}
+            >
+              <div className={styles.menuItemWithDesc}>
+                <span className={styles.menuItemTitle}>Share screen</span>
+              </div>
+            </Menu.Item>
+
+            {metadata.capabilities?.virtualBrowser && (
+              <Menu.Item
+                leftSection={<IconBrowser size={18} color="var(--color-success)" />}
+                onClick={onOpenVBrowser}
+              >
+                <div className={styles.menuItemWithDesc}>
+                  <span className={styles.menuItemTitle}>Browser</span>
+                </div>
+              </Menu.Item>
+            )}
+
+            <Menu.Item
+              leftSection={<IconFile size={18} color="var(--media-magnet)" />}
+              onClick={onOpenFileShare}
+            >
+              <div className={styles.menuItemWithDesc}>
+                <span className={styles.menuItemTitle}>Upload file</span>
+              </div>
+            </Menu.Item>
+
+            <Menu.Item
+              leftSection={<IconLink size={18} color="var(--color-pink)" />}
+              onClick={onOpenQuickAdd}
+            >
+              <div className={styles.menuItemWithDesc}>
+                <span className={styles.menuItemTitle}>Video URL / Search</span>
+              </div>
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      ) : (
+        <>
           <button
             type="button"
             className={styles.addMediaBtn}
-            disabled={!haveLock}
-            title={haveLock ? "Add media to room" : "Controls locked by host"}
-          >
-            <IconPlus size={16} stroke={2.5} />
-            <span>{isCompact ? "Add" : "Add media"}</span>
-            {!isCompact && <IconChevronDown size={14} stroke={1.5} />}
-          </button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Label>Add to watch party</Menu.Label>
-
-          <Menu.Item
-            leftSection={<IconScreenShare size={18} color="var(--media-video)" />}
             onClick={onOpenScreenShare}
+            disabled={!haveLock}
+            title={haveLock ? "Stream your screen or tab" : "Controls locked by host"}
           >
-            <div className={styles.menuItemWithDesc}>
-              <span className={styles.menuItemTitle}>Share screen</span>
-              {!isCompact && (
-                <span className={styles.menuItemDesc}>Stream your screen or tab</span>
-              )}
-            </div>
-          </Menu.Item>
-
+            <IconScreenShare size={16} />
+            <span>Share screen</span>
+          </button>
+          
           {metadata.capabilities?.virtualBrowser && (
-            <Menu.Item
-              leftSection={<IconBrowser size={18} color="var(--color-success)" />}
+            <button
+              type="button"
+              className={styles.addMediaBtn}
               onClick={onOpenVBrowser}
+              disabled={!haveLock}
+              title={haveLock ? "Browse the web together" : "Controls locked by host"}
             >
-              <div className={styles.menuItemWithDesc}>
-                <span className={styles.menuItemTitle}>Browser</span>
-                {!isCompact && (
-                  <span className={styles.menuItemDesc}>Browse the web together</span>
-                )}
-              </div>
-            </Menu.Item>
+              <IconBrowser size={16} />
+              <span>Browser</span>
+            </button>
           )}
 
-          <Menu.Item
-            leftSection={<IconFile size={18} color="var(--media-magnet)" />}
+          <button
+            type="button"
+            className={styles.addMediaBtn}
             onClick={onOpenFileShare}
+            disabled={!haveLock}
+            title={haveLock ? "Play a local video" : "Controls locked by host"}
           >
-            <div className={styles.menuItemWithDesc}>
-              <span className={styles.menuItemTitle}>Upload file</span>
-              {!isCompact && (
-                <span className={styles.menuItemDesc}>Play a local video</span>
-              )}
-            </div>
-          </Menu.Item>
+            <IconFile size={16} />
+            <span>Upload file</span>
+          </button>
 
-          <Menu.Item
-            leftSection={<IconLink size={18} color="var(--color-pink)" />}
+          <button
+            type="button"
+            className={styles.addMediaBtn}
             onClick={onOpenQuickAdd}
+            disabled={!haveLock}
+            title={haveLock ? "Paste link or search media" : "Controls locked by host"}
           >
-            <div className={styles.menuItemWithDesc}>
-              <span className={styles.menuItemTitle}>Video URL / Search</span>
-              {!isCompact && (
-                <span className={styles.menuItemDesc}>Paste link or search media</span>
-              )}
-            </div>
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+            <IconLink size={16} />
+            <span>Video URL / Search</span>
+          </button>
+        </>
+      )}
 
       {/* Playlist Button & Dropdown */}
       <Menu
