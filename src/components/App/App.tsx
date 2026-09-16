@@ -3285,7 +3285,8 @@ export class App extends React.Component<AppProps, AppState> {
             }}
             onOpenSettings={() => this.setSettingsModalOpen(true)}
             onExit={() => {
-              if (this.state.isHost && this.state.participants.length > 1) {
+              const actualUsers = this.state.participants.filter(p => !p.isScreenShare);
+              if (this.state.isHost && actualUsers.length > 1) {
                 this.setState({ isAssignHostModalOpen: true });
               } else {
                 this.performCleanExit();

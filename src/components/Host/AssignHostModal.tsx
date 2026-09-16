@@ -26,8 +26,8 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
   onAssignAndLeave,
   onLeaveDirectly,
 }) => {
-  // Filter out the active host
-  const candidates = participants.filter((p) => p.id !== currentClientId);
+  // Filter out the active host and screen share clients
+  const candidates = participants.filter((p) => p.id !== currentClientId && !p.isScreenShare);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const hostOp = useOperationState("host-authority", "transfer");
 
