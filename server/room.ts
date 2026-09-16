@@ -203,7 +203,7 @@ export class Room {
   private tsInterval: NodeJS.Timeout | undefined = undefined;
   private inactivityTimeout: NodeJS.Timeout | undefined = undefined;
   public isChatDisabled: boolean | undefined = undefined;
-  public status: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired' = 'active';
+  public status: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired' = 'inactive';
   public expiresAt: Date | undefined = undefined;
   public startedAt: Date | undefined = undefined;
   public owner_id: string = '';
@@ -297,16 +297,16 @@ export class Room {
     const target: ActionTarget = {
       targetMessage: targetMessageAuthorId
         ? {
-            id: "unknown",
-            roomId: targetMessageRoomId || this.roomId,
-            authorUid: targetMessageAuthorId,
-          }
+          id: "unknown",
+          roomId: targetMessageRoomId || this.roomId,
+          authorUid: targetMessageAuthorId,
+        }
         : undefined,
       targetUserId,
       targetIsOwner: Boolean(
         targetUserId &&
-          this.owner_id &&
-          (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
+        this.owner_id &&
+        (targetUserId === this.owner_id || this.clientToUidMap[targetUserId] === this.owner_id)
       ),
     };
 
@@ -669,44 +669,18 @@ export class Room {
         }
 
         // Host-initiated room access control:
-        // When room is not active (inactive or scheduled), non-owners with valid passcode are held in waiting state
+        // When room is not active, non-owners are rejected to waiting poll.
+        // Owner is admitted to the namespace WITHOUT activating the room.
+        // Activation happens only via explicit CMD:startSession.
         if (currentDbStatus !== "active") {
           if (!isOwner) {
             next(new Error("ROOM_NOT_STARTED"));
             return;
           }
-
-          // Authenticated owner connecting to an inactive room: atomically activate
-          if (currentDbStatus === "inactive") {
-            try {
-              const activateResult = await postgres.query(
-                "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
-                [this.roomId, socket.uid]
-              );
-
-              if (activateResult.rows && activateResult.rows.length > 0) {
-                const res = activateResult.rows[0].result;
-                if (res.status === "active") {
-                  this.status = "active";
-                  this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
-                  this.lastUpdateTime = new Date();
-                } else if (res.status === "expired") {
-                  this.status = "expired";
-                  next(new Error("ROOM_EXPIRED"));
-                  return;
-                } else {
-                  next(new Error("ROOM_NOT_STARTED"));
-                  return;
-                }
-              }
-            } catch (err) {
-              console.error("Failed atomic room activation:", err);
-              next(new Error("Failed to activate room."));
-              return;
-            }
-          } else if (currentDbStatus === "scheduled") {
-            this.status = "scheduled";
-          }
+          // Owner enters namespace; room stays in its current state until CMD:startSession
+          this.status = (currentDbStatus === "scheduled" || currentDbStatus === "inactive")
+            ? currentDbStatus
+            : "inactive";
         } else {
           this.status = "active";
         }
@@ -1134,9 +1108,9 @@ export class Room {
           if (typeof ack === "function") ack({ success: false, error: msg });
           return;
         }
-        
+
         this.performParticipantDeparture(socket);
-        
+
         if (typeof ack === "function") ack({ success: true });
       });
       socket.on("CMD:becomeHost", () => {
@@ -1144,6 +1118,65 @@ export class Room {
       });
       socket.on("CMD:claimHost", () => {
         socket.emit("errorMessage", "Direct host claims are not permitted.");
+      });
+      socket.on("CMD:startSession", async () => {
+        // 1. Server-authoritative ownership check (never trust client isHost)
+        if (!socket.uid || socket.uid !== this.owner_id) {
+          socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room owner can start the session." });
+          return;
+        }
+
+        // 2. Guard: only inactive/scheduled rooms can be started
+        if (this.status !== "inactive" && this.status !== "scheduled") {
+          socket.emit("CMD:error", { code: "INVALID_STATE", message: "Room is already active or has ended." });
+          return;
+        }
+
+        // 3. Atomic DB-first transition (CAS: only transitions if current status allows)
+        if (!postgres) {
+          socket.emit("CMD:error", { code: "SERVICE_UNAVAILABLE", message: "Database unavailable." });
+          return;
+        }
+
+        try {
+          const activateResult = await postgres.query(
+            "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+            [this.roomId, socket.uid]
+          );
+
+          const res = activateResult?.rows?.[0]?.result;
+          if (!res || res.status === "expired") {
+            this.status = "expired";
+            socket.emit("CMD:error", { code: "ROOM_EXPIRED", message: "This room has expired." });
+            return;
+          }
+
+          if (res.status !== "active") {
+            socket.emit("CMD:error", { code: "TRANSITION_FAILED", message: "Failed to start the session." });
+            return;
+          }
+
+          // 4. Only update memory AFTER DB confirms transition
+          this.status = "active";
+          this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
+          this.lastUpdateTime = new Date();
+
+          // 5. Broadcast to connected sockets (only owner is connected pre-start)
+          this.io.of(this.roomId).emit("REC:sessionStarted", {
+            status: "active",
+            startedBy: socket.uid,
+          });
+
+          // 6. System chat message
+          this.addChatMessage(null, {
+            id: socket.clientId,
+            cmd: "system",
+            msg: "Host started the watch party.",
+          });
+        } catch (err) {
+          console.error("CMD:startSession failed:", err);
+          socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
+        }
       });
       socket.on("CMD:getRoomState", () => validateNotExpired() && this.getRoomState(socket));
       socket.on("CMD:setRoomState", async (data: unknown) => {
@@ -3070,7 +3103,7 @@ export class Room {
 
           await client.query("COMMIT");
         } catch (err) {
-          await client.query("ROLLBACK").catch(() => {});
+          await client.query("ROLLBACK").catch(() => { });
           console.error("Failed transactional batch deleteChatMessages:", err);
           actorSocket.emit("errorMessage", "FORBIDDEN");
           actorSocket.emit("CMD:error", { code: "FORBIDDEN" });

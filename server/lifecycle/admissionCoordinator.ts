@@ -54,7 +54,7 @@ export class AdmissionCoordinator {
       }
 
       const row = res.rows[0];
-      let status: RoomLifecycleStatus = (row.status as RoomLifecycleStatus) || "active";
+      let status: RoomLifecycleStatus = (row.status as RoomLifecycleStatus) || "inactive";
       const isPermanent = Boolean(row.isPermanent);
       const expiresAt = row.expiresAt ? new Date(row.expiresAt).getTime() : null;
       const ownerId = row.owner_id;
@@ -97,49 +97,11 @@ export class AdmissionCoordinator {
       // 3. Scheduled state check
       if (status === "scheduled") {
         if (isActorOwner) {
-          // Owner activates the scheduled room
-          await client.query(
-            `UPDATE rooms SET status = 'active', "startedAt" = NOW() WHERE "roomId" = $1`,
-            [roomId]
-          );
-
-          // Persist authoritative lifecycle event for session boundary
-          const eventRes = await client.query(
-            `INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", reason)
-             VALUES ($1, $2, 'room.started', 'scheduled', 'active', 'owner_activation')
-             RETURNING id`,
-            [roomId, actor.uid || actor.clientId]
-          );
-          const sessionId = eventRes?.rows?.[0]?.id;
-
-          if (row.owner_id && sessionId) {
-            notificationService
-              .notifyUser({
-                userId: row.owner_id,
-                type: "ROOM_STARTED",
-                title: `Room Live: "${row.roomTitle || roomId}"`,
-                body: `Your scheduled room "${row.roomTitle || roomId}" is now live.`,
-                metadata: {
-                  roomId,
-                  action: "open_room",
-                  targetUrl: `/room/${encodeURIComponent(roomId)}`,
-                  sessionId,
-                },
-                eventId: `ROOM_STARTED:${roomId}:${sessionId}`,
-                emailTemplateKey: "room-started",
-                emailPayload: {
-                  roomTitle: row.roomTitle || roomId,
-                  roomUrl: `${config.APP_URL || 'https://cowatch.tv'}/room/${encodeURIComponent(roomId)}`,
-                },
-              })
-              .catch((err) => console.error("[Lifecycle] Failed to notify owner of room start:", err));
-          }
-
+          // Owner is admitted but room stays scheduled until explicit CMD:startSession
           return {
             allowed: true,
-            status: "active",
-            isColdStart: true,
-            roomRow: { ...row, status: "active" },
+            status: "scheduled",
+            roomRow: row,
           };
         } else {
           return {
@@ -151,18 +113,14 @@ export class AdmissionCoordinator {
         }
       }
 
-      // 4. Inactive state check (Cold-start reconstruction)
+      // 4. Inactive state check
       if (status === "inactive") {
-        if (isActorOwner || actor.isReconnecting) {
-          await client.query(
-            `UPDATE rooms SET status = 'active', "lastActiveAt" = NOW() WHERE "roomId" = $1`,
-            [roomId]
-          );
+        if (isActorOwner) {
+          // Owner is admitted but room stays inactive until explicit CMD:startSession
           return {
             allowed: true,
-            status: "active",
-            isColdStart: true,
-            roomRow: { ...row, status: "active" },
+            status: "inactive",
+            roomRow: row,
           };
         } else {
           return {

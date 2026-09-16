@@ -710,7 +710,7 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ isOwner: true });
           }
           const requiresPasscode = Boolean(info.requiresPasscode);
-          const isWaiting = !isOwner && info.status !== "active";
+          const isWaiting = info.status !== "active";
           return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting };
         }
       } catch (e) {
@@ -743,7 +743,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ isOwner: true });
       }
       const requiresPasscode = Boolean(data.passcode);
-      const isWaiting = !isOwner && data.status !== "active";
+      const isWaiting = data.status !== "active";
 
       return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null, isWaiting };
     } catch (e) {
@@ -989,6 +989,10 @@ export class App extends React.Component<AppProps, AppState> {
           isWaitingForHost: false,
           overlayMsg: "",
         });
+      });
+      socket.on("REC:sessionStarted", () => {
+        this.stopWaitingPoll();
+        this.setState({ isWaitingForHost: false, overlayMsg: "" });
       });
       socket.on("disconnect", (reason) => {
         operationCoordinator.markTransportDisconnected("Socket disconnected");
@@ -3194,6 +3198,10 @@ export class App extends React.Component<AppProps, AppState> {
             roomTitle={this.state.roomTitle}
             hostName={this.state.hostName}
             onCheckStatus={this.handleManualStatusCheck}
+            isOwner={this.isRoomOwner()}
+            onStartSession={() => {
+              this.socket?.emit("CMD:startSession");
+            }}
           />
         )}
         {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && this.state.overlayMsg && (

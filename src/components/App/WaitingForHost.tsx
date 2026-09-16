@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Button, Loader } from "@mantine/core";
-import { IconHourglassHigh, IconRefresh, IconHome } from "@tabler/icons-react";
+import { IconHourglassHigh, IconRefresh, IconHome, IconPlayerPlay } from "@tabler/icons-react";
 import styles from "./WaitingForHost.module.css";
 
 interface WaitingForHostProps {
@@ -8,6 +8,8 @@ interface WaitingForHostProps {
   roomTitle?: string;
   hostName?: string;
   onCheckStatus: () => Promise<void> | void;
+  isOwner?: boolean;
+  onStartSession?: () => void;
 }
 
 export const WaitingForHost: React.FC<WaitingForHostProps> = ({
@@ -15,8 +17,11 @@ export const WaitingForHost: React.FC<WaitingForHostProps> = ({
   roomTitle,
   hostName,
   onCheckStatus,
+  isOwner,
+  onStartSession,
 }) => {
   const [isChecking, setIsChecking] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   const handleManualCheck = async () => {
     if (isChecking) return;
@@ -28,6 +33,15 @@ export const WaitingForHost: React.FC<WaitingForHostProps> = ({
     }
   };
 
+  const handleStartSession = () => {
+    if (isStarting || !onStartSession) return;
+    setIsStarting(true);
+    onStartSession();
+    // Reset after a short delay in case of failure; successful start
+    // will unmount this component via REC:sessionStarted
+    setTimeout(() => setIsStarting(false), 3000);
+  };
+
   const displayName = roomTitle || roomId.replace(/^\//, "");
 
   return (
@@ -35,28 +49,35 @@ export const WaitingForHost: React.FC<WaitingForHostProps> = ({
       <div className={styles.card}>
         <div className={styles.statusPill}>
           <div className={styles.pulseDot} />
-          <span>Waiting for Host</span>
+          <span>{isOwner ? "Session Lobby" : "Waiting for Host"}</span>
         </div>
 
         <div className={styles.iconWrap} aria-hidden="true">
           <IconHourglassHigh size={30} stroke={1.8} />
         </div>
 
-        <h1 className={styles.title}>Host hasn't started the room yet</h1>
+        <h1 className={styles.title}>
+          {isOwner
+            ? "Ready to start the watch party?"
+            : "Host hasn't started the room yet"}
+        </h1>
 
         <div className={styles.roomName} title={displayName}>
           {displayName}
         </div>
 
         <p className={styles.subtitle}>
-          {hostName ? `${hostName} has not started this watch party session yet.` : "The host has not started this watch party session yet."}{" "}
-          Please hang tight — you will automatically enter the room as soon as the host begins.
+          {isOwner
+            ? "Your guests will be admitted once you start the session. Click the button below when you are ready."
+            : `${hostName ? `${hostName} has not started this watch party session yet.` : "The host has not started this watch party session yet."} Please hang tight \u2014 you will automatically enter the room as soon as the host begins.`}
         </p>
 
-        <div className={styles.listeningBox}>
-          <Loader size={12} color="violet" />
-          <span>Listening for session start...</span>
-        </div>
+        {!isOwner && (
+          <div className={styles.listeningBox}>
+            <Loader size={12} color="violet" />
+            <span>Listening for session start...</span>
+          </div>
+        )}
 
         <div className={styles.actions}>
           <Button
@@ -71,16 +92,29 @@ export const WaitingForHost: React.FC<WaitingForHostProps> = ({
             Go to Home
           </Button>
 
-          <Button
-            color="violet"
-            size="sm"
-            className={styles.actionBtn}
-            loading={isChecking}
-            leftSection={<IconRefresh size={16} />}
-            onClick={handleManualCheck}
-          >
-            Check Status
-          </Button>
+          {isOwner ? (
+            <Button
+              color="violet"
+              size="sm"
+              className={styles.actionBtn}
+              loading={isStarting}
+              leftSection={<IconPlayerPlay size={16} />}
+              onClick={handleStartSession}
+            >
+              Start Session
+            </Button>
+          ) : (
+            <Button
+              color="violet"
+              size="sm"
+              className={styles.actionBtn}
+              loading={isChecking}
+              leftSection={<IconRefresh size={16} />}
+              onClick={handleManualCheck}
+            >
+              Check Status
+            </Button>
+          )}
         </div>
       </div>
     </div>

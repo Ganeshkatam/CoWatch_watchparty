@@ -205,7 +205,7 @@ io.engine.use(async (req: any, res: Response, next: () => void) => {
         ? JSON.stringify(persistedRoom.data)
         : undefined;
       const room = new Room(io, key, data);
-      room.status = persistedRoom.status || 'active';
+      room.status = persistedRoom.status || 'inactive';
       room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
       room.owner_id = persistedRoom.owner_id;
       room.isPermanent = persistedRoom.isPermanent || false;
