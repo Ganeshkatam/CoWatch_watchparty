@@ -166,9 +166,45 @@ export async function waitForRedisReady(timeoutMs = 5000): Promise<boolean> {
 // Tier 1: redisCore (Coordination, Distributed Leases, Invalidation)
 // Strict Rule: NEVER store playback state, auth decisions, or durable truth here.
 // =====================================================================
+export type RedisAvailability =
+  | {
+      available: true;
+    }
+  | {
+      available: false;
+      reason: "NOT_CONFIGURED" | "NOT_READY";
+    };
+
+const RELEASE_LEASE_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`;
+
 export const redisCore = {
+  getAvailability(): RedisAvailability {
+    if (!rawCoreClient) {
+      return {
+        available: false,
+        reason: "NOT_CONFIGURED",
+      };
+    }
+
+    if (rawCoreClient.status !== "ready") {
+      return {
+        available: false,
+        reason: "NOT_READY",
+      };
+    }
+
+    return {
+      available: true,
+    };
+  },
+
   isAvailable(): boolean {
-    return Boolean(rawCoreClient && rawCoreClient.status === "ready");
+    return this.getAvailability().available;
   },
 
   async setLease(key: string, value: string, ttlSeconds: number): Promise<boolean> {
@@ -185,11 +221,21 @@ export const redisCore = {
     return res ?? null;
   },
 
-  async delLease(key: string): Promise<boolean> {
-    const res = await executeTimed(rawCoreClient, "core", "lease", "del", (c) =>
-      c.del(`core:lease:${key}`)
+  async delLease(key: string, value: string): Promise<boolean> {
+    const res = await executeTimed(
+      rawCoreClient,
+      "core",
+      "lease",
+      "del",
+      (c) =>
+        c.eval(
+          RELEASE_LEASE_SCRIPT,
+          1,
+          `core:lease:${key}`,
+          value,
+        ) as Promise<number>,
     );
-    return Boolean(res && res > 0);
+    return res === 1;
   },
 
   async publishInvalidation(channel: string, payload: string): Promise<number> {

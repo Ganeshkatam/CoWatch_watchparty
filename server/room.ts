@@ -131,6 +131,15 @@ export type HostTransitionReason =
   | "initial"
   | "room_empty";
 
+export class HostTransitionUnavailableError extends Error {
+  public readonly code = "HOST_TRANSITION_UNAVAILABLE" as const;
+
+  public constructor(message = "Host transition is temporarily unavailable.") {
+    super(message);
+    this.name = "HostTransitionUnavailableError";
+  }
+}
+
 export interface HostAuthorityPayload {
   hostId: string;
   hostClientId: string;
@@ -421,29 +430,73 @@ export class Room {
     return isOwner ? "owner" : "temporary";
   };
 
-  public withHostTransitionLease = async <T>(action: () => Promise<T>): Promise<T> => {
-    const isMultiInstance = Boolean(config.REDIS_CORE_URL || config.REDIS_URL);
-    if (isMultiInstance && redisCore.isAvailable()) {
-      const leaseKey = `room:host:${this.roomId}`;
-      const leaseVal = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-      let acquired = false;
+  public withHostTransitionLease = async <T>(
+    action: () => Promise<T>,
+  ): Promise<T> => {
+    const isMultiInstance = Boolean(
+      config.REDIS_CORE_URL || config.REDIS_URL,
+    );
+
+    if (!isMultiInstance) {
+      return action();
+    }
+
+    const availability = redisCore.getAvailability();
+
+    if (!availability.available) {
+      throw new HostTransitionUnavailableError(
+        `Redis is unavailable: ${availability.reason}`,
+      );
+    }
+
+    const leaseKey = `room:host:${this.roomId}`;
+    const leaseVal =
+      `${process.pid}:${Date.now()}:${randomUUID()}`;
+
+    let acquired = false;
+
+    try {
+      acquired = await redisCore.setLease(
+        leaseKey,
+        leaseVal,
+        5,
+      );
+    } catch (error: unknown) {
+      console.warn(
+        `[REDIS LEASE ERROR] Failed to acquire host lease in room ${this.roomId}`,
+        error,
+      );
+
+      throw new HostTransitionUnavailableError();
+    }
+
+    if (!acquired) {
+      throw new HostTransitionUnavailableError(
+        "Unable to acquire the host transition lease.",
+      );
+    }
+
+    try {
+      return await action();
+    } finally {
       try {
-        acquired = await redisCore.setLease(leaseKey, leaseVal, 5);
-      } catch (err: any) {
-        console.warn(`[REDIS LEASE ERROR] Failed to acquire host lease in room ${this.roomId}:`, err.message);
-      }
-      if (acquired) {
-        try {
-          return await action();
-        } finally {
-          try {
-            await redisCore.delLease(leaseKey);
-          } catch {}
+        const released = await redisCore.delLease(
+          leaseKey,
+          leaseVal,
+        );
+
+        if (!released) {
+          console.warn(
+            `[REDIS LEASE WARNING] Lease ownership changed before release for room ${this.roomId}`,
+          );
         }
+      } catch (error: unknown) {
+        console.warn(
+          `[REDIS LEASE RELEASE ERROR] Failed to release host lease in room ${this.roomId}`,
+          error,
+        );
       }
     }
-    // Graceful fallback to local in-process execution when redis is unavailable or in single node
-    return await action();
   };
 
   public verifyAdmittedSession = (sessionHint?: string, uid?: string): boolean => {
@@ -752,7 +805,7 @@ export class Room {
 
       next();
     });
-    io.of(roomId).on("connection", async (socket: Socket) => {
+    const handleSocketConnection = async (socket: Socket): Promise<void> => {
       const clientId = socket.clientId || randomUUID();
       socket.clientId = clientId;
       socket.emit("REC:assignedClientId", clientId);
@@ -788,7 +841,7 @@ export class Room {
 
       // Check if this socket is the room owner (creator) returning to the room
       if (socket.uid && this.owner_id && socket.uid === this.owner_id) {
-        this.reclaimHostForOwner(socket).catch(() => {});
+        await this.reclaimHostForOwner(socket);
       } else if (!this.currentHostUid && socket.uid) {
         // Initial room participant becomes host ONLY IF authenticated with verified UID
         this.currentHostUid = socket.uid;
@@ -1175,7 +1228,7 @@ export class Room {
         this.clientToUidMap[clientId] = socket.uid;
         this.admittedMembers.add(socket.uid);
         if (this.owner_id && socket.uid === this.owner_id) {
-          this.reclaimHostForOwner(socket).catch(() => {});
+          await this.reclaimHostForOwner(socket);
         }
         if (postgres) {
           try {
@@ -1240,6 +1293,34 @@ export class Room {
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       this.getRoomState(socket);
       io.of(roomId).emit("roster", this.getRosterForApp());
+    };
+
+    io.of(roomId).on("connection", (socket: Socket) => {
+      void handleSocketConnection(socket).catch(
+        (error: unknown) => {
+          console.error(
+            {
+              socketId: socket.id,
+              roomId: this.roomId,
+              error,
+            },
+            "Unhandled socket connection lifecycle failure",
+          );
+
+          if (socket.connected) {
+            socket.emit(
+              "errorMessage",
+              "Unable to initialize the connection.",
+            );
+            // Allow time for the errorMessage packet to flush before abruptly closing the transport
+            setTimeout(() => {
+              if (socket.connected) {
+                socket.disconnect(true);
+              }
+            }, 50);
+          }
+        },
+      );
     });
   }
 

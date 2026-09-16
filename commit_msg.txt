@@ -1,0 +1,14 @@
+fix: resolve socket lifecycle deadlock on redis failure
+
+Structured Summary:
+Fix socket lifecycle resilience to handle Redis failures gracefully and prevent client infinite spinner.
+
+Architectural Rationale:
+The system was forcefully dropping the socket connection before the error message could be sent to the client, leading to a race condition where the client would auto-reconnect and see an infinite spinner. By deferring the disconnect, we allow the error packet to flush.
+
+Key Changes:
+- server/room.ts: Wrapped socket disconnect in a setTimeout(50ms) to ensure the errorMessage packet is transmitted before the transport is destroyed.
+- src/utils/operationState.ts: Added an early exit in markTransportDisconnected to prevent reverting an initStage of 'failed' back to 'connecting'.
+
+Verification Notes:
+Validated that the 'We couldn't connect to the room.' ErrorModal appears correctly when the server is down.

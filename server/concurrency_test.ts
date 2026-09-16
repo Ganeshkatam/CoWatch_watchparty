@@ -1458,12 +1458,12 @@ async function runConcurrencyStressTest() {
   if (!leaseAcquired1 || leaseAcquired2) {
     throw new Error("TEST 10 Case O FAILED: Distributed lease failed to serialize concurrent worker claims");
   }
-  await redisCore.delLease(leaseKey);
+  await redisCore.delLease(leaseKey, "worker-1");
   const leaseAcquiredAfterDel = await redisCore.setLease(leaseKey, "worker-2", 5);
   if (!leaseAcquiredAfterDel) {
     throw new Error("TEST 10 Case O FAILED: Lease was not freed after release");
   }
-  await redisCore.delLease(leaseKey);
+  await redisCore.delLease(leaseKey, "worker-2");
   console.log("TEST 10 Case O PASSED: Owner regain vs failover race condition serialized via Redis Core lease.");
 
   // Case P: Split-Brain Protection Fail-Closed on Redis Core Lease Conflict
@@ -1480,7 +1480,7 @@ async function runConcurrencyStressTest() {
       conflictCaught = true;
     }
   } finally {
-    await redisCore.delLease(leaseKeyP);
+    await redisCore.delLease(leaseKeyP, "primary-instance");
   }
   if (!conflictCaught) {
     throw new Error("TEST 10 Case P FAILED: Split-brain conflict did not fail closed");

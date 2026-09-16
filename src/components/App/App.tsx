@@ -1004,7 +1004,11 @@ export class App extends React.Component<AppProps, AppState> {
         }
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
-          this.setState({ overlayMsg: USER_MESSAGES.SERVER_DISCONNECTED.message, initStage: "connecting" });
+          this.setState((prevState) => ({
+            state: "connected",
+            initStage: "failed",
+            overlayMsg: prevState.overlayMsg || USER_MESSAGES.SERVER_DISCONNECTED.message,
+          }));
         } else {
           // else the socket will automatically try to reconnect
           // Non-blocking indicator handled by RoomRecoveryOverlay
@@ -1016,7 +1020,16 @@ export class App extends React.Component<AppProps, AppState> {
         operationCoordinator.rejectDomainOperations("host-authority", sanitized);
         operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
         operationCoordinator.rejectDomainOperations("media-playback", sanitized);
-        showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
+        
+        if (this.state.state === "starting") {
+          this.setState({
+            state: "connected",
+            initStage: "failed",
+            overlayMsg: sanitized,
+          });
+        } else {
+          showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
+        }
       });
       socket.on("successMessage", (success: string) => {
         showUserMessage({ ...USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS, message: success });

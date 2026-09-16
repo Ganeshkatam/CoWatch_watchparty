@@ -222,6 +222,11 @@ export class OperationCoordinator {
   }
 
   public markTransportDisconnected(reason: string = "Transport disconnected", now: number = Date.now()): void {
+    // If we have already reached a terminal failure state (e.g. via errorMessage), do not allow disconnects to revert to "connecting"
+    if (this.initStage === "failed") {
+      return;
+    }
+
     if (this.syncWatchdogTimer) {
       clearTimeout(this.syncWatchdogTimer);
       this.syncWatchdogTimer = null;
