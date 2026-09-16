@@ -89,7 +89,6 @@ async function runVisualConsistencyTests() {
     "src/components/Profile/Profile.tsx",
     "src/components/MyRooms/RoomCard.tsx",
     "src/components/MyRooms/RoomDetails.tsx",
-    "src/components/App/QuickAdd.tsx",
   ];
 
   // Regex to detect arbitrary pixel literals like size={460}, size={437}, size={613}, size="50rem"

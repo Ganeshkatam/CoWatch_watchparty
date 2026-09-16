@@ -45,7 +45,7 @@ import { FileShareModal } from "../Modal/FileShareModal";
 import type { User } from "@supabase/supabase-js";
 import { supabase, safeGetSession } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
-import { QuickAdd } from "./QuickAdd";
+
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
@@ -183,7 +183,7 @@ interface AppState {
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
-  isQuickAddModalOpen: boolean;
+
   copiedRoomLink: boolean;
   roomLock: string;
   controller?: string;
@@ -278,7 +278,7 @@ export class App extends React.Component<AppProps, AppState> {
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
-    isQuickAddModalOpen: false,
+
     copiedRoomLink: false,
     roomLock: "",
     participantsLocked: false,
@@ -1988,13 +1988,8 @@ export class App extends React.Component<AppProps, AppState> {
       locked: !this.state.participantsLocked,
     });
   };
-
   openQuickAdd = () => {
-    this.setState({ isQuickAddModalOpen: true });
-  };
-
-  closeQuickAdd = () => {
-    this.setState({ isQuickAddModalOpen: false });
+    this.focusHeaderSearch();
   };
 
   focusHeaderSearch = () => {
@@ -2002,11 +1997,8 @@ export class App extends React.Component<AppProps, AppState> {
     const el = document.getElementById("cowatch-header-search");
     if (el) {
       el.focus();
-    } else {
-      this.openQuickAdd();
     }
   };
-
 
 
   setIsChatDisabled = (val: boolean) => this.setState({ isChatDisabled: val });
@@ -3104,16 +3096,6 @@ export class App extends React.Component<AppProps, AppState> {
             getSubtitleMode={this.Player().getSubtitleMode}
           />
         )}
-        <QuickAdd
-          isOpen={this.state.isQuickAddModalOpen}
-          onOpenChange={(open) => this.setState({ isQuickAddModalOpen: open })}
-          roomSetMedia={this.roomSetMedia}
-          playlistAdd={this.roomPlaylistAdd}
-          roomMedia={this.state.roomMedia}
-          getMediaDisplayName={this.getMediaDisplayName}
-          mediaPath={this.state.mediaPath}
-          disabled={!this.haveLock()}
-        />
 
         {this.state.state === "starting" && (
           <Overlay

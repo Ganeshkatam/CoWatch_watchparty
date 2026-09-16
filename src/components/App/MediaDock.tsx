@@ -100,8 +100,8 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   const playlistMenuWidth = isCompact
     ? Math.min(viewport.width - 24, 300)
     : isMedium
-    ? 290
-    : 340;
+      ? 290
+      : 340;
   const moreMenuWidth = isCompact ? Math.min(viewport.width - 24, 200) : 200;
   const playlistMaxHeight = isShortHeight
     ? Math.min(viewport.height * 0.5, 260)
@@ -222,7 +222,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             <IconScreenShare size={16} />
             <span>Share screen</span>
           </button>
-          
+
           {metadata.capabilities?.virtualBrowser && (
             <button
               type="button"
