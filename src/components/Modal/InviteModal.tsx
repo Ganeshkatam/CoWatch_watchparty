@@ -101,8 +101,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     "Join my CoWatch Party"
   )}&body=${encodeURIComponent(inviteMessage)}`;
 
+  const qrUrlWithPasscode = canManageCredentials && resolvedPasscode
+    ? `${fullUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
+    : fullUrl;
+
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-    fullUrl
+    qrUrlWithPasscode
   )}`;
 
   const hasNativeShare =

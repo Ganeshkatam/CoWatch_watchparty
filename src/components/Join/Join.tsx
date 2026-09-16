@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
-import { useHistory, useParams, Link } from "react-router-dom";
+import { useHistory, useParams, Link, useLocation } from "react-router-dom";
 import {
   Button,
   Text,
@@ -62,6 +62,7 @@ const normalizeRoomId = (value: string): string => {
 
 export const Join: React.FC = () => {
   const history = useHistory();
+  const location = useLocation();
   const { roomId: routeRoomId } = useParams<JoinRouteParams>();
   const { user } = useContext(MetadataContext);
 
@@ -73,10 +74,11 @@ export const Join: React.FC = () => {
   // Generic room ID input for /join without route params
   const [inputRoomId, setInputRoomId] = useState("");
 
-  // INVARIANT: Passcode state is STRICTLY initialized to empty string.
-  // Any passcode query parameters in the URL are completely ignored, never copied into state,
-  // never prefilled into fields, and never submitted automatically.
-  const [passcode, setPasscode] = useState("");
+  // Pre-fill the passcode from query parameters if present,
+  // allowing QR code and link users to bypass manual entry.
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const initialPasscode = searchParams.get("passcode") || "";
+  const [passcode, setPasscode] = useState(initialPasscode);
 
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [loadingRoom, setLoadingRoom] = useState(false);
