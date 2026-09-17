@@ -269,6 +269,43 @@
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) !important;
 }
 
+/* Desktop: Adaptive 2-column participant gallery */
+@media (min-width: 769px) {
+  .container {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .videoTile {
+    height: auto;
+    aspect-ratio: 16 / 10;
+    min-width: 0;
+  }
+
+  /* 1 participant: single full-width tile */
+  .container[data-count="1"] {
+    grid-template-columns: 1fr;
+  }
+
+  .container[data-count="1"] .videoTile {
+    aspect-ratio: 16 / 10;
+    max-height: 220px;
+  }
+
+  /* 3 participants: 2 in row 1, 3rd tile centered in row 2 with identical aspect ratio */
+  .container[data-count="3"] > .videoTile:last-of-type {
+    grid-column: span 2;
+    justify-self: center;
+    width: calc(50% - 5px);
+  }
+
+  /* Invite card spans full width */
+  .inviteCard {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Mobile: 2 participant cards per row */
 @media (max-width: 768px) {
   .container {

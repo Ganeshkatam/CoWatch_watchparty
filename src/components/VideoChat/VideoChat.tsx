@@ -555,7 +555,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const canInvite = Boolean(this.props.isHost || isRoomOwner);
 
     return (
-      <div className={styles.container}>
+      <div className={styles.container} data-count={participants.length}>
         {participants.map((p) => {
           const isSelf = p.id === selfId;
           const displayName =
