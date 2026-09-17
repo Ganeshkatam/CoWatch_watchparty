@@ -830,6 +830,38 @@ export class Room {
         this.currentHostClientId = clientId;
       }
 
+      // Authoritative Session Activation on Host Entry:
+      // When the authenticated owner or authorized host enters Watch, transition an inactive
+      // or scheduled room to active DB-first. Only mutate memory and broadcast upon confirmed DB transition.
+      const isAuthorizedHostConnecting = Boolean(
+        socket.uid &&
+        (socket.uid === this.owner_id || (this.currentHostUid && socket.uid === this.currentHostUid))
+      );
+
+      if (isAuthorizedHostConnecting && (this.status === "inactive" || this.status === "scheduled") && postgres) {
+        try {
+          const activateResult = await postgres.query(
+            "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
+            [this.roomId, socket.uid]
+          );
+          const res = activateResult?.rows?.[0]?.result;
+          if (res?.status === "active") {
+            this.status = "active";
+            this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
+            this.lastUpdateTime = new Date();
+            this.io.of(this.roomId).emit("REC:sessionStarted", {
+              status: "active",
+              startedBy: socket.uid,
+            });
+            this.scheduleInactivityTimeoutIfNeeded();
+          } else if (res?.status === "expired") {
+            this.status = "expired";
+          }
+        } catch (activationErr) {
+          console.error(`[Lifecycle] Failed authoritative room activation on host entry for ${this.roomId}:`, activationErr);
+        }
+      }
+
       redisCount("connectStarts");
       redisCountDistinct("connectStartsDistinct", clientId);
 
