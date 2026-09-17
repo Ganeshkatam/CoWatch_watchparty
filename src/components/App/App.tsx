@@ -645,6 +645,12 @@ export class App extends React.Component<AppProps, AppState> {
     if (typeof document === "undefined") return;
 
     if (document.hidden) {
+      // Do not automatically trigger Smart PiP / Document PiP relocation for YouTube on tab backgrounding.
+      // YouTube iframe relocation and Document PiP requestWindow require explicit user gestures and break iframe state.
+      if (this.usingYoutube()) {
+        return;
+      }
+
       // Authoritative trigger: Only trigger if media is playing and Smart PiP is enabled
       const isPlaying = !this.state.roomPaused && Boolean(this.state.roomMedia);
       const isPiPSupported = this.Player().isPictureInPictureSupported();
