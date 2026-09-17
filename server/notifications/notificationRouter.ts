@@ -18,7 +18,13 @@ import express, { type Request, type Response, type RequestHandler } from 'expre
 import { supabaseAdmin } from '../utils/supabase.ts';
 import { postgres } from '../utils/postgres.ts';
 import config from '../config.ts';
+import { isTerminalRoom } from '../lifecycle/types.ts';
 import { notificationService } from './notificationService.ts';
+
+export const getCanonicalJoinUrl = (roomId: string): string => {
+  const appBaseUrl = config.APP_URL || 'https://cowatch.tv';
+  return `${appBaseUrl}/join/${encodeURIComponent(roomId)}`;
+};
 import {
   listRecentNotifications,
   getUnreadCount,
@@ -55,6 +61,10 @@ function checkInviteRateLimit(callerUid: string): boolean {
   }
   entry.count += 1;
   return true;
+}
+
+export function resetInviteRateLimitsForTesting(): void {
+  inviteRateLimits.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +302,7 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
 
       // Check room existence and status
       const roomRes = await postgres.query(
-        `SELECT "roomId", "roomTitle", owner_id, status, participants_locked
+        `SELECT "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked
          FROM public.rooms
          WHERE "roomId" = $1`,
         [cleanRoomId],
@@ -304,7 +314,7 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
       }
 
       const room = roomRes.rows[0];
-      if (room.status === 'ended' || room.status === 'expired') {
+      if (isTerminalRoom(room)) {
         res.status(400).json({ error: 'Cannot invite to an ended or expired room' });
         return;
       }
@@ -363,8 +373,7 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
       const callerName = callerProfile?.display_name || callerProfile?.username || 'A friend';
       const roomTitle = room.roomTitle || cleanRoomId;
 
-      const appBaseUrl = config.APP_URL || 'https://cowatch.tv';
-      const roomUrl = `${appBaseUrl}/room/${encodeURIComponent(cleanRoomId)}`;
+      const roomUrl = getCanonicalJoinUrl(cleanRoomId);
 
       // Dispatch via NotificationService
       await notificationService.notifyUser({
@@ -375,7 +384,7 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
         metadata: {
           roomId: cleanRoomId,
           action: 'join_room',
-          targetUrl: `/room/${encodeURIComponent(cleanRoomId)}`,
+          targetUrl: `/join/${encodeURIComponent(cleanRoomId)}`,
           inviterId: callerUid,
           inviterName: callerName,
           invitationId: invId,

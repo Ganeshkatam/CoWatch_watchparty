@@ -51,13 +51,13 @@ export function resolveNotificationAction(notification: NotificationActionSource
         return {
           action: 'join_room',
           label: 'Join Room',
-          url: explicitTargetUrl || (cleanRoomId ? `/room/${cleanRoomId}` : '/home'),
+          url: explicitTargetUrl || (cleanRoomId ? `/join/${cleanRoomId}` : '/home'),
         };
       case 'open_room':
         return {
           action: 'open_room',
           label: 'Open Room',
-          url: explicitTargetUrl || (cleanRoomId ? `/room/${cleanRoomId}` : '/home'),
+          url: explicitTargetUrl || (cleanRoomId ? `/watch/${cleanRoomId}` : '/home'),
         };
       case 'dismiss':
         return {
@@ -82,7 +82,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
       return {
         action: 'join_room',
         label: 'Join Room',
-        url: cleanRoomId ? `/room/${cleanRoomId}` : '/home',
+        url: cleanRoomId ? `/join/${cleanRoomId}` : '/home',
       };
 
     case 'ROOM_STARTED':
@@ -92,7 +92,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
       return {
         action: 'open_room',
         label: 'Open Room',
-        url: cleanRoomId ? `/room/${cleanRoomId}` : '/home',
+        url: cleanRoomId ? `/watch/${cleanRoomId}` : '/home',
       };
 
     case 'SYSTEM_ANNOUNCEMENT':

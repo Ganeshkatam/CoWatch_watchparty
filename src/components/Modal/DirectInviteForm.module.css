@@ -1,0 +1,61 @@
+.container {
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.container:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary, #9ca3af);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.formRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.inputWrapper {
+  flex: 1;
+}
+
+.sendButton {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.statusMessage {
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.successText {
+  color: #10b981;
+}
+
+.errorText {
+  color: #ef4444;
+}

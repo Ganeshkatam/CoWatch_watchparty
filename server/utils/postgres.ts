@@ -8,6 +8,10 @@ if (config.DATABASE_URL) {
   postgres = createPool(config.DATABASE_URL);
 }
 
+export function setPostgresForTesting(pool: any): void {
+  postgres = pool;
+}
+
 function createPool(connectionString: string): Pool {
   const pool = new Pool({
     connectionString,

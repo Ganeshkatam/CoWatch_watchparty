@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import QRCode from "react-qr-code";
-import { Modal, Button, Tooltip, ActionIcon, Badge } from "@mantine/core";
+import { Modal, Button, Tooltip, ActionIcon } from "@mantine/core";
 import {
   IconCopy,
   IconCheck,
@@ -20,6 +20,7 @@ import {
 import { MODAL_SIZES } from "../../utils/designSystem";
 import { serverPath } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
+import { DirectInviteForm } from "./DirectInviteForm";
 import styles from "./InviteModal.module.css";
 
 interface InviteModalProps {
@@ -145,9 +146,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     "Join my CoWatch Party"
   )}&body=${encodeURIComponent(inviteMessage)}`;
 
-  const qrUrlWithPasscode = canManageCredentials && resolvedPasscode
-    ? `${fullUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
-    : fullUrl;
+  // Canonical QR URL: strictly join entrypoint without embedded credentials
+  const qrCanonicalUrl = fullUrl;
 
   const hasNativeShare =
     typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -250,6 +250,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             </Button>
           </div>
         </div>
+
+        {/* Direct Username Invitation */}
+        <DirectInviteForm roomId={cleanId} />
 
         {/* Room ID & Passcode Cards - Individually Copyable */}
         <div className={styles.credentialsGrid}>
@@ -398,25 +401,14 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           <div className={styles.qrContainer}>
             <div className={styles.qrFrame} style={{ padding: "16px", background: "white", borderRadius: "12px", display: "inline-block" }}>
               <QRCode
-                value={qrUrlWithPasscode}
+                value={qrCanonicalUrl}
                 size={200}
                 style={{ width: '100%', height: 'auto', display: 'block' }}
               />
             </div>
-            {canManageCredentials && resolvedPasscode ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", marginTop: "4px" }}>
-                <span className={styles.qrCaption}>
-                  Scan with phone camera to join instantly with passcode embedded
-                </span>
-                <Badge size="xs" variant="light" color="violet">
-                  Passcode Embedded
-                </Badge>
-              </div>
-            ) : (
-              <span className={styles.qrCaption} style={{ marginTop: "4px" }}>
-                Scan with phone camera to join instantly
-              </span>
-            )}
+            <span className={styles.qrCaption} style={{ marginTop: "4px" }}>
+              Scan with phone camera to join via admission gateway
+            </span>
           </div>
         )}
       </div>
