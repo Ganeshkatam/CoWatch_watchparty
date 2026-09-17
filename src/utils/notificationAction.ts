@@ -23,7 +23,7 @@ export interface NotificationActionSource {
   event_id?: string;
 }
 
-export type NotificationActionType = 'open_room' | 'join_room' | 'go_home' | 'dismiss';
+export type NotificationActionType = 'open_room' | 'join_room' | 'join_invitation' | 'go_home' | 'dismiss';
 
 export interface ResolvedNotificationAction {
   action: NotificationActionType;
@@ -37,6 +37,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
   const rawRoomId = typeof metadata.roomId === 'string' ? metadata.roomId.trim() : undefined;
   const cleanRoomId = rawRoomId ? encodeURIComponent(rawRoomId) : undefined;
   const explicitTargetUrl = typeof metadata.targetUrl === 'string' ? metadata.targetUrl.trim() : undefined;
+  const invitationId = typeof metadata.invitationId === 'string' ? metadata.invitationId.trim() : undefined;
 
   // 1. Authoritative explicit action in metadata
   if (explicitAction) {
@@ -52,6 +53,12 @@ export function resolveNotificationAction(notification: NotificationActionSource
           action: 'join_room',
           label: 'Join Room',
           url: explicitTargetUrl || (cleanRoomId ? `/join/${cleanRoomId}` : '/home'),
+        };
+      case 'join_invitation':
+        return {
+          action: 'join_invitation',
+          label: 'Join Watch Party',
+          url: explicitTargetUrl || (invitationId ? `/invite?invitationId=${encodeURIComponent(invitationId)}` : (cleanRoomId ? `/join/${cleanRoomId}` : '/home')),
         };
       case 'open_room':
         return {
@@ -113,3 +120,34 @@ export function resolveNotificationAction(notification: NotificationActionSource
     }
   }
 }
+
+export function formatInvitationMessage(params: {
+  roomId: string;
+  roomTitle?: string;
+  passcode?: string;
+  invitationUrl: string;
+  inviterName?: string;
+}): string {
+  const cleanId = params.roomId.replace(/^\//, "").trim();
+  const title = params.roomTitle?.trim() || cleanId;
+  const inviter = params.inviterName?.trim() || "A friend";
+  const pass = params.passcode?.trim();
+
+  const lines = [
+    "You're invited to a CoWatch watch party!",
+    "",
+    `"${title}"`,
+    `${inviter} invited you to join.`,
+    "",
+    `Join: ${params.invitationUrl}`,
+    `Room ID: ${cleanId}`,
+  ];
+
+  if (pass) {
+    lines.push(`Passcode: ${pass}`);
+  }
+
+  lines.push("", "See you there!");
+  return lines.join("\n");
+}
+

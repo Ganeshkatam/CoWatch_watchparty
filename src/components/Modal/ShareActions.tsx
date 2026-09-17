@@ -6,34 +6,46 @@ import {
   IconMail,
   IconShare,
 } from "@tabler/icons-react";
+import { formatInvitationMessage } from "../../utils/notificationAction";
 import styles from "./ShareActions.module.css";
 
-interface ShareActionsProps {
+export interface ShareActionsProps {
   roomId: string;
-  canonicalJoinUrl: string;
+  roomTitle?: string;
+  passcode?: string;
+  invitationUrl: string;
+  inviterName?: string;
 }
 
 export const ShareActions: React.FC<ShareActionsProps> = ({
   roomId,
-  canonicalJoinUrl,
+  roomTitle,
+  passcode,
+  invitationUrl,
+  inviterName,
 }) => {
   const cleanId = roomId.replace(/^\//, "").trim();
-  const partyDescription = `Join my watch party on CoWatch!\nRoom ID: ${cleanId}`;
+  const title = roomTitle?.trim() || cleanId;
+  const canonicalMessage = formatInvitationMessage({
+    roomId: cleanId,
+    roomTitle: title,
+    passcode,
+    invitationUrl,
+    inviterName,
+  });
 
-  // WhatsApp accepts text with link appended
-  const whatsappText = `${partyDescription}\n${canonicalJoinUrl}`;
-  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
+  // WhatsApp accepts the complete text message
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(canonicalMessage)}`;
 
-  // Telegram accepts a dedicated 'url' parameter and clean description 'text'
+  // Telegram accepts a dedicated 'url' parameter and clean message 'text'
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
-    canonicalJoinUrl,
-  )}&text=${encodeURIComponent(partyDescription)}`;
+    invitationUrl,
+  )}&text=${encodeURIComponent(canonicalMessage)}`;
 
-  // Email body formats clean invitation message with join link
-  const mailtoBody = `${partyDescription}\n\nJoin: ${canonicalJoinUrl}`;
+  // Email body formats canonical invitation message
   const mailtoUrl = `mailto:?subject=${encodeURIComponent(
-    "Join my CoWatch Party",
-  )}&body=${encodeURIComponent(mailtoBody)}`;
+    `Watch Party Invite: ${title}`,
+  )}&body=${encodeURIComponent(canonicalMessage)}`;
 
   const hasNativeShare =
     typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -42,9 +54,9 @@ export const ShareActions: React.FC<ShareActionsProps> = ({
     if (!hasNativeShare) return;
     navigator
       .share({
-        title: "Join my CoWatch Party",
-        text: partyDescription,
-        url: canonicalJoinUrl,
+        title: `Join ${title} on CoWatch`,
+        text: canonicalMessage,
+        url: invitationUrl,
       })
       .catch(() => {});
   };

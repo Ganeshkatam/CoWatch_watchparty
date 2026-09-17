@@ -6,10 +6,10 @@ import styles from "./QRShare.module.css";
 
 interface QRShareProps {
   roomId: string;
-  canonicalJoinUrl: string;
+  invitationUrl: string;
 }
 
-export const QRShare: React.FC<QRShareProps> = ({ roomId, canonicalJoinUrl }) => {
+export const QRShare: React.FC<QRShareProps> = ({ roomId, invitationUrl }) => {
   const cleanId = roomId.replace(/^\//, "").trim();
   const frameRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +55,7 @@ export const QRShare: React.FC<QRShareProps> = ({ roomId, canonicalJoinUrl }) =>
 
       <div className={styles.qrFrame} ref={frameRef}>
         <QRCode
-          value={canonicalJoinUrl}
+          value={invitationUrl}
           size={160}
           style={{ width: 160, height: 160, display: "block" }}
         />

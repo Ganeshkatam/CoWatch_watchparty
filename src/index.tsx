@@ -642,7 +642,7 @@ class CoWatch extends React.Component {
                               <Redirect to="/login" />
                             </Route>
                             <Route
-                              path={["/join", "/join/:roomId"]}
+                              path={["/join", "/join/:roomId", "/invite", "/invite/:token"]}
                               exact
                               render={() => (
                                 <React.Fragment>

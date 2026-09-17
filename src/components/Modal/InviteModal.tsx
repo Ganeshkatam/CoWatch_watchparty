@@ -32,6 +32,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const canManageCredentials = Boolean(isHost || isOwner);
   const [passcodeCopied, setPasscodeCopied] = useState(false);
   const [fetchedPasscode, setFetchedPasscode] = useState<string>("");
+  const [roomTitle, setRoomTitle] = useState<string>("");
+  const [inviterName, setInviterName] = useState<string>("");
+  const [invitationUrl, setInvitationUrl] = useState<string>("");
 
   const pathParts = window.location.pathname.split("/");
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
@@ -42,23 +45,58 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     return null;
   }
 
-  // Passcode is strictly visible/manageable by host or room owner
+  // Fetch host identity, room details, and generate reusable invitation token
   useEffect(() => {
     let isCancelled = false;
-    if (canManageCredentials && !propPasscode && cleanId) {
+    if (canManageCredentials && cleanId) {
       (async () => {
         try {
           const token = await getAccessToken();
           const { data } = await supabase.auth.getUser();
           const user = data.user;
+          if (user && !isCancelled) {
+            setInviterName(
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              user.email?.split("@")[0] ||
+              "The Host"
+            );
+          }
+
           if (user && token && serverPath) {
-            const res = await fetch(
+            // 1. Fetch room details
+            const detailsRes = await fetch(
               `${serverPath}/roomDetails?uid=${encodeURIComponent(user.id)}&token=${encodeURIComponent(token)}&roomId=${encodeURIComponent(cleanId)}`
             );
-            if (res.ok) {
-              const freshData = await res.json();
-              if (!isCancelled && freshData?.currentPasscode) {
-                setFetchedPasscode(freshData.currentPasscode.trim());
+            if (detailsRes.ok) {
+              const freshData = await detailsRes.json();
+              if (!isCancelled) {
+                if (freshData?.currentPasscode && !propPasscode) {
+                  setFetchedPasscode(freshData.currentPasscode.trim());
+                }
+                if (freshData?.roomTitle) {
+                  setRoomTitle(freshData.roomTitle.trim());
+                }
+              }
+            }
+
+            // 2. Generate or fetch reusable room invitation token
+            const inviteRes = await fetch(`${serverPath}/api/invitations`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                roomId: cleanId,
+                isReusable: true,
+              }),
+            });
+
+            if (inviteRes.ok) {
+              const inviteData = await inviteRes.json();
+              if (!isCancelled && inviteData?.invitationUrl) {
+                setInvitationUrl(inviteData.invitationUrl);
               }
             }
           }
@@ -76,7 +114,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     ? (propPasscode ? propPasscode.trim() : fetchedPasscode.trim())
     : "";
 
-  const canonicalJoinUrl = `${window.location.origin}/join/${cleanId}`;
+  const effectiveInvitationUrl = invitationUrl || `${window.location.origin}/join/${cleanId}`;
 
   const handleCopyPasscode = () => {
     if (!resolvedPasscode) return;
@@ -110,19 +148,25 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         {canManageCredentials && !propPasscode && (
           <div style={{ marginBottom: 4 }}>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Room Passcode (Optional for open rooms)
+              Room Passcode: Required to join this room.
             </span>
           </div>
         )}
 
-        {/* 1. QR Code Section */}
-        <QRShare roomId={cleanId} canonicalJoinUrl={canonicalJoinUrl} />
+        {/* 1. QR Code Section: Encodes the opaque invitation token URL */}
+        <QRShare roomId={cleanId} invitationUrl={effectiveInvitationUrl} />
 
-        {/* 2. Direct Username Invitation */}
+        {/* 2. Direct Username Invitation: Creates targeted room_invitations and sends notification */}
         <DirectInviteForm roomId={cleanId} />
 
-        {/* 3. Share to External Apps */}
-        <ShareActions roomId={cleanId} canonicalJoinUrl={canonicalJoinUrl} />
+        {/* 3. Share to External Apps: Canonical human-readable invitation message with URL and fallback credentials */}
+        <ShareActions
+          roomId={cleanId}
+          roomTitle={roomTitle || cleanId}
+          passcode={resolvedPasscode}
+          invitationUrl={effectiveInvitationUrl}
+          inviterName={inviterName}
+        />
 
         {/* Passcode Card - Strictly restricted to host or room owner */}
         {canManageCredentials && (
@@ -136,7 +180,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               <div className={styles.credentialHeader}>
                 <span className={styles.credentialTitle}>
                   <IconLock size={13} />
-                  Room Passcode
+                  Room Passcode (Required to join this room)
                 </span>
                 {resolvedPasscode ? (
                   <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"} withArrow position="top">

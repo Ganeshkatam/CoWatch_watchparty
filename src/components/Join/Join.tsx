@@ -32,6 +32,7 @@ import styles from "./Join.module.css";
 
 interface JoinRouteParams {
   roomId?: string;
+  token?: string;
 }
 
 interface RoomInfo {
@@ -57,6 +58,8 @@ const normalizeRoomId = (value: string): string => {
     clean = clean.split("/watch/")[1]?.split("?")[0] || clean;
   } else if (clean.includes("/join/")) {
     clean = clean.split("/join/")[1]?.split("?")[0] || clean;
+  } else if (clean.includes("/invite/")) {
+    clean = clean.split("/invite/")[1]?.split("?")[0] || clean;
   }
   return clean.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\/+|\/+$/g, "").split("?")[0];
 };
@@ -64,13 +67,20 @@ const normalizeRoomId = (value: string): string => {
 export const Join: React.FC = () => {
   const history = useHistory();
   const location = useLocation();
-  const { roomId: routeRoomId } = useParams<JoinRouteParams>();
+  const { roomId: routeRoomId, token: routeToken } = useParams<JoinRouteParams>();
   const { user } = useContext(MetadataContext);
+
+  const [resolvedRoomId, setResolvedRoomId] = useState("");
+  const queryInvitationId = useMemo(() => {
+    return new URLSearchParams(location.search).get("invitationId")?.trim() || "";
+  }, [location.search]);
 
   const cleanRouteRoomId = useMemo(
     () => (routeRoomId ? normalizeRoomId(routeRoomId) : ""),
     [routeRoomId]
   );
+
+  const effectiveRoomId = resolvedRoomId || cleanRouteRoomId;
 
   // Generic room ID input for /join without route params
   const [inputRoomId, setInputRoomId] = useState("");
@@ -115,11 +125,14 @@ export const Join: React.FC = () => {
 
   const navigateToWatch = useCallback(() => {
     if (transitioningRef.current && stage === "ready") return;
+    const targetRoomId = resolvedRoomId || cleanRouteRoomId;
+    if (!targetRoomId) return;
+
     transitioningRef.current = true;
     setStage("ready");
 
     const prefs = preferencesRef.current;
-    history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`, {
+    history.push(`/watch/${encodeURIComponent(targetRoomId)}`, {
       admissionToken: admissionTokenRef.current,
       sessionId: sessionIdRef.current,
       initialCameraOn: prefs?.initialCameraOn ?? false,
@@ -128,14 +141,205 @@ export const Join: React.FC = () => {
       micDeviceId: prefs?.micDeviceId,
       speakerDeviceId: prefs?.speakerDeviceId,
     });
-  }, [cleanRouteRoomId, history, stage]);
+  }, [cleanRouteRoomId, resolvedRoomId, history, stage]);
 
-  // Fetch room metadata and start admission state machine
+  // Invitation admission flow: /invite/:token
   useEffect(() => {
-    if (!cleanRouteRoomId) {
-      setRoomInfo(null);
-      setStage("validating");
-      setRoomError("");
+    if (!routeToken) return;
+
+    let isCancelled = false;
+    setStage("validating");
+    setRoomError("");
+    setFormError("");
+    transitioningRef.current = false;
+
+    const resolveAndAccept = async () => {
+      try {
+        if (user === undefined) return;
+
+        const currentPath = `${location.pathname}${location.search}`;
+        if (!user) {
+          history.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+          return;
+        }
+        if (user.email_confirmed_at == null) {
+          history.push(`/verify-email?next=${encodeURIComponent(currentPath)}`);
+          return;
+        }
+
+        const session = await safeGetSession(1000);
+        const token = session?.data?.session?.access_token;
+        const uid = session?.data?.session?.user?.id;
+
+        // 1. Resolve preview without passcode
+        const previewRes = await fetch(`${serverPath}/api/invitations/${encodeURIComponent(routeToken)}`);
+        if (isCancelled) return;
+
+        if (!previewRes.ok) {
+          const previewErr = await previewRes.json().catch(() => ({}));
+          setRoomError(previewErr.error || "This invitation is invalid, expired, or has been revoked.");
+          setStage("error");
+          return;
+        }
+
+        const previewData = await previewRes.json();
+        if (isCancelled) return;
+
+        setResolvedRoomId(previewData.roomId);
+        setRoomInfo({
+          roomId: previewData.roomId,
+          roomTitle: previewData.roomTitle,
+          status: previewData.status,
+          requiresPasscode: false,
+          isOwner: false,
+          isHost: false,
+          hostName: previewData.inviterName,
+        });
+
+        // 2. Authoritative admission via POST /api/invitations/:token/accept
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (uid) headers["x-user-id"] = uid;
+
+        const acceptRes = await fetch(`${serverPath}/api/invitations/${encodeURIComponent(routeToken)}/accept`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sessionId: sessionIdRef.current,
+          }),
+        });
+
+        if (isCancelled) return;
+        const acceptData = await acceptRes.json().catch(() => ({}));
+
+        if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
+          admissionTokenRef.current = acceptData.admissionToken;
+          setStage("preflight");
+        } else {
+          setRoomError(acceptData.error || "Unable to enter room with this invitation.");
+          setStage("error");
+        }
+      } catch {
+        if (!isCancelled) {
+          setRoomError("Network error while accepting invitation.");
+          setStage("error");
+        }
+      }
+    };
+
+    resolveAndAccept();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [routeToken, user, history, location.pathname, location.search]);
+
+  // Targeted notification admission flow: /invite?invitationId=...
+  useEffect(() => {
+    if (routeToken || !queryInvitationId) return;
+
+    let isCancelled = false;
+    setStage("validating");
+    setRoomError("");
+    setFormError("");
+    transitioningRef.current = false;
+
+    const resolveAndAcceptTarget = async () => {
+      try {
+        if (user === undefined) return;
+
+        const currentPath = `${location.pathname}${location.search}`;
+        if (!user) {
+          history.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+          return;
+        }
+        if (user.email_confirmed_at == null) {
+          history.push(`/verify-email?next=${encodeURIComponent(currentPath)}`);
+          return;
+        }
+
+        const session = await safeGetSession(1000);
+        const token = session?.data?.session?.access_token;
+        const uid = session?.data?.session?.user?.id;
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (uid) headers["x-user-id"] = uid;
+
+        // 1. Resolve preview
+        const previewRes = await fetch(`${serverPath}/api/invitations/by-id/${encodeURIComponent(queryInvitationId)}`, {
+          headers,
+        });
+        if (isCancelled) return;
+
+        if (!previewRes.ok) {
+          const previewErr = await previewRes.json().catch(() => ({}));
+          setRoomError(previewErr.error || "Invitation not found or has expired.");
+          setStage("error");
+          return;
+        }
+
+        const previewData = await previewRes.json();
+        if (isCancelled) return;
+
+        setResolvedRoomId(previewData.roomId);
+        setRoomInfo({
+          roomId: previewData.roomId,
+          roomTitle: previewData.roomTitle,
+          status: previewData.status,
+          requiresPasscode: false,
+          isOwner: false,
+          isHost: false,
+          hostName: previewData.inviterName,
+        });
+
+        // 2. Authoritative admission
+        const acceptRes = await fetch(`${serverPath}/api/invitations/accept-target`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            invitationId: queryInvitationId,
+            sessionId: sessionIdRef.current,
+          }),
+        });
+
+        if (isCancelled) return;
+        const acceptData = await acceptRes.json().catch(() => ({}));
+
+        if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
+          admissionTokenRef.current = acceptData.admissionToken;
+          setStage("preflight");
+        } else {
+          setRoomError(acceptData.error || "Unable to enter room with this invitation.");
+          setStage("error");
+        }
+      } catch {
+        if (!isCancelled) {
+          setRoomError("Network error while accepting invitation.");
+          setStage("error");
+        }
+      }
+    };
+
+    resolveAndAcceptTarget();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [routeToken, queryInvitationId, user, history, location.pathname, location.search]);
+
+  // Fetch room metadata and start admission state machine (Normal /join/:roomId flow)
+  useEffect(() => {
+    if (!cleanRouteRoomId || routeToken || queryInvitationId) {
+      if (!routeToken && !queryInvitationId) {
+        setRoomInfo(null);
+        setStage("validating");
+        setRoomError("");
+      }
       return;
     }
 
@@ -540,7 +744,7 @@ export const Join: React.FC = () => {
               : styles.contentWrapper
           }
         >
-          {cleanRouteRoomId ? (
+          {(cleanRouteRoomId || routeToken || queryInvitationId) ? (
             stage === "validating" ? (
               <Center style={{ minHeight: 280, flexDirection: "column", gap: 16 }}>
                 <Loader color="violet" size="lg" />
@@ -560,8 +764,8 @@ export const Join: React.FC = () => {
             ) : stage === "waiting" ? (
               <WaitingForHost
                 isInline={true}
-                roomId={cleanRouteRoomId}
-                roomTitle={roomInfo?.roomTitle || cleanRouteRoomId}
+                roomId={effectiveRoomId}
+                roomTitle={roomInfo?.roomTitle || effectiveRoomId}
                 hostName={roomInfo?.hostName}
                 isOwner={Boolean(roomInfo?.isHost)}
                 onCheckStatus={handleStatusCheck}
@@ -569,7 +773,7 @@ export const Join: React.FC = () => {
               />
             ) : stage === "preflight" ? (
               <MediaPreflight
-                roomId={cleanRouteRoomId}
+                roomId={effectiveRoomId}
                 isInline={true}
                 onComplete={handlePreflightComplete}
               />

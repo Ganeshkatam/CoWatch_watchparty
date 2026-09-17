@@ -5,6 +5,7 @@ import {
   getSavedPasscodes,
   removeSavedPasscode,
 } from "./utils";
+import { formatInvitationMessage } from "./notificationAction";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -66,6 +67,24 @@ assert(
   !msgWithPass.includes("?passcode="),
   "Message link must NEVER contain passcode query parameter"
 );
+
+console.log("Testing formatInvitationMessage canonical output...");
+const canonicalMsg = formatInvitationMessage({
+  roomId: "room-abc",
+  roomTitle: "Cyberpunk 2077 Night",
+  passcode: "pass8888",
+  invitationUrl: "https://cowatch.example.com/invite/token123",
+  inviterName: "Alice",
+});
+assert(canonicalMsg.includes("You're invited to a CoWatch watch party!"), "Must contain header");
+assert(canonicalMsg.includes('"Cyberpunk 2077 Night"'), "Must contain room title");
+assert(canonicalMsg.includes("Alice invited you to join."), "Must contain inviter");
+assert(canonicalMsg.includes("Join: https://cowatch.example.com/invite/token123"), "Must contain invitation URL");
+assert(canonicalMsg.includes("Room ID: room-abc"), "Must contain Room ID fallback");
+assert(canonicalMsg.includes("Passcode: pass8888"), "Must contain Passcode fallback");
+assert(canonicalMsg.includes("See you there!"), "Must contain closing");
+const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+assert(!emojiRegex.test(canonicalMsg), "Canonical invitation message must contain ZERO emojis");
 
 console.log("Testing local storage verification (must NEVER store passcodes)...");
 

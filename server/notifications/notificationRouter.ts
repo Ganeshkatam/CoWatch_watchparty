@@ -20,6 +20,7 @@ import { postgres } from '../utils/postgres.ts';
 import config from '../config.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
 import { notificationService } from './notificationService.ts';
+import { hashInvitationToken, generateRawInvitationToken } from '../invitations/invitationRouter.ts';
 
 export const getCanonicalJoinUrl = (roomId: string, baseOrigin?: string): string => {
   const appBaseUrl = (baseOrigin || config.APP_URL || '').replace(/\/+$/, '');
@@ -302,7 +303,7 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
 
       // Check room existence and status
       const roomRes = await postgres.query(
-        `SELECT "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked
+        `SELECT "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked, passcode
          FROM public.rooms
          WHERE "roomId" = $1`,
         [cleanRoomId],
@@ -364,6 +365,19 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
         return;
       }
 
+      // Create persistent room_invitation record (bearer token hashed)
+      const rawToken = generateRawInvitationToken();
+      const tokenHash = hashInvitationToken(rawToken);
+      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+      await postgres.query(
+        `INSERT INTO public.room_invitations
+         (id, room_id, inviter_id, target_user_id, token_hash, expires_at, is_reusable)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO NOTHING`,
+        [invId, cleanRoomId, callerUid, targetUser.id, tokenHash, expiresAt, false],
+      );
+
       // Fetch caller name for personalized copy
       const callerRes = await postgres.query(
         `SELECT display_name, username FROM public.profiles WHERE id = $1`,
@@ -372,29 +386,32 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
       const callerProfile = callerRes.rows?.[0];
       const callerName = callerProfile?.display_name || callerProfile?.username || 'A friend';
       const roomTitle = room.roomTitle || cleanRoomId;
+      const roomPasscode = room.passcode || '';
 
       const origin = req.get('origin') || (req.get('host') ? `${req.protocol}://${req.get('host')}` : '');
-      const roomUrl = getCanonicalJoinUrl(cleanRoomId, origin);
+      const invitationUrl = origin ? `${origin}/invite/${encodeURIComponent(rawToken)}` : `/invite/${encodeURIComponent(rawToken)}`;
 
-      // Dispatch via NotificationService
+      // Dispatch via NotificationService:
+      // Invariant: Do NOT persist raw bearer token in notification metadata.
       await notificationService.notifyUser({
         userId: targetUser.id,
         type: 'ROOM_INVITATION',
         title: `Invite to "${roomTitle}"`,
-        body: `${callerName} invited you to join "${roomTitle}".`,
+        body: `${callerName} invited you to join "${roomTitle}". Room ID: ${cleanRoomId}${roomPasscode ? ` | Passcode: ${roomPasscode}` : ''}`,
         metadata: {
+          action: 'join_invitation',
+          invitationId: invId,
           roomId: cleanRoomId,
-          action: 'join_room',
-          targetUrl: `/join/${encodeURIComponent(cleanRoomId)}`,
           inviterId: callerUid,
           inviterName: callerName,
-          invitationId: invId,
         },
         eventId: `ROOM_INVITATION:${cleanRoomId}:${targetUser.id}:${invId}`,
         emailTemplateKey: 'room-invitation',
         emailPayload: {
           roomTitle,
-          roomUrl,
+          roomUrl: invitationUrl,
+          roomId: cleanRoomId,
+          passcode: roomPasscode,
           inviterName: callerName,
           userName: targetUser.display_name || targetUser.username || 'there',
         },

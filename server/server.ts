@@ -54,6 +54,7 @@ import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
 import { bootstrapProviderRegistry } from "./vm/provider-bootstrap.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
+import { createInvitationRouter } from "./invitations/invitationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
@@ -348,6 +349,7 @@ app.use(
 );
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
 app.use("/api/notifications", createNotificationRouter(io, (roomId) => rooms.get(roomId)));
+app.use("/api/invitations", createInvitationRouter({ roomLookup: (roomId) => rooms.get(roomId), rooms }));
 
 // NOTIFY-002: Universal Provider Delivery Webhook Ingress (POST /internal/webhooks/email/:provider)
 app.post("/internal/webhooks/email/:provider", async (req, res) => {

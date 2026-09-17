@@ -90,6 +90,11 @@ class MockPostgresPool {
       return { rows: [{ display_name: 'Caller', username: 'caller' }], rowCount: 1 };
     }
 
+    // 4. INSERT into room_invitations
+    if (sql.includes('INSERT INTO public.room_invitations')) {
+      return { rows: [{ id: params[0] || 'mock-inv-id' }], rowCount: 1 };
+    }
+
     return { rows: [], rowCount: 0 };
   }
 }
@@ -464,23 +469,13 @@ async function runInviteLifecycleTests() {
     assert.strictEqual(dispatchedNotifications.length, 1, 'Notification should be queued');
     const notif = dispatchedNotifications[0];
 
-    // Assert zero passcodes or secrets in notification payload
-    const serializedPayload = JSON.stringify(notif);
-    assert(!serializedPayload.includes('passcode'), 'Notification must not contain passcode field');
-    assert(
-      !notif.metadata.targetUrl.includes('?passcode='),
-      'Invitation targetUrl must not include passcode query param',
-    );
-    assert.strictEqual(
-      notif.metadata.targetUrl,
-      '/join/perm-active',
-      'Invitation targetUrl must strictly be /join/:roomId',
-    );
-    assert.strictEqual(
-      notif.emailPayload.roomUrl,
-      getCanonicalJoinUrl('perm-active', baseUrl),
-      'Email roomUrl must strictly match getCanonicalJoinUrl with request origin',
-    );
+    // Assert zero passcodes or bearer tokens in notification metadata
+    assert.strictEqual(notif.metadata.action, 'join_invitation', 'Action must be join_invitation');
+    assert(notif.metadata.invitationId, 'Must store invitationId in metadata');
+    assert.strictEqual(notif.metadata.invitationToken, undefined, 'Raw bearer token must NOT be stored in notification metadata');
+    assert.strictEqual(notif.metadata.passcode, undefined, 'Passcode must NOT be in notification metadata');
+    assert(notif.emailPayload.roomUrl.includes('/invite/'), 'Email roomUrl must use /invite/<token>');
+    assert.strictEqual(notif.metadata.roomId, 'perm-active', 'Must store roomId in metadata');
 
     // ---------------------------------------------------------------------------
     // 6. Idempotency Boundary Test
