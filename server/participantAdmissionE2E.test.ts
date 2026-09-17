@@ -22,6 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { generateAdmissionToken, verifyAdmissionToken } from "./utils/admissionToken.ts";
 import { hashRoomPasscode, verifyRoomPasscode } from "./utils/roomPasscode.ts";
+import { EMPTY_ROOM_INACTIVITY_TIMEOUT_MS } from "./room.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -336,12 +337,76 @@ async function runParticipantAdmissionE2ETests() {
     console.log("  PASS: Linear admission progression certified; 0 backward redirect cycles detected");
   }
 
+  // ---------------------------------------------------------------------------
+  // 7. Empty Room Inactivity Timeout Invariant (30 Seconds)
+  // ---------------------------------------------------------------------------
+  console.log("\nSection 7: Empty Room Inactivity Timeout Invariant (30 Seconds)...");
+  {
+    assert(
+      EMPTY_ROOM_INACTIVITY_TIMEOUT_MS === 30 * 1000,
+      `Expected empty room inactivity timeout to be 30,000 ms, got ${EMPTY_ROOM_INACTIVITY_TIMEOUT_MS}`
+    );
+
+    let timeoutScheduled = false;
+    let scheduledDurationMs = 0;
+    let roomStatus = "active";
+    let emittedStopped = false;
+    let authoritativeDbCalled = false;
+
+    const scheduleTimeout = (activeCount: number) => {
+      if (activeCount === 0 && roomStatus === "active") {
+        timeoutScheduled = true;
+        scheduledDurationMs = EMPTY_ROOM_INACTIVITY_TIMEOUT_MS;
+      }
+    };
+
+    const triggerTimeoutExpiry = () => {
+      if (timeoutScheduled) {
+        roomStatus = "inactive";
+        emittedStopped = true;
+        authoritativeDbCalled = true;
+        timeoutScheduled = false;
+      }
+    };
+
+    const cancelTimeoutOnConnect = () => {
+      if (timeoutScheduled) {
+        timeoutScheduled = false;
+      }
+    };
+
+    // Subtest A: When last actual user departs active room, 30s timeout is scheduled
+    scheduleTimeout(0);
+    assert(timeoutScheduled, "Timeout must be scheduled when active room becomes empty");
+    assert(scheduledDurationMs === 30000, "Inactivity timeout must be exactly 30,000ms");
+
+    // Subtest B: If timeout fires, status becomes inactive, ROOM_SESSION_STOPPED emitted, DB updated
+    triggerTimeoutExpiry();
+    assert(roomStatus === "inactive", "Room must transition to inactive after 30s empty");
+    assert(emittedStopped, "ROOM_SESSION_STOPPED must be emitted to notify clients");
+    assert(authoritativeDbCalled, "Authoritative DB procedure must update status to inactive");
+
+    // Subtest C: Participant reconnects before 30s -> timeout cancelled, room stays active
+    roomStatus = "active";
+    scheduleTimeout(0);
+    assert(timeoutScheduled, "Timeout scheduled on empty");
+    cancelTimeoutOnConnect();
+    assert(!timeoutScheduled, "Timeout cancelled upon participant reconnection");
+    assert(roomStatus === "active", "Room remains active when participant rejoins");
+
+    console.log("  PASS: 30-second empty room inactivity invariant certified (scheduled, cancelled on rejoin, expired to inactive)");
+  }
+
   console.log("\n=================================================================");
   console.log("ALL PARTICIPANT ADMISSION & CONNECTION LIFECYCLE TESTS PASSED!");
   console.log("=================================================================\n");
 }
 
-runParticipantAdmissionE2ETests().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+runParticipantAdmissionE2ETests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

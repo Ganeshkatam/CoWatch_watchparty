@@ -162,6 +162,7 @@ export interface AdmittedParticipantRecord {
 }
 
 export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
+export const EMPTY_ROOM_INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds
 
 export type { RoomAction, AuthorizationContext, ActionTarget, AuthorizationResult };
 
@@ -1405,6 +1406,10 @@ export class Room {
     if (this.tsInterval) {
       clearInterval(this.tsInterval);
     }
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout);
+      this.inactivityTimeout = undefined;
+    }
   };
 
   public getRosterForStats = () => {
@@ -2044,6 +2049,8 @@ export class Room {
         cmd: "system",
         msg: "Host started the watch party.",
       });
+
+      this.scheduleInactivityTimeoutIfNeeded();
     } catch (err) {
       console.error("CMD:startSession failed:", err);
       socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
@@ -2758,6 +2765,30 @@ export class Room {
     }
   };
 
+  public scheduleInactivityTimeoutIfNeeded = (): void => {
+    const actualUsers = this.roster.filter((p) => !p.isScreenShare);
+    if (actualUsers.length === 0 && this.status === "active") {
+      if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
+      this.inactivityTimeout = setTimeout(async () => {
+        const currentActualUsers = this.roster.filter((p) => !p.isScreenShare);
+        if (currentActualUsers.length === 0 && this.status === "active") {
+          this.status = "inactive";
+          this.lastUpdateTime = new Date();
+          this.io.of(this.roomId).emit("ROOM_SESSION_STOPPED");
+          if (this.vBrowser) {
+            await this.stopVBrowserInternal();
+          }
+          if (postgres) {
+            await postgres.query(
+              "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",
+              [this.roomId]
+            );
+          }
+        }
+      }, EMPTY_ROOM_INACTIVITY_TIMEOUT_MS);
+    }
+  };
+
   private performParticipantDeparture = (socket: Socket): void => {
     const { clientId } = socket;
     // Disconnecting/leaving socket is the current one
@@ -2825,26 +2856,7 @@ export class Room {
           console.error("Failed during host failover transition:", err);
         });
       }
-      const actualUsers = this.roster.filter(p => !p.isScreenShare);
-      if (actualUsers.length === 0) {
-        if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
-        this.inactivityTimeout = setTimeout(async () => {
-          const currentActualUsers = this.roster.filter(p => !p.isScreenShare);
-          if (currentActualUsers.length === 0 && this.status === 'active') {
-            this.status = 'inactive';
-            this.lastUpdateTime = new Date();
-            if (this.vBrowser) {
-              await this.stopVBrowserInternal();
-            }
-            if (postgres) {
-              await postgres.query(
-                "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",
-                [this.roomId]
-              );
-            }
-          }
-        }, 120 * 1000);
-      }
+      this.scheduleInactivityTimeoutIfNeeded();
     }
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect
     // When serializing we only write values with messages in chat

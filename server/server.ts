@@ -2610,6 +2610,7 @@ app.post("/startRoom", async (req, res) => {
         status: "active",
         startedBy: decoded.uid,
       });
+      memoryRoom.scheduleInactivityTimeoutIfNeeded();
     }
 
     res.json({ success: true, status: 'active' });
