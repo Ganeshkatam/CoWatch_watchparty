@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import QRCode from "react-qr-code";
-import { Modal, Button, Tooltip, ActionIcon } from "@mantine/core";
+import { Modal, Button, Tooltip, ActionIcon, Badge } from "@mantine/core";
 import {
   IconCopy,
   IconCheck,
@@ -14,8 +14,12 @@ import {
   IconUsers,
   IconLink,
   IconExternalLink,
+  IconHash,
+  IconLock,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
+import { serverPath } from "../../utils/utils";
+import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./InviteModal.module.css";
 
 interface InviteModalProps {
@@ -36,19 +40,53 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   const canManageCredentials = Boolean(isHost || isOwner);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [inviteMsgCopied, setInviteMsgCopied] = useState(false);
+  const [roomIdCopied, setRoomIdCopied] = useState(false);
+  const [passcodeCopied, setPasscodeCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [fetchedPasscode, setFetchedPasscode] = useState<string>("");
+
+  const pathParts = window.location.pathname.split("/");
+  const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
+  const cleanId = roomIdOrVanity.replace(/^\//, "");
 
   // Non-hosts are strictly forbidden from inviting users
   if (!canManageCredentials) {
     return null;
   }
 
-  const pathParts = window.location.pathname.split("/");
-  const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
-  const cleanId = roomIdOrVanity.replace(/^\//, "");
-
   // Passcode is strictly visible/manageable by host or room owner
-  const resolvedPasscode = canManageCredentials && propPasscode ? propPasscode.trim() : "";
+  useEffect(() => {
+    let isCancelled = false;
+    if (canManageCredentials && !propPasscode && cleanId) {
+      (async () => {
+        try {
+          const token = await getAccessToken();
+          const { data } = await supabase.auth.getUser();
+          const user = data.user;
+          if (user && token && serverPath) {
+            const res = await fetch(
+              `${serverPath}/roomDetails?uid=${encodeURIComponent(user.id)}&token=${encodeURIComponent(token)}&roomId=${encodeURIComponent(cleanId)}`
+            );
+            if (res.ok) {
+              const freshData = await res.json();
+              if (!isCancelled && freshData?.currentPasscode) {
+                setFetchedPasscode(freshData.currentPasscode.trim());
+              }
+            }
+          }
+        } catch {
+          // Silent fallback
+        }
+      })();
+    }
+    return () => {
+      isCancelled = true;
+    };
+  }, [canManageCredentials, propPasscode, cleanId]);
+
+  const resolvedPasscode = canManageCredentials
+    ? (propPasscode ? propPasscode.trim() : fetchedPasscode.trim())
+    : "";
 
   const baseUrl = `${window.location.origin}/join/${cleanId}`;
   const fullUrl = baseUrl;
@@ -68,6 +106,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     navigator.clipboard.writeText(inviteMessage);
     setInviteMsgCopied(true);
     setTimeout(() => setInviteMsgCopied(false), 2000);
+  };
+
+  const handleCopyRoomId = () => {
+    if (!cleanId) return;
+    navigator.clipboard.writeText(cleanId);
+    setRoomIdCopied(true);
+    setTimeout(() => setRoomIdCopied(false), 2000);
+  };
+
+  const handleCopyPasscode = () => {
+    if (!resolvedPasscode) return;
+    navigator.clipboard.writeText(resolvedPasscode);
+    setPasscodeCopied(true);
+    setTimeout(() => setPasscodeCopied(false), 2000);
   };
 
   const whatsappText = canManageCredentials && resolvedPasscode
@@ -94,7 +146,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   )}&body=${encodeURIComponent(inviteMessage)}`;
 
   const qrUrlWithPasscode = canManageCredentials && resolvedPasscode
-    ? `${fullUrl}#passcode=${encodeURIComponent(resolvedPasscode)}`
+    ? `${fullUrl}?passcode=${encodeURIComponent(resolvedPasscode)}`
     : fullUrl;
 
   const hasNativeShare =
@@ -106,8 +158,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       .share({
         title: "Join my CoWatch Party",
         text: canManageCredentials && resolvedPasscode
-          ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-          : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`,
+          ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: '${cleanId}'\nPasscode: '${resolvedPasscode}'`
+          : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: '${cleanId}'`,
         url: fullUrl,
       })
       .catch(() => { });
@@ -201,7 +253,85 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           </div>
         </div>
 
+        {/* Room ID & Passcode Cards - Individually Copyable */}
+        <div className={styles.credentialsGrid}>
+          {/* Room ID Card */}
+          <div
+            className={styles.credentialCard}
+            onClick={handleCopyRoomId}
+            title="Click to copy Room ID"
+          >
+            <div className={styles.credentialHeader}>
+              <span className={styles.credentialTitle}>
+                <IconHash size={13} />
+                Room ID
+              </span>
+              <Tooltip label={roomIdCopied ? "Copied!" : "Copy Room ID"} withArrow position="top">
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  color={roomIdCopied ? "teal" : "gray"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyRoomId();
+                  }}
+                  title="Copy Room ID"
+                >
+                  {roomIdCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                </ActionIcon>
+              </Tooltip>
+            </div>
+            <div className={styles.credentialValue}>
+              <span>{cleanId}</span>
+              <span style={{ fontSize: 11, fontWeight: 500, color: roomIdCopied ? "#10b981" : "var(--text-muted)", transition: "color 0.2s" }}>
+                {roomIdCopied ? "Copied!" : "Copy"}
+              </span>
+            </div>
+          </div>
 
+          {/* Passcode Card - Strictly restricted to host or room owner */}
+          {canManageCredentials && (
+            <div
+              className={styles.credentialCard}
+              onClick={resolvedPasscode ? handleCopyPasscode : undefined}
+              title={resolvedPasscode ? "Click to copy Passcode" : "No passcode required"}
+              style={{ cursor: resolvedPasscode ? "pointer" : "default" }}
+            >
+              <div className={styles.credentialHeader}>
+                <span className={styles.credentialTitle}>
+                  <IconLock size={13} />
+                  Room Passcode
+                </span>
+                {resolvedPasscode ? (
+                  <Tooltip label={passcodeCopied ? "Copied!" : "Copy Passcode"} withArrow position="top">
+                    <ActionIcon
+                      size="sm"
+                      variant="subtle"
+                      color={passcodeCopied ? "teal" : "gray"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyPasscode();
+                      }}
+                      title="Copy Passcode"
+                    >
+                      {passcodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                ) : (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Open</span>
+                )}
+              </div>
+              <div className={styles.credentialValue}>
+                <span>{resolvedPasscode || "None (Open)"}</span>
+                {resolvedPasscode && (
+                  <span style={{ fontSize: 11, fontWeight: 500, color: passcodeCopied ? "#10b981" : "var(--text-muted)", transition: "color 0.2s" }}>
+                    {passcodeCopied ? "Copied!" : "Copy"}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Quick Share Section */}
         <div className={styles.shareSection}>
@@ -244,20 +374,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           </div>
         </div>
 
-        {/* Passcode Card - Strictly restricted to host or room owner */}
-        {canManageCredentials && (
-          <div className={styles.credentialCard}>
-            <div className={styles.credentialHeader}>
-              <span className={styles.credentialTitle}>
-                Room Passcode
-              </span>
-            </div>
-            <div className={styles.credentialValue}>
-              {resolvedPasscode || "None (Open)"}
-            </div>
-          </div>
-        )}
-
         {/* Quick Action Buttons: Native Share & QR Code */}
         <div style={{ display: "grid", gridTemplateColumns: hasNativeShare ? "1fr 1fr" : "1fr", gap: "8px" }}>
           {hasNativeShare && (
@@ -289,9 +405,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 style={{ width: '100%', height: 'auto', display: 'block' }}
               />
             </div>
-            <span className={styles.qrCaption}>
-              Scan with phone camera to join instantly
-            </span>
+            {canManageCredentials && resolvedPasscode ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                <span className={styles.qrCaption}>
+                  Scan with phone camera to join instantly with passcode embedded
+                </span>
+                <Badge size="xs" variant="light" color="violet">
+                  Passcode Embedded
+                </Badge>
+              </div>
+            ) : (
+              <span className={styles.qrCaption} style={{ marginTop: "4px" }}>
+                Scan with phone camera to join instantly
+              </span>
+            )}
           </div>
         )}
       </div>

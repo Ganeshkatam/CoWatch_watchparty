@@ -151,6 +151,18 @@
   }
 }
 
+.credentialsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 500px) {
+  .credentialsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .credentialCard {
   background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));

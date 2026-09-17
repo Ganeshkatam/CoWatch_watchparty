@@ -75,11 +75,21 @@ export const Join: React.FC = () => {
   // Generic room ID input for /join without route params
   const [inputRoomId, setInputRoomId] = useState("");
 
-  // Pre-fill the passcode from the URL hash fragment if present.
-  // Hash fragment (#passcode=...) is never sent to the server in HTTP requests.
-  const hashParams = useMemo(() => new URLSearchParams(location.hash.replace(/^#/, "")), [location.hash]);
-  const initialPasscode = hashParams.get("passcode") || "";
+  // Pre-fill the passcode from the URL fragment or query string (e.g. from scanned QR code)
+  const initialPasscode = useMemo(() => {
+    const raw = `${location.hash || ""}&${location.search || ""}`;
+    const match = raw.match(/(?:#|&|\?)passcode=([^&#]+)/i);
+    return match ? decodeURIComponent(match[1]).trim().slice(0, 8) : "";
+  }, [location.hash, location.search]);
   const [passcode, setPasscode] = useState(initialPasscode);
+
+  // Auto-clean URL address bar when passcode was embedded in URL (e.g. from QR scan)
+  useEffect(() => {
+    if (initialPasscode && (location.hash || location.search) && cleanRouteRoomId) {
+      const cleanPath = `/join/${encodeURIComponent(cleanRouteRoomId)}`;
+      window.history.replaceState(null, "", cleanPath);
+    }
+  }, [initialPasscode, cleanRouteRoomId, location.hash, location.search]);
 
   const [stage, setStage] = useState<AdmissionStage>("validating");
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
@@ -212,6 +222,35 @@ export const Join: React.FC = () => {
 
         // Admission control paths:
         if (data.requiresPasscode) {
+          const autoPass = (initialPasscode || passcode).trim();
+          if (autoPass && autoPass.length === 8 && user && user.email_confirmed_at != null) {
+            try {
+              const verifyResp = await fetch(`${serverPath}/verifyPasscode`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                  ...(uid ? { "x-user-id": uid } : {}),
+                },
+                body: JSON.stringify({
+                  roomId: cleanRouteRoomId,
+                  passcode: autoPass,
+                  sessionId: sessionIdRef.current,
+                }),
+              });
+
+              if (isCancelled) return;
+              const verifyData = await verifyResp.json().catch(() => ({}));
+
+              if (verifyResp.ok && verifyData.valid && verifyData.admissionToken) {
+                admissionTokenRef.current = verifyData.admissionToken;
+                setStage("preflight");
+                return;
+              }
+            } catch {
+              // Fall through to manual passcode stage if auto-verification encounters error
+            }
+          }
           setStage("passcode");
         } else {
           // Participant (No-passcode): obtain server-issued admission token directly
