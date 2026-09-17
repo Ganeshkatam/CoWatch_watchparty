@@ -85,6 +85,10 @@ export function resolveNotificationAction(notification: NotificationActionSource
         url: '/home',
       };
 
+    // Legacy notification fallback (strictly for pre-INVITE-001 notifications):
+    //   legacy notification -> /join/:roomId -> manual credential admission
+    // New unified invitations use explicit metadata.action = 'join_invitation':
+    //   new invitation -> /invite?invitationId=... -> invitation preview -> explicit acceptance
     case 'ROOM_INVITATION':
       return {
         action: 'join_room',
@@ -239,5 +243,20 @@ export function parseJoinRoute(value: string): ParsedJoinRoute {
     path: plainRoom ? `/join/${encodeURIComponent(plainRoom)}` : "",
     identifier: plainRoom,
   };
+}
+
+/**
+ * Normalizes room identifiers strictly for /join and /watch paths.
+ * Invitation paths (/invite/...) are deliberately NOT parsed here
+ * and must be processed exclusively through parseJoinRoute().
+ */
+export function normalizeRoomId(value: string): string {
+  let clean = (value || "").trim();
+  if (clean.includes("/watch/")) {
+    clean = clean.split("/watch/")[1]?.split(/[?&#\s]/)[0] || clean;
+  } else if (clean.includes("/join/")) {
+    clean = clean.split("/join/")[1]?.split(/[?&#\s]/)[0] || clean;
+  }
+  return clean.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\/+|\/+$/g, "").split(/[?&#\s]/)[0].trim();
 }
 

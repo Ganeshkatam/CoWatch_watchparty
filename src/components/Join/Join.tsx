@@ -26,7 +26,7 @@ import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { safeGetSession } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
-import { parseJoinRoute } from "../../utils/notificationAction";
+import { parseJoinRoute, normalizeRoomId } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
 import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
 import styles from "./Join.module.css";
@@ -60,18 +60,6 @@ type AdmissionStage =
   | "ready"
   | "error";
 
-const normalizeRoomId = (value: string): string => {
-  let clean = value.trim();
-  if (clean.includes("/watch/")) {
-    clean = clean.split("/watch/")[1]?.split("?")[0] || clean;
-  } else if (clean.includes("/join/")) {
-    clean = clean.split("/join/")[1]?.split("?")[0] || clean;
-  } else if (clean.includes("/invite/")) {
-    clean = clean.split("/invite/")[1]?.split("?")[0] || clean;
-  }
-  return clean.replace(/^https?:\/\/[^/]+\/?/, "").replace(/^\/+|\/+$/g, "").split("?")[0];
-};
-
 export const Join: React.FC = () => {
   const history = useHistory();
   const location = useLocation();
@@ -93,21 +81,8 @@ export const Join: React.FC = () => {
   // Generic room ID input for /join without route params
   const [inputRoomId, setInputRoomId] = useState("");
 
-  // Pre-fill the passcode from the URL fragment or query string (e.g. from scanned QR code)
-  const initialPasscode = useMemo(() => {
-    const raw = `${location.hash || ""}&${location.search || ""}`;
-    const match = raw.match(/(?:#|&|\?)passcode=([^&#]+)/i);
-    return match ? decodeURIComponent(match[1]).trim().slice(0, 8) : "";
-  }, [location.hash, location.search]);
-  const [passcode, setPasscode] = useState(initialPasscode);
-
-  // Auto-clean URL address bar when passcode was embedded in URL (e.g. from QR scan)
-  useEffect(() => {
-    if (initialPasscode && (location.hash || location.search) && cleanRouteRoomId) {
-      const cleanPath = `/join/${encodeURIComponent(cleanRouteRoomId)}`;
-      window.history.replaceState(null, "", cleanPath);
-    }
-  }, [initialPasscode, cleanRouteRoomId, location.hash, location.search]);
+  // Manual passcode state for /join/:roomId admission (explicit form entry only)
+  const [passcode, setPasscode] = useState("");
 
   const [stage, setStage] = useState<AdmissionStage>("validating");
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
@@ -436,35 +411,6 @@ export const Join: React.FC = () => {
 
         // Admission control paths:
         if (data.requiresPasscode) {
-          const autoPass = (initialPasscode || passcode).trim();
-          if (autoPass && autoPass.length === 8 && user && user.email_confirmed_at != null) {
-            try {
-              const verifyResp = await fetch(`${serverPath}/verifyPasscode`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                  ...(uid ? { "x-user-id": uid } : {}),
-                },
-                body: JSON.stringify({
-                  roomId: cleanRouteRoomId,
-                  passcode: autoPass,
-                  sessionId: sessionIdRef.current,
-                }),
-              });
-
-              if (isCancelled) return;
-              const verifyData = await verifyResp.json().catch(() => ({}));
-
-              if (verifyResp.ok && verifyData.valid && verifyData.admissionToken) {
-                admissionTokenRef.current = verifyData.admissionToken;
-                setStage("preflight");
-                return;
-              }
-            } catch {
-              // Fall through to manual passcode stage if auto-verification encounters error
-            }
-          }
           setStage("passcode");
         } else {
           // Participant (No-passcode): obtain server-issued admission token directly

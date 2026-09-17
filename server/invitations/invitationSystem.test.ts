@@ -7,7 +7,12 @@ import {
   generateRawInvitationToken,
   getCanonicalInvitationUrl,
 } from './invitationRouter.ts';
-import { formatInvitationMessage, resolveNotificationAction, parseJoinRoute } from '../../src/utils/notificationAction.ts';
+import {
+  formatInvitationMessage,
+  resolveNotificationAction,
+  parseJoinRoute,
+  normalizeRoomId,
+} from '../../src/utils/notificationAction.ts';
 import { verifyAdmissionToken, issueRoomAdmissionToken } from '../utils/admissionToken.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
 import { supabaseAdmin } from '../utils/supabase.ts';
@@ -956,6 +961,14 @@ async function runInvitationSystemTests() {
     const routeH = parseJoinRoute('');
     assert.strictEqual(routeH.type, 'join');
     assert.strictEqual(routeH.path, '');
+
+    // normalizeRoomId: strictly handles room and watch paths; never extracts /invite/ tokens as room IDs
+    assert.strictEqual(normalizeRoomId('https://cowatch.org/join/room-alpha'), 'room-alpha');
+    assert.strictEqual(normalizeRoomId('/join/room-alpha'), 'room-alpha');
+    assert.strictEqual(normalizeRoomId('https://cowatch.org/watch/room-alpha'), 'room-alpha');
+    assert.strictEqual(normalizeRoomId('/watch/room-alpha'), 'room-alpha');
+    assert.strictEqual(normalizeRoomId('room-alpha'), 'room-alpha');
+    assert.notStrictEqual(normalizeRoomId('https://cowatch.org/invite/TOKEN_123'), 'TOKEN_123', 'normalizeRoomId must not extract invite token as room ID');
 
     console.log('Passed Test 12.');
 
