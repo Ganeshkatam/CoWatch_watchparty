@@ -478,8 +478,8 @@ async function runInviteLifecycleTests() {
     );
     assert.strictEqual(
       notif.emailPayload.roomUrl,
-      getCanonicalJoinUrl('perm-active'),
-      'Email roomUrl must strictly match getCanonicalJoinUrl',
+      getCanonicalJoinUrl('perm-active', baseUrl),
+      'Email roomUrl must strictly match getCanonicalJoinUrl with request origin',
     );
 
     // ---------------------------------------------------------------------------
@@ -580,7 +580,7 @@ async function runInviteLifecycleTests() {
     // 8. QR Code Invariants & UI URL-Copy Removal Invariants
     // ---------------------------------------------------------------------------
     console.log('Case 8: QR Code Invariants & URL-Copy Removal Invariants...');
-    const testOrigin = 'https://cowatch.tv';
+    const testOrigin = 'http://localhost:3000';
     const cleanId = 'alpha-room-99';
     const testCanonicalJoinUrl = `${testOrigin}/join/${cleanId}`;
 

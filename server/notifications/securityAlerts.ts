@@ -23,7 +23,7 @@ export function renderDuplicateSignupAlertEmail(options: DuplicateSignupAlertOpt
   html: string;
   text: string;
 } {
-  const appBaseUrl = (config.APP_URL || 'https://cowatch.tv').replace(/\/+$/, '');
+  const appBaseUrl = (config.APP_URL || '').replace(/\/+$/, '');
   const loginUrl = `${appBaseUrl}/login`;
   const resetPasswordUrl = `${appBaseUrl}/reset-password`;
   const timestampStr = (options.attemptedAt || new Date()).toUTCString();

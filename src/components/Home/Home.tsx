@@ -50,8 +50,8 @@ export const Home: React.FC = () => {
     title: "CoWatch - Watch Together with Friends",
     description:
       "A shared place to watch movies, shows, and streams with friends. Built-in voice, video, chat, reactions, and flexible ways to bring your media in.",
-    canonicalUrl: "https://cowatch.tv/",
-    url: "https://cowatch.tv/",
+    canonicalUrl: typeof window !== "undefined" ? window.location.href : "/",
+    url: typeof window !== "undefined" ? window.location.href : "/",
   });
 
   useEffect(() => {
@@ -197,7 +197,7 @@ export const Home: React.FC = () => {
 
               <div className={styles.browserUrlPill}>
                 <IconLock size={12} color="var(--text-muted)" />
-                <span>cowatch.tv/join/movie-night</span>
+                <span>/join/movie-night</span>
               </div>
 
               <div className={styles.studioStatusPill}>

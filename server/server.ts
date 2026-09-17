@@ -116,11 +116,7 @@ const getCorsOptions = (): cors.CorsOptions => {
     };
   }
 
-  const allowedOrigins = new Set<string>([
-    "https://cowatch.tv",
-    "https://www.cowatch.tv",
-    "https://app.cowatch.tv",
-  ]);
+  const allowedOrigins = new Set<string>();
 
   if (config.APP_URL) {
     try {

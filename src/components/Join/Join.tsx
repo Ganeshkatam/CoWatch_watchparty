@@ -401,7 +401,7 @@ export const Join: React.FC = () => {
           }
         }
       }
-    } catch {}
+    } catch { }
   };
 
   // Handle submit for generic /join page (user enters room code / link)
@@ -776,8 +776,8 @@ export const Join: React.FC = () => {
               >
                 <div className={styles.inputWrapper}>
                   <TextInput
-                    label="Room Code or Invite Link"
-                    placeholder="e.g. room-alpha-123 or https://cowatch.tv/join/..."
+                    label="Room id or Invite Link"
+                    placeholder="e.g. room-alpha-123 or /join/..."
                     value={inputRoomId}
                     onChange={(event) => {
                       setInputRoomId(event.currentTarget.value);

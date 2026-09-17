@@ -21,9 +21,9 @@ import config from '../config.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
 import { notificationService } from './notificationService.ts';
 
-export const getCanonicalJoinUrl = (roomId: string): string => {
-  const appBaseUrl = config.APP_URL || 'https://cowatch.tv';
-  return `${appBaseUrl}/join/${encodeURIComponent(roomId)}`;
+export const getCanonicalJoinUrl = (roomId: string, baseOrigin?: string): string => {
+  const appBaseUrl = (baseOrigin || config.APP_URL || '').replace(/\/+$/, '');
+  return appBaseUrl ? `${appBaseUrl}/join/${encodeURIComponent(roomId)}` : `/join/${encodeURIComponent(roomId)}`;
 };
 import {
   listRecentNotifications,
@@ -373,7 +373,8 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
       const callerName = callerProfile?.display_name || callerProfile?.username || 'A friend';
       const roomTitle = room.roomTitle || cleanRoomId;
 
-      const roomUrl = getCanonicalJoinUrl(cleanRoomId);
+      const origin = req.get('origin') || (req.get('host') ? `${req.protocol}://${req.get('host')}` : '');
+      const roomUrl = getCanonicalJoinUrl(cleanRoomId, origin);
 
       // Dispatch via NotificationService
       await notificationService.notifyUser({
