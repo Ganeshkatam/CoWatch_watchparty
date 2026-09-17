@@ -144,7 +144,12 @@ RESEND_WEBHOOK_SECRET=whsec_...
 
 # Optional: Media and Infrastructure
 YOUTUBE_API_KEY=your_youtube_api_key
-REDIS_URL=rediss://default:[PASSWORD]@[ENDPOINT].upstash.io:6379
+
+# Redis Architecture (Development single instance or 3 dedicated production instances)
+REDIS_URL=rediss://default:[PASSWORD]@[ENDPOINT].upstash.io:6379 # Local-development / testing compatibility fallback
+REDIS_CORE_URL=rediss://... # Production: Distributed coordination (leases, locks, idempotency, rate limiting)
+REDIS_EDGE_URL=rediss://... # Production: High-volume disposable cache and presence
+REDIS_METRICS_URL=rediss://... # Production: Analytics telemetry
 ```
 
 > **Development Note (No Domain Required)**: You do not need a registered custom domain to run or test CoWatch.

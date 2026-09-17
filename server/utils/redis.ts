@@ -6,13 +6,23 @@ import { RedisMetrics } from "./redisMetrics.ts";
 export { RedisMetrics };
 
 // =====================================================================
-// CoWatch Premium 3-Redis Architecture
-// Strict 4-Tier Topology:
-// 1. PostgreSQL (AUTHORITY) - Sole, absolute authority for auth, quota, lifecycle
-// 2. Redis Core (COORDINATION) - Distributed coordination (locks, leases, idempotency, pub/sub)
-// 3. Redis Edge (CACHE) - High-volume disposable cache (metadata, batched presence)
-// 4. Redis Metrics (ANALYTICS) - Analytics telemetry, flushed in periodic batches
-// 5. Local L1 Cache (MEMORY) - In-memory RAM, bounded LRU + TTL
+// CoWatch Redis Architecture
+//
+// 1. PostgreSQL    — Authoritative durable state (auth, quota, room lifecycle)
+// 2. Redis Core    — Distributed coordination (leases, locks, idempotency, pub/sub, rate limits)
+// 3. Redis Edge    — Disposable cache & presence (metadata, room counts, batched presence)
+// 4. Redis Metrics — Analytics (counters, HyperLogLog distincts, buffered periodic flushes)
+// 5. Local L1      — Process-local cache (bounded in-memory LRU + TTL)
+//
+// Topology Invariants:
+// - PostgreSQL: Sole durable source of truth.
+// - Redis Core: Distributed coordination only. NEVER store room/playback/auth truth here.
+//   Failure mode: Fail closed for coordination operations.
+// - Redis Edge: Disposable cache & presence. Safe to drop at any time. NEVER makes auth decisions.
+//   Failure mode: Transparently fall back to PostgreSQL and L1 cache.
+// - Redis Metrics: Analytics telemetry only. Buffers in RAM and flushes in batches.
+//   Failure mode: Drops or buffers gracefully without interrupting application operations.
+// - Local L1: Bounded RAM cache. NEVER authoritative.
 // =====================================================================
 
 // Bounded in-memory L1 Cache
@@ -111,10 +121,31 @@ function createRedisClient(url: string | undefined, name: string): Redis | undef
   }
 }
 
-// 3 Isolated Redis Instances (Separate URLs/Credentials, falling back to REDIS_URL)
-const coreUrl = config.REDIS_CORE_URL || config.REDIS_URL;
-const edgeUrl = config.REDIS_EDGE_URL || config.REDIS_URL;
-const metricsUrl = config.REDIS_METRICS_URL || config.REDIS_URL;
+// 3 Isolated Redis Instances (Core, Edge, Metrics)
+// In production: REDIS_CORE_URL, REDIS_EDGE_URL, and REDIS_METRICS_URL must be provided independently.
+// REDIS_URL is strictly a local-development and testing compatibility fallback.
+const isProduction = (config.NODE_ENV || process.env.NODE_ENV) === "production";
+
+let coreUrl: string | undefined;
+let edgeUrl: string | undefined;
+let metricsUrl: string | undefined;
+
+if (isProduction) {
+  coreUrl = config.REDIS_CORE_URL || undefined;
+  edgeUrl = config.REDIS_EDGE_URL || undefined;
+  metricsUrl = config.REDIS_METRICS_URL || undefined;
+
+  if (config.REDIS_URL && (!coreUrl || !edgeUrl || !metricsUrl)) {
+    console.warn(
+      "[REDIS TOPOLOGY WARNING]: In production, dedicated REDIS_CORE_URL, REDIS_EDGE_URL, and REDIS_METRICS_URL are required. REDIS_URL is not used as an automatic fallback in production to prevent single-instance topology collapse."
+    );
+  }
+} else {
+  // Local development / testing compatibility fallback
+  coreUrl = config.REDIS_CORE_URL || config.REDIS_URL || undefined;
+  edgeUrl = config.REDIS_EDGE_URL || config.REDIS_URL || undefined;
+  metricsUrl = config.REDIS_METRICS_URL || config.REDIS_URL || undefined;
+}
 
 const rawCoreClient = createRedisClient(coreUrl, "core");
 const rawEdgeClient = createRedisClient(edgeUrl, "edge");
@@ -163,8 +194,8 @@ export async function waitForRedisReady(timeoutMs = 5000): Promise<boolean> {
 }
 
 // =====================================================================
-// Tier 1: redisCore (Coordination, Distributed Leases, Invalidation)
-// Strict Rule: NEVER store playback state, auth decisions, or durable truth here.
+// Redis Core: Distributed Coordination (Leases, Invalidation, Rate Limits)
+// Strict Invariant: NEVER store playback state, auth decisions, or durable truth here.
 // =====================================================================
 export type RedisAvailability =
   | {
@@ -247,8 +278,8 @@ export const redisCore = {
 };
 
 // =====================================================================
-// Tier 2: redisEdge / redisCache (High-Volume Disposable Cache, Batched Presence)
-// Strict Rule: Safe to lose at any time. NEVER makes auth decisions.
+// Redis Edge: High-Volume Disposable Cache & Batched Presence
+// Strict Invariant: Safe to lose at any time. NEVER makes auth decisions.
 // =====================================================================
 export const redisEdge = {
   isAvailable(): boolean {
@@ -286,7 +317,7 @@ export const redisEdge = {
   },
 
   async getBuffer(key: string): Promise<Buffer | null> {
-    const res = await executeTimed(rawCoreClient, "edge", "cache", "get", (c) =>
+    const res = await executeTimed(rawEdgeClient, "edge", "cache", "get", (c) =>
       c.getBuffer(`edge:cache:${key}`)
     );
     return res ?? null;
@@ -329,8 +360,8 @@ export const redisEdge = {
 export const redisCache = redisEdge;
 
 // =====================================================================
-// Tier 3: redisMetrics / Analytics Buffer
-// Buffers in local Node memory and flushes in periodic batches. NO per-event INCR.
+// Redis Metrics: Analytics Buffer & Periodic Flushing
+// Strict Invariant: Buffers in process RAM and flushes in batches. Never blocks app ops.
 // =====================================================================
 class MetricsBatchBuffer {
   private countBuffer = new Map<string, number>();
@@ -463,7 +494,7 @@ export async function getRedisCountHourDistinct(prefix: string) {
 }
 
 // =====================================================================
-// Request Flow: L1 (Memory) -> L2 (Redis Edge) -> PostgreSQL (Authority)
+// Request Flow: Local L1 (RAM) -> Redis Edge (Cache) -> PostgreSQL (Authoritative Truth)
 // =====================================================================
 export async function getOrFetch<T>(
   key: string,

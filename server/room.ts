@@ -453,7 +453,7 @@ export class Room {
     action: () => Promise<T>,
   ): Promise<T> => {
     const isMultiInstance = Boolean(
-      config.REDIS_CORE_URL || config.REDIS_URL,
+      config.REDIS_CORE_URL || (config.NODE_ENV !== "production" && config.REDIS_URL),
     );
 
     if (!isMultiInstance) {

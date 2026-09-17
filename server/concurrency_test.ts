@@ -944,6 +944,42 @@ async function runConcurrencyStressTest() {
   }
   console.log("TEST 8 Case O PASSED: 3-Redis isolated instances instrumented with per-instance telemetry.");
 
+  // Case P: Redis Edge Binary Buffer Read/Write Isolation (Verifies getBuffer routes to Edge, never Core)
+  RedisMetrics.resetForTesting();
+  const bufferKey = `test-buf-${Date.now()}`;
+  const testBuf = Buffer.from("cowatch-edge-buffer-verification-payload", "utf8");
+  const setBufOk = await redisEdge.setBuffer(bufferKey, testBuf, 30);
+  if (!setBufOk) {
+    throw new Error("TEST 8 Case P FAILED: redisEdge.setBuffer returned false");
+  }
+  const retrievedBuf = await redisEdge.getBuffer(bufferKey);
+  if (!retrievedBuf || !retrievedBuf.equals(testBuf)) {
+    throw new Error("TEST 8 Case P FAILED: redisEdge.getBuffer payload mismatch or null");
+  }
+  const bufMetrics = RedisMetrics.getSnapshot();
+  if (bufMetrics.instances.core.commands !== 0) {
+    throw new Error(`TEST 8 Case P FAILED: Core instance received buffer commands (expected 0, got ${bufMetrics.instances.core.commands})`);
+  }
+  if (bufMetrics.instances.edge.commands < 2) {
+    throw new Error(`TEST 8 Case P FAILED: Edge instance expected at least 2 commands (setBuffer + getBuffer), got ${bufMetrics.instances.edge.commands}`);
+  }
+  await redisEdge.del(bufferKey);
+  console.log("TEST 8 Case P PASSED: Redis Edge binary buffer read/write isolated strictly to Edge tier.");
+
+  // Case Q: Redis Invalidation Topology (L1 cleared, Edge deleted, Core broadcasted)
+  const invKey = `test-inv-${Date.now()}`;
+  l1Cache.set(invKey, { state: "cached" }, 30000);
+  await redisEdge.set(invKey, { state: "cached" }, 60);
+  await invalidateCacheKey(invKey);
+  if (l1Cache.get(invKey) !== undefined) {
+    throw new Error("TEST 8 Case Q FAILED: L1 cache not cleared on invalidateCacheKey");
+  }
+  const edgeAfterInv = await redisEdge.get(invKey);
+  if (edgeAfterInv !== null) {
+    throw new Error("TEST 8 Case Q FAILED: Redis Edge cache not cleared on invalidateCacheKey");
+  }
+  console.log("TEST 8 Case Q PASSED: Cache invalidation topology correctly coordinated across tiers.");
+
   // ============================================================================
   // TEST 9 — MEMBER-001 Participant Capacity Authority (Hard Ceiling = 10)
   // ============================================================================
