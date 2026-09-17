@@ -191,7 +191,7 @@ const getInitialAppearance = (): AppearanceMode => {
       return local as AppearanceMode;
     }
   }
-  return (cachedProfileData.pref_appearance_mode || "system") as AppearanceMode;
+  return (cachedProfileData.pref_appearance_mode || "light") as AppearanceMode;
 };
 
 const initialAppearance = getInitialAppearance();
@@ -414,7 +414,7 @@ class CoWatch extends React.Component {
                   return local as AppearanceMode;
                 }
               }
-              return "system";
+              return "light";
             })();
 
             try {
@@ -597,7 +597,7 @@ class CoWatch extends React.Component {
       >
         <ThemeConsumer>
           {(resolvedColorScheme) => (
-            <MantineProvider theme={theme} forceColorScheme={resolvedColorScheme}>
+            <MantineProvider theme={theme} defaultColorScheme="light" forceColorScheme={resolvedColorScheme}>
               <Notifications position="bottom-right" limit={5} />
               <MetadataContext.Provider value={this.state}>
                 <AuthContext.Provider

@@ -492,7 +492,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
         {this.state.isPickerOpen && (
           <div style={{ position: "absolute", bottom: "60px" }}>
             <Picker
-              theme="dark"
+              theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
               previewPosition="none"
               maxFrequentRows={1}
               onEmojiSelect={this.addEmoji}
@@ -522,7 +522,7 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
             }}
           >
             <Picker
-              theme="dark"
+              theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
               previewPosition="none"
               maxFrequentRows={1}
               perLine={6}

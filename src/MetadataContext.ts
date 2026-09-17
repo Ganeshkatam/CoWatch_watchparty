@@ -11,7 +11,7 @@ export const DEFAULT_STATE = {
   streamPath: undefined as string | undefined,
   convertPath: undefined as string | undefined,
   beta: false,
-  userAppearance: "system" as AppearanceMode,
+  userAppearance: "light" as AppearanceMode,
   capabilities: {
     virtualBrowser: false,
   },

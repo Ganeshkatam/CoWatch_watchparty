@@ -69,12 +69,8 @@ export const ThemeMenuItems = () => {
 };
 
 export const ThemeToggleQuickButton = () => {
-  const { appearance, setAppearance } = useAppearance();
-  const isDark =
-    appearance === "mantine" ||
-    (appearance === "system" &&
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const { resolvedColorScheme, setAppearance } = useAppearance();
+  const isDark = resolvedColorScheme === "dark";
 
   const handleToggle = () => {
     setAppearance(isDark ? "light" : "mantine");

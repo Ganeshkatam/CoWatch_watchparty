@@ -1,0 +1,28 @@
+feat(theme): change application default theme to light mode
+
+Summary:
+Updates the default theme across the entire CoWatch platform to light mode for initial visits and unauthenticated or unset user sessions, aligning the pre-hydration bootstrap script, CSS custom property declarations, Mantine provider configuration, and React appearance context fallbacks.
+
+Architectural Rationale:
+Previously, the default appearance fallback across multiple application layers resolved to dark mode or system theme falling back to dark. To reliably establish light mode as the default experience:
+1. Pre-hydration bootstrap script: Updated in index.html to default the `data-color-scheme` attribute to "light" prior to DOM paint when `cowatch-appearance` is unset.
+2. CSS token definitions: Swapped the `:root` selector attachment in `src/index.css` to group with `html[data-color-scheme="light"]` along with shared layout/spacing tokens, making light the baseline token palette and leaving `html[data-color-scheme="dark"]` as the explicit dark override.
+3. React context and state synchronization: Updated `ThemeProvider`, `MetadataContext`, and `index.tsx` so that fresh sessions and unset profiles resolve to `appearance: "light"` and `resolvedColorScheme: "light"`.
+4. Component resilience: Updated the quick theme toggles and search action to derive state directly from `resolvedColorScheme` rather than duplicate mediaQuery logic, and made auxiliary widgets (such as the chat emoji picker) reactively adhere to the active color scheme.
+
+Key Changes:
+- index.html: Set default scheme to "light" in inline pre-hydration script; adjusted meta theme-color to light background (#f0f3f8).
+- src/index.css: Set `:root, html[data-color-scheme="light"]` as the default palette containing all light variables and invariant spacing/radius tokens; set `html[data-color-scheme="dark"]` as the dark mode override.
+- src/theme/ThemeProvider.tsx: Changed `resolveInitialScheme` fallback to "light", initial appearance state fallback to "light", and `resolveAndApply` fallback scheme to "light".
+- src/MetadataContext.ts: Set default `userAppearance` in `DEFAULT_STATE` to "light".
+- src/index.tsx: Updated `getInitialAppearance` and profile sync `activeAppearance` fallbacks to "light"; configured `MantineProvider` with `defaultColorScheme="light"`.
+- src/components/TopBar/TopBar.tsx & TopBarSearch.tsx: Simplified dark-mode detection to consume `resolvedColorScheme === "dark"` from `useAppearance()`.
+- src/components/Chat/Chat.tsx: Configured emoji picker theme to dynamically adapt to active color scheme instead of hardcoded dark.
+
+Verification Notes:
+- Verified `npm run typecheck` passes with zero errors.
+- Verified `npm run typecheckServer` passes with zero errors.
+- Verified visual consistency suite `npx tsx src/utils/frontendVisualConsistency.test.ts` passes all 5 invariant checks.
+- Verified frontend consistency suite `npx tsx src/utils/frontendConsistency.test.ts` passes all 11 invariant checks.
+- Verified post-room context tests `npx tsx src/utils/postRoomContext.test.ts` pass cleanly.
+- Verified full Vite production bundle and typecheck via `npm run buildReact` compile with zero errors.

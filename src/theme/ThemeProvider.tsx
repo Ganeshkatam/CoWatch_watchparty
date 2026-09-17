@@ -18,12 +18,12 @@ interface ThemeProviderProps {
 }
 
 const resolveInitialScheme = (mode: AppearanceMode): "light" | "dark" => {
-  if (mode === "light") return "light";
   if (mode === "mantine") return "dark";
-  if (typeof window !== "undefined" && window.matchMedia) {
+  if (mode === "light") return "light";
+  if (mode === "system" && typeof window !== "undefined" && window.matchMedia) {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
-  return "dark";
+  return "light";
 };
 
 export const ThemeProvider = ({
@@ -42,7 +42,7 @@ export const ThemeProvider = ({
     if (userAppearance && (userAppearance === "light" || userAppearance === "mantine" || userAppearance === "system")) {
       return userAppearance;
     }
-    return "system";
+    return "light";
   });
 
   const [resolvedColorScheme, setResolvedColorScheme] = useState<"light" | "dark">(() => {
@@ -63,13 +63,15 @@ export const ThemeProvider = ({
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     
     const resolveAndApply = () => {
-      let scheme: "light" | "dark" = "dark";
-      if (appearance === "light") {
-        scheme = "light";
-      } else if (appearance === "mantine") {
+      let scheme: "light" | "dark" = "light";
+      if (appearance === "mantine") {
         scheme = "dark";
-      } else {
+      } else if (appearance === "light") {
+        scheme = "light";
+      } else if (appearance === "system") {
         scheme = mediaQuery.matches ? "dark" : "light";
+      } else {
+        scheme = "light";
       }
       
       setResolvedColorScheme(scheme);

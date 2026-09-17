@@ -44,7 +44,7 @@ interface SearchItem {
 export const TopBarSearch: React.FC = () => {
   const history = useHistory();
   const context = useContext(MetadataContext);
-  const { appearance, setAppearance } = useAppearance();
+  const { resolvedColorScheme, setAppearance } = useAppearance();
 
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -62,11 +62,7 @@ export const TopBarSearch: React.FC = () => {
     navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const shortcutLabel = isMac ? "⌘K" : "Ctrl+K";
 
-  const isDark =
-    appearance === "mantine" ||
-    (appearance === "system" &&
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const isDark = resolvedColorScheme === "dark";
 
   // Fetch user rooms with Supabase direct fallback
   const fetchUserRooms = useCallback(async () => {
