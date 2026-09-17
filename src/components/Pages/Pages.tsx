@@ -228,7 +228,7 @@ export const FAQ = () => {
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            CoWatch rooms have an authoritative maximum limit of 10 participants per room. This ceiling ensures sub-second playback synchronization, low-latency peer-to-peer WebRTC video/audio chat, and stable streaming performance for all attendees.
+            CoWatch rooms have an authoritative maximum limit of 10 participants per room. This ceiling ensures high-fidelity playback synchronization, low-latency peer-to-peer WebRTC video/audio chat, and stable streaming performance for all attendees.
           </Accordion.Panel>
         </Accordion.Item>
 

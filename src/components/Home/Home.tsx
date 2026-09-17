@@ -278,7 +278,7 @@ export const Home: React.FC = () => {
                   Cloud VBrowser
                 </Tabs.Tab>
                 <Tabs.Tab value="youtube" leftSection={<IconBrandYoutubeFilled size={16} />}>
-                  YouTube Synced
+                  YouTube
                 </Tabs.Tab>
                 <Tabs.Tab value="screenshare" leftSection={<IconScreenShare size={16} />}>
                   Screen & Tab
@@ -326,11 +326,11 @@ export const Home: React.FC = () => {
                 </div>
               </Tabs.Panel>
 
-              {/* Tab 2: YouTube Synced */}
+              {/* Tab 2: YouTube */}
               <Tabs.Panel value="youtube">
                 <div className={styles.sourceTabContent}>
                   <div className={styles.sourceDetails}>
-                    <div className={styles.sourceTitle}>YouTube Synchronized</div>
+                    <div className={styles.sourceTitle}>YouTube Watch Party</div>
                     <div className={styles.sourceWhatItSolves}>
                       Search, queue, and enjoy YouTube videos in high quality with shared playback controls.
                     </div>

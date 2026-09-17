@@ -30,9 +30,9 @@ const PILLARS: PillarItem[] = [
     icon: <IconPlayerPlay size={22} />,
     iconBg: "rgba(139, 92, 246, 0.15)",
     iconColor: "var(--color-violet)",
-    title: "Sub-Second Playback Sync",
+    title: "Seamless Playback Sync",
     description:
-      "Proprietary drift-compensation algorithms synchronize play, pause, seek, and buffer recovery across global participants within milliseconds.",
+      "Intelligent drift-compensation coordinates play, pause, seek, and buffer recovery across participants so everyone stays together naturally.",
   },
   {
     icon: <IconDeviceTv size={22} />,
@@ -80,7 +80,7 @@ export const About: React.FC = () => {
   useDocumentMetadata({
     title: "About | CoWatch Synchronized Watch Party Platform",
     description:
-      "Learn about CoWatch, the synchronized video streaming and watch party platform built for sub-second precision, private rooms, and interactive group media experiences.",
+      "Learn about CoWatch, the synchronized watch party platform built for shared viewing, low-latency audio/video chat, private rooms, and interactive group media experiences.",
   });
 
   return (
@@ -95,8 +95,8 @@ export const About: React.FC = () => {
           <span className={styles.gradientText}>Zero Distance</span>
         </h1>
         <p className={styles.heroSubtitle}>
-          CoWatch brings friends, families, and communities together through high-fidelity,
-          sub-second synchronized video streaming, low-latency audio/video chat, and collaborative
+          CoWatch brings friends, families, and communities together through high-fidelity
+          synchronized video streaming, low-latency audio/video chat, and collaborative
           virtual browsing experiences.
         </p>
         <div className={styles.heroActions}>
@@ -129,8 +129,8 @@ export const About: React.FC = () => {
       {/* Metrics Banner */}
       <section className={styles.statsGrid} aria-label="Platform Highlights">
         <div className={styles.statCard}>
-          <div className={styles.statValue}>&lt; 150ms</div>
-          <div className={styles.statLabel}>Global Sync Precision</div>
+          <div className={styles.statValue}>Realtime</div>
+          <div className={styles.statLabel}>Playback Coordination</div>
         </div>
         <div className={styles.statCard}>
           <div className={styles.statValue}>5+</div>

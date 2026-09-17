@@ -3224,7 +3224,7 @@ export class App extends React.Component<AppProps, AppState> {
                   : this.state.initStage === "connecting"
                     ? "Connecting to room..."
                     : this.state.initStage === "synchronizing"
-                      ? "Synchronizing room stage..."
+                      ? "Loading room..."
                       : "Preparing watch party..."}
               </Title>
               <Text c="dimmed" size="sm">
@@ -3233,7 +3233,7 @@ export class App extends React.Component<AppProps, AppState> {
                   : this.state.initStage === "connecting"
                     ? "Establishing secure realtime socket connection"
                     : this.state.initStage === "synchronizing"
-                      ? "Synchronizing media stage, controls, and participants"
+                      ? "Getting the latest room details and media"
                       : "Loading environment and initializing assets"}
               </Text>
             </div>
