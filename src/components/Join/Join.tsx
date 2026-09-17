@@ -29,6 +29,7 @@ import { serverPath } from "../../utils/utils";
 import { parseJoinRoute, normalizeRoomId } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
 import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
+import { saveAdmissionSession } from "../../utils/roomAdmissionSession";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
@@ -307,6 +308,9 @@ export const Join: React.FC = () => {
 
       if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
         admissionTokenRef.current = acceptData.admissionToken;
+        if (cleanRouteRoomId) {
+          saveAdmissionSession(cleanRouteRoomId, acceptData.admissionToken, sessionIdRef.current);
+        }
         setStage("preflight");
       } else {
         setFormError(acceptData.error || "Unable to enter room with this invitation.");
@@ -433,6 +437,9 @@ export const Join: React.FC = () => {
 
             if (verifyResp.ok && verifyData.valid && verifyData.admissionToken) {
               admissionTokenRef.current = verifyData.admissionToken;
+              if (cleanRouteRoomId) {
+                saveAdmissionSession(cleanRouteRoomId, verifyData.admissionToken, sessionIdRef.current);
+              }
               setStage("preflight");
             } else {
               setRoomError(verifyData.error || "Room admission authorization failed.");
@@ -665,6 +672,9 @@ export const Join: React.FC = () => {
 
       // Success: store cryptographically signed admission token and advance to preflight
       admissionTokenRef.current = data.admissionToken;
+      if (cleanRouteRoomId) {
+        saveAdmissionSession(cleanRouteRoomId, data.admissionToken, sessionIdRef.current);
+      }
       setStage("preflight");
     } catch {
       setVerifying(false);

@@ -86,6 +86,10 @@ import {
   type PostRoomContext,
   type PostRoomExitReason,
 } from "../../utils/postRoomContext";
+import {
+  loadAdmissionSession,
+  clearAdmissionSession,
+} from "../../utils/roomAdmissionSession";
 import { pipManager, type PiPState } from "../../utils/pipManager";
 import {
   operationCoordinator,
@@ -813,13 +817,22 @@ export class App extends React.Component<AppProps, AppState> {
     try {
       // INVARIANT: A URL can identify a room, but can NEVER authenticate a participant.
       // Any query credentials (?passcode=, ?pass=, ?password=) are strictly IGNORED and NEVER copied into state.
-      // Admission token and session ID are strictly read from route transport state.
+      // Admission token and session ID are read from route transport state, with sessionStorage fallback on page refresh.
       const routeLocationState =
         (this.props.location?.state as any) ||
         (window.history?.state as any)?.usr ||
         (window.history?.state as any);
-      const routeAdmissionToken = routeLocationState?.admissionToken || this.state.admissionToken;
-      const routeSessionId = routeLocationState?.sessionId || this.state.sessionId;
+      const storedAdmission = !routeLocationState?.admissionToken
+        ? loadAdmissionSession(cleanRoomId)
+        : null;
+      const routeAdmissionToken =
+        routeLocationState?.admissionToken ||
+        storedAdmission?.admissionToken ||
+        this.state.admissionToken;
+      const routeSessionId =
+        routeLocationState?.sessionId ||
+        storedAdmission?.sessionId ||
+        this.state.sessionId;
       const initialCameraOn = routeLocationState?.initialCameraOn;
       const initialMicOn = routeLocationState?.initialMicOn;
       const cameraDeviceId = routeLocationState?.cameraDeviceId;
@@ -1022,9 +1035,13 @@ export class App extends React.Component<AppProps, AppState> {
           errMsg === "password" ||
           errMsg.includes("PASSCODE_INVALID") ||
           errMsg.includes("SESSION_INVALID") ||
-          errMsg.includes("ROOM_ACCESS_DENIED")
+          errMsg.includes("ROOM_ACCESS_DENIED") ||
+          errMsg.includes("ADMISSION_TOKEN_EXPIRED") ||
+          errMsg.includes("ADMISSION_TOKEN_SIGNATURE_INVALID") ||
+          errMsg.includes("ADMISSION_TOKEN_SESSION_MISMATCH")
         ) {
-          // Terminal authoritative check rejected: clean up and redirect to sole gateway /join/:roomId
+          // Terminal authoritative check rejected: clean up storage and redirect to sole gateway /join/:roomId
+          clearAdmissionSession(cleanRoomId);
           operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
           this.stopWaitingPoll();
           this.socket?.disconnect();
@@ -1165,6 +1182,7 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:hostChange", handleHostUpdate);
       socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", (data?: { message?: string }) => {
+        clearAdmissionSession(this.state.roomId);
         showUserMessage(USER_MESSAGES.MOD_KICKED_SELF);
         const ctx: PostRoomContext = {
           reason: "kicked",
@@ -1184,6 +1202,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("banned", (data?: { message?: string }) => {
+        clearAdmissionSession(this.state.roomId);
         showUserMessage(USER_MESSAGES.MOD_BANNED_SELF);
         const ctx: PostRoomContext = {
           reason: "kicked",
@@ -3173,6 +3192,7 @@ export class App extends React.Component<AppProps, AppState> {
         mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
       };
       savePostRoomContext(postRoomCtx);
+      clearAdmissionSession(this.state.roomId);
       if (this.props.history) {
         this.props.history.push("/room-ended", postRoomCtx);
       } else {
@@ -3409,6 +3429,7 @@ export class App extends React.Component<AppProps, AppState> {
               mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
             };
             savePostRoomContext(ctx);
+            clearAdmissionSession(this.state.roomId);
             if (this.props.history) {
               this.props.history.push("/room-ended", ctx);
             } else {
