@@ -121,25 +121,69 @@ function createRedisClient(url: string | undefined, name: string): Redis | undef
   }
 }
 
-// 3 Isolated Redis Instances (Core, Edge, Metrics)
-// In production: REDIS_CORE_URL, REDIS_EDGE_URL, and REDIS_METRICS_URL must be provided independently.
-// REDIS_URL is strictly a local-development and testing compatibility fallback.
-const isProduction = (config.NODE_ENV || process.env.NODE_ENV) === "production";
+export type RedisTier = "core" | "edge" | "metrics";
 
+export class ManagedRedisClient {
+  public readonly tier: RedisTier;
+  public readonly client: Redis | undefined;
+
+  constructor(tier: RedisTier, url: string | undefined) {
+    this.tier = tier;
+    this.client = createRedisClient(url, tier);
+  }
+
+  public isReady(): boolean {
+    return Boolean(this.client && this.client.status === "ready");
+  }
+
+  public getStatus(): string {
+    return this.client ? this.client.status : "unconfigured";
+  }
+
+  public async execute<T>(
+    feature: string,
+    op: string,
+    action: (c: Redis) => Promise<T>
+  ): Promise<T | undefined> {
+    if (!this.client) return undefined;
+    const start = Date.now();
+    try {
+      const res = await action(this.client);
+      RedisMetrics.recordCommand(feature, op, Date.now() - start, true, this.tier);
+      return res;
+    } catch (err: any) {
+      RedisMetrics.recordCommand(feature, op, Date.now() - start, false, this.tier);
+      console.warn(`[REDIS ${this.tier.toUpperCase()} ${op.toUpperCase()} ERROR] (${feature}):`, err.message);
+      return undefined;
+    }
+  }
+}
+
+// 3 Isolated Redis Instances (Core, Edge, Metrics)
+// In production: REDIS_CORE_URL, REDIS_EDGE_URL, and REDIS_METRICS_URL are strictly required.
+// Production has NO fallback.
 let coreUrl: string | undefined;
 let edgeUrl: string | undefined;
 let metricsUrl: string | undefined;
 
-if (isProduction) {
-  coreUrl = config.REDIS_CORE_URL || undefined;
-  edgeUrl = config.REDIS_EDGE_URL || undefined;
-  metricsUrl = config.REDIS_METRICS_URL || undefined;
+if (config.NODE_ENV === "production") {
+  const missing = [
+    ["REDIS_CORE_URL", config.REDIS_CORE_URL],
+    ["REDIS_EDGE_URL", config.REDIS_EDGE_URL],
+    ["REDIS_METRICS_URL", config.REDIS_METRICS_URL],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
 
-  if (config.REDIS_URL && (!coreUrl || !edgeUrl || !metricsUrl)) {
-    console.warn(
-      "[REDIS TOPOLOGY WARNING]: In production, dedicated REDIS_CORE_URL, REDIS_EDGE_URL, and REDIS_METRICS_URL are required. REDIS_URL is not used as an automatic fallback in production to prevent single-instance topology collapse."
+  if (missing.length > 0) {
+    throw new Error(
+      `[REDIS TOPOLOGY FATAL] Production requires dedicated Redis URLs: ${missing.join(", ")}`
     );
   }
+
+  coreUrl = config.REDIS_CORE_URL;
+  edgeUrl = config.REDIS_EDGE_URL;
+  metricsUrl = config.REDIS_METRICS_URL;
 } else {
   // Local development / testing compatibility fallback
   coreUrl = config.REDIS_CORE_URL || config.REDIS_URL || undefined;
@@ -147,33 +191,12 @@ if (isProduction) {
   metricsUrl = config.REDIS_METRICS_URL || config.REDIS_URL || undefined;
 }
 
-const rawCoreClient = createRedisClient(coreUrl, "core");
-const rawEdgeClient = createRedisClient(edgeUrl, "edge");
-const rawMetricsClient = createRedisClient(metricsUrl, "metrics");
-
-// Timed execution wrapper with instrumentation
-async function executeTimed<T>(
-  client: Redis | undefined,
-  instance: 'core' | 'edge' | 'metrics',
-  feature: string,
-  op: string,
-  action: (c: Redis) => Promise<T>
-): Promise<T | undefined> {
-  if (!client) return undefined;
-  const start = Date.now();
-  try {
-    const res = await action(client);
-    RedisMetrics.recordCommand(feature, op, Date.now() - start, true, instance);
-    return res;
-  } catch (err: any) {
-    RedisMetrics.recordCommand(feature, op, Date.now() - start, false, instance);
-    console.warn(`[REDIS ${instance.toUpperCase()} ${op.toUpperCase()} ERROR] (${feature}):`, err.message);
-    return undefined;
-  }
-}
+export const coreRedis = new ManagedRedisClient("core", coreUrl);
+export const edgeRedis = new ManagedRedisClient("edge", edgeUrl);
+export const metricsRedis = new ManagedRedisClient("metrics", metricsUrl);
 
 export async function waitForRedisReady(timeoutMs = 5000): Promise<boolean> {
-  const clients = [rawCoreClient, rawEdgeClient, rawMetricsClient].filter(Boolean) as Redis[];
+  const clients = [coreRedis.client, edgeRedis.client, metricsRedis.client].filter(Boolean) as Redis[];
   if (clients.length === 0) return false;
   const readyPromises = clients.map((c) => {
     if (c.status === "ready") return Promise.resolve(true);
@@ -215,14 +238,14 @@ return 0
 
 export const redisCore = {
   getAvailability(): RedisAvailability {
-    if (!rawCoreClient) {
+    if (!coreRedis.client) {
       return {
         available: false,
         reason: "NOT_CONFIGURED",
       };
     }
 
-    if (rawCoreClient.status !== "ready") {
+    if (coreRedis.client.status !== "ready") {
       return {
         available: false,
         reason: "NOT_READY",
@@ -239,38 +262,33 @@ export const redisCore = {
   },
 
   async setLease(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-    const res = await executeTimed(rawCoreClient, "core", "lease", "set", (c) =>
+    const res = await coreRedis.execute("lease", "set", (c) =>
       c.set(`core:lease:${key}`, value, "EX", ttlSeconds, "NX")
     );
     return res === "OK";
   },
 
   async getLease(key: string): Promise<string | null> {
-    const res = await executeTimed(rawCoreClient, "core", "lease", "get", (c) =>
+    const res = await coreRedis.execute("lease", "get", (c) =>
       c.get(`core:lease:${key}`)
     );
     return res ?? null;
   },
 
   async delLease(key: string, value: string): Promise<boolean> {
-    const res = await executeTimed(
-      rawCoreClient,
-      "core",
-      "lease",
-      "del",
-      (c) =>
-        c.eval(
-          RELEASE_LEASE_SCRIPT,
-          1,
-          `core:lease:${key}`,
-          value,
-        ) as Promise<number>,
+    const res = await coreRedis.execute("lease", "del", (c) =>
+      c.eval(
+        RELEASE_LEASE_SCRIPT,
+        1,
+        `core:lease:${key}`,
+        value,
+      ) as Promise<number>
     );
     return res === 1;
   },
 
   async publishInvalidation(channel: string, payload: string): Promise<number> {
-    const res = await executeTimed(rawCoreClient, "core", "invalidation", "publish", (c) =>
+    const res = await coreRedis.execute("invalidation", "publish", (c) =>
       c.publish(`core:inv:${channel}`, payload)
     );
     return res || 0;
@@ -283,11 +301,11 @@ export const redisCore = {
 // =====================================================================
 export const redisEdge = {
   isAvailable(): boolean {
-    return Boolean(rawEdgeClient && rawEdgeClient.status === "ready");
+    return edgeRedis.isReady();
   },
 
   async get<T = string>(key: string): Promise<T | null> {
-    const res = await executeTimed(rawEdgeClient, "edge", "cache", "get", (c) =>
+    const res = await edgeRedis.execute("cache", "get", (c) =>
       c.get(`edge:cache:${key}`)
     );
     if (!res) return null;
@@ -303,21 +321,21 @@ export const redisEdge = {
       return false;
     }
     const serialized = typeof value === "string" ? value : JSON.stringify(value);
-    const res = await executeTimed(rawEdgeClient, "edge", "cache", "set", (c) =>
+    const res = await edgeRedis.execute("cache", "set", (c) =>
       c.set(`edge:cache:${key}`, serialized, "EX", ttlSeconds)
     );
     return res === "OK";
   },
 
   async del(key: string): Promise<boolean> {
-    const res = await executeTimed(rawEdgeClient, "edge", "cache", "del", (c) =>
+    const res = await edgeRedis.execute("cache", "del", (c) =>
       c.del(`edge:cache:${key}`)
     );
     return Boolean(res && res > 0);
   },
 
   async getBuffer(key: string): Promise<Buffer | null> {
-    const res = await executeTimed(rawEdgeClient, "edge", "cache", "get", (c) =>
+    const res = await edgeRedis.execute("cache", "get", (c) =>
       c.getBuffer(`edge:cache:${key}`)
     );
     return res ?? null;
@@ -327,7 +345,7 @@ export const redisEdge = {
     if (RedisMetrics.isDegradedMode()) {
       return false;
     }
-    const res = await executeTimed(rawEdgeClient, "edge", "cache", "set", (c) =>
+    const res = await edgeRedis.execute("cache", "set", (c) =>
       c.set(`edge:cache:${key}`, buf, "EX", ttlSeconds)
     );
     return res === "OK";
@@ -336,28 +354,25 @@ export const redisEdge = {
   // Presence batch operations (single Hash structure in Edge tier)
   async updateRoomPresenceBatch(updates: Record<string, string>): Promise<void> {
     if (Object.keys(updates).length === 0) return;
-    await executeTimed(rawEdgeClient, "edge", "presence", "hset", (c) =>
+    await edgeRedis.execute("presence", "hset", (c) =>
       c.hset("edge:presence:rooms", updates)
     );
   },
 
   async removeRoomPresenceBatch(roomIds: string[]): Promise<void> {
     if (roomIds.length === 0) return;
-    await executeTimed(rawEdgeClient, "edge", "presence", "hdel", (c) =>
+    await edgeRedis.execute("presence", "hdel", (c) =>
       c.hdel("edge:presence:rooms", ...roomIds)
     );
   },
 
   async getRoomPresenceBatch(): Promise<Record<string, string>> {
-    const res = await executeTimed(rawEdgeClient, "edge", "presence", "hgetall", (c) =>
+    const res = await edgeRedis.execute("presence", "hgetall", (c) =>
       c.hgetall("edge:presence:rooms")
     );
     return res || {};
   },
 };
-
-// Backward-compatible alias for redisEdge
-export const redisCache = redisEdge;
 
 // =====================================================================
 // Redis Metrics: Analytics Buffer & Periodic Flushing
@@ -392,7 +407,7 @@ class MetricsBatchBuffer {
   }
 
   public async flush(): Promise<void> {
-    if (!rawMetricsClient || rawMetricsClient.status !== "ready" || (this.countBuffer.size === 0 && this.distinctBuffer.size === 0)) {
+    if (!metricsRedis.client || metricsRedis.client.status !== "ready" || (this.countBuffer.size === 0 && this.distinctBuffer.size === 0)) {
       return;
     }
     const counts = Array.from(this.countBuffer.entries());
@@ -400,16 +415,16 @@ class MetricsBatchBuffer {
     this.countBuffer.clear();
     this.distinctBuffer.clear();
 
-    const pipe = rawMetricsClient.pipeline();
-    for (const [key, val] of counts) {
-      pipe.incrby(key, val);
-      pipe.expire(key, 86400);
-    }
-    for (const [key, items] of distincts) {
-      pipe.pfadd(key, ...Array.from(items));
-      pipe.expire(key, 86400);
-    }
-    await executeTimed(rawMetricsClient, "metrics", "analytics", "pipeline", async () => {
+    await metricsRedis.execute("analytics", "pipeline", async (client) => {
+      const pipe = client.pipeline();
+      for (const [key, val] of counts) {
+        pipe.incrby(key, val);
+        pipe.expire(key, 86400);
+      }
+      for (const [key, items] of distincts) {
+        pipe.pfadd(key, ...Array.from(items));
+        pipe.expire(key, 86400);
+      }
       await pipe.exec();
     });
   }
@@ -420,7 +435,7 @@ export const metricsBuffer = new MetricsBatchBuffer();
 // redisMetrics service wrapper
 export const redisMetricsClient = {
   isAvailable(): boolean {
-    return Boolean(rawMetricsClient && rawMetricsClient.status === "ready");
+    return metricsRedis.isReady();
   },
 
   async flush(): Promise<void> {
@@ -428,40 +443,40 @@ export const redisMetricsClient = {
   },
 
   async getCountDay(prefix: string): Promise<number> {
-    if (!rawMetricsClient) return 0;
+    if (!metricsRedis.client) return 0;
     const keyArr: string[] = [];
     for (let i = 0; i < 24; i += 1) {
       keyArr.push(`${prefix}:${getStartOfHour() - i * 3600 * 1000}`);
     }
-    const values = await executeTimed(rawMetricsClient, "metrics", "analytics", "mget", (c) =>
+    const values = await metricsRedis.execute("analytics", "mget", (c) =>
       c.mget(...keyArr)
     );
     return (values || []).reduce((a: number, b: any) => (Number(a) || 0) + (Number(b) || 0), 0);
   },
 
   async getCountHour(prefix: string): Promise<number> {
-    if (!rawMetricsClient) return 0;
-    const value = await executeTimed(rawMetricsClient, "metrics", "analytics", "get", (c) =>
+    if (!metricsRedis.client) return 0;
+    const value = await metricsRedis.execute("analytics", "get", (c) =>
       c.get(`${prefix}:${getStartOfHour() - 3600 * 1000}`)
     );
     return Number(value) || 0;
   },
 
   async getCountDayDistinct(prefix: string): Promise<number> {
-    if (!rawMetricsClient) return 0;
+    if (!metricsRedis.client) return 0;
     const keyArr: string[] = [];
     for (let i = 0; i < 24; i += 1) {
       keyArr.push(`${prefix}:${getStartOfHour() - i * 3600 * 1000}`);
     }
-    const res = await executeTimed(rawMetricsClient, "metrics", "analytics", "pfcount", (c) =>
+    const res = await metricsRedis.execute("analytics", "pfcount", (c) =>
       c.pfcount(...keyArr)
     );
     return res || 0;
   },
 
   async getCountHourDistinct(prefix: string): Promise<number> {
-    if (!rawMetricsClient) return 0;
-    const res = await executeTimed(rawMetricsClient, "metrics", "analytics", "pfcount", (c) =>
+    if (!metricsRedis.client) return 0;
+    const res = await metricsRedis.execute("analytics", "pfcount", (c) =>
       c.pfcount(`${prefix}:${getStartOfHour() - 3600 * 1000}`)
     );
     return res || 0;
@@ -567,32 +582,32 @@ return current
 `;
 
 export async function atomicIncrWithTtl(key: string, ttlSeconds: number, feature = "ratelimit"): Promise<number> {
-  const res = await executeTimed(rawCoreClient, "core", feature, "eval", (c) =>
+  const res = await coreRedis.execute(feature, "eval", (c) =>
     c.eval(ATOMIC_INCR_EXPIRE_LUA, 1, key, ttlSeconds)
   );
   return Number(res) || 1;
 }
 
 export async function getRateLimitCount(key: string, feature = "ratelimit"): Promise<number> {
-  const res = await executeTimed(rawCoreClient, "core", feature, "get", (c) =>
+  const res = await coreRedis.execute(feature, "get", (c) =>
     c.get(key)
   );
   return Number(res) || 0;
 }
 
 export async function getRateLimitTtl(key: string, feature = "ratelimit"): Promise<number> {
-  const res = await executeTimed(rawCoreClient, "core", feature, "ttl", (c) =>
+  const res = await coreRedis.execute(feature, "ttl", (c) =>
     c.ttl(key)
   );
   return Number(res) || -1;
 }
 
 export async function delRateLimit(key: string, feature = "ratelimit"): Promise<boolean> {
-  const res = await executeTimed(rawCoreClient, "core", feature, "del", (c) =>
+  const res = await coreRedis.execute(feature, "del", (c) =>
     c.del(key)
   );
   return Boolean(res && res > 0);
 }
 
 // Controlled export of the underlying client for legacy compatibility
-export const redis = rawEdgeClient || rawCoreClient;
+export const redis = edgeRedis.client || coreRedis.client;

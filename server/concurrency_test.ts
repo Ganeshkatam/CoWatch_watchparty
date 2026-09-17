@@ -4,10 +4,10 @@ import fs from "node:fs";
 import {
   BoundedL1Cache,
   l1Cache,
-  redisCache,
   redisEdge,
   redisCore,
   redisMetricsClient,
+  metricsBuffer,
   getOrFetch,
   invalidateCacheKey,
   RedisMetrics,
@@ -730,7 +730,7 @@ async function runConcurrencyStressTest() {
   // Case B: L1 Miss -> L2 Hit (populates L1, 0 DB calls)
   const testKeyB = `test:room:metadata:b:${Date.now()}`;
   l1Cache.invalidate(testKeyB);
-  await redisCache.set(testKeyB, { title: "Cached in L2" }, 60);
+  await redisEdge.set(testKeyB, { title: "Cached in L2" }, 60);
   let dbCallsB = 0;
   const resultB = await getOrFetch(testKeyB, async () => {
     dbCallsB++;
@@ -747,7 +747,7 @@ async function runConcurrencyStressTest() {
   // Case C: L1 Miss -> L2 Miss -> DB Hit (populates L1 and L2)
   const testKeyC = `test:room:metadata:c:${Date.now()}`;
   l1Cache.invalidate(testKeyC);
-  await redisCache.del(testKeyC);
+  await redisEdge.del(testKeyC);
   let dbCallsC = 0;
   const resultC = await getOrFetch(testKeyC, async () => {
     dbCallsC++;
@@ -979,6 +979,92 @@ async function runConcurrencyStressTest() {
     throw new Error("TEST 8 Case Q FAILED: Redis Edge cache not cleared on invalidateCacheKey");
   }
   console.log("TEST 8 Case Q PASSED: Cache invalidation topology correctly coordinated across tiers.");
+
+  // Case R: Bidirectional Command Isolation & Exact Command Deltas
+  // Verifies operation namespace == physical Redis client across all three tiers + rate limiting + RAM metrics buffering
+  
+  // 1. Core Isolation (setLease, getLease, delLease -> Core +3, Edge +0, Metrics +0)
+  const coreBefore = RedisMetrics.getSnapshot();
+  const leaseKeyR = `lease:iso:${Date.now()}`;
+  await redisCore.setLease(leaseKeyR, "worker-r", 10);
+  await redisCore.getLease(leaseKeyR);
+  await redisCore.delLease(leaseKeyR, "worker-r");
+  const coreAfter = RedisMetrics.getSnapshot();
+
+  const coreDelta = {
+    core: coreAfter.instances.core.commands - coreBefore.instances.core.commands,
+    edge: coreAfter.instances.edge.commands - coreBefore.instances.edge.commands,
+    metrics: coreAfter.instances.metrics.commands - coreBefore.instances.metrics.commands,
+  };
+  if (coreDelta.core !== 3 || coreDelta.edge !== 0 || coreDelta.metrics !== 0) {
+    throw new Error(`TEST 8 Case R FAILED on Core isolation: expected Core: +3, Edge: +0, Metrics: +0; got Core: +${coreDelta.core}, Edge: +${coreDelta.edge}, Metrics: +${coreDelta.metrics}`);
+  }
+
+  // 2. Edge Isolation (set, get, setBuffer, getBuffer, del, del -> Edge +6, Core +0, Metrics +0)
+  const edgeBefore = RedisMetrics.getSnapshot();
+  const edgeKeyR = `cache:iso:${Date.now()}`;
+  const bufKeyR = `buf:iso:${Date.now()}`;
+  await redisEdge.set(edgeKeyR, { test: "data" }, 10);
+  await redisEdge.get(edgeKeyR);
+  await redisEdge.setBuffer(bufKeyR, Buffer.from("isolation-buf"), 10);
+  await redisEdge.getBuffer(bufKeyR);
+  await redisEdge.del(edgeKeyR);
+  await redisEdge.del(bufKeyR);
+  const edgeAfter = RedisMetrics.getSnapshot();
+
+  const edgeDelta = {
+    core: edgeAfter.instances.core.commands - edgeBefore.instances.core.commands,
+    edge: edgeAfter.instances.edge.commands - edgeBefore.instances.edge.commands,
+    metrics: edgeAfter.instances.metrics.commands - edgeBefore.instances.metrics.commands,
+  };
+  if (edgeDelta.edge !== 6 || edgeDelta.core !== 0 || edgeDelta.metrics !== 0) {
+    throw new Error(`TEST 8 Case R FAILED on Edge isolation: expected Edge: +6, Core: +0, Metrics: +0; got Edge: +${edgeDelta.edge}, Core: +${edgeDelta.core}, Metrics: +${edgeDelta.metrics}`);
+  }
+
+  // 3. Metrics RAM Buffering vs Flush Isolation:
+  // recordCount and recordDistinct happen strictly in RAM -> Core: +0, Edge: +0, Metrics: +0
+  const ramBefore = RedisMetrics.getSnapshot();
+  metricsBuffer.recordCount("iso:metric", 10);
+  metricsBuffer.recordDistinct("iso:metric", "user-iso-1");
+  const ramAfter = RedisMetrics.getSnapshot();
+  const ramDelta = {
+    core: ramAfter.instances.core.commands - ramBefore.instances.core.commands,
+    edge: ramAfter.instances.edge.commands - ramBefore.instances.edge.commands,
+    metrics: ramAfter.instances.metrics.commands - ramBefore.instances.metrics.commands,
+  };
+  if (ramDelta.core !== 0 || ramDelta.edge !== 0 || ramDelta.metrics !== 0) {
+    throw new Error(`TEST 8 Case R FAILED on RAM metrics buffering: expected 0 Redis commands before flush, got Core: +${ramDelta.core}, Edge: +${ramDelta.edge}, Metrics: +${ramDelta.metrics}`);
+  }
+
+  // flush() flushes pipeline to Metrics ONLY -> Metrics: +1, Core: +0, Edge: +0
+  const flushBefore = RedisMetrics.getSnapshot();
+  await redisMetricsClient.flush();
+  const flushAfter = RedisMetrics.getSnapshot();
+  const flushDelta = {
+    core: flushAfter.instances.core.commands - flushBefore.instances.core.commands,
+    edge: flushAfter.instances.edge.commands - flushBefore.instances.edge.commands,
+    metrics: flushAfter.instances.metrics.commands - flushBefore.instances.metrics.commands,
+  };
+  if (flushDelta.metrics !== 1 || flushDelta.core !== 0 || flushDelta.edge !== 0) {
+    throw new Error(`TEST 8 Case R FAILED on Metrics flush isolation: expected Metrics: +1, Core: +0, Edge: +0; got Metrics: +${flushDelta.metrics}, Core: +${flushDelta.core}, Edge: +${flushDelta.edge}`);
+  }
+
+  // 4. Rate Limiting Core Isolation (checkRateLimit, recordAttempt, resetRateLimit -> Core only, Edge: +0, Metrics: +0)
+  const rlBefore = RedisMetrics.getSnapshot();
+  const rlKey = `rate:iso:${Date.now()}`;
+  await checkRateLimit(rlKey, 5, 60);
+  await recordAttempt(rlKey, 60);
+  await resetRateLimit(rlKey);
+  const rlAfter = RedisMetrics.getSnapshot();
+  const rlDelta = {
+    core: rlAfter.instances.core.commands - rlBefore.instances.core.commands,
+    edge: rlAfter.instances.edge.commands - rlBefore.instances.edge.commands,
+    metrics: rlAfter.instances.metrics.commands - rlBefore.instances.metrics.commands,
+  };
+  if (rlDelta.core < 2 || rlDelta.edge !== 0 || rlDelta.metrics !== 0) {
+    throw new Error(`TEST 8 Case R FAILED on Rate Limit isolation: expected Core: >=2, Edge: +0, Metrics: +0; got Core: +${rlDelta.core}, Edge: +${rlDelta.edge}, Metrics: +${rlDelta.metrics}`);
+  }
+  console.log("TEST 8 Case R PASSED: Exact per-test command deltas verified bidirectional isolation across Core, Edge, Metrics, and Rate Limiting.");
 
   // ============================================================================
   // TEST 9 — MEMBER-001 Participant Capacity Authority (Hard Ceiling = 10)

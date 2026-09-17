@@ -9,7 +9,7 @@ import http from "node:http";
 import { Server } from "socket.io";
 import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
-import { redis, redisCount, redisCache, RedisMetrics } from "./utils/redis.ts";
+import { redis, redisCount, redisEdge, RedisMetrics } from "./utils/redis.ts";
 import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { getSessionLimitSeconds } from "./vm/utils.ts";
@@ -3101,10 +3101,10 @@ async function minuteMetrics() {
 
   // Flush dirty presence batch in single atomic operation (1 command for all changed rooms)
   if (Object.keys(dirtyPresenceBatch).length > 0) {
-    await redisCache.updateRoomPresenceBatch(dirtyPresenceBatch).catch(() => { });
+    await redisEdge.updateRoomPresenceBatch(dirtyPresenceBatch).catch(() => { });
   }
   if (emptyRoomsToClean.length > 0) {
-    await redisCache.removeRoomPresenceBatch(emptyRoomsToClean).catch(() => { });
+    await redisEdge.removeRoomPresenceBatch(emptyRoomsToClean).catch(() => { });
   }
 
   // Report shard metrics with atomic write-with-TTL

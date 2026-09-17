@@ -1,7 +1,7 @@
 import type { AssignedVM } from "../vm/base.ts";
 import { postgres } from "./postgres.ts";
 import os from "node:os";
-import { getRedisCountDay, getRedisCountDayDistinct, redis, redisCache, RedisMetrics } from "./redis.ts";
+import { getRedisCountDay, getRedisCountDayDistinct, redis, redisEdge, RedisMetrics } from "./redis.ts";
 import config from "../config.ts";
 import { apps } from "../ecosystem.config.js";
 
@@ -56,7 +56,7 @@ export async function getStats() {
     ORDER BY "creationTime" DESC`,
   );
   // Batch presence read: 1 single HGETALL command instead of 2 * N GET commands
-  const batchPresence = await redisCache.getRoomPresenceBatch().catch(() => ({} as Record<string, string>));
+  const batchPresence = await redisEdge.getRoomPresenceBatch().catch(() => ({} as Record<string, string>));
 
   const currentRoomData = await Promise.all(
     (result?.rows ?? []).map(async (dbRoom) => {
