@@ -3,6 +3,7 @@ import {
   IconBrowser,
   IconCheck,
   IconChevronDown,
+  IconChevronUp,
   IconCopy,
   IconDots,
   IconFile,
@@ -86,10 +87,116 @@ export const MediaDock: React.FC<MediaDockProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const isMobileViewport = viewport.width <= 768;
   const isCompact = viewport.width < 520;
   const isMedium = viewport.width >= 520 && viewport.width < 768;
   const isLaptop = viewport.width > 1200;
   const isShortHeight = viewport.height < 600;
+
+  const hasActiveMedia = Boolean(roomMedia) || Boolean(isScreenSharing) || Boolean(isPlayingVBrowser);
+
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const collapseTimerRef = React.useRef<number | null>(null);
+  const openMenusRef = React.useRef<{ [key: string]: boolean }>({});
+  const prevActiveMediaRef = React.useRef<boolean>(hasActiveMedia);
+  const isInitialMountRef = React.useRef<boolean>(true);
+
+  const clearCollapseTimer = React.useCallback(() => {
+    if (collapseTimerRef.current !== null) {
+      window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCollapse = React.useCallback(() => {
+    clearCollapseTimer();
+    if (
+      !isMobileViewport ||
+      !hasActiveMedia ||
+      Object.keys(openMenusRef.current).length > 0
+    ) {
+      return;
+    }
+    collapseTimerRef.current = window.setTimeout(() => {
+      setIsCollapsed(true);
+    }, 3000);
+  }, [clearCollapseTimer, isMobileViewport, hasActiveMedia]);
+
+  const handleMenuChange = React.useCallback(
+    (key: string, opened: boolean) => {
+      if (opened) {
+        openMenusRef.current[key] = true;
+        clearCollapseTimer();
+        setIsCollapsed(false);
+      } else {
+        delete openMenusRef.current[key];
+        if (Object.keys(openMenusRef.current).length === 0) {
+          scheduleCollapse();
+        }
+      }
+    },
+    [clearCollapseTimer, scheduleCollapse]
+  );
+
+  const handleExpand = React.useCallback(() => {
+    setIsCollapsed(false);
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  const handleDockTouchStart = React.useCallback(() => {
+    clearCollapseTimer();
+  }, [clearCollapseTimer]);
+
+  const handleDockTouchEnd = React.useCallback(() => {
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  const handleDockMouseEnter = React.useCallback(() => {
+    clearCollapseTimer();
+  }, [clearCollapseTimer]);
+
+  const handleDockMouseLeave = React.useCallback(() => {
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  const handleDockClick = React.useCallback(() => {
+    if (isMobileViewport) {
+      scheduleCollapse();
+    }
+  }, [isMobileViewport, scheduleCollapse]);
+
+  // Keep desktop dock visible and clean up timers when resizing to desktop
+  React.useEffect(() => {
+    if (!isMobileViewport) {
+      setIsCollapsed(false);
+      clearCollapseTimer();
+    }
+  }, [isMobileViewport, clearCollapseTimer]);
+
+  // Expand and reset timer when media status changes
+  React.useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
+
+    if (prevActiveMediaRef.current !== hasActiveMedia) {
+      prevActiveMediaRef.current = hasActiveMedia;
+      setIsCollapsed(false);
+      if (hasActiveMedia) {
+        scheduleCollapse();
+      } else {
+        clearCollapseTimer();
+      }
+    }
+  }, [hasActiveMedia, scheduleCollapse, clearCollapseTimer]);
+
+  // Clean up timer on unmount
+  React.useEffect(() => {
+    return () => {
+      clearCollapseTimer();
+    };
+  }, [clearCollapseTimer]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -109,9 +216,19 @@ export const MediaDock: React.FC<MediaDockProps> = ({
     : 380;
 
   return (
-    <div className={styles.dockContainer}>
-      {/* Prioritized single stop button (VBrowser > ScreenShare > Standard Media) */}
-      {isPlayingVBrowser && onStopVBrowser ? (
+    <div className={styles.dockShell}>
+      <div
+        className={`${styles.dockContainer} ${
+          isMobileViewport && isCollapsed ? styles.dockCollapsed : ""
+        }`}
+        onTouchStart={handleDockTouchStart}
+        onTouchEnd={handleDockTouchEnd}
+        onMouseEnter={handleDockMouseEnter}
+        onMouseLeave={handleDockMouseLeave}
+        onClick={handleDockClick}
+      >
+        {/* Prioritized single stop button (VBrowser > ScreenShare > Standard Media) */}
+        {isPlayingVBrowser && onStopVBrowser ? (
         <button
           type="button"
           className={styles.stopBtn}
@@ -150,6 +267,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           position="top-start"
           offset={8}
           withinPortal
+          onChange={(opened) => handleMenuChange("add", opened)}
+          onOpen={() => handleMenuChange("add", true)}
+          onClose={() => handleMenuChange("add", false)}
         >
           <Menu.Target>
             <button
@@ -252,6 +372,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         position="top"
         offset={8}
         withinPortal
+        onChange={(opened) => handleMenuChange("playlist", opened)}
+        onOpen={() => handleMenuChange("playlist", true)}
+        onClose={() => handleMenuChange("playlist", false)}
       >
         <Menu.Target>
           <Tooltip label="View playlist" withArrow>
@@ -331,6 +454,9 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           position="top-end"
           offset={8}
           withinPortal
+          onChange={(opened) => handleMenuChange("more", opened)}
+          onOpen={() => handleMenuChange("more", true)}
+          onClose={() => handleMenuChange("more", false)}
         >
           <Menu.Target>
             <button type="button" className={styles.iconBtn} title="More actions">
@@ -389,6 +515,19 @@ export const MediaDock: React.FC<MediaDockProps> = ({
             )}
           </Menu.Dropdown>
         </Menu>
+      )}
+      </div>
+
+      {isMobileViewport && isCollapsed && (
+        <button
+          type="button"
+          className={styles.expandHandle}
+          onClick={handleExpand}
+          aria-label="Show media controls"
+          title="Show media controls"
+        >
+          <IconChevronUp size={16} stroke={2} />
+        </button>
       )}
     </div>
   );

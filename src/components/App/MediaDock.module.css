@@ -1,3 +1,10 @@
+.dockShell {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
 .dockContainer {
   position: absolute;
   bottom: 24px;
@@ -15,6 +22,61 @@
   border-radius: 999px;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   box-sizing: border-box;
+  pointer-events: auto;
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+  will-change: transform, opacity;
+}
+
+.dockCollapsed,
+.dockContainerCollapsed {
+  transform: translateX(-50%) translateY(calc(100% + 16px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.expandHandle {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  z-index: 20;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  touch-action: manipulation;
+  animation: expandHandleFadeIn 180ms ease forwards;
+}
+
+.expandHandle:hover,
+.expandHandle:active {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong, var(--border-subtle));
+  transform: scale(1.05);
+}
+
+@keyframes expandHandleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .addMediaBtn {
@@ -159,6 +221,12 @@
 .menuItemDesc {
   font-size: 11.5px;
   color: var(--text-muted);
+}
+
+@media only screen and (max-width: 768px) {
+  .dockContainer {
+    bottom: 8px;
+  }
 }
 
 @media only screen and (max-width: 600px) {
