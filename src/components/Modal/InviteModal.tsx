@@ -135,6 +135,13 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       }
     >
       <div className={styles.container}>
+        {canManageCredentials && !propPasscode && (
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Room Passcode (Optional for open rooms)
+            </span>
+          </div>
+        )}
 
         {/* Primary Link Card */}
         <div className={styles.linkCard}>
@@ -234,8 +241,19 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               <IconMail size={16} />
               <span>Email</span>
             </a>
+        {/* Passcode Card - Strictly restricted to host or room owner */}
+        {canManageCredentials && (
+          <div className={styles.credentialCard}>
+            <div className={styles.credentialHeader}>
+              <span className={styles.credentialTitle}>
+                Room Passcode
+              </span>
+            </div>
+            <div className={styles.credentialValue}>
+              {resolvedPasscode || "None (Open)"}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Quick Action Buttons: Native Share & QR Code */}
         <div style={{ display: "grid", gridTemplateColumns: hasNativeShare ? "1fr 1fr" : "1fr", gap: "8px" }}>

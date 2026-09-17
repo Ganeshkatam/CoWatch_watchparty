@@ -15,6 +15,7 @@ import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
 import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
+import { verifyAdmissionToken } from "./utils/admissionToken.ts";
 import {
   fetchYoutubeVideo,
   getYoutubeVideoID,
@@ -611,7 +612,6 @@ export class Room {
         if (roomRow?.max_participants !== undefined && typeof roomRow.max_participants === "number") {
           this.maxParticipants = roomRow.max_participants;
         }
-        const passcode = (socket.handshake.query?.passcode as string) || "";
         const roomPasscode = roomRow?.passcode;
         const owner_id = roomRow?.owner_id;
         const dbStatus = roomRow?.status;
@@ -652,36 +652,26 @@ export class Room {
           return;
         }
 
-        // Passcode validation (authoritative security boundary for non-owners)
-        if (roomPasscode && !isOwner) {
-          if (!passcode) {
+        // Authoritative participant admission token verification
+        // Strict boundary: Non-owners MUST possess a valid server-issued admissionToken
+        // binding { roomId, userId, sessionId }
+        if (!isOwner) {
+          const admissionToken = socket.handshake.auth?.admissionToken;
+          const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
+
+          const verification = verifyAdmissionToken(
+            admissionToken,
+            this.roomId,
+            socket.uid,
+            handshakeSessionId
+          );
+
+          if (!verification.valid) {
+            console.warn(
+              `[Admission] Handshake rejected for room ${this.roomId}: ${verification.error}`
+            );
             next(new Error("passcode"));
             return;
-          }
-          if (isBcryptHash(roomPasscode)) {
-            const valid = await verifyRoomPasscode(passcode, roomPasscode);
-            if (!valid) {
-              next(new Error("passcode"));
-              return;
-            }
-          } else {
-            // Lazy migration
-            if (passcode !== roomPasscode) {
-              next(new Error("passcode"));
-              return;
-            }
-            // Best-effort hash upgrade
-            try {
-              const newHash = await hashRoomPasscode(passcode);
-              if (newHash) {
-                await postgres.query(
-                  `UPDATE rooms SET passcode = $1 WHERE "roomId" = $2 AND passcode = $3`,
-                  [newHash, this.roomId, roomPasscode]
-                );
-              }
-            } catch (e) {
-              console.error("Failed lazy passcode migration", e);
-            }
           }
         }
 

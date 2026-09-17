@@ -28,6 +28,7 @@ import {
   decryptPasscodeForOwner,
   computePasscodeFingerprint,
 } from "./utils/roomPasscode.ts";
+import { generateAdmissionToken } from "./utils/admissionToken.ts";
 import {
   checkPasscodeRateLimits,
   recordPasscodeFailure,
@@ -2051,31 +2052,21 @@ app.get("/roomInfo/:roomId", async (req, res) => {
 });
 
 app.post("/verifyPasscode", async (req, res) => {
-  const { roomId, passcode } = req.body || {};
+  const { roomId, passcode, sessionId } = req.body || {};
   if (!roomId || typeof roomId !== "string") {
     res.status(400).json({ valid: false, error: "Missing room identifier." });
     return;
   }
-  if (!passcode || typeof passcode !== "string") {
-    res.status(400).json({ valid: false, error: "Passcode is required." });
-    return;
-  }
 
   const cleanRoomId = sanitizeRoomId(roomId);
-  const cleanPasscode = passcode.trim();
 
-  if (cleanPasscode.length !== 8) {
-    res.status(400).json({ valid: false, error: "Passcode must be strictly 8 characters." });
-    return;
-  }
-
-  // Extract client IP and user identity for rate limiting
+  // Extract client IP and user identity for rate limiting & token binding
   const ip =
     (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
     req.socket.remoteAddress ||
     "unknown";
 
-  // Optional user token
+  // Authenticate caller strictly from Supabase token
   let callerUid: string | undefined;
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ")
@@ -2091,6 +2082,20 @@ app.post("/verifyPasscode", async (req, res) => {
       }
     } catch { }
   }
+
+  if (!callerUid) {
+    res.status(401).json({
+      valid: false,
+      error: "Authentication required to enter room.",
+      code: "AUTH_REQUIRED",
+    });
+    return;
+  }
+
+  const cleanSessionId =
+    typeof sessionId === "string" && sessionId.trim()
+      ? sessionId.trim()
+      : crypto.randomUUID();
 
   const rateLimitTarget = { ip, roomId: cleanRoomId, userId: callerUid };
 
@@ -2130,13 +2135,18 @@ app.post("/verifyPasscode", async (req, res) => {
 
     let isValid = false;
     if (roomPasscode) {
+      const cleanPasscode = typeof passcode === "string" ? passcode.trim() : "";
+      if (cleanPasscode.length !== 8) {
+        res.status(400).json({ valid: false, error: "Passcode must be strictly 8 characters." });
+        return;
+      }
       if (isBcryptHash(roomPasscode)) {
         isValid = await verifyRoomPasscode(cleanPasscode, roomPasscode);
       } else {
         isValid = cleanPasscode === roomPasscode;
       }
     } else {
-      // Room without passcode
+      // Room without passcode: authenticated admission authorized directly
       isValid = true;
     }
 
@@ -2147,7 +2157,7 @@ app.post("/verifyPasscode", async (req, res) => {
     }
 
     // Participant admission lock check: non-hosts cannot bypass participant lock via passcode verification
-    const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
+    const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
     let isHost = isOwner;
     const memoryRoom = rooms.get(cleanRoomId);
     if (memoryRoom && callerUid) {
@@ -2183,10 +2193,17 @@ app.post("/verifyPasscode", async (req, res) => {
       }
     }
 
-    // Success: reset rate limit attempts for this target and return 200
-    // NOTE: This endpoint NEVER mutates room status (it never activates an inactive room).
+    // Generate short-lived, signed admission token bound to { roomId, callerUid, sessionId }
+    const admissionToken = generateAdmissionToken({
+      roomId: cleanRoomId,
+      userId: callerUid,
+      sessionId: cleanSessionId,
+      ttlSeconds: 900,
+    });
+
+    // Success: reset rate limit attempts for this target and return token
     await resetPasscodeLimits(rateLimitTarget);
-    res.json({ valid: true });
+    res.json({ valid: true, admissionToken, sessionId: cleanSessionId });
   } catch (err) {
     console.error("Error verifying passcode:", err);
     res.status(500).json({ valid: false, error: "Server error verifying passcode." });

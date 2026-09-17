@@ -130,6 +130,7 @@ window.cowatch = {
 interface AppProps {
   urlRoomId?: string;
   location?: any;
+  history?: any;
 }
 
 interface AppState {
@@ -221,11 +222,14 @@ interface AppState {
   feedbackInitialType?: FeedbackType;
   myClientId: string;
   leavingRoom?: boolean;
+  admissionToken?: string;
+  sessionId?: string;
 }
 
 export class App extends React.Component<AppProps, AppState> {
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
+  private socketConnecting: boolean = false;
   state: AppState = {
     state: "starting",
     initStage: "booting",
@@ -396,7 +400,7 @@ export class App extends React.Component<AppProps, AppState> {
           .eq("roomId", cleanId)
           .maybeSingle();
 
-        if (data?.status === "active" && this.state.roomId === cleanId) {
+        if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
           this.stopWaitingPoll();
           this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
             this.join(cleanId);
@@ -425,7 +429,7 @@ export class App extends React.Component<AppProps, AppState> {
         .eq("roomId", cleanId)
         .maybeSingle();
 
-      if (data?.status === "active" && this.state.roomId === cleanId) {
+      if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
         this.stopWaitingPoll();
         this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
           this.join(cleanId);
@@ -713,7 +717,7 @@ export class App extends React.Component<AppProps, AppState> {
           }
           const requiresPasscode = Boolean(info.requiresPasscode);
           const isHostPresent = Boolean(info.isHostPresent);
-          const isWaiting = info.status !== "active" && !isHostPresent;
+          const isWaiting = info.status !== "active";
           return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting, isHostPresent };
         }
       } catch (e) {
@@ -763,6 +767,10 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
 
+    if (this.socketConnecting) {
+      return;
+    }
+
     this.setState({ isHostSessionEnded: false });
 
     if (this.startingTimer) {
@@ -780,21 +788,22 @@ export class App extends React.Component<AppProps, AppState> {
     try {
       // INVARIANT: A URL can identify a room, but can NEVER authenticate a participant.
       // Any query credentials (?passcode=, ?pass=, ?password=) are strictly IGNORED and NEVER copied into state.
-      // Passcode is strictly read from explicit invocation or untrusted route transport state.
+      // Admission token and session ID are strictly read from route transport state.
       const routeLocationState =
         (this.props.location?.state as any) ||
         (window.history?.state as any)?.usr ||
         (window.history?.state as any);
-      const routePasscode = routeLocationState?.passcode;
+      const routeAdmissionToken = routeLocationState?.admissionToken || this.state.admissionToken;
+      const routeSessionId = routeLocationState?.sessionId || this.state.sessionId;
       const initialCameraOn = routeLocationState?.initialCameraOn;
       const initialMicOn = routeLocationState?.initialMicOn;
       const cameraDeviceId = routeLocationState?.cameraDeviceId;
       const micDeviceId = routeLocationState?.micDeviceId;
 
-      const passcode = explicitPasscode || this.state.passcode || routePasscode || "";
-      if (passcode && passcode !== this.state.passcode) {
+      if (routeAdmissionToken && routeAdmissionToken !== this.state.admissionToken) {
         this.setState({
-          passcode,
+          admissionToken: routeAdmissionToken,
+          sessionId: routeSessionId,
           initialCameraOn: initialCameraOn ?? this.state.initialCameraOn,
           initialMicOn: initialMicOn ?? this.state.initialMicOn,
           cameraDeviceId: cameraDeviceId ?? this.state.cameraDeviceId,
@@ -812,39 +821,56 @@ export class App extends React.Component<AppProps, AppState> {
       try {
         const access = await this.checkRoomAccess(cleanRoomId);
 
-        // Direct navigation protection:
-        // A non-owner without valid transport credentials must never advance into /watch/:roomId.
-        // Immediately redirect to /join/:roomId where they must manually enter the passcode.
-        if (access.requiresPasscode && !passcode && !access.isOwner) {
-          // Double-check: wait for auth to settle in case session was still loading
-          const retrySession = await safeGetSession(1000);
-          const retryUser = retrySession?.data?.session?.user;
-          const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
-          if (!retryIsOwner) {
+        // Admission Gateway Invariant:
+        // /join/:roomId is the ONLY admission gateway for participants.
+        // A non-owner without a valid server-issued admissionToken must never enter /watch/:roomId.
+        // Gracefully redirect them to /join/:roomId where they must obtain an admissionToken.
+        if (!access.isOwner) {
+          if (!routeAdmissionToken) {
+            // Double-check: wait for auth to settle in case session was still loading
+            const retrySession = await safeGetSession(1000);
+            const retryUser = retrySession?.data?.session?.user;
+            const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
+            if (!retryIsOwner) {
+              if (this.startingTimer) {
+                window.clearTimeout(this.startingTimer);
+                this.startingTimer = null;
+              }
+              this.socketConnecting = false;
+              if (this.props.history?.replace) {
+                this.props.history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+              } else {
+                window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+              }
+              return;
+            }
+          }
+
+          // Inactive Room Policy:
+          // Inactive status strictly forbids Socket.IO connection attempts.
+          // Participants in "Waiting for Host" state must use HTTP polling and initiate
+          // exactly one socket connection only after room.status === "active".
+          if (access.isWaiting) {
             if (this.startingTimer) {
               window.clearTimeout(this.startingTimer);
               this.startingTimer = null;
             }
-            window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+            this.socketConnecting = false;
+            this.setState({
+              isWaitingForHost: true,
+              overlayMsg: "",
+              admissionToken: routeAdmissionToken,
+              sessionId: routeSessionId,
+            });
+            this.startWaitingPoll(cleanRoomId);
             return;
           }
-        }
-
-        if (access.isWaiting) {
-          if (this.startingTimer) {
-            window.clearTimeout(this.startingTimer);
-            this.startingTimer = null;
-          }
-          const targetUrl = access.isOwner
-            ? `/join/${encodeURIComponent(cleanRoomId)}?user=host&start=waiting`
-            : `/join/${encodeURIComponent(cleanRoomId)}?start=waiting`;
-          window.location.replace(targetUrl);
-          return;
         }
       } catch (e) {
         console.warn("Room access verification error:", e);
       }
 
+      this.socketConnecting = true;
       operationCoordinator.setInitStage("connecting");
       this.setState({ initStage: "connecting" });
 
@@ -872,6 +898,8 @@ export class App extends React.Component<AppProps, AppState> {
       }
 
       // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
+      // Strict handshake: auth contains { token, sessionId, admissionToken }
+      // Zero raw passcodes sent over socket query or handshake
       const safeNamespace = encodeURIComponent(cleanRoomId);
       const socket = io(serverPath + "/" + safeNamespace, {
         transports: ["websocket", "polling"],
@@ -882,13 +910,13 @@ export class App extends React.Component<AppProps, AppState> {
         randomizationFactor: 0.5,
         timeout: 10000,
         query: {
-          passcode,
           shard,
           roomId: cleanRoomId,
         },
         auth: {
-          sessionId: getOrCreateSessionId(),
+          sessionId: routeSessionId || this.state.sessionId || getOrCreateSessionId(),
           token,
+          admissionToken: routeAdmissionToken,
         },
       });
       this.socket = socket;
@@ -898,6 +926,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.on("connect", async () => {
+        this.socketConnecting = false;
         operationCoordinator.beginConnectionEpoch();
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
@@ -943,6 +972,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.on("connect_error", (err: any) => {
+        this.socketConnecting = false;
         if (this.state.isHostSessionEnded) {
           return;
         }
@@ -953,10 +983,11 @@ export class App extends React.Component<AppProps, AppState> {
         }
         const errMsg = err?.message || "";
         if (errMsg === "ROOM_NOT_STARTED") {
-          const targetUrl = this.state.isOwner
-            ? `/join/${encodeURIComponent(cleanRoomId)}?user=host&start=waiting`
-            : `/join/${encodeURIComponent(cleanRoomId)}?start=waiting`;
-          window.location.replace(targetUrl);
+          // Loop Elimination: Switch to waiting state and poll via HTTP instead of cycling back and forth
+          this.socket?.disconnect();
+          this.socket = null!;
+          this.setState({ isWaitingForHost: true, overlayMsg: "" });
+          this.startWaitingPoll(cleanRoomId);
           return;
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
           operationCoordinator.markTerminalFailure("Room not found");
@@ -968,11 +999,17 @@ export class App extends React.Component<AppProps, AppState> {
           errMsg.includes("SESSION_INVALID") ||
           errMsg.includes("ROOM_ACCESS_DENIED")
         ) {
-          // Terminal authoritative check rejected: clean up and redirect to /join/:roomId
+          // Terminal authoritative check rejected: clean up and redirect to sole gateway /join/:roomId
           operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
           this.stopWaitingPoll();
           this.socket?.disconnect();
-          window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          this.socket = null!;
+          if (this.props.history?.replace) {
+            this.props.history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          } else {
+            window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          }
+          return;
         } else if (
           errMsg === "PARTICIPANTS_LOCKED" ||
           (err as any)?.data?.code === "PARTICIPANTS_LOCKED" ||
@@ -1009,6 +1046,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ isWaitingForHost: false, overlayMsg: "" });
       });
       socket.on("disconnect", (reason) => {
+        this.socketConnecting = false;
         operationCoordinator.markTransportDisconnected("Socket disconnected");
         if (this.state.isHostSessionEnded || this.state.isWaitingForHost || this.state.leavingRoom) {
           // Suppress generic disconnect message if room was ended by host, waiting for host, or leaving intentionally

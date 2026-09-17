@@ -235,35 +235,62 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 </div>
               )}
 
-              {/* Room Link Row - Strictly Host/Owner Only */}
+              {/* Room Link & Invite Rows - Strictly Host/Owner Only */}
               {canManageRoom && (
-                <div className={styles.roomInfoRow}>
-                  <span className={styles.roomInfoLabel}>
-                    <IconLink size={14} /> Room Link
-                  </span>
-                  <div className={styles.roomInfoValueWithCopy}>
-                    <span
-                      className={styles.codeSnippet}
-                      style={{ maxWidth: "120px" }}
-                      title={roomUrl}
-                    >
-                      {roomUrl}
+                <>
+                  <div className={styles.roomInfoRow}>
+                    <span className={styles.roomInfoLabel}>
+                      <IconLink size={14} /> Room Link
                     </span>
-                    <Tooltip label={copied ? "Copied!" : "Copy Link"} withArrow position="top">
-                      <ActionIcon
-                        size="xs"
-                        variant="subtle"
-                        color={copied ? "green" : "violet"}
-                        onClick={handleCopyLink}
-                        aria-label="Copy Room Link"
+                    <div className={styles.roomInfoValueWithCopy}>
+                      <span
+                        className={styles.codeSnippet}
+                        style={{ maxWidth: "120px" }}
+                        title={roomUrl}
                       >
-                        {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                      </ActionIcon>
-                    </Tooltip>
+                        {roomUrl}
+                      </span>
+                      <Tooltip label={copied ? "Copied!" : "Copy room link"} withArrow position="top">
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color={copied ? "green" : "violet"}
+                          onClick={handleCopyLink}
+                          aria-label="Copy room link"
+                        >
+                          {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                        </ActionIcon>
+                      </Tooltip>
+                    </div>
                   </div>
-                </div>
+                  <div className={styles.roomInfoRow}>
+                    <span className={styles.roomInfoLabel}>
+                      <IconMessageShare size={14} /> Invite Msg
+                    </span>
+                    <div className={styles.roomInfoValueWithCopy}>
+                      <Tooltip label={copiedMsg ? "Copied!" : "Copy invite message"} withArrow position="top">
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color={copiedMsg ? "green" : "violet"}
+                          onClick={handleCopyInviteMessage}
+                          aria-label="Copy invite message"
+                        >
+                          {copiedMsg ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                        </ActionIcon>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
+            <Menu.Divider />
+            <Menu.Item
+              leftSection={<IconSettings size={16} />}
+              onClick={onOpenSettings}
+            >
+              {canManageRoom ? "Room settings" : "Preferences"}
+            </Menu.Item>
           </Menu.Dropdown>
         </Menu>
 

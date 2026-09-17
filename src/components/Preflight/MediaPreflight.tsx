@@ -40,9 +40,19 @@ import {
 } from "../../utils/mediaPreflight";
 import styles from "./MediaPreflight.module.css";
 
+export interface PreflightPreferences {
+  initialCameraOn: boolean;
+  initialMicOn: boolean;
+  cameraDeviceId?: string;
+  micDeviceId?: string;
+  speakerDeviceId?: string;
+}
+
 interface MediaPreflightProps {
   roomId: string;
   location?: any;
+  onComplete?: (preferences: PreflightPreferences) => void;
+  isInline?: boolean;
 }
 
 interface RoomInfo {
@@ -60,6 +70,8 @@ interface RoomInfo {
 export const MediaPreflight: React.FC<MediaPreflightProps> = ({
   roomId: rawRoomId,
   location,
+  onComplete,
+  isInline = false,
 }) => {
   const history = useHistory();
   const { user, profile, setMetadata } = useContext(MetadataContext);
@@ -138,7 +150,9 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
         if (isCancelled) return;
 
         if (!res.ok) {
-          history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          if (!isInline) {
+            history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+          }
           return;
         }
 
@@ -150,11 +164,11 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
         // Invariant: If room requires a passcode, user is not host, and no passcode is present,
         // redirect back to Gateway where user must enter the passcode.
-        if (data.requiresPasscode && !data.isOwner && !passcode) {
+        if (data.requiresPasscode && !data.isOwner && !passcode && !isInline) {
           history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
         }
       } catch (err) {
-        if (!isCancelled) {
+        if (!isCancelled && !isInline) {
           history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
         }
       }
@@ -165,7 +179,7 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [cleanRoomId, history, passcode]);
+  }, [cleanRoomId, history, passcode, isInline]);
 
   // 2. Enumerate devices and run non-blocking diagnostics
   useEffect(() => {
@@ -357,15 +371,20 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
       }
     } catch (_) {}
 
-    // 3. Navigate into /watch/:roomId with serializable preferences
-    history.push(`/watch/${encodeURIComponent(cleanRoomId)}`, {
-      passcode,
-      initialCameraOn: isCameraOn,
-      initialMicOn: isMicOn,
-      cameraDeviceId: selectedVideoDevice || undefined,
-      micDeviceId: selectedAudioDevice || undefined,
-      speakerDeviceId: selectedSpeakerDevice || undefined,
-    });
+    // 3. Complete preflight via callback or fallback navigation
+    if (onComplete) {
+      onComplete({
+        initialCameraOn: isCameraOn,
+        initialMicOn: isMicOn,
+        cameraDeviceId: selectedVideoDevice || undefined,
+        micDeviceId: selectedAudioDevice || undefined,
+        speakerDeviceId: selectedSpeakerDevice || undefined,
+      });
+      return;
+    }
+
+    // Direct access to /preflight without onComplete redirects to sole gateway /join/:roomId
+    history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
   };
 
   const displayName =
@@ -385,20 +404,22 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
   }
 
   return (
-    <div className={styles.page}>
+    <div className={isInline ? styles.inlineContainer : styles.page}>
       {/* Top Header */}
-      <header className={styles.header}>
-        <Link to="/" className={styles.brandLink}>
-          <img src="/logo192.png" alt="CoWatch" className={styles.logo} />
-          <span className={styles.brandName}>CoWatch</span>
-        </Link>
-        {roomInfo && (
-          <div className={styles.headerRoomInfo}>
-            <span className={styles.roomTitleText}>{roomInfo.roomTitle}</span>
-            <span className={styles.roomIdBadge}>{roomInfo.roomId}</span>
-          </div>
-        )}
-      </header>
+      {!isInline && (
+        <header className={styles.header}>
+          <Link to="/" className={styles.brandLink}>
+            <img src="/logo192.png" alt="CoWatch" className={styles.logo} />
+            <span className={styles.brandName}>CoWatch</span>
+          </Link>
+          {roomInfo && (
+            <div className={styles.headerRoomInfo}>
+              <span className={styles.roomTitleText}>{roomInfo.roomTitle}</span>
+              <span className={styles.roomIdBadge}>{roomInfo.roomId}</span>
+            </div>
+          )}
+        </header>
+      )}
 
       {/* Main Studio Viewport */}
       <main className={styles.main}>

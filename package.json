@@ -49,6 +49,7 @@
     "test:duplicate-signup-security": "tsx server/duplicateSignupSecurity.test.ts",
     "test:host-privileges": "tsx server/hostPrivilegeSecurity.test.ts",
     "test:url-security": "tsx server/urlDrivenSecurity.test.ts",
+    "test:admission": "tsx server/participantAdmissionE2E.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

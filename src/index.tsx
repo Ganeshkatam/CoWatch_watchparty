@@ -679,7 +679,7 @@ class CoWatch extends React.Component {
                               path="/watch/:roomId"
                               exact
                               render={(props) => {
-                                return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} /></RequireVerifiedEmail>;
+                                return <RequireVerifiedEmail><App urlRoomId={props.match.params.roomId} location={props.location} history={props.history} /></RequireVerifiedEmail>;
                               }}
                             />
 

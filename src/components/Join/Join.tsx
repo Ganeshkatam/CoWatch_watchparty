@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useHistory, useParams, Link, useLocation } from "react-router-dom";
 import {
   Button,
@@ -16,7 +16,6 @@ import {
   IconLink,
   IconAlertCircle,
   IconLock,
-  IconShield,
   IconVideo,
   IconPlayerPlay,
   IconLogin,
@@ -28,6 +27,7 @@ import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { safeGetSession } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
 import { WaitingForHost } from "../App/WaitingForHost";
+import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
@@ -43,15 +43,13 @@ interface RoomInfo {
   requiresPasscode: boolean;
   participantsLocked?: boolean;
   maxParticipants?: number;
-  // isOwner: true when the caller is the room creator (DB owner_id match).
-  // isHost: true for the DB owner OR any in-room promoted co-host.
-  // Use isHost as the canonical privilege gate everywhere; isOwner is retained
-  // only for personalizing UI copy ("You're the host" vs "You're co-hosting").
   isOwner: boolean;
   isHost: boolean;
   isHostPresent?: boolean;
   hostName?: string;
 }
+
+type AdmissionStage = "validating" | "passcode" | "preflight" | "waiting" | "ready" | "error";
 
 const normalizeRoomId = (value: string): string => {
   let clean = value.trim();
@@ -78,41 +76,64 @@ export const Join: React.FC = () => {
   const [inputRoomId, setInputRoomId] = useState("");
 
   // Pre-fill the passcode from the URL hash fragment if present.
-  // We use the hash fragment (#passcode=...) instead of query parameters (?passcode=...)
-  // so that the passcode is never sent to the server in HTTP requests,
-  // preventing it from being logged in server access logs or leaked in Referer headers.
+  // Hash fragment (#passcode=...) is never sent to the server in HTTP requests.
   const hashParams = useMemo(() => new URLSearchParams(location.hash.replace(/^#/, "")), [location.hash]);
   const initialPasscode = hashParams.get("passcode") || "";
   const [passcode, setPasscode] = useState(initialPasscode);
 
+  const [stage, setStage] = useState<AdmissionStage>("validating");
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
-  const [loadingRoom, setLoadingRoom] = useState(false);
   const [roomError, setRoomError] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [formError, setFormError] = useState("");
+
+  // Stable client session ID across admission lifecycle
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  // Server-issued admission token
+  const admissionTokenRef = useRef<string>("");
+  // Media device preferences captured from preflight
+  const preferencesRef = useRef<PreflightPreferences | null>(null);
+  // Single-flight guard against concurrent transitions
+  const transitioningRef = useRef<boolean>(false);
 
   useDocumentMetadata({
     title: roomInfo?.roomTitle
       ? `Join ${roomInfo.roomTitle} | CoWatch`
       : "Join a Watch Party | CoWatch",
-    description: "Enter room passcode to join a CoWatch synchronized watch party.",
+    description: "Join a CoWatch synchronized watch party.",
   });
 
-  // Fetch room metadata when cleanRouteRoomId changes
+  const navigateToWatch = useCallback(() => {
+    if (transitioningRef.current && stage === "ready") return;
+    transitioningRef.current = true;
+    setStage("ready");
+
+    const prefs = preferencesRef.current;
+    history.push(`/watch/${encodeURIComponent(cleanRouteRoomId)}`, {
+      admissionToken: admissionTokenRef.current,
+      sessionId: sessionIdRef.current,
+      initialCameraOn: prefs?.initialCameraOn ?? false,
+      initialMicOn: prefs?.initialMicOn ?? false,
+      cameraDeviceId: prefs?.cameraDeviceId,
+      micDeviceId: prefs?.micDeviceId,
+      speakerDeviceId: prefs?.speakerDeviceId,
+    });
+  }, [cleanRouteRoomId, history, stage]);
+
+  // Fetch room metadata and start admission state machine
   useEffect(() => {
     if (!cleanRouteRoomId) {
       setRoomInfo(null);
-      setLoadingRoom(false);
+      setStage("validating");
       setRoomError("");
       return;
     }
 
     let isCancelled = false;
-    setLoadingRoom(true);
+    setStage("validating");
     setRoomError("");
     setFormError("");
-
-    setPasscode("");
+    transitioningRef.current = false;
 
     const fetchRoom = async () => {
       try {
@@ -133,34 +154,103 @@ export const Join: React.FC = () => {
 
         if (res.status === 404) {
           setRoomError("This room does not exist or has expired.");
-          setLoadingRoom(false);
+          setStage("error");
           return;
         }
 
         if (!res.ok) {
           setRoomError("Unable to retrieve room information.");
-          setLoadingRoom(false);
+          setStage("error");
           return;
         }
 
         const data: RoomInfo = await res.json();
         if (isCancelled) return;
 
-        const hostPresent = Boolean(data.isHostPresent);
-        const sessionActive = data.status === "active";
-        const bypassLobby = sessionActive || hostPresent;
+        setRoomInfo(data);
 
-        if (data.isHost && bypassLobby) {
-          history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+        // Host / Owner admission bypass:
+        // Host has authority over room and does not require participant passcode/admission token.
+        if (data.isHost) {
+          if (data.status === "active") {
+            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+            return;
+          }
+          // Inactive room: Host sees waiting/start session screen
+          setStage("waiting");
           return;
         }
 
-        setRoomInfo(data);
-        setLoadingRoom(false);
-      } catch (err) {
-        if (isCancelled) return;
-        setRoomError("Network error while connecting to room gateway.");
-        setLoadingRoom(false);
+        // Participant admission checks:
+        if (user === undefined) {
+          // Wait for auth context to settle
+          return;
+        }
+
+        const joinPath = `/join/${encodeURIComponent(cleanRouteRoomId)}`;
+        if (!user) {
+          history.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
+          return;
+        }
+
+        if (user.email_confirmed_at == null) {
+          history.push(`/verify-email?next=${encodeURIComponent(joinPath)}`);
+          return;
+        }
+
+        if (data.status === "expired") {
+          setRoomError("This room session has expired.");
+          setStage("error");
+          return;
+        }
+
+        if (data.participantsLocked) {
+          setRoomError("This room is currently locked to new participants by the host.");
+          setStage("error");
+          return;
+        }
+
+        // Admission control paths:
+        if (data.requiresPasscode) {
+          setStage("passcode");
+        } else {
+          // Participant (No-passcode): obtain server-issued admission token directly
+          try {
+            const verifyResp = await fetch(`${serverPath}/verifyPasscode`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                ...(uid ? { "x-user-id": uid } : {}),
+              },
+              body: JSON.stringify({
+                roomId: cleanRouteRoomId,
+                sessionId: sessionIdRef.current,
+              }),
+            });
+
+            if (isCancelled) return;
+            const verifyData = await verifyResp.json().catch(() => ({}));
+
+            if (verifyResp.ok && verifyData.valid && verifyData.admissionToken) {
+              admissionTokenRef.current = verifyData.admissionToken;
+              setStage("preflight");
+            } else {
+              setRoomError(verifyData.error || "Room admission authorization failed.");
+              setStage("error");
+            }
+          } catch {
+            if (!isCancelled) {
+              setRoomError("Network error during room authorization.");
+              setStage("error");
+            }
+          }
+        }
+      } catch {
+        if (!isCancelled) {
+          setRoomError("Network error while connecting to room gateway.");
+          setStage("error");
+        }
       }
     };
 
@@ -169,17 +259,13 @@ export const Join: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [cleanRouteRoomId]);
+  }, [cleanRouteRoomId, user, history]);
 
-  const isHostPresent = Boolean(roomInfo?.isHostPresent);
-  const isSessionActive = roomInfo?.status === "active";
-  const shouldBypassLobby = isSessionActive || isHostPresent;
-
+  // HTTP Polling while in Waiting stage:
+  // Invariant: ZERO Socket.IO connections are ever created during waiting.
+  // Polling checks room.status === "active", and transitions once active with single-flight guard.
   useEffect(() => {
-    if (!cleanRouteRoomId || !roomInfo) return;
-    const hostPresent = Boolean(roomInfo.isHostPresent);
-    const sessionActive = roomInfo.status === "active";
-    if (sessionActive || hostPresent) return;
+    if (stage !== "waiting" || !cleanRouteRoomId) return;
 
     let isCancelled = false;
     const interval = window.setInterval(async () => {
@@ -200,10 +286,15 @@ export const Join: React.FC = () => {
         const freshData: RoomInfo = await res.json();
         if (isCancelled) return;
 
-        if (freshData.status === "active" || freshData.isHostPresent) {
+        if (freshData.status === "active") {
           setRoomInfo(freshData);
-          if (freshData.isHost) {
-            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+          if (!transitioningRef.current) {
+            transitioningRef.current = true;
+            if (freshData.isHost) {
+              history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+            } else {
+              navigateToWatch();
+            }
           }
         }
       } catch {
@@ -215,7 +306,7 @@ export const Join: React.FC = () => {
       isCancelled = true;
       window.clearInterval(interval);
     };
-  }, [cleanRouteRoomId, roomInfo?.status, roomInfo?.isHostPresent, roomInfo?.isHost, history]);
+  }, [stage, cleanRouteRoomId, history, navigateToWatch]);
 
   const handleStartRoom = async () => {
     if (!cleanRouteRoomId) return;
@@ -245,6 +336,35 @@ export const Join: React.FC = () => {
     }
   };
 
+  const handleStatusCheck = async () => {
+    if (!cleanRouteRoomId) return;
+    try {
+      const session = await safeGetSession(1000);
+      const token = session?.data?.session?.access_token;
+      const uid = session?.data?.session?.user?.id;
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (uid) headers["x-user-id"] = uid;
+
+      const res = await fetch(
+        `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
+        { headers }
+      );
+      if (res.ok) {
+        const fresh = await res.json();
+        setRoomInfo(fresh);
+        if (fresh.status === "active" && !transitioningRef.current) {
+          transitioningRef.current = true;
+          if (fresh.isHost) {
+            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+          } else {
+            navigateToWatch();
+          }
+        }
+      }
+    } catch {}
+  };
+
   // Handle submit for generic /join page (user enters room code / link)
   const handleGenericSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -264,18 +384,15 @@ export const Join: React.FC = () => {
     history.push(`/join/${encodeURIComponent(normalized)}`);
   };
 
-  // Handle submit on the specific room gateway (/join/:roomId)
-  const handleGatewaySubmit = async (event: React.FormEvent) => {
+  // Handle participant passcode verification
+  const handlePasscodeSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setFormError("");
 
     if (!cleanRouteRoomId) return;
 
-    // Check user authentication
     const joinPath = `/join/${encodeURIComponent(cleanRouteRoomId)}`;
-    if (user === undefined) {
-      return;
-    }
+    if (user === undefined) return;
 
     if (!user) {
       history.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
@@ -284,13 +401,6 @@ export const Join: React.FC = () => {
 
     if (user.email_confirmed_at == null) {
       history.push(`/verify-email?next=${encodeURIComponent(joinPath)}`);
-      return;
-    }
-
-    // If caller is a host (owner or promoted co-host), they are auto-redirected in useEffect
-    // This block is kept as a fallback just in case
-    if (roomInfo?.isHost) {
-      history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
       return;
     }
 
@@ -304,7 +414,6 @@ export const Join: React.FC = () => {
       return;
     }
 
-    // Participant verification
     const cleanPass = passcode.trim();
     if (!cleanPass) {
       setFormError("Passcode is required to enter this room.");
@@ -335,6 +444,7 @@ export const Join: React.FC = () => {
         body: JSON.stringify({
           roomId: cleanRouteRoomId,
           passcode: cleanPass,
+          sessionId: sessionIdRef.current,
         }),
       });
 
@@ -354,40 +464,52 @@ export const Join: React.FC = () => {
         return;
       }
 
-      // Pre-navigation gate succeeded:
-      // Advance to Green Room (preflight) passing passcode strictly via route state.
-      // Passcode is never written to sessionStorage or localStorage.
-      // Socket.IO performs authoritative second verification against the database hash upon room entry.
-      history.push(`/preflight/${encodeURIComponent(cleanRouteRoomId)}`, {
-        passcode: cleanPass,
-      });
-    } catch (err) {
+      // Success: store cryptographically signed admission token and advance to preflight
+      admissionTokenRef.current = data.admissionToken;
+      setStage("preflight");
+    } catch {
       setVerifying(false);
       setFormError("Network error verifying passcode. Please try again.");
     }
   };
 
+  const handlePreflightComplete = useCallback(
+    (prefs: PreflightPreferences) => {
+      preferencesRef.current = prefs;
+      if (roomInfo?.status === "active") {
+        navigateToWatch();
+      } else {
+        setStage("waiting");
+      }
+    },
+    [roomInfo?.status, navigateToWatch]
+  );
+
   const displayName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     user?.email?.split("@")[0] ||
-    "Guest Participant";
+    "Participant";
 
   return (
     <div className={styles.page}>
-      {/* Main Content Area */}
       <main className={styles.main}>
-        <div className={styles.contentWrapper}>
+        <div
+          className={
+            stage === "preflight"
+              ? styles.preflightWrapper
+              : styles.contentWrapper
+          }
+        >
           {cleanRouteRoomId ? (
-            /* Gateway Screen for Specific Room */
-            loadingRoom ? (
+            stage === "validating" ? (
               <Center style={{ minHeight: 280, flexDirection: "column", gap: 16 }}>
                 <Loader color="violet" size="lg" />
                 <Text size="sm" c="dimmed">
-                  Connecting to room...
+                  Verifying room admission...
                 </Text>
               </Center>
-            ) : roomError ? (
+            ) : stage === "error" ? (
               <div className={styles.errorCard}>
                 <IconAlertCircle size={38} className={styles.errorIcon} />
                 <h2 className={styles.errorTitle}>Room Unavailable</h2>
@@ -396,39 +518,32 @@ export const Join: React.FC = () => {
                   Try Another Room
                 </Button>
               </div>
-            ) : roomInfo && !shouldBypassLobby ? (
+            ) : stage === "waiting" ? (
               <WaitingForHost
                 isInline={true}
                 roomId={cleanRouteRoomId}
-                roomTitle={roomInfo.roomTitle}
-                hostName={roomInfo.hostName}
-                isOwner={Boolean(roomInfo.isHost)}
-                onCheckStatus={async () => {
-                  try {
-                    const session = await safeGetSession(1000);
-                    const token = session?.data?.session?.access_token;
-                    const uid = session?.data?.session?.user?.id;
-                    const headers: Record<string, string> = {};
-                    if (token) headers["Authorization"] = `Bearer ${token}`;
-                    if (uid) headers["x-user-id"] = uid;
-                    const res = await fetch(
-                      `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
-                      { headers }
-                    );
-                    if (res.ok) {
-                      const fresh = await res.json();
-                      setRoomInfo(fresh);
-                      if ((fresh.status === "active" || fresh.isHostPresent) && fresh.isHost) {
-                        history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
-                      }
-                    }
-                  } catch {}
-                }}
-                onStartSession={handleStartRoom}
+                roomTitle={roomInfo?.roomTitle || cleanRouteRoomId}
+                hostName={roomInfo?.hostName}
+                isOwner={Boolean(roomInfo?.isHost)}
+                onCheckStatus={handleStatusCheck}
+                onStartSession={roomInfo?.isHost ? handleStartRoom : undefined}
               />
+            ) : stage === "preflight" ? (
+              <MediaPreflight
+                roomId={cleanRouteRoomId}
+                isInline={true}
+                onComplete={handlePreflightComplete}
+              />
+            ) : stage === "ready" ? (
+              <Center style={{ minHeight: 280, flexDirection: "column", gap: 16 }}>
+                <Loader color="violet" size="lg" />
+                <Text size="sm" c="dimmed">
+                  Entering watch party...
+                </Text>
+              </Center>
             ) : (
+              /* Passcode Stage */
               <>
-                {/* Room Preview Card */}
                 {roomInfo && (
                   <div className={styles.roomPreviewCard}>
                     {roomInfo.coverPhoto ? (
@@ -477,7 +592,6 @@ export const Join: React.FC = () => {
                   </div>
                 )}
 
-                {/* User Identity Preview */}
                 {user ? (
                   <div className={styles.identityPreview}>
                     <Avatar
@@ -507,66 +621,64 @@ export const Join: React.FC = () => {
                   </div>
                 )}
 
-                {/* Host Direct Action or Participant Passcode Entry Form */}
                 <form
-                  onSubmit={handleGatewaySubmit}
+                  onSubmit={handlePasscodeSubmit}
                   className={styles.form}
                   noValidate
                 >
-                  {/* Participant Passcode Entry Form */}
-                    <div className={styles.inputWrapper}>
-                      {roomInfo?.participantsLocked && (
-                        <div
-                          className={styles.inlineError}
-                          style={{
-                            marginBottom: 12,
-                            background: "rgba(245, 159, 0, 0.1)",
-                            borderColor: "rgba(245, 159, 0, 0.3)",
-                            color: "var(--color-warning)",
-                          }}
-                          role="alert"
-                        >
-                          <IconLock size={16} stroke={1.8} />
-                          <span>This room is currently locked to new participants by the host.</span>
-                        </div>
-                      )}
-                      <div className={styles.passcodeHeader}>
-                        <span className={styles.passcodeTitle}>Room Passcode</span>
-                        <span className={styles.passcodeSubtitle}>
-                          {user
-                            ? "Enter the passcode shared by the host."
-                            : "Enter the room passcode to continue."}
-                        </span>
-                      </div>
-                      <PasswordInput
-                        placeholder="Enter 8-character passcode"
-                        value={passcode}
-                        minLength={8}
-                        maxLength={8}
-                        onChange={(event) => {
-                          setPasscode(event.currentTarget.value.slice(0, 8));
-                          if (formError) setFormError("");
+                  <div className={styles.inputWrapper}>
+                    {roomInfo?.participantsLocked && (
+                      <div
+                        className={styles.inlineError}
+                        style={{
+                          marginBottom: 12,
+                          background: "rgba(245, 159, 0, 0.1)",
+                          borderColor: "rgba(245, 159, 0, 0.3)",
+                          color: "var(--color-warning)",
                         }}
-                        disabled={roomInfo?.participantsLocked || verifying}
-                        required
-                        size="md"
-                        leftSection={<IconLock size={18} stroke={1.5} />}
-                        aria-invalid={Boolean(formError)}
-                        aria-describedby={
-                          formError ? "join-error-message" : undefined
-                        }
-                      />
-                      {formError && (
-                        <div
-                          id="join-error-message"
-                          className={styles.inlineError}
-                          role="alert"
-                        >
-                          <IconAlertCircle size={15} stroke={1.8} />
-                          <span>{formError}</span>
-                        </div>
-                      )}
+                        role="alert"
+                      >
+                        <IconLock size={16} stroke={1.8} />
+                        <span>This room is currently locked to new participants by the host.</span>
+                      </div>
+                    )}
+                    <div className={styles.passcodeHeader}>
+                      <span className={styles.passcodeTitle}>Room Passcode</span>
+                      <span className={styles.passcodeSubtitle}>
+                        {user
+                          ? "Enter the passcode shared by the host."
+                          : "Enter the room passcode to continue."}
+                      </span>
                     </div>
+                    <PasswordInput
+                      placeholder="Enter 8-character passcode"
+                      value={passcode}
+                      minLength={8}
+                      maxLength={8}
+                      onChange={(event) => {
+                        setPasscode(event.currentTarget.value.slice(0, 8));
+                        if (formError) setFormError("");
+                      }}
+                      disabled={roomInfo?.participantsLocked || verifying}
+                      required
+                      size="md"
+                      leftSection={<IconLock size={18} stroke={1.5} />}
+                      aria-invalid={Boolean(formError)}
+                      aria-describedby={
+                        formError ? "join-error-message" : undefined
+                      }
+                    />
+                    {formError && (
+                      <div
+                        id="join-error-message"
+                        className={styles.inlineError}
+                        role="alert"
+                      >
+                        <IconAlertCircle size={15} stroke={1.8} />
+                        <span>{formError}</span>
+                      </div>
+                    )}
+                  </div>
 
                   <Button
                     type="submit"
@@ -601,7 +713,7 @@ export const Join: React.FC = () => {
                           ? "Sign in to Join"
                           : user.email_confirmed_at == null
                             ? "Verify Email to Join"
-                            : "Enter Watch Room"}
+                            : "Continue to Setup"}
                   </Button>
                 </form>
               </>
@@ -667,7 +779,6 @@ export const Join: React.FC = () => {
               </form>
             </>
           )}
-
         </div>
       </main>
     </div>
