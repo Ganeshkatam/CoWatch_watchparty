@@ -93,8 +93,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   // Non-hosts must never leak passcode in invite messages
   const inviteMessage = canManageCredentials && resolvedPasscode
-    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
-    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
+    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\`\n\nPasscode:\n\`${resolvedPasscode}\``
+    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\``;
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -123,14 +123,14 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const whatsappText = canManageCredentials && resolvedPasscode
-    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
-    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\`\n\nPasscode:\n\`${resolvedPasscode}\``
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\``;
 
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
 
   const telegramText = canManageCredentials && resolvedPasscode
-    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
-    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\`\n\nPasscode:\n\`${resolvedPasscode}\``
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID:\n\`${cleanId}\``;
 
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
     fullUrl
