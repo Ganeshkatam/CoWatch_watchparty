@@ -1,0 +1,84 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary, #9ca3af);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.whatsapp {
+  background: rgba(37, 211, 102, 0.12);
+  color: #25d366;
+  border-color: rgba(37, 211, 102, 0.25);
+}
+
+.whatsapp:hover {
+  background: rgba(37, 211, 102, 0.2);
+  border-color: rgba(37, 211, 102, 0.4);
+}
+
+.telegram {
+  background: rgba(0, 136, 204, 0.12);
+  color: #0088cc;
+  border-color: rgba(0, 136, 204, 0.25);
+}
+
+.telegram:hover {
+  background: rgba(0, 136, 204, 0.2);
+  border-color: rgba(0, 136, 204, 0.4);
+}
+
+.email {
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.email:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.nativeShareButton {
+  margin-top: 4px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  height: 38px;
+}

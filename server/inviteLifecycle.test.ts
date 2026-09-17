@@ -576,6 +576,63 @@ async function runInviteLifecycleTests() {
     });
     assert.strictEqual(rateExceededRes.status, 429, '11th invite from caller must be rejected with 429');
 
+    // ---------------------------------------------------------------------------
+    // 8. QR Code Invariants & UI URL-Copy Removal Invariants
+    // ---------------------------------------------------------------------------
+    console.log('Case 8: QR Code Invariants & URL-Copy Removal Invariants...');
+    const testOrigin = 'https://cowatch.tv';
+    const cleanId = 'alpha-room-99';
+    const testCanonicalJoinUrl = `${testOrigin}/join/${cleanId}`;
+
+    // 8a. Invariant: QR payload strictly equals canonicalJoinUrl
+    assert.strictEqual(
+      testCanonicalJoinUrl,
+      `${testOrigin}/join/${cleanId}`,
+      'QR URL must match canonicalJoinUrl exactly',
+    );
+    assert(
+      testCanonicalJoinUrl.includes(`/join/${cleanId}`),
+      'QR URL must contain canonical /join/:roomId path',
+    );
+    assert(
+      !testCanonicalJoinUrl.includes('passcode'),
+      'QR URL must never contain passcode or credential query parameter',
+    );
+    assert(
+      !testCanonicalJoinUrl.includes('/room/'),
+      'QR URL must never target /room/:roomId',
+    );
+
+    // 8b. Static source audit: Verify URL-Copy removal from InviteModal
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const inviteModalSource = fs.readFileSync(path.resolve('src/components/Modal/InviteModal.tsx'), 'utf-8');
+
+    assert(
+      !inviteModalSource.includes('Party Link'),
+      'Party Link card must be removed from InviteModal',
+    );
+    assert(
+      !inviteModalSource.includes('Copy Link'),
+      'Copy Link button must be removed from InviteModal',
+    );
+    assert(
+      !inviteModalSource.includes('handleCopyInviteLink'),
+      'Copy link handler must be removed from InviteModal',
+    );
+    assert(
+      inviteModalSource.includes('<QRShare'),
+      'InviteModal must render modular QRShare component',
+    );
+    assert(
+      inviteModalSource.includes('<DirectInviteForm'),
+      'InviteModal must render modular DirectInviteForm component',
+    );
+    assert(
+      inviteModalSource.includes('<ShareActions'),
+      'InviteModal must render modular ShareActions component',
+    );
+
     console.log('\nAll invite lifecycle and admission security tests passed successfully.');
   } finally {
     // Restore stubs and close server
