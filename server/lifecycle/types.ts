@@ -57,3 +57,16 @@ export interface AdmissionResult {
   roomRow?: any;
   error?: string;
 }
+
+/**
+ * Distinguishes permanently dead / concluded rooms from reusable rooms.
+ * Permanent rooms are reusable indefinitely across sessions (active <-> inactive)
+ * and only destroyed via explicit owner deletion.
+ */
+export const isTerminalRoom = (
+  room?: { isPermanent?: boolean | null; status?: string | null } | null
+): boolean => {
+  if (!room) return false;
+  return !room.isPermanent && (room.status === "ended" || room.status === "expired");
+};
+

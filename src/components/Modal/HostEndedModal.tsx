@@ -6,11 +6,13 @@ import styles from "./HostEndedModal.module.css";
 interface HostEndedModalProps {
   opened: boolean;
   onConfirm: () => void;
+  isPermanent?: boolean;
 }
 
 export const HostEndedModal: React.FC<HostEndedModalProps> = ({
   opened,
   onConfirm,
+  isPermanent = false,
 }) => {
   return (
     <Modal
@@ -20,7 +22,7 @@ export const HostEndedModal: React.FC<HostEndedModalProps> = ({
       closeOnClickOutside={false}
       closeOnEscape={false}
       withCloseButton={false}
-      title="This meeting has been ended by host"
+      title={isPermanent ? "This session has been stopped by host" : "This meeting has been ended by host"}
       radius="md"
       size={MODAL_SIZES.sm}
       className={styles.modalRoot}
@@ -30,7 +32,9 @@ export const HostEndedModal: React.FC<HostEndedModalProps> = ({
       }}
     >
       <Text className={styles.description}>
-        The host has ended this watch party session. Click OK to return to the home page.
+        {isPermanent
+          ? "The host has stopped this watch party session. Click OK to return to the home page."
+          : "The host has ended this watch party session. Click OK to return to the home page."}
       </Text>
       <div className={styles.actionRow}>
         <Button

@@ -39,7 +39,7 @@ import {
   IconUserPlus,
   IconRefresh,
 } from "@tabler/icons-react";
-import { serverPath, getRoomUrl } from "../../utils/utils";
+import { serverPath, getRoomUrl, isTerminalRoom } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
@@ -83,7 +83,16 @@ interface RoomDetailsData {
   };
 }
 
-const getStatusConfig = (status: RoomDetailsData["status"]) => {
+const getStatusConfig = (status: RoomDetailsData["status"], isPermanent?: boolean) => {
+  if (isPermanent && status === "active") {
+    return {
+      label: "Permanent",
+      color: "teal",
+      dotClass: styles.active,
+      description: "Room is active and saved permanently.",
+      badgeColor: "teal",
+    };
+  }
   switch (status) {
     case "active":
       return {
@@ -196,7 +205,7 @@ export const RoomDetails = () => {
     }
   }, [roomId]);
 
-  const isRoomEnded = room?.status === "ended" || room?.status === "expired";
+  const isRoomEnded = isTerminalRoom(room);
   const currentPasscode = isRoomEnded ? "" : (room?.currentPasscode || "");
 
   useEffect(() => {
@@ -323,11 +332,11 @@ export const RoomDetails = () => {
     );
   }
 
-  const isOpenable = room.status === "active" || room.status === "expiring" || room.status === "scheduled" || room.status === "inactive";
+  const isOpenable = !isTerminalRoom(room);
   const urlPath = room.status === "inactive"
     ? `/join/${room.roomId.replace(/^\//, "")}?user=host&start=waiting`
     : `/watch/${room.roomId.replace(/^\//, "")}`;
-  const statusConfig = getStatusConfig(room.status);
+  const statusConfig = getStatusConfig(room.status, room.isPermanent);
 
   // Time remaining calculator
   const getExpiresIn = () => {

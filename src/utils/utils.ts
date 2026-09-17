@@ -637,3 +637,16 @@ function uuidv4() {
 // Subtract header, URL row, button row, 3 gaps, controls
 export const VIDEO_MAX_HEIGHT_CSS =
   "calc(100vh - 64px - 36px - 36px - 4px - 4px - 4px - 32px)";
+
+/**
+ * Distinguishes permanently dead / concluded rooms from reusable rooms.
+ * Permanent rooms are reusable indefinitely across sessions (active <-> inactive)
+ * and only destroyed via explicit owner deletion.
+ */
+export const isTerminalRoom = (
+  room?: { isPermanent?: boolean | null; status?: string | null } | null
+): boolean => {
+  if (!room) return false;
+  return !room.isPermanent && (room.status === "ended" || room.status === "expired");
+};
+

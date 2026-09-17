@@ -48,6 +48,7 @@ import { type RoomSummary } from "./MyRooms";
 import {
   getRoomUrl,
   serverPath,
+  isTerminalRoom,
 } from "../../utils/utils";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
@@ -57,9 +58,12 @@ import styles from "./MyRooms.module.css";
 
 const getComputedState = (room: RoomSummary) => {
   const isPermanent = Boolean(room.isPermanent);
-  if (room.status === 'expired') return 'Expired';
-  if (room.status === 'ended') return 'Ended';
-  if (room.status === 'active' && isPermanent) return 'Permanent';
+  if (isTerminalRoom(room)) {
+    return room.status === 'expired' ? 'Expired' : 'Ended';
+  }
+  if (isPermanent) {
+    return room.status === 'active' ? 'Permanent' : 'Inactive';
+  }
   if (room.status === 'active') return 'Active';
   if (room.status === 'expiring') return 'Expiring';
   return 'Inactive';
@@ -67,7 +71,12 @@ const getComputedState = (room: RoomSummary) => {
 
 const RoomStatusBadge = ({ status, isPermanent }: { status: RoomSummary["status"], isPermanent: boolean }) => {
   const badgeStyle = { fontWeight: 700, letterSpacing: '0.04em', backdropFilter: 'blur(8px)' };
-  if (status === "active" && isPermanent) return <Badge color="green" variant="filled" size="sm" radius="xl" style={badgeStyle}>● PERMANENT</Badge>;
+  if (isPermanent) {
+    if (status === "active") {
+      return <Badge color="green" variant="filled" size="sm" radius="xl" style={badgeStyle}>● PERMANENT</Badge>;
+    }
+    return <Badge color="yellow" variant="filled" size="sm" radius="xl" style={badgeStyle}>● INACTIVE</Badge>;
+  }
   if (status === "active") return <Badge color="green" variant="filled" size="sm" radius="xl" style={badgeStyle}>● ACTIVE</Badge>;
   if (status === "expiring") return <Badge color="orange" variant="filled" size="sm" radius="xl" style={badgeStyle}>● EXPIRING SOON</Badge>;
   if (status === "expired" || status === "ended") return <Badge color="gray" variant="filled" size="sm" radius="xl" style={badgeStyle}>● ENDED</Badge>;
@@ -751,7 +760,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const fileInputRef = useRef<HTMLInputElement>(null);
   const history = useHistory();
   const computedState = getComputedState(room);
-  const isEnded = computedState === 'Expired' || computedState === 'Ended' || room.status === 'ended' || room.status === 'expired';
+  const isEnded = isTerminalRoom(room);
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(getRoomUrl(room.roomId)).then(() => {
@@ -848,12 +857,12 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     }
   };
 
-  const isPermanent = computedState === 'Permanent';
+  const isPermanent = Boolean(room.isPermanent);
   const urlPath = `/watch/${room.roomId.replace(/^\//, '')}`;
   const detailsPath = `/myrooms/${room.roomId}`;
 
   const renderPrimary = () => {
-    if (computedState === 'Expired' || computedState === 'Ended') {
+    if (isEnded) {
       return (
         <Button
           size="xs"
@@ -889,7 +898,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   };
 
   const renderSecondary = () => {
-    if (computedState === 'Expired' || computedState === 'Ended') return null;
+    if (isEnded) return null;
     return (
       <Button
         size="xs"

@@ -2650,29 +2650,40 @@ app.post("/endRoom", async (req, res) => {
       return;
     }
 
-    // 1. Authoritative DB transition: lock account usage, mark status = 'ended', and immediately reclaim quota slot
+    // 1. Authoritative DB transition: atomic decision on status ('inactive' for permanent, 'ended' for temporary)
+    let endResult: any = null;
     try {
-      await postgres.query(
+      const qRes = await postgres.query(
         `SELECT public.end_room_authoritative($1, $2, 'host') AS result`,
         [decoded.uid, roomId]
       );
+      endResult = qRes.rows?.[0]?.result;
     } catch (dbErr: any) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }
 
+    const newStatus: string = endResult?.status || 'ended';
+    const isPermanent: boolean = Boolean(endResult?.isPermanent);
+
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
-    const cleanRoomId = roomId;
     if (memoryRoom) {
-      memoryRoom.status = 'ended';
+      memoryRoom.status = newStatus as any;
+      memoryRoom.isPermanent = isPermanent;
 
       // Explicit notification to all connected clients before disconnecting
-      io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED");
+      io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED", {
+        isPermanent,
+        status: newStatus,
+        roomId,
+      });
 
       memoryRoom.addChatMessage(null, {
         id: '',
         system: true,
-        msg: 'This watch party has been ended by the host.',
+        msg: isPermanent
+          ? 'This room session has been stopped by the host.'
+          : 'This watch party has been ended by the host.',
       });
 
       if (memoryRoom.vBrowser) {
@@ -2681,7 +2692,12 @@ app.post("/endRoom", async (req, res) => {
       memoryRoom.disconnectAllSockets();
     }
 
-    res.json({ success: true, status: 'ended' });
+    res.json({
+      success: true,
+      roomId,
+      status: newStatus,
+      isPermanent,
+    });
   } catch (error) {
     console.error("Error ending room session:", error);
     res.status(500).json({ error: "Internal server error" });

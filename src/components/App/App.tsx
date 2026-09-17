@@ -204,6 +204,7 @@ interface AppState {
   pipState: PiPState;
   isWaitingForHost: boolean;
   isHostSessionEnded: boolean;
+  isHostSessionPermanent: boolean;
   isOwner: boolean;
   currentHostId: string;
   currentHostClientId: string;
@@ -325,6 +326,7 @@ export class App extends React.Component<AppProps, AppState> {
     pipState: pipManager.getState(),
     isWaitingForHost: false,
     isHostSessionEnded: false,
+    isHostSessionPermanent: false,
     isOwner: false,
     currentHostId: "",
     currentHostClientId: "",
@@ -771,7 +773,7 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
 
-    this.setState({ isHostSessionEnded: false });
+    this.setState({ isHostSessionEnded: false, isHostSessionPermanent: false });
 
     if (this.startingTimer) {
       window.clearTimeout(this.startingTimer);
@@ -1029,7 +1031,7 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({ overlayMsg: getAdmissionErrorMessage(errMsg), state: "connected", initStage: "degraded" });
         }
       });
-      socket.on("ROOM_SESSION_STOPPED", () => {
+      socket.on("ROOM_SESSION_STOPPED", (data?: { isPermanent?: boolean; status?: string }) => {
         if (this.state.isHostSessionEnded || this.isRoomOwner()) {
           return;
         }
@@ -1037,6 +1039,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.socket?.disconnect();
         this.setState({
           isHostSessionEnded: true,
+          isHostSessionPermanent: Boolean(data?.isPermanent),
           isWaitingForHost: false,
           overlayMsg: "",
         });
@@ -3242,6 +3245,7 @@ export class App extends React.Component<AppProps, AppState> {
 
         <HostEndedModal
           opened={this.state.isHostSessionEnded}
+          isPermanent={this.state.isHostSessionPermanent}
           onConfirm={() => {
             window.location.replace("/room-ended");
           }}
