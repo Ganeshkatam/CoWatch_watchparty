@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
+import { Badge, Button, Menu, Progress, Slider, Tooltip } from "@mantine/core";
 import { formatTimestamp, softWhite } from "../../utils/utils";
 import styles from "./Controls.module.css";
 import { MetadataContext } from "../../MetadataContext";
@@ -154,34 +154,26 @@ export const Controls = (props: ControlsProps) => {
           onClick={() => roomPlaylistPlay(0)}
         />
       )}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          position: "relative",
-        }}
-      >
-        <Button
-          size="compact-xs"
-          color={isBehind ? "blue" : "gray"}
-          title="Sync"
-          onClick={() => {
-            if (isLiveStream) {
-              // in live case we want to seek the entire room to edge
-              roomSeek(props.duration);
-            } else {
-              localSeek();
-            }
-          }}
-        >
-          Sync
-        </Button>
-        {/* <div style={{ position: 'absolute', fontSize: '6px', zIndex: -1 }}>
-            {Math.max(Math.floor(behindTime), 0)}
-          </div> */}
-      </div>
+      {isBehind && (
+        <Tooltip label={`Behind by ~${Math.round(behindTime)}s — Click to catch up`} withArrow position="top">
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="blue"
+            leftSection={<IconRefresh size={12} />}
+            onClick={() => {
+              if (isLiveStream) {
+                // in live case we want to seek the entire room to edge
+                roomSeek(props.duration);
+              } else {
+                localSeek();
+              }
+            }}
+          >
+            Catch Up
+          </Button>
+        </Tooltip>
+      )}
       <div className={` ${styles.text}`}>
         {formatTimestamp(getCurrent(), isLiveStream ? zeroTime : undefined)}
       </div>
