@@ -71,6 +71,217 @@ function requireAuth(
   };
 }
 
+export interface InvitationPreviewResult {
+  status: number;
+  body: {
+    valid: boolean;
+    error?: string;
+    invitationId?: string;
+    roomId?: string;
+    roomTitle?: string;
+    inviterName?: string;
+    status?: string;
+    isPermanent?: boolean;
+    isReusable?: boolean;
+  };
+}
+
+export function formatInvitationPreview(
+  inv: {
+    id: string;
+    room_id: string;
+    inviter_id: string;
+    target_user_id?: string | null;
+    expires_at?: string | null;
+    revoked_at?: string | null;
+    accepted_at?: string | null;
+    is_reusable: boolean;
+    roomTitle?: string;
+    status?: string;
+    isPermanent?: boolean;
+    participants_locked?: boolean;
+    inviter_name?: string;
+    inviter_username?: string;
+  },
+  callerUid?: string,
+): InvitationPreviewResult {
+  // 1. Target recipient authorization check (if callerUid is provided or if invitation is targeted)
+  if (inv.target_user_id && callerUid && inv.target_user_id !== callerUid && inv.inviter_id !== callerUid) {
+    return { status: 403, body: { valid: false, error: 'Unauthorized to view this invitation' } };
+  }
+
+  // 2. Expiry check
+  if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
+    return { status: 404, body: { valid: false, error: 'This invitation has expired.' } };
+  }
+
+  // 3. Revocation check
+  if (inv.revoked_at) {
+    return { status: 404, body: { valid: false, error: 'This invitation has been revoked.' } };
+  }
+
+  // 4. Single-use consumption check
+  if (!inv.is_reusable && inv.accepted_at) {
+    return { status: 404, body: { valid: false, error: 'This invitation has already been accepted.' } };
+  }
+
+  // 5. Room lifecycle check
+  if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
+    return { status: 404, body: { valid: false, error: 'This room has ended or expired.' } };
+  }
+
+  const inviterDisplayName = inv.inviter_name || inv.inviter_username || 'The Host';
+
+  // Strictly omit the room passcode
+  return {
+    status: 200,
+    body: {
+      valid: true,
+      invitationId: inv.id,
+      roomId: inv.room_id,
+      roomTitle: inv.roomTitle || inv.room_id,
+      inviterName: inviterDisplayName,
+      status: inv.status,
+      isPermanent: Boolean(inv.isPermanent),
+      isReusable: Boolean(inv.is_reusable),
+    },
+  };
+}
+
+export interface InvitationAdmissionContext {
+  inv: {
+    id: string;
+    room_id: string;
+    inviter_id: string;
+    target_user_id?: string | null;
+    expires_at?: string | null;
+    revoked_at?: string | null;
+    accepted_at?: string | null;
+    is_reusable: boolean;
+    roomTitle?: string;
+    status?: string;
+    isPermanent?: boolean;
+    owner_id?: string;
+    participants_locked?: boolean;
+    max_participants?: number;
+  };
+  callerUid: string;
+  sessionId: string;
+  pool: { query: (text: string, params?: any[]) => Promise<any> };
+  roomLookup?: (roomId: string) => any;
+  memoryRooms?: Map<string, any>;
+}
+
+export interface InvitationAdmissionResult {
+  status: number;
+  body: {
+    valid: boolean;
+    error?: string;
+    code?: string;
+    roomId?: string;
+    admissionToken?: string;
+    sessionId?: string;
+  };
+}
+
+export async function executeInvitationAdmission(
+  ctx: InvitationAdmissionContext,
+): Promise<InvitationAdmissionResult> {
+  const { inv, callerUid, sessionId, pool, roomLookup, memoryRooms } = ctx;
+
+  // 1. Expiry check
+  if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
+    return { status: 400, body: { valid: false, error: 'This invitation has expired.' } };
+  }
+
+  // 2. Revocation check
+  if (inv.revoked_at) {
+    return { status: 400, body: { valid: false, error: 'This invitation has been revoked.' } };
+  }
+
+  // 3. Reusability / Single-use consumption check
+  if (!inv.is_reusable && inv.accepted_at) {
+    return { status: 409, body: { valid: false, error: 'This invitation has already been used.' } };
+  }
+
+  // 4. Room lifecycle check
+  if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
+    return { status: 400, body: { valid: false, error: 'This room has ended or expired.' } };
+  }
+
+  // 5. Targeted recipient authorization check
+  if (inv.target_user_id && inv.target_user_id !== callerUid) {
+    return { status: 403, body: { valid: false, error: 'This invitation is intended for another user.' } };
+  }
+
+  // 6. Host status for capacity and participant lock bypass
+  const isOwner = Boolean(inv.owner_id && callerUid === inv.owner_id);
+  let isHost = isOwner;
+  const memoryRoom = memoryRooms ? memoryRooms.get(inv.room_id) : (roomLookup ? roomLookup(inv.room_id) : undefined);
+  if (memoryRoom && callerUid) {
+    if (typeof memoryRoom.isHostUid === 'function') {
+      isHost = isHost || memoryRoom.isHostUid(callerUid);
+    } else if (memoryRoom.currentHostUid) {
+      isHost = isHost || memoryRoom.currentHostUid === callerUid;
+    }
+  }
+
+  // 7. Participant lock check
+  if (inv.participants_locked && !isHost) {
+    return {
+      status: 403,
+      body: {
+        valid: false,
+        error: 'This room is currently locked to new participants.',
+        code: 'PARTICIPANTS_LOCKED',
+      },
+    };
+  }
+
+  // 8. Capacity check
+  if (memoryRoom && !isHost) {
+    if (typeof inv.max_participants === 'number') {
+      memoryRoom.maxParticipants = inv.max_participants;
+    }
+    if (typeof memoryRoom.isRoomFull === 'function' && memoryRoom.isRoomFull(isHost)) {
+      return {
+        status: 403,
+        body: {
+          valid: false,
+          error: 'This room has reached its participant limit.',
+          code: 'ROOM_FULL',
+        },
+      };
+    }
+  }
+
+  // 9. Consume single-use invitation or record acceptance
+  await pool.query(
+    `UPDATE public.room_invitations
+     SET accepted_at = now(), accepted_by_user_id = $1
+     WHERE id = $2`,
+    [callerUid, inv.id],
+  );
+
+  // 10. Issue cryptographic admission token
+  const admissionToken = generateAdmissionToken({
+    roomId: inv.room_id,
+    userId: callerUid,
+    sessionId,
+    ttlSeconds: 900,
+  });
+
+  return {
+    status: 200,
+    body: {
+      valid: true,
+      roomId: inv.room_id,
+      admissionToken,
+      sessionId,
+    },
+  };
+}
+
 export interface InvitationRouterOptions {
   postgresPool?: typeof postgres;
   roomLookup?: (roomId: string) => any;
@@ -225,45 +436,8 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
         return;
       }
 
-      const inv = result.rows[0];
-
-      // Expiry check
-      if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
-        res.status(404).json({ valid: false, error: 'This invitation has expired.' });
-        return;
-      }
-
-      // Revocation check
-      if (inv.revoked_at) {
-        res.status(404).json({ valid: false, error: 'This invitation has been revoked.' });
-        return;
-      }
-
-      // Single-use check
-      if (!inv.is_reusable && inv.accepted_at) {
-        res.status(404).json({ valid: false, error: 'This invitation has already been accepted.' });
-        return;
-      }
-
-      // Room lifecycle check
-      if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
-        res.status(404).json({ valid: false, error: 'This room has ended or expired.' });
-        return;
-      }
-
-      const inviterDisplayName = inv.inviter_name || inv.inviter_username || 'The Host';
-
-      // Strictly omit the room passcode!
-      res.json({
-        valid: true,
-        invitationId: inv.id,
-        roomId: inv.room_id,
-        roomTitle: inv.roomTitle || inv.room_id,
-        inviterName: inviterDisplayName,
-        status: inv.status,
-        isPermanent: Boolean(inv.isPermanent),
-        isReusable: Boolean(inv.is_reusable),
-      });
+      const preview = formatInvitationPreview(result.rows[0]);
+      res.status(preview.status).json(preview.body);
     } catch (err) {
       console.error('Error resolving invitation token:', err);
       res.status(500).json({ valid: false, error: 'Failed to resolve invitation.' });
@@ -290,7 +464,7 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
       const result = await pool.query(
         `SELECT i.id, i.room_id, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
                 i.accepted_at, i.is_reusable,
-                r."roomTitle", r.status, r."isPermanent",
+                r."roomTitle", r.status, r."isPermanent", r.participants_locked,
                 p.display_name AS inviter_name, p.username AS inviter_username
          FROM public.room_invitations i
          JOIN public.rooms r ON r."roomId" = i.room_id
@@ -304,35 +478,8 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
         return;
       }
 
-      const inv = result.rows[0];
-      if (inv.target_user_id && inv.target_user_id !== callerUid && inv.inviter_id !== callerUid) {
-        res.status(403).json({ valid: false, error: 'Unauthorized to view this invitation' });
-        return;
-      }
-
-      if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
-        res.status(404).json({ valid: false, error: 'This invitation has expired.' });
-        return;
-      }
-      if (inv.revoked_at) {
-        res.status(404).json({ valid: false, error: 'This invitation has been revoked.' });
-        return;
-      }
-      if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
-        res.status(404).json({ valid: false, error: 'This room has ended or expired.' });
-        return;
-      }
-
-      res.json({
-        valid: true,
-        invitationId: inv.id,
-        roomId: inv.room_id,
-        roomTitle: inv.roomTitle || inv.room_id,
-        inviterName: inv.inviter_name || inv.inviter_username || 'The Host',
-        status: inv.status,
-        isPermanent: Boolean(inv.isPermanent),
-        isReusable: Boolean(inv.is_reusable),
-      });
+      const preview = formatInvitationPreview(result.rows[0], callerUid);
+      res.status(preview.status).json(preview.body);
     } catch (err) {
       console.error('Error fetching invitation by ID:', err);
       res.status(500).json({ valid: false, error: 'Server error' });
@@ -378,97 +525,16 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
           return;
         }
 
-        const inv = result.rows[0];
-
-        // 1. Expiry check
-        if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
-          res.status(400).json({ valid: false, error: 'This invitation has expired.' });
-          return;
-        }
-
-        // 2. Revocation check
-        if (inv.revoked_at) {
-          res.status(400).json({ valid: false, error: 'This invitation has been revoked.' });
-          return;
-        }
-
-        // 3. Reusability / Single-use consumption check
-        if (!inv.is_reusable && inv.accepted_at) {
-          res.status(409).json({ valid: false, error: 'This invitation has already been used.' });
-          return;
-        }
-
-        // 4. Room lifecycle check
-        if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
-          res.status(400).json({ valid: false, error: 'This room has ended or expired.' });
-          return;
-        }
-
-        // 5. Targeted recipient authorization check
-        if (inv.target_user_id && inv.target_user_id !== callerUid) {
-          res.status(403).json({ valid: false, error: 'This invitation is intended for another user.' });
-          return;
-        }
-
-        // 6. Host status for capacity and lock bypass
-        const isOwner = Boolean(inv.owner_id && callerUid === inv.owner_id);
-        let isHost = isOwner;
-        const memoryRoom = memoryRooms ? memoryRooms.get(inv.room_id) : (roomLookup ? roomLookup(inv.room_id) : undefined);
-        if (memoryRoom && callerUid) {
-          if (typeof memoryRoom.isHostUid === 'function') {
-            isHost = isHost || memoryRoom.isHostUid(callerUid);
-          } else if (memoryRoom.currentHostUid) {
-            isHost = isHost || memoryRoom.currentHostUid === callerUid;
-          }
-        }
-
-        // 7. Participant lock check
-        if (inv.participants_locked && !isHost) {
-          res.status(403).json({
-            valid: false,
-            error: 'This room is currently locked to new participants.',
-            code: 'PARTICIPANTS_LOCKED',
-          });
-          return;
-        }
-
-        // 8. Capacity check
-        if (memoryRoom && !isHost) {
-          if (typeof inv.max_participants === 'number') {
-            memoryRoom.maxParticipants = inv.max_participants;
-          }
-          if (typeof memoryRoom.isRoomFull === 'function' && memoryRoom.isRoomFull(isHost)) {
-            res.status(403).json({
-              valid: false,
-              error: 'This room has reached its participant limit.',
-              code: 'ROOM_FULL',
-            });
-            return;
-          }
-        }
-
-        // 9. Consume single-use invitation or record acceptance
-        await pool.query(
-          `UPDATE public.room_invitations
-           SET accepted_at = now(), accepted_by_user_id = $1
-           WHERE id = $2`,
-          [callerUid, inv.id],
-        );
-
-        // 10. Issue cryptographic admission token
-        const admissionToken = generateAdmissionToken({
-          roomId: inv.room_id,
-          userId: callerUid,
+        const admissionResult = await executeInvitationAdmission({
+          inv: result.rows[0],
+          callerUid,
           sessionId: cleanSessionId,
-          ttlSeconds: 900,
+          pool,
+          roomLookup,
+          memoryRooms,
         });
 
-        res.json({
-          valid: true,
-          roomId: inv.room_id,
-          admissionToken,
-          sessionId: cleanSessionId,
-        });
+        res.status(admissionResult.status).json(admissionResult.body);
       } catch (err) {
         console.error('Error accepting invitation:', err);
         res.status(500).json({ valid: false, error: 'Server error accepting invitation.' });
@@ -513,83 +579,16 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
           return;
         }
 
-        const inv = result.rows[0];
-
-        // Target user authorization
-        if (inv.target_user_id && inv.target_user_id !== callerUid) {
-          res.status(403).json({ valid: false, error: 'This invitation was addressed to another user.' });
-          return;
-        }
-
-        if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) {
-          res.status(400).json({ valid: false, error: 'This invitation has expired.' });
-          return;
-        }
-        if (inv.revoked_at) {
-          res.status(400).json({ valid: false, error: 'This invitation has been revoked.' });
-          return;
-        }
-        if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
-          res.status(400).json({ valid: false, error: 'This room has ended or expired.' });
-          return;
-        }
-
-        // Host check for locks/capacity
-        const isOwner = Boolean(inv.owner_id && callerUid === inv.owner_id);
-        let isHost = isOwner;
-        const memoryRoom = memoryRooms ? memoryRooms.get(inv.room_id) : (roomLookup ? roomLookup(inv.room_id) : undefined);
-        if (memoryRoom && callerUid) {
-          if (typeof memoryRoom.isHostUid === 'function') {
-            isHost = isHost || memoryRoom.isHostUid(callerUid);
-          } else if (memoryRoom.currentHostUid) {
-            isHost = isHost || memoryRoom.currentHostUid === callerUid;
-          }
-        }
-
-        if (inv.participants_locked && !isHost) {
-          res.status(403).json({
-            valid: false,
-            error: 'This room is currently locked to new participants.',
-            code: 'PARTICIPANTS_LOCKED',
-          });
-          return;
-        }
-
-        if (memoryRoom && !isHost) {
-          if (typeof inv.max_participants === 'number') {
-            memoryRoom.maxParticipants = inv.max_participants;
-          }
-          if (typeof memoryRoom.isRoomFull === 'function' && memoryRoom.isRoomFull(isHost)) {
-            res.status(403).json({
-              valid: false,
-              error: 'This room has reached its participant limit.',
-              code: 'ROOM_FULL',
-            });
-            return;
-          }
-        }
-
-        // Mark accepted
-        await pool.query(
-          `UPDATE public.room_invitations
-           SET accepted_at = now(), accepted_by_user_id = $1
-           WHERE id = $2`,
-          [callerUid, inv.id],
-        );
-
-        const admissionToken = generateAdmissionToken({
-          roomId: inv.room_id,
-          userId: callerUid,
+        const admissionResult = await executeInvitationAdmission({
+          inv: result.rows[0],
+          callerUid,
           sessionId: cleanSessionId,
-          ttlSeconds: 900,
+          pool,
+          roomLookup,
+          memoryRooms,
         });
 
-        res.json({
-          valid: true,
-          roomId: inv.room_id,
-          admissionToken,
-          sessionId: cleanSessionId,
-        });
+        res.status(admissionResult.status).json(admissionResult.body);
       } catch (err) {
         console.error('Error accepting target invitation:', err);
         res.status(500).json({ valid: false, error: 'Server error accepting invitation.' });

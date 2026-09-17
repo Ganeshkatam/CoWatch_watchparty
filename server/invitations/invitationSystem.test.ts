@@ -692,6 +692,147 @@ async function runInvitationSystemTests() {
     assert(!qrTargetUrl.includes('perm1234'), 'QR value must not embed plaintext passcode');
     console.log('Passed Test 9.');
 
+    // -------------------------------------------------------------------------
+    // Test 10: Notification Admission Path Behavioral Equivalence
+    // (/api/invitations/by-id/:id & /api/invitations/accept-target)
+    // -------------------------------------------------------------------------
+    console.log('Test 10: Notification Admission Path Behavioral Equivalence...');
+
+    // A. Create targeted single-use invitation for TARGET_UID
+    const notifTargetRes = await fetch(`${baseUrl}/api/invitations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${HOST_UID}`,
+      },
+      body: JSON.stringify({
+        roomId: 'perm-active-room',
+        targetUserId: TARGET_UID,
+        isReusable: false,
+      }),
+    });
+    assert.strictEqual(notifTargetRes.status, 201);
+    const notifTargetData = await notifTargetRes.json();
+    const notifInvId = notifTargetData.invitationId;
+
+    // B. Preview verification (/by-id/:id)
+    // 1. Anonymous caller rejected with 401
+    const anonPreviewRes = await fetch(`${baseUrl}/api/invitations/by-id/${notifInvId}`);
+    assert.strictEqual(anonPreviewRes.status, 401, 'Anonymous preview must be 401');
+
+    // 2. Stranger (non-target) caller rejected with 403
+    const strangerPreviewRes = await fetch(`${baseUrl}/api/invitations/by-id/${notifInvId}`, {
+      headers: { Authorization: `Bearer test-user-${STRANGER_UID}` },
+    });
+    assert.strictEqual(strangerPreviewRes.status, 403, 'Non-target caller preview must be 403');
+
+    // 3. Target recipient preview succeeds with 200 and omits passcode
+    const targetPreviewRes = await fetch(`${baseUrl}/api/invitations/by-id/${notifInvId}`, {
+      headers: { Authorization: `Bearer test-user-${TARGET_UID}` },
+    });
+    assert.strictEqual(targetPreviewRes.status, 200, 'Target caller preview must be 200');
+    const targetPreviewData = await targetPreviewRes.json();
+    assert.strictEqual(targetPreviewData.valid, true);
+    assert.strictEqual(targetPreviewData.roomId, 'perm-active-room');
+    assert.strictEqual(targetPreviewData.passcode, undefined, 'Passcode must not be exposed in preview');
+    assert(!JSON.stringify(targetPreviewData).includes('perm1234'), 'Passcode string must not appear anywhere');
+
+    // C. Authoritative Admission verification (/accept-target)
+    // 1. Anonymous caller rejected with 401
+    const anonAcceptRes = await fetch(`${baseUrl}/api/invitations/accept-target`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invitationId: notifInvId }),
+    });
+    assert.strictEqual(anonAcceptRes.status, 401, 'Anonymous accept must be 401');
+
+    // 2. Stranger caller rejected with 403
+    const strangerAcceptRes = await fetch(`${baseUrl}/api/invitations/accept-target`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${STRANGER_UID}`,
+      },
+      body: JSON.stringify({ invitationId: notifInvId }),
+    });
+    assert.strictEqual(strangerAcceptRes.status, 403, 'Stranger accept must be 403');
+
+    // 3. Legitimate target recipient succeeds
+    const targetAcceptRes = await fetch(`${baseUrl}/api/invitations/accept-target`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${TARGET_UID}`,
+      },
+      body: JSON.stringify({
+        invitationId: notifInvId,
+        sessionId: 'session-target-789',
+      }),
+    });
+    assert.strictEqual(targetAcceptRes.status, 200, 'Target recipient accept must be 200');
+    const targetAcceptData = await targetAcceptRes.json();
+    assert.strictEqual(targetAcceptData.valid, true);
+    assert.strictEqual(targetAcceptData.roomId, 'perm-active-room');
+    assert.strictEqual(targetAcceptData.sessionId, 'session-target-789');
+    assert(targetAcceptData.admissionToken, 'Must issue admission token');
+
+    // Verify token validity
+    const verifiedToken = verifyAdmissionToken(
+      targetAcceptData.admissionToken,
+      'perm-active-room',
+      TARGET_UID,
+      'session-target-789',
+    );
+    assert(verifiedToken.valid, 'Target admission token must be cryptographically valid');
+
+    // D. Single-Use Consumption Regression Check
+    // Second accept attempt on single-use invitation must return 409 Conflict
+    const secondAcceptRes = await fetch(`${baseUrl}/api/invitations/accept-target`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${TARGET_UID}`,
+      },
+      body: JSON.stringify({ invitationId: notifInvId }),
+    });
+    assert.strictEqual(secondAcceptRes.status, 409, 'Subsequent accept of single-use invitation must return 409');
+
+    // Subsequent preview of single-use invitation must return 404 (already accepted)
+    const consumedPreviewRes = await fetch(`${baseUrl}/api/invitations/by-id/${notifInvId}`, {
+      headers: { Authorization: `Bearer test-user-${TARGET_UID}` },
+    });
+    assert.strictEqual(consumedPreviewRes.status, 404, 'Consumed invitation preview must return 404');
+
+    // E. Participant Lock Check on Notification Path
+    const lockedTargetRes = await fetch(`${baseUrl}/api/invitations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${HOST_UID}`,
+      },
+      body: JSON.stringify({
+        roomId: 'locked-room',
+        targetUserId: TARGET_UID,
+        isReusable: false,
+      }),
+    });
+    assert.strictEqual(lockedTargetRes.status, 201);
+    const lockedTargetData = await lockedTargetRes.json();
+
+    const lockedAcceptRes = await fetch(`${baseUrl}/api/invitations/accept-target`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${TARGET_UID}`,
+      },
+      body: JSON.stringify({ invitationId: lockedTargetData.invitationId }),
+    });
+    assert.strictEqual(lockedAcceptRes.status, 403, 'Locked room must reject non-host on notification path');
+    const lockedAcceptBody = await lockedAcceptRes.json();
+    assert.strictEqual(lockedAcceptBody.code, 'PARTICIPANTS_LOCKED');
+
+    console.log('Passed Test 10.');
+
     console.log('\nAll Unified CoWatch Invitation System tests passed successfully!');
   } finally {
     server.close();
