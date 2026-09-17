@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import QRCode from "react-qr-code";
 import { Button } from "@mantine/core";
 import { IconQrcode, IconDownload } from "@tabler/icons-react";
@@ -11,12 +11,15 @@ interface QRShareProps {
 
 export const QRShare: React.FC<QRShareProps> = ({ roomId, canonicalJoinUrl }) => {
   const cleanId = roomId.replace(/^\//, "").trim();
+  const frameRef = useRef<HTMLDivElement>(null);
 
   const handleDownloadQr = () => {
-    const svg = document.getElementById("cowatch-qr-svg") as SVGSVGElement | null;
+    const svg = frameRef.current?.querySelector("svg") as SVGSVGElement | null;
     if (!svg) return;
 
     const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const img = new Image();
@@ -35,9 +38,10 @@ export const QRShare: React.FC<QRShareProps> = ({ roomId, canonicalJoinUrl }) =>
         a.click();
         document.body.removeChild(a);
       }
+      URL.revokeObjectURL(blobUrl);
     };
 
-    img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+    img.src = blobUrl;
   };
 
   return (
@@ -49,9 +53,8 @@ export const QRShare: React.FC<QRShareProps> = ({ roomId, canonicalJoinUrl }) =>
         </span>
       </div>
 
-      <div className={styles.qrFrame}>
+      <div className={styles.qrFrame} ref={frameRef}>
         <QRCode
-          id="cowatch-qr-svg"
           value={canonicalJoinUrl}
           size={160}
           style={{ width: 160, height: 160, display: "block" }}

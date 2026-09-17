@@ -113,7 +113,6 @@ export const DirectInviteForm: React.FC<DirectInviteFormProps> = ({
 
         <Button
           type="submit"
-          onClick={() => handleSendInvite()}
           loading={isSubmitting}
           disabled={!username.trim()}
           variant="gradient"
