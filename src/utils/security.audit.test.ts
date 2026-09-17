@@ -95,7 +95,8 @@ assert.strictEqual(cleanUrl.includes("?pass="), false, "getRoomUrl must never in
 assert.strictEqual(cleanUrl.includes(testSecret), false, "getRoomUrl must never contain passcode value");
 
 const inviteMessage = getInviteMessage(testRoomId, testSecret);
-assert(inviteMessage.includes("Passcode: SecretPass123"), "Invite message should include separate passcode line for manual copy");
+assert(inviteMessage.includes(`\`${testSecret}\``), "Invite message should include individually copyable passcode block");
+assert(inviteMessage.includes(`\`${testRoomId}\``), "Invite message should include individually copyable room ID block");
 assert(!inviteMessage.includes("?passcode="), "Invite message link must NEVER contain ?passcode= parameter");
 assert(!inviteMessage.includes("?pass="), "Invite message link must NEVER contain ?pass= parameter");
 

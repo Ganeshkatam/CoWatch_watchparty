@@ -105,7 +105,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     // Non-hosts must NEVER leak the passcode in invite messages
     const msg = canManageRoom && resolvedPasscode
       ? getInviteMessage(cleanRoomId, resolvedPasscode)
-      : `Hey! Join my watch party on CoWatch:\n\nLink: ${roomUrl}\nRoom ID: ${cleanRoomId}`;
+      : `Hey! Join my watch party on CoWatch:\n\nLink: ${roomUrl}\n\nRoom ID (tap to copy):\n\`${cleanRoomId}\``;
     navigator.clipboard.writeText(msg);
     setCopiedMsg(true);
     setTimeout(() => setCopiedMsg(false), 2000);

@@ -93,8 +93,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   // Non-hosts must never leak passcode in invite messages
   const inviteMessage = canManageCredentials && resolvedPasscode
-    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
+    ? `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
+    : `Hey! Join my watch party on CoWatch:\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
 
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -123,20 +123,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const whatsappText = canManageCredentials && resolvedPasscode
-    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
 
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
 
   const telegramText = canManageCredentials && resolvedPasscode
-    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}\nPasscode: ${resolvedPasscode}`
-    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: ${cleanId}`;
+    ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${resolvedPasscode}\``
+    : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\n\nRoom ID (tap to copy):\n\`${cleanId}\``;
 
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
     fullUrl
   )}&text=${encodeURIComponent(telegramText)}`;
 
-  const twitterText = `Join my watch party on CoWatch!\nRoom ID: ${cleanId}`;
+  const twitterText = `Join my watch party on CoWatch!\nRoom ID: \`${cleanId}\``;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     twitterText
   )}&url=${encodeURIComponent(fullUrl)}`;
@@ -157,9 +157,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     navigator
       .share({
         title: "Join my CoWatch Party",
-        text: canManageCredentials && resolvedPasscode
-          ? `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: '${cleanId}'\nPasscode: '${resolvedPasscode}'`
-          : `Join my watch party on CoWatch!\n\nLink: ${fullUrl}\nRoom ID: '${cleanId}'`,
+        text: inviteMessage,
         url: fullUrl,
       })
       .catch(() => { });

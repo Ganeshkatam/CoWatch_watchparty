@@ -52,12 +52,12 @@ assert(
   msgNoPass.includes("Passcode: [Passcode Required - Ask Host]"),
   "Message without passcode must still include Passcode requirement line"
 );
-assert(msgNoPass.includes("Room ID: test-room-1"), "Message must include room ID");
+assert(msgNoPass.includes("`test-room-1`"), "Message must include individually copyable room ID block");
 assert(msgNoPass.includes("https://cowatch.example.com/join/test-room-1"), "Message must include clean join link");
 
 const msgWithPass = getInviteMessage("test-room-1", "secret123");
-assert(msgWithPass.includes("Passcode: secret123"), "Message must include passcode as separate line");
-assert(msgWithPass.includes("Room ID: test-room-1"), "Message must include room ID");
+assert(msgWithPass.includes("`secret123`"), "Message must include individually copyable passcode block");
+assert(msgWithPass.includes("`test-room-1`"), "Message must include individually copyable room ID block");
 assert(
   msgWithPass.includes("https://cowatch.example.com/join/test-room-1"),
   "Message must include clean join link"

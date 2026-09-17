@@ -323,9 +323,9 @@ export function getInviteMessage(roomId: string, passcode?: string): string {
   const cleanId = roomId.replace(/^\//, '');
   const url = getRoomUrl(roomId);
   if (passcode) {
-    return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: ${passcode}`;
+    return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode (tap to copy):\n\`${passcode}\``;
   }
-  return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\nRoom ID: ${cleanId}\nPasscode: [Passcode Required - Ask Host]`;
+  return `Hey! Join my watch party on CoWatch:\n\nLink: ${url}\n\nRoom ID (tap to copy):\n\`${cleanId}\`\n\nPasscode: [Passcode Required - Ask Host]`;
 }
 
 /**
