@@ -241,6 +241,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               <IconMail size={16} />
               <span>Email</span>
             </a>
+          </div>
+        </div>
+
         {/* Passcode Card - Strictly restricted to host or room owner */}
         {canManageCredentials && (
           <div className={styles.credentialCard}>
