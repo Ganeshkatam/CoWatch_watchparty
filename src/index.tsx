@@ -686,11 +686,11 @@ class CoWatch extends React.Component {
                             <Route
                               path="/room-ended"
                               exact
-                              render={() => {
+                              render={(props) => {
                                 return (
                                   <React.Fragment>
                                     <TopBar />
-                                    <PostRoom />
+                                    <PostRoom location={props.location} history={props.history} />
                                     <Footer />
                                   </React.Fragment>
                                 );

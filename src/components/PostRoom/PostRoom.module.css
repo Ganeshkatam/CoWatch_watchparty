@@ -40,11 +40,11 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 520px;
+  max-width: 540px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 20px;
-  padding: 48px 36px;
+  padding: 44px 36px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -55,21 +55,29 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.badgeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .brandBadge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   border-radius: 9999px;
   background: rgba(139, 92, 246, 0.1);
   border: 1px solid rgba(139, 92, 246, 0.25);
-  margin-bottom: 24px;
 }
 
 .brandLogoText {
   text-transform: uppercase;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.8px;
   background: linear-gradient(135deg, var(--color-teal, #14b8a6), var(--color-blue, #3b82f6));
   -webkit-background-clip: text;
@@ -77,39 +85,138 @@
   color: transparent;
 }
 
+.statusBadge {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+}
+
 .title {
   font-size: clamp(24px, 4vw, 30px);
   font-weight: 800;
   color: var(--text-primary);
   line-height: 1.25;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   letter-spacing: -0.4px;
+}
+
+.roomName {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--mantine-color-violet-4, #a78bfa);
+  margin-bottom: 14px;
+  max-width: 440px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .subtitle {
   font-size: 15px;
   color: var(--text-secondary);
   line-height: 1.55;
+  max-width: 440px;
+  margin-bottom: 6px;
+}
+
+.subMessage {
+  font-size: 14px;
+  color: var(--text-dimmed, #94a3b8);
+  line-height: 1.5;
+  max-width: 420px;
+  margin-bottom: 12px;
+}
+
+/* Compact Session Summary Card */
+.summaryCard {
+  width: 100%;
+  margin: 20px 0;
+  padding: 16px 18px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.summaryItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.summaryItemHeader {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dimmed, #94a3b8);
+}
+
+.summaryIcon {
+  color: var(--mantine-color-violet-4, #a78bfa);
+}
+
+.summaryLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.summaryValue {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footnote {
+  font-size: 13px;
+  color: var(--text-dimmed, #94a3b8);
+  margin-bottom: 24px;
+  font-style: italic;
   max-width: 400px;
-  margin-bottom: 32px;
 }
 
 .buttonGroup {
   display: flex;
   gap: 14px;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   justify-content: center;
+  margin-top: 8px;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 520px) {
   .buttonGroup {
     flex-direction: column;
     width: 100%;
   }
 
   .contentCard {
-    padding: 36px 20px;
+    padding: 32px 18px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .summaryItem {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    padding: 4px 6px;
   }
 }
 
@@ -142,4 +249,3 @@
   transform: translateY(-1px);
   background: var(--surface-hover, rgba(139, 92, 246, 0.08));
 }
-

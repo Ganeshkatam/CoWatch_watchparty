@@ -16,6 +16,7 @@ import {
   IconSettings,
   IconAlertTriangle,
   IconX,
+  IconPower,
 } from "@tabler/icons-react";
 import { Menu, Tooltip, ActionIcon, Loader } from "@mantine/core";
 import { HeaderSearchBar } from "./HeaderSearchBar";
@@ -49,12 +50,14 @@ interface RoomHeaderProps {
   canManageParticipantsLock?: boolean;
   isHost?: boolean;
   isOwner?: boolean;
+  onEndSession?: () => void;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
   roomTitle,
   onOpenSettings,
   onExit,
+  onEndSession,
   isLocked,
   onToggleLock,
   haveLock,
@@ -291,6 +294,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             >
               {canManageRoom ? "Room settings" : "Preferences"}
             </Menu.Item>
+            {canManageRoom && onEndSession && (
+              <>
+                <Menu.Divider />
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconPower size={16} />}
+                  onClick={onEndSession}
+                >
+                  End Session
+                </Menu.Item>
+              </>
+            )}
           </Menu.Dropdown>
         </Menu>
 

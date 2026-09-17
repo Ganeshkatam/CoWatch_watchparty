@@ -66,7 +66,7 @@ import {
   clearMediaSession,
   type MediaSessionActions,
 } from "../../utils/mediaSession";
-import { ActionIcon, Button } from "@mantine/core";
+import { ActionIcon, Button, Modal } from "@mantine/core";
 import {
   IconAntennaBars5,
   IconChevronLeft,
@@ -74,11 +74,18 @@ import {
   IconKeyboardFilled,
   IconMessage,
   IconPictureInPicture,
+  IconPlayerStop,
   IconUserScreen,
   IconUsersGroup,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
+import { MODAL_SIZES } from "../../utils/designSystem";
+import {
+  savePostRoomContext,
+  type PostRoomContext,
+  type PostRoomExitReason,
+} from "../../utils/postRoomContext";
 import { pipManager, type PiPState } from "../../utils/pipManager";
 import {
   operationCoordinator,
@@ -225,15 +232,23 @@ interface AppState {
   leavingRoom?: boolean;
   admissionToken?: string;
   sessionId?: string;
+  isPermanentRoom?: boolean;
+  isEndSessionConfirmOpen?: boolean;
+  isEndingSession?: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
   private socketConnecting: boolean = false;
+  private sessionStartTime: number = Date.now();
+  private peakParticipantCount: number = 1;
   state: AppState = {
     state: "starting",
     initStage: "booting",
+    isPermanentRoom: false,
+    isEndSessionConfirmOpen: false,
+    isEndingSession: false,
     myClientId: "",
     roomMedia: "",
     roomPaused: false,
@@ -713,6 +728,9 @@ export class App extends React.Component<AppProps, AppState> {
           if (info.roomTitle) {
             this.setState({ roomTitle: info.roomTitle });
           }
+          if (info.isPermanent !== undefined) {
+            this.setState({ isPermanentRoom: Boolean(info.isPermanent) });
+          }
           const isOwner = Boolean(info.isOwner);
           if (isOwner) {
             this.setState({ isOwner: true });
@@ -729,7 +747,7 @@ export class App extends React.Component<AppProps, AppState> {
       // Fallback check: Direct Supabase client query
       const roomPromise = supabase
         .from("rooms")
-        .select("passcode, owner_id, status, roomTitle")
+        .select("passcode, owner_id, status, roomTitle, isPermanent")
         .eq("roomId", roomId)
         .maybeSingle();
 
@@ -745,6 +763,9 @@ export class App extends React.Component<AppProps, AppState> {
       }
       if (data.roomTitle) {
         this.setState({ roomTitle: data.roomTitle });
+      }
+      if ((data as any).isPermanent !== undefined) {
+        this.setState({ isPermanentRoom: Boolean((data as any).isPermanent) });
       }
 
       const isOwner = Boolean(user && data.owner_id === user.id);
@@ -773,6 +794,8 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
 
+    this.sessionStartTime = Date.now();
+    this.peakParticipantCount = 1;
     this.setState({ isHostSessionEnded: false, isHostSessionPermanent: false });
 
     if (this.startingTimer) {
@@ -1037,9 +1060,22 @@ export class App extends React.Component<AppProps, AppState> {
         }
         this.stopWaitingPoll();
         this.socket?.disconnect();
+        const isPerm = Boolean(data?.isPermanent ?? this.state.isPermanentRoom);
+        const ctx: PostRoomContext = {
+          reason: isPerm ? "host_stopped_permanent" : "host_ended_temporary",
+          roomId: this.state.roomId,
+          roomTitle: this.state.roomTitle,
+          isPermanent: isPerm,
+          isHost: false,
+          durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+          participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+          mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+        };
+        savePostRoomContext(ctx);
         this.setState({
           isHostSessionEnded: true,
-          isHostSessionPermanent: Boolean(data?.isPermanent),
+          isHostSessionPermanent: isPerm,
+          isPermanentRoom: isPerm,
           isWaitingForHost: false,
           overlayMsg: "",
         });
@@ -1130,13 +1166,41 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", (data?: { message?: string }) => {
         showUserMessage(USER_MESSAGES.MOD_KICKED_SELF);
-        sessionStorage.setItem("room_exit_message", data?.message || "You were removed from the room by the host.");
-        window.location.assign("/");
+        const ctx: PostRoomContext = {
+          reason: "kicked",
+          roomId: this.state.roomId,
+          roomTitle: this.state.roomTitle,
+          isPermanent: Boolean(this.state.isPermanentRoom),
+          isHost: false,
+          durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+          participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+          mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+        };
+        savePostRoomContext(ctx);
+        if (this.props.history) {
+          this.props.history.push("/room-ended", ctx);
+        } else {
+          window.location.assign("/room-ended");
+        }
       });
       socket.on("banned", (data?: { message?: string }) => {
         showUserMessage(USER_MESSAGES.MOD_BANNED_SELF);
-        sessionStorage.setItem("room_exit_message", data?.message || "You have been removed from this room and cannot rejoin.");
-        window.location.assign("/");
+        const ctx: PostRoomContext = {
+          reason: "kicked",
+          roomId: this.state.roomId,
+          roomTitle: this.state.roomTitle,
+          isPermanent: Boolean(this.state.isPermanentRoom),
+          isHost: false,
+          durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+          participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+          mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+        };
+        savePostRoomContext(ctx);
+        if (this.props.history) {
+          this.props.history.push("/room-ended", ctx);
+        } else {
+          window.location.assign("/room-ended");
+        }
       });
       socket.on("REC:play", (data?: any) => {
         if (!operationCoordinator.canAcceptSyncEvent(data?.__epoch)) return;
@@ -1623,6 +1687,9 @@ export class App extends React.Component<AppProps, AppState> {
           }
         }
         operationCoordinator.recordRosterReceived(epoch ?? operationCoordinator.getConnectionEpoch());
+        if (Array.isArray(data)) {
+          this.peakParticipantCount = Math.max(this.peakParticipantCount, data.length);
+        }
         this.setState({ participants: data, rosterUpdateTS: Date.now(), initStage: operationCoordinator.getInitStage() }, () => {
           this.setupRTCConnections();
         });
@@ -3093,9 +3160,92 @@ export class App extends React.Component<AppProps, AppState> {
       this.setState({ leavingRoom: true });
 
       this.socket.disconnect();
-      window.location.href = "/";
+      const isPerm = Boolean(this.state.isPermanentRoom || this.state.isHostSessionPermanent);
+      const isHost = Boolean(this.state.isHost || this.isRoomOwner());
+      const postRoomCtx: PostRoomContext = {
+        reason: "voluntary_leave",
+        roomId: this.state.roomId,
+        roomTitle: this.state.roomTitle,
+        isPermanent: isPerm,
+        isHost,
+        durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+        participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+        mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+      };
+      savePostRoomContext(postRoomCtx);
+      if (this.props.history) {
+        this.props.history.push("/room-ended", postRoomCtx);
+      } else {
+        window.location.href = "/room-ended";
+      }
     })();
     return this.cleanExitPromise;
+  };
+
+  private handleHostEndSessionAuthoritative = async () => {
+    if (this.state.isEndingSession) return;
+    this.setState({ isEndingSession: true });
+    try {
+      const sessionData = await safeGetSession(2000);
+      const user = sessionData?.data?.session?.user;
+      const token = sessionData?.data?.session?.access_token;
+      if (!user) throw new Error("Not logged in");
+
+      const response = await fetch(`${serverPath}/endRoom`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token || ""}`,
+        },
+        body: JSON.stringify({
+          uid: user.id,
+          token,
+          roomId: this.state.roomId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error?.message || data.error || "Failed to end room session");
+      }
+
+      const resData = await response.json();
+      const returnedIsPermanent = Boolean(resData.isPermanent);
+
+      // Close sockets and set leavingRoom
+      this.setState({ leavingRoom: true, isEndSessionConfirmOpen: false });
+      this.socket?.disconnect();
+
+      // Construct host PostRoomContext using authoritative state returned by the operation
+      const hostCtx: PostRoomContext = {
+        reason: returnedIsPermanent ? "host_stopped_permanent" : "host_ended_temporary",
+        roomId: this.state.roomId,
+        roomTitle: this.state.roomTitle,
+        isPermanent: returnedIsPermanent,
+        isHost: true,
+        durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+        participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+        mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+      };
+
+      savePostRoomContext(hostCtx);
+
+      if (this.props.history) {
+        this.props.history.push("/room-ended", hostCtx);
+      } else {
+        window.location.replace("/room-ended");
+      }
+    } catch (err: any) {
+      console.error("Failed to end session:", err);
+      showUserMessage({
+        message: err.message || "Failed to end session",
+        severity: "error",
+        presentation: "toast",
+        action: "none",
+      });
+    } finally {
+      this.setState({ isEndingSession: false });
+    }
   };
 
   render() {
@@ -3247,7 +3397,23 @@ export class App extends React.Component<AppProps, AppState> {
           opened={this.state.isHostSessionEnded}
           isPermanent={this.state.isHostSessionPermanent}
           onConfirm={() => {
-            window.location.replace("/room-ended");
+            const isPerm = this.state.isHostSessionPermanent;
+            const ctx: PostRoomContext = {
+              reason: isPerm ? "host_stopped_permanent" : "host_ended_temporary",
+              roomId: this.state.roomId,
+              roomTitle: this.state.roomTitle,
+              isPermanent: isPerm,
+              isHost: false,
+              durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+              participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+              mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+            };
+            savePostRoomContext(ctx);
+            if (this.props.history) {
+              this.props.history.push("/room-ended", ctx);
+            } else {
+              window.location.replace("/room-ended");
+            }
           }}
         />
 
@@ -3323,7 +3489,55 @@ export class App extends React.Component<AppProps, AppState> {
           onLeaveDirectly={() => {
             this.performCleanExit();
           }}
+          onEndSession={() => {
+            this.setState({ isAssignHostModalOpen: false, isEndSessionConfirmOpen: true });
+          }}
         />
+        <Modal
+          opened={Boolean(this.state.isEndSessionConfirmOpen)}
+          onClose={() => this.setState({ isEndSessionConfirmOpen: false })}
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconPlayerStop size={18} color="var(--color-warning, #f59e0b)" />
+              <Text fw={600} size="md">End Watch Session</Text>
+            </div>
+          }
+          centered
+          radius="md"
+          size={MODAL_SIZES.sm}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Text size="sm">
+              {this.state.isPermanentRoom
+                ? `Are you sure you want to end this watch session for "${this.state.roomTitle || this.state.roomId}"?`
+                : `Are you sure you want to end this watch party for "${this.state.roomTitle || this.state.roomId}"?`}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {this.state.isPermanentRoom
+                ? "This will conclude the active session for all participants. Your room, settings, and invitations remain saved and available for future sessions."
+                : "This will conclude the party for all participants. The temporary room will end and can no longer be joined."}
+            </Text>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => this.setState({ isEndSessionConfirmOpen: false })}
+                disabled={this.state.isEndingSession}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="red"
+                size="sm"
+                onClick={this.handleHostEndSessionAuthoritative}
+                loading={this.state.isEndingSession}
+                leftSection={<IconPlayerStop size={15} />}
+              >
+                {this.state.isPermanentRoom ? "End Session" : "End Party"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
         <FeedbackModal
           opened={this.state.isFeedbackModalOpen}
           onClose={() => this.setState({ isFeedbackModalOpen: false })}
@@ -3360,6 +3574,9 @@ export class App extends React.Component<AppProps, AppState> {
               } else {
                 this.performCleanExit();
               }
+            }}
+            onEndSession={() => {
+              this.setState({ isEndSessionConfirmOpen: true });
             }}
             isLocked={Boolean(this.state.roomLock)}
             onToggleLock={this.toggleLock}

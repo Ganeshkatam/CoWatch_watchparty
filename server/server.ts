@@ -2043,6 +2043,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       isHost,
       isHostPresent: Boolean(isHostPresent),
       hostName: row.hostName || "Host",
+      isPermanent: Boolean(row.isPermanent),
     });
   } catch (err) {
     console.error("Error fetching roomInfo:", err);

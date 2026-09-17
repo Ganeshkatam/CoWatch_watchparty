@@ -14,6 +14,7 @@ interface AssignHostModalProps {
   currentClientId: string;
   onAssignAndLeave: (targetClientId: string) => void;
   onLeaveDirectly: () => void;
+  onEndSession?: () => void;
 }
 
 export const AssignHostModal: React.FC<AssignHostModalProps> = ({
@@ -25,6 +26,7 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
   currentClientId,
   onAssignAndLeave,
   onLeaveDirectly,
+  onEndSession,
 }) => {
   // Filter out the active host and screen share clients
   const candidates = participants.filter((p) => p.id !== currentClientId && !p.isScreenShare);
@@ -123,6 +125,20 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
         <Button variant="subtle" color="gray" size="sm" onClick={onClose} disabled={hostOp.isPending}>
           Cancel
         </Button>
+        {onEndSession && (
+          <Button
+            variant="light"
+            color="red"
+            size="sm"
+            onClick={() => {
+              onClose();
+              onEndSession();
+            }}
+            disabled={hostOp.isPending}
+          >
+            End Session
+          </Button>
+        )}
         {candidates.length === 0 && (
           <Button
             variant="light"
