@@ -26,6 +26,7 @@ import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { safeGetSession } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
+import { parseJoinRoute } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
 import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
 import styles from "./Join.module.css";
@@ -50,7 +51,14 @@ interface RoomInfo {
   hostName?: string;
 }
 
-type AdmissionStage = "validating" | "passcode" | "preflight" | "waiting" | "ready" | "error";
+type AdmissionStage =
+  | "validating"
+  | "invitation_preview"
+  | "passcode"
+  | "preflight"
+  | "waiting"
+  | "ready"
+  | "error";
 
 const normalizeRoomId = (value: string): string => {
   let clean = value.trim();
@@ -144,6 +152,7 @@ export const Join: React.FC = () => {
   }, [cleanRouteRoomId, resolvedRoomId, history, stage]);
 
   // Invitation admission flow: /invite/:token
+  // Preview must NEVER consume the invitation.
   useEffect(() => {
     if (!routeToken) return;
 
@@ -153,31 +162,19 @@ export const Join: React.FC = () => {
     setFormError("");
     transitioningRef.current = false;
 
-    const resolveAndAccept = async () => {
+    const resolvePreview = async () => {
       try {
-        if (user === undefined) return;
-
-        const currentPath = `${location.pathname}${location.search}`;
-        if (!user) {
-          history.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
-          return;
-        }
-        if (user.email_confirmed_at == null) {
-          history.push(`/verify-email?next=${encodeURIComponent(currentPath)}`);
-          return;
-        }
-
-        const session = await safeGetSession(1000);
-        const token = session?.data?.session?.access_token;
-        const uid = session?.data?.session?.user?.id;
-
-        // 1. Resolve preview without passcode
-        const previewRes = await fetch(`${serverPath}/api/invitations/${encodeURIComponent(routeToken)}`);
+        const previewRes = await fetch(
+          `${serverPath}/api/invitations/${encodeURIComponent(routeToken)}`
+        );
         if (isCancelled) return;
 
         if (!previewRes.ok) {
           const previewErr = await previewRes.json().catch(() => ({}));
-          setRoomError(previewErr.error || "This invitation is invalid, expired, or has been revoked.");
+          setRoomError(
+            previewErr.error ||
+              "This invitation is invalid, expired, or has been revoked."
+          );
           setStage("error");
           return;
         }
@@ -195,48 +192,24 @@ export const Join: React.FC = () => {
           isHost: false,
           hostName: previewData.inviterName,
         });
-
-        // 2. Authoritative admission via POST /api/invitations/:token/accept
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (uid) headers["x-user-id"] = uid;
-
-        const acceptRes = await fetch(`${serverPath}/api/invitations/${encodeURIComponent(routeToken)}/accept`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            sessionId: sessionIdRef.current,
-          }),
-        });
-
-        if (isCancelled) return;
-        const acceptData = await acceptRes.json().catch(() => ({}));
-
-        if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
-          admissionTokenRef.current = acceptData.admissionToken;
-          setStage("preflight");
-        } else {
-          setRoomError(acceptData.error || "Unable to enter room with this invitation.");
-          setStage("error");
-        }
+        setStage("invitation_preview");
       } catch {
         if (!isCancelled) {
-          setRoomError("Network error while accepting invitation.");
+          setRoomError("Network error while loading invitation.");
           setStage("error");
         }
       }
     };
 
-    resolveAndAccept();
+    resolvePreview();
 
     return () => {
       isCancelled = true;
     };
-  }, [routeToken, user, history, location.pathname, location.search]);
+  }, [routeToken]);
 
   // Targeted notification admission flow: /invite?invitationId=...
+  // Preview must NEVER consume the invitation.
   useEffect(() => {
     if (routeToken || !queryInvitationId) return;
 
@@ -246,34 +219,20 @@ export const Join: React.FC = () => {
     setFormError("");
     transitioningRef.current = false;
 
-    const resolveAndAcceptTarget = async () => {
+    const resolvePreviewTarget = async () => {
       try {
-        if (user === undefined) return;
-
-        const currentPath = `${location.pathname}${location.search}`;
-        if (!user) {
-          history.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
-          return;
-        }
-        if (user.email_confirmed_at == null) {
-          history.push(`/verify-email?next=${encodeURIComponent(currentPath)}`);
-          return;
-        }
-
         const session = await safeGetSession(1000);
         const token = session?.data?.session?.access_token;
         const uid = session?.data?.session?.user?.id;
 
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
+        const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
         if (uid) headers["x-user-id"] = uid;
 
-        // 1. Resolve preview
-        const previewRes = await fetch(`${serverPath}/api/invitations/by-id/${encodeURIComponent(queryInvitationId)}`, {
-          headers,
-        });
+        const previewRes = await fetch(
+          `${serverPath}/api/invitations/by-id/${encodeURIComponent(queryInvitationId)}`,
+          { headers }
+        );
         if (isCancelled) return;
 
         if (!previewRes.ok) {
@@ -296,41 +255,92 @@ export const Join: React.FC = () => {
           isHost: false,
           hostName: previewData.inviterName,
         });
-
-        // 2. Authoritative admission
-        const acceptRes = await fetch(`${serverPath}/api/invitations/accept-target`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            invitationId: queryInvitationId,
-            sessionId: sessionIdRef.current,
-          }),
-        });
-
-        if (isCancelled) return;
-        const acceptData = await acceptRes.json().catch(() => ({}));
-
-        if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
-          admissionTokenRef.current = acceptData.admissionToken;
-          setStage("preflight");
-        } else {
-          setRoomError(acceptData.error || "Unable to enter room with this invitation.");
-          setStage("error");
-        }
+        setStage("invitation_preview");
       } catch {
         if (!isCancelled) {
-          setRoomError("Network error while accepting invitation.");
+          setRoomError("Network error while loading invitation.");
           setStage("error");
         }
       }
     };
 
-    resolveAndAcceptTarget();
+    resolvePreviewTarget();
 
     return () => {
       isCancelled = true;
     };
-  }, [routeToken, queryInvitationId, user, history, location.pathname, location.search]);
+  }, [routeToken, queryInvitationId]);
+
+  // Handle explicit user acceptance of invitation
+  const handleAcceptInvitation = async () => {
+    setFormError("");
+    const currentPath = `${location.pathname}${location.search}`;
+
+    if (user === undefined) return;
+    if (!user) {
+      history.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      return;
+    }
+    if (user.email_confirmed_at == null) {
+      history.push(`/verify-email?next=${encodeURIComponent(currentPath)}`);
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const session = await safeGetSession(1000);
+      const token = session?.data?.session?.access_token;
+      const uid = session?.data?.session?.user?.id;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (uid) headers["x-user-id"] = uid;
+
+      let acceptRes: Response;
+      if (routeToken) {
+        acceptRes = await fetch(
+          `${serverPath}/api/invitations/${encodeURIComponent(routeToken)}/accept`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              sessionId: sessionIdRef.current,
+            }),
+          }
+        );
+      } else if (queryInvitationId) {
+        acceptRes = await fetch(
+          `${serverPath}/api/invitations/accept-target`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              invitationId: queryInvitationId,
+              sessionId: sessionIdRef.current,
+            }),
+          }
+        );
+      } else {
+        setVerifying(false);
+        return;
+      }
+
+      const acceptData = await acceptRes.json().catch(() => ({}));
+      setVerifying(false);
+
+      if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
+        admissionTokenRef.current = acceptData.admissionToken;
+        setStage("preflight");
+      } else {
+        setFormError(acceptData.error || "Unable to enter room with this invitation.");
+      }
+    } catch {
+      setVerifying(false);
+      setFormError("Network error while accepting invitation.");
+    }
+  };
 
   // Fetch room metadata and start admission state machine (Normal /join/:roomId flow)
   useEffect(() => {
@@ -613,18 +623,18 @@ export const Join: React.FC = () => {
     event.preventDefault();
     setFormError("");
 
-    const normalized = normalizeRoomId(inputRoomId);
-    if (!normalized) {
+    const parsed = parseJoinRoute(inputRoomId);
+    if (!parsed.path || !parsed.identifier) {
       setFormError("Enter a room ID or invite link to continue.");
       return;
     }
 
-    if (normalized.length > 200) {
-      setFormError("That room ID is too long.");
+    if (parsed.identifier.length > 200) {
+      setFormError("That room ID or invite token is too long.");
       return;
     }
 
-    history.push(`/join/${encodeURIComponent(normalized)}`);
+    history.push(parsed.path);
   };
 
   // Handle participant passcode verification
@@ -784,6 +794,91 @@ export const Join: React.FC = () => {
                   Entering watch party...
                 </Text>
               </Center>
+            ) : stage === "invitation_preview" ? (
+              <div className={styles.invitationCard}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <IconUsers size={26} stroke={1.8} />
+                </div>
+                <Badge color="violet" variant="light" size="md" mb={12}>
+                  You're Invited
+                </Badge>
+                <h1 className={styles.roomTitle} style={{ fontSize: 24, marginBottom: 8, textAlign: "center" }}>
+                  {roomInfo?.roomTitle || "Watch Party"}
+                </h1>
+                {roomInfo?.hostName && (
+                  <Text size="sm" c="dimmed" mb={20}>
+                    Invited by <strong style={{ color: "var(--text-primary)" }}>{roomInfo.hostName}</strong>
+                  </Text>
+                )}
+
+                {user ? (
+                  <div className={styles.identityPreview}>
+                    <Avatar
+                      src={user.user_metadata?.avatar_url}
+                      radius="xl"
+                      size="sm"
+                      color="violet"
+                    >
+                      {displayName.charAt(0).toUpperCase()}
+                    </Avatar>
+                    <div className={styles.identityTextGroup}>
+                      <span className={styles.identityLabel}>Joining As</span>
+                      <span className={styles.identityName}>
+                        {displayName} {user.email ? `(${user.email})` : ""}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.identityPreview}>
+                    <Avatar radius="xl" size="sm" color="gray">
+                      <IconUser size={15} />
+                    </Avatar>
+                    <div className={styles.identityTextGroup}>
+                      <span className={styles.identityLabel}>Account</span>
+                      <span className={styles.identityName}>
+                        Guest · Sign in required to join
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {formError && (
+                  <div
+                    className={styles.inlineError}
+                    style={{ marginBottom: 16, justifyContent: "center" }}
+                    role="alert"
+                  >
+                    <IconAlertCircle size={15} stroke={1.8} />
+                    <span>{formError}</span>
+                  </div>
+                )}
+
+                <Button
+                  size="md"
+                  fullWidth
+                  variant="gradient"
+                  gradient={{ from: "violet", to: "indigo", deg: 135 }}
+                  rightSection={
+                    !user ? (
+                      <IconLogin size={18} />
+                    ) : user.email_confirmed_at == null ? (
+                      <IconMail size={18} />
+                    ) : (
+                      <IconArrowRight size={18} />
+                    )
+                  }
+                  loading={verifying}
+                  disabled={verifying}
+                  onClick={handleAcceptInvitation}
+                  className={styles.submitBtn}
+                >
+                  {!user
+                    ? "Sign in to Join"
+                    : user.email_confirmed_at == null
+                      ? "Verify Email to Join"
+                      : "Join Watch Party"}
+                </Button>
+              </div>
             ) : (
               /* Passcode Stage */
               <>

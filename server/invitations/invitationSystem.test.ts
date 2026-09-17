@@ -7,8 +7,8 @@ import {
   generateRawInvitationToken,
   getCanonicalInvitationUrl,
 } from './invitationRouter.ts';
-import { formatInvitationMessage, resolveNotificationAction } from '../../src/utils/notificationAction.ts';
-import { verifyAdmissionToken } from '../utils/admissionToken.ts';
+import { formatInvitationMessage, resolveNotificationAction, parseJoinRoute } from '../../src/utils/notificationAction.ts';
+import { verifyAdmissionToken, issueRoomAdmissionToken } from '../utils/admissionToken.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
 import { supabaseAdmin } from '../utils/supabase.ts';
 
@@ -832,6 +832,190 @@ async function runInvitationSystemTests() {
     assert.strictEqual(lockedAcceptBody.code, 'PARTICIPANTS_LOCKED');
 
     console.log('Passed Test 10.');
+
+    // =========================================================================
+    // Test 11: JOIN-001 Test A & Test D — Single-Use Invitation Preview Does Not Consume
+    // =========================================================================
+    console.log('\nRunning Test 11: Single-Use Invitation Preview Does Not Consume...');
+
+    // 1. Create a single-use invitation
+    const singleUseCreateRes = await fetch(`${baseUrl}/api/invitations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${HOST_UID}`,
+      },
+      body: JSON.stringify({
+        roomId: 'perm-active-room',
+        isReusable: false,
+      }),
+    });
+    assert.strictEqual(singleUseCreateRes.status, 201);
+    const singleUseData = await singleUseCreateRes.json();
+    const singleUseToken = singleUseData.token;
+    const singleUseInvId = singleUseData.invitationId;
+
+    // 2. Initial preview GET: must succeed with 200
+    const firstPreviewRes = await fetch(`${baseUrl}/api/invitations/${encodeURIComponent(singleUseToken)}`);
+    assert.strictEqual(firstPreviewRes.status, 200, 'Initial preview must return 200');
+
+    // Verify database: accepted_at must STILL be null after preview GET
+    const invInDbAfterFirstGet = mockPool.invitations.get(singleUseInvId);
+    assert(invInDbAfterFirstGet, 'Invitation must exist in DB');
+    assert.strictEqual(invInDbAfterFirstGet.accepted_at, null, 'accepted_at must NOT be updated by GET preview');
+
+    // 3. Second preview GET (simulating link preview bot or page refresh): must still return 200 and not consume
+    const secondPreviewRes = await fetch(`${baseUrl}/api/invitations/${encodeURIComponent(singleUseToken)}`);
+    assert.strictEqual(secondPreviewRes.status, 200, 'Second preview must also return 200');
+    assert.strictEqual(invInDbAfterFirstGet.accepted_at, null, 'accepted_at must still be null after second preview');
+
+    // 4. Explicit user acceptance: POST /accept must succeed with 200 and issue admissionToken
+    const firstAcceptRes = await fetch(`${baseUrl}/api/invitations/${encodeURIComponent(singleUseToken)}/accept`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${TARGET_UID}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-join-001-preview-test',
+      }),
+    });
+    assert.strictEqual(firstAcceptRes.status, 200, 'Explicit POST accept must succeed with 200');
+    const firstAcceptData = await firstAcceptRes.json();
+    assert.strictEqual(firstAcceptData.valid, true);
+    assert(firstAcceptData.admissionToken, 'Must issue admission token on accept');
+
+    // Verify database: accepted_at must now be set
+    assert.notStrictEqual(invInDbAfterFirstGet.accepted_at, null, 'accepted_at must be populated after POST accept');
+    assert.strictEqual(invInDbAfterFirstGet.accepted_by_user_id, TARGET_UID);
+
+    // 5. Subsequent POST /accept must be rejected with 409 Conflict
+    const singleUseSecondAcceptRes = await fetch(`${baseUrl}/api/invitations/${encodeURIComponent(singleUseToken)}/accept`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${TARGET_UID}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-join-001-preview-test',
+      }),
+    });
+    assert.strictEqual(singleUseSecondAcceptRes.status, 409, 'Subsequent accept of single-use invitation must return 409');
+
+    // 6. Subsequent preview GET of consumed invitation must return 404
+    const singleUseConsumedPreviewRes = await fetch(`${baseUrl}/api/invitations/${encodeURIComponent(singleUseToken)}`);
+    assert.strictEqual(singleUseConsumedPreviewRes.status, 404, 'Consumed invitation preview must return 404');
+
+    console.log('Passed Test 11.');
+
+    // =========================================================================
+    // Test 12: JOIN-001 Test B — Generic Invite URL Routing (parseJoinRoute)
+    // =========================================================================
+    console.log('\nRunning Test 12: Generic Invite URL Routing (parseJoinRoute)...');
+
+    // Route A: full invite url
+    const routeA = parseJoinRoute('https://cowatch.org/invite/TOKEN_123');
+    assert.strictEqual(routeA.type, 'invite');
+    assert.strictEqual(routeA.path, '/invite/TOKEN_123');
+    assert.strictEqual(routeA.identifier, 'TOKEN_123');
+
+    // Route B: relative invite path
+    const routeB = parseJoinRoute('/invite/TOKEN_123');
+    assert.strictEqual(routeB.type, 'invite');
+    assert.strictEqual(routeB.path, '/invite/TOKEN_123');
+
+    // Route C: invite url with query parameters
+    const routeC = parseJoinRoute('https://cowatch.org/invite/TOKEN_123?source=qr');
+    assert.strictEqual(routeC.type, 'invite');
+    assert.strictEqual(routeC.path, '/invite/TOKEN_123');
+
+    // Route D: notification invitation query full url
+    const routeD = parseJoinRoute('https://cowatch.org/invite?invitationId=uuid-abc-456');
+    assert.strictEqual(routeD.type, 'invite_query');
+    assert.strictEqual(routeD.path, '/invite?invitationId=uuid-abc-456');
+    assert.strictEqual(routeD.identifier, 'uuid-abc-456');
+
+    // Route E: notification invitation query relative path
+    const routeE = parseJoinRoute('/invite?invitationId=uuid-abc-456');
+    assert.strictEqual(routeE.type, 'invite_query');
+    assert.strictEqual(routeE.path, '/invite?invitationId=uuid-abc-456');
+
+    // Route F: manual join url
+    const routeF = parseJoinRoute('https://cowatch.org/join/room-matrix');
+    assert.strictEqual(routeF.type, 'join');
+    assert.strictEqual(routeF.path, '/join/room-matrix');
+    assert.strictEqual(routeF.identifier, 'room-matrix');
+
+    // Route G: plain room code
+    const routeG = parseJoinRoute('room-matrix');
+    assert.strictEqual(routeG.type, 'join');
+    assert.strictEqual(routeG.path, '/join/room-matrix');
+    assert.strictEqual(routeG.identifier, 'room-matrix');
+
+    // Route H: empty string
+    const routeH = parseJoinRoute('');
+    assert.strictEqual(routeH.type, 'join');
+    assert.strictEqual(routeH.path, '');
+
+    console.log('Passed Test 12.');
+
+    // =========================================================================
+    // Test 13: JOIN-001 Test C — Expiration Authority & Race Prevention
+    // =========================================================================
+    console.log('\nRunning Test 13: Expiration Authority & Race Prevention...');
+
+    const pastTimestamp = new Date(Date.now() - 60 * 1000).toISOString();
+    const futureTimestamp = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    // 1. Temporary room with DB status active, but past expiresAt: must be classified as terminal
+    const expiredTempRoom = {
+      isPermanent: false,
+      status: 'active',
+      expiresAt: pastTimestamp,
+    };
+    assert.strictEqual(
+      isTerminalRoom(expiredTempRoom),
+      true,
+      'Temporary room with past expiresAt must be terminal even if status is active'
+    );
+
+    // 2. Temporary room with future expiresAt: not terminal
+    const activeTempRoom = {
+      isPermanent: false,
+      status: 'active',
+      expiresAt: futureTimestamp,
+    };
+    assert.strictEqual(
+      isTerminalRoom(activeTempRoom),
+      false,
+      'Temporary room with future expiresAt must not be terminal'
+    );
+
+    // 3. Permanent room with past timestamp: never terminal (permanent rooms never expire)
+    const permanentRoom = {
+      isPermanent: true,
+      status: 'active',
+      expiresAt: pastTimestamp,
+    };
+    assert.strictEqual(
+      isTerminalRoom(permanentRoom),
+      false,
+      'Permanent room must never be terminal due to expiration'
+    );
+
+    // 4. issueRoomAdmissionToken evaluates dynamic expiration
+    const admissionExpiredResult = issueRoomAdmissionToken({
+      roomId: 'temp-race-room',
+      callerUid: TARGET_UID,
+      sessionId: 'session-race-1',
+      roomRow: expiredTempRoom,
+      isHost: false,
+    });
+    assert.strictEqual(admissionExpiredResult.allowed, false, 'Expired room must be rejected by shared admission authority');
+    assert.strictEqual(admissionExpiredResult.status, 400);
+    assert.strictEqual(admissionExpiredResult.code, 'ROOM_TERMINAL');
+
+    console.log('Passed Test 13.');
 
     console.log('\nAll Unified CoWatch Invitation System tests passed successfully!');
   } finally {

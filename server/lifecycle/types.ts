@@ -64,9 +64,18 @@ export interface AdmissionResult {
  * and only destroyed via explicit owner deletion.
  */
 export const isTerminalRoom = (
-  room?: { isPermanent?: boolean | null; status?: string | null } | null
+  room?: {
+    isPermanent?: boolean | null;
+    status?: string | null;
+    expiresAt?: string | null;
+    [key: string]: any;
+  } | null,
+  now: number = Date.now()
 ): boolean => {
   if (!room) return false;
-  return !room.isPermanent && (room.status === "ended" || room.status === "expired");
+  if (room.isPermanent) return false;
+  if (room.status === "ended" || room.status === "expired") return true;
+  const expiry = room.expiresAt || (room as any)?.expiresAt;
+  if (expiry && new Date(expiry).getTime() <= now) return true;
+  return false;
 };
-

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import config from "../config.ts";
+import { isTerminalRoom } from "../lifecycle/types.ts";
 
 const ADMISSION_SECRET =
   config.SUPABASE_SECRET_KEY ||
@@ -134,3 +135,91 @@ export function verifyAdmissionToken(
 
   return { valid: true, payload };
 }
+
+export interface IssueRoomAdmissionTokenParams {
+  roomId: string;
+  callerUid: string;
+  sessionId: string;
+  roomRow: {
+    roomId?: string;
+    owner_id?: string;
+    status?: string;
+    isPermanent?: boolean | null;
+    expiresAt?: string | null;
+    participants_locked?: boolean | null;
+    max_participants?: number | null;
+    [key: string]: any;
+  };
+  memoryRoom?: any;
+  isHost: boolean;
+  ttlSeconds?: number;
+}
+
+export interface IssueRoomAdmissionTokenResult {
+  allowed: boolean;
+  status: number;
+  error?: string;
+  code?: string;
+  admissionToken?: string;
+}
+
+/**
+ * Shared Authoritative Admission Engine
+ * Enforces post-credential checks: room lifecycle, participant lock, and live capacity,
+ * then generates a cryptographically signed admissionToken bound to { roomId, callerUid, sessionId }.
+ */
+export function issueRoomAdmissionToken(
+  params: IssueRoomAdmissionTokenParams
+): IssueRoomAdmissionTokenResult {
+  const { roomId, callerUid, sessionId, roomRow, memoryRoom, isHost, ttlSeconds = 900 } = params;
+
+  // 1. Room lifecycle check (handles dynamic expiration for temporary rooms)
+  if (isTerminalRoom(roomRow)) {
+    return {
+      allowed: false,
+      status: 400,
+      error: "This room has ended or expired.",
+      code: "ROOM_TERMINAL",
+    };
+  }
+
+  // 2. Participant lock check
+  if (roomRow.participants_locked && !isHost) {
+    return {
+      allowed: false,
+      status: 403,
+      error: "This room is currently locked to new participants.",
+      code: "PARTICIPANTS_LOCKED",
+    };
+  }
+
+  // 3. Live capacity check
+  if (memoryRoom && !isHost) {
+    if (typeof roomRow.max_participants === "number") {
+      memoryRoom.maxParticipants = roomRow.max_participants;
+    }
+    if (typeof memoryRoom.isRoomFull === "function" && memoryRoom.isRoomFull(isHost)) {
+      return {
+        allowed: false,
+        status: 403,
+        error: "This room has reached its participant limit.",
+        code: "ROOM_FULL",
+      };
+    }
+  }
+
+  // 4. Generate cryptographic admission token
+  const admissionToken = generateAdmissionToken({
+    roomId,
+    userId: callerUid,
+    sessionId,
+    ttlSeconds,
+  });
+
+  return {
+    allowed: true,
+    status: 200,
+    admissionToken,
+  };
+}
+

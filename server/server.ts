@@ -28,7 +28,8 @@ import {
   decryptPasscodeForOwner,
   computePasscodeFingerprint,
 } from "./utils/roomPasscode.ts";
-import { generateAdmissionToken } from "./utils/admissionToken.ts";
+import { generateAdmissionToken, issueRoomAdmissionToken } from "./utils/admissionToken.ts";
+import { isTerminalRoom } from "./lifecycle/types.ts";
 import {
   checkPasscodeRateLimits,
   recordPasscodeFailure,
@@ -2111,7 +2112,7 @@ app.post("/verifyPasscode", async (req, res) => {
 
   try {
     const result = await postgres?.query(
-      `SELECT passcode, status, owner_id, participants_locked, max_participants FROM rooms WHERE "roomId" = $1`,
+      `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt" FROM rooms WHERE "roomId" = $1`,
       [cleanRoomId],
     );
 
@@ -2125,8 +2126,8 @@ app.post("/verifyPasscode", async (req, res) => {
     const row = result.rows[0];
     const roomPasscode = row.passcode;
 
-    // Expired or ended rooms cannot be joined
-    if (row.status === "expired" || row.status === "ended") {
+    // Expired or ended rooms cannot be joined (evaluates dynamic expiresAt on temporary rooms)
+    if (isTerminalRoom(row)) {
       res.status(401).json({ valid: false, error: "This room has ended or expired." });
       return;
     }
@@ -2154,7 +2155,7 @@ app.post("/verifyPasscode", async (req, res) => {
       return;
     }
 
-    // Participant admission lock check: non-hosts cannot bypass participant lock via passcode verification
+    // Resolve host authority for participant lock and capacity bypass
     const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
     let isHost = isOwner;
     const memoryRoom = rooms.get(cleanRoomId);
@@ -2166,42 +2167,28 @@ app.post("/verifyPasscode", async (req, res) => {
       }
     }
 
-    if (row.participants_locked && !isHost) {
-      res.status(403).json({
+    // Authoritative post-credential admission evaluation
+    const admissionAuth = issueRoomAdmissionToken({
+      roomId: cleanRoomId,
+      callerUid,
+      sessionId: cleanSessionId,
+      roomRow: row,
+      memoryRoom,
+      isHost,
+    });
+
+    if (!admissionAuth.allowed) {
+      res.status(admissionAuth.status).json({
         valid: false,
-        error: "This room is currently locked to existing participants.",
-        code: "PARTICIPANTS_LOCKED",
+        error: admissionAuth.error,
+        code: admissionAuth.code,
       });
       return;
     }
 
-    // MEMBER-001 Invariant: Pre-check capacity enforcement
-    // Non-hosts entering a full room are rejected with ROOM_FULL
-    if (memoryRoom && !isHost) {
-      if (typeof row.max_participants === "number") {
-        memoryRoom.maxParticipants = row.max_participants;
-      }
-      if (memoryRoom.isRoomFull(isHost)) {
-        res.status(403).json({
-          valid: false,
-          error: "This room has reached its participant limit.",
-          code: "ROOM_FULL",
-        });
-        return;
-      }
-    }
-
-    // Generate short-lived, signed admission token bound to { roomId, callerUid, sessionId }
-    const admissionToken = generateAdmissionToken({
-      roomId: cleanRoomId,
-      userId: callerUid,
-      sessionId: cleanSessionId,
-      ttlSeconds: 900,
-    });
-
     // Success: reset rate limit attempts for this target and return token
     await resetPasscodeLimits(rateLimitTarget);
-    res.json({ valid: true, admissionToken, sessionId: cleanSessionId });
+    res.json({ valid: true, admissionToken: admissionAuth.admissionToken, sessionId: cleanSessionId });
   } catch (err) {
     console.error("Error verifying passcode:", err);
     res.status(500).json({ valid: false, error: "Server error verifying passcode." });

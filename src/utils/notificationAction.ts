@@ -151,3 +151,93 @@ export function formatInvitationMessage(params: {
   return lines.join("\n");
 }
 
+export interface ParsedJoinRoute {
+  type: "invite" | "invite_query" | "join";
+  path: string;
+  identifier: string;
+}
+
+export function parseJoinRoute(value: string): ParsedJoinRoute {
+  const trimmed = (value || "").trim();
+  if (!trimmed) {
+    return { type: "join", path: "", identifier: "" };
+  }
+
+  // 1. Check for invitation query: ?invitationId=... or /invite?invitationId=...
+  if (trimmed.includes("invitationId=")) {
+    try {
+      const parsedUrl = new URL(trimmed.startsWith("http") ? trimmed : `http://localhost/${trimmed.replace(/^\/+/, "")}`);
+      const invId = parsedUrl.searchParams.get("invitationId")?.trim();
+      if (invId) {
+        return {
+          type: "invite_query",
+          path: `/invite?invitationId=${encodeURIComponent(invId)}`,
+          identifier: invId,
+        };
+      }
+    } catch {
+      const match = trimmed.match(/[?&]invitationId=([^&#\s]+)/i);
+      if (match) {
+        const invId = decodeURIComponent(match[1]).trim();
+        return {
+          type: "invite_query",
+          path: `/invite?invitationId=${encodeURIComponent(invId)}`,
+          identifier: invId,
+        };
+      }
+    }
+  }
+
+  // 2. Check for /invite/:token path
+  if (trimmed.includes("/invite/")) {
+    const rawToken = trimmed.split("/invite/")[1]?.split(/[?&#\s]/)[0] || "";
+    const cleanToken = rawToken.replace(/^\/+|\/+$/g, "").trim();
+    if (cleanToken) {
+      return {
+        type: "invite",
+        path: `/invite/${encodeURIComponent(cleanToken)}`,
+        identifier: cleanToken,
+      };
+    }
+  }
+
+  // 3. Check for /join/:roomId path
+  if (trimmed.includes("/join/")) {
+    const rawRoom = trimmed.split("/join/")[1]?.split(/[?&#\s]/)[0] || "";
+    const cleanRoom = rawRoom.replace(/^\/+|\/+$/g, "").trim();
+    if (cleanRoom) {
+      return {
+        type: "join",
+        path: `/join/${encodeURIComponent(cleanRoom)}`,
+        identifier: cleanRoom,
+      };
+    }
+  }
+
+  // 4. Check for /watch/:roomId path
+  if (trimmed.includes("/watch/")) {
+    const rawRoom = trimmed.split("/watch/")[1]?.split(/[?&#\s]/)[0] || "";
+    const cleanRoom = rawRoom.replace(/^\/+|\/+$/g, "").trim();
+    if (cleanRoom) {
+      return {
+        type: "join",
+        path: `/join/${encodeURIComponent(cleanRoom)}`,
+        identifier: cleanRoom,
+      };
+    }
+  }
+
+  // 5. Default: treat as plain roomId (strip protocol/host if user pasted a generic link)
+  const plainRoom = trimmed
+    .replace(/^https?:\/\/[^/]+\/?/, "")
+    .replace(/^\/+|\/+$/g, "")
+    .split(/[?&#\s]/)[0]
+    .trim();
+
+  return {
+    type: "join",
+    path: plainRoom ? `/join/${encodeURIComponent(plainRoom)}` : "",
+    identifier: plainRoom,
+  };
+}
+

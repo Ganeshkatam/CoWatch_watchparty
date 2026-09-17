@@ -3,7 +3,7 @@ import express, { type Request, type Response, type RequestHandler } from 'expre
 import { supabaseAdmin, validateToken } from '../utils/supabase.ts';
 import { postgres } from '../utils/postgres.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
-import { generateAdmissionToken } from '../utils/admissionToken.ts';
+import { generateAdmissionToken, issueRoomAdmissionToken } from '../utils/admissionToken.ts';
 import config from '../config.ts';
 
 export function hashInvitationToken(token: string): string {
@@ -204,17 +204,12 @@ export async function executeInvitationAdmission(
     return { status: 409, body: { valid: false, error: 'This invitation has already been used.' } };
   }
 
-  // 4. Room lifecycle check
-  if (isTerminalRoom({ status: inv.status, isPermanent: inv.isPermanent })) {
-    return { status: 400, body: { valid: false, error: 'This room has ended or expired.' } };
-  }
-
-  // 5. Targeted recipient authorization check
+  // 4. Targeted recipient authorization check
   if (inv.target_user_id && inv.target_user_id !== callerUid) {
     return { status: 403, body: { valid: false, error: 'This invitation is intended for another user.' } };
   }
 
-  // 6. Host status for capacity and participant lock bypass
+  // 5. Host status for capacity and participant lock bypass
   const isOwner = Boolean(inv.owner_id && callerUid === inv.owner_id);
   let isHost = isOwner;
   const memoryRoom = memoryRooms ? memoryRooms.get(inv.room_id) : (roomLookup ? roomLookup(inv.room_id) : undefined);
@@ -226,36 +221,28 @@ export async function executeInvitationAdmission(
     }
   }
 
-  // 7. Participant lock check
-  if (inv.participants_locked && !isHost) {
+  // 6. Post-credential authorization and cryptographic token issuance
+  const admissionAuth = issueRoomAdmissionToken({
+    roomId: inv.room_id,
+    callerUid,
+    sessionId,
+    roomRow: inv,
+    memoryRoom,
+    isHost,
+  });
+
+  if (!admissionAuth.allowed) {
     return {
-      status: 403,
+      status: admissionAuth.status,
       body: {
         valid: false,
-        error: 'This room is currently locked to new participants.',
-        code: 'PARTICIPANTS_LOCKED',
+        error: admissionAuth.error,
+        code: admissionAuth.code,
       },
     };
   }
 
-  // 8. Capacity check
-  if (memoryRoom && !isHost) {
-    if (typeof inv.max_participants === 'number') {
-      memoryRoom.maxParticipants = inv.max_participants;
-    }
-    if (typeof memoryRoom.isRoomFull === 'function' && memoryRoom.isRoomFull(isHost)) {
-      return {
-        status: 403,
-        body: {
-          valid: false,
-          error: 'This room has reached its participant limit.',
-          code: 'ROOM_FULL',
-        },
-      };
-    }
-  }
-
-  // 9. Consume single-use invitation or record acceptance
+  // 7. Consume single-use invitation or record acceptance
   await pool.query(
     `UPDATE public.room_invitations
      SET accepted_at = now(), accepted_by_user_id = $1
@@ -263,20 +250,12 @@ export async function executeInvitationAdmission(
     [callerUid, inv.id],
   );
 
-  // 10. Issue cryptographic admission token
-  const admissionToken = generateAdmissionToken({
-    roomId: inv.room_id,
-    userId: callerUid,
-    sessionId,
-    ttlSeconds: 900,
-  });
-
   return {
     status: 200,
     body: {
       valid: true,
       roomId: inv.room_id,
-      admissionToken,
+      admissionToken: admissionAuth.admissionToken,
       sessionId,
     },
   };
