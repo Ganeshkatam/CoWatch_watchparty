@@ -2961,7 +2961,7 @@ export class Room {
       this.admittedMembers.delete(targetUid);
       if (postgres) {
         postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_id = $1 AND user_id = $2`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_id = $1 AND user_id = $2::uuid`,
           [this.roomId, targetUid]
         ).catch((err) => console.warn("[Admission] Failed to revoke admission on kick in DB:", err));
       }
@@ -3026,7 +3026,7 @@ export class Room {
       this.admittedMembers.delete(targetUid);
       if (postgres) {
         postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_id = $1 AND user_id = $2`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_id = $1 AND user_id = $2::uuid`,
           [this.roomId, targetUid]
         ).catch((err) => console.warn("[Admission] Failed to revoke admission on ban in DB:", err));
       }

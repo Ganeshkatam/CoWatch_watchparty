@@ -2191,7 +2191,7 @@ app.post("/verifyPasscode", async (req, res) => {
       try {
         await postgres.query(
           `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-           VALUES ($1, $2, 'passcode', now(), NULL, NULL)
+           VALUES ($1, $2::uuid, 'passcode', now(), NULL, NULL)
            ON CONFLICT (room_id, user_id) DO UPDATE
            SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode'`,
           [cleanRoomId, callerUid]
@@ -2269,7 +2269,7 @@ app.post("/room-admission/restore", async (req, res) => {
 
     // 1. Check bans in database
     const banResult = await postgres?.query(
-      `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2 LIMIT 1`,
+      `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2::uuid LIMIT 1`,
       [cleanRoomId, callerUid]
     );
     if (banResult && banResult.rows.length > 0) {
@@ -2287,7 +2287,7 @@ app.post("/room-admission/restore", async (req, res) => {
     // 3. Durable admission check (non-owners must have an active admission record)
     if (!isOwner) {
       const admResult = await postgres?.query(
-        `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2`,
+        `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2::uuid`,
         [cleanRoomId, callerUid]
       );
       if (!admResult || admResult.rows.length === 0 || admResult.rows[0].revoked_at) {

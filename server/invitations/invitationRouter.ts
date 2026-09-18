@@ -254,7 +254,7 @@ export async function executeInvitationAdmission(
   try {
     await pool.query(
       `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-       VALUES ($1, $2, 'invite', now(), NULL, NULL)
+       VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
        ON CONFLICT (room_id, user_id) DO UPDATE
        SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
       [inv.room_id, callerUid],
