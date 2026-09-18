@@ -140,6 +140,10 @@ export const isFileShare = (input: string) => {
   return input.startsWith("fileshare://");
 };
 
+export const isLocalMedia = (input: string) => {
+  return Boolean(input && input.startsWith("localmedia://"));
+};
+
 export const isVBrowser = (input: string) => {
   return input.startsWith("vbrowser://");
 };

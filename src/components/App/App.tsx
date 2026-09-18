@@ -19,6 +19,7 @@ import {
   isHls,
   isScreenShare,
   isFileShare,
+  isLocalMedia,
   isVBrowser,
   isDash,
   VIDEO_MAX_HEIGHT_CSS,
@@ -27,6 +28,7 @@ import {
   getRoomUrl,
   decodeEntities,
 } from "../../utils/utils";
+import { LocalMediaCoordinator } from "../../media/local/LocalMediaCoordinator";
 import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
 import { parseWatchParams, getWatchUrl } from "../../utils/routeParams";
@@ -366,6 +368,7 @@ export class App extends React.Component<AppProps, AppState> {
   isLocalStreamAFile = false;
   publisherConns: PCDict = {};
   consumerConn?: RTCPeerConnection;
+  private localMediaCoordinator: LocalMediaCoordinator | null = null;
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
   startingTimer: any = null;
@@ -1042,6 +1045,34 @@ export class App extends React.Component<AppProps, AppState> {
 
       socket.on("REC:assignedClientId", (assignedClientId: string) => {
         this.setState({ myClientId: assignedClientId });
+        if (this.localMediaCoordinator) {
+          this.localMediaCoordinator.reset();
+        }
+        this.localMediaCoordinator = new LocalMediaCoordinator(
+          socket,
+          cleanRoomId,
+          assignedClientId,
+          (state) => {
+            if (state.role === "PARTICIPANT_PEER" && state.objectUrl) {
+              const leftVideo = this.HTMLInterface.getVideoEl();
+              if (leftVideo && leftVideo.src !== state.objectUrl) {
+                leftVideo.src = state.objectUrl;
+                this.setLoadingFalse();
+              }
+            }
+          }
+        );
+      });
+
+      socket.on("LOCAL_MEDIA_UNAVAILABLE", () => {
+        if (isLocalMedia(this.state.roomMedia)) {
+          this.localMediaCoordinator?.reset();
+          const leftVideo = this.HTMLInterface.getVideoEl();
+          if (leftVideo) {
+            leftVideo.src = "";
+          }
+          this.setState({ roomMedia: "", loading: false });
+        }
       });
 
       socket.on("connect", async () => {
@@ -1376,6 +1407,9 @@ export class App extends React.Component<AppProps, AppState> {
         if (this.playingFileShare() && !isFileShare(currentMedia)) {
           this.stopPublishingLocalStream();
         }
+        if (isLocalMedia(this.state.roomMedia) && !isLocalMedia(currentMedia)) {
+          this.localMediaCoordinator?.reset();
+        }
         if (this.playingVBrowser() && !isVBrowser(currentMedia)) {
           this.stopVBrowser();
         }
@@ -1428,6 +1462,14 @@ export class App extends React.Component<AppProps, AppState> {
             }
             if (data.playbackRate) {
               this.Player().setPlaybackRate(data.playbackRate);
+            }
+
+            if (isLocalMedia(currentMedia)) {
+              if (!data.paused) {
+                this.localPlay();
+              }
+              this.setLoadingFalse();
+              return;
             }
 
             if (
@@ -1860,8 +1902,12 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:getRoomState", this.handleRoomState);
       window.setInterval(() => {
         if (this.state.roomMedia) {
-          const toSend = this.getRoomTSToSet(this.Player().getCurrentTime());
+          const currentTime = this.Player().getCurrentTime();
+          const toSend = this.getRoomTSToSet(currentTime);
           this.socket.emit("CMD:ts", toSend);
+          if (isLocalMedia(this.state.roomMedia)) {
+            this.localMediaCoordinator?.notifyTimelineTick(currentTime);
+          }
         }
       }, 1000);
     } catch (criticalErr) {
@@ -2306,24 +2352,25 @@ export class App extends React.Component<AppProps, AppState> {
     // });
   };
 
-  startFileShare = async (useMediaSoup: boolean) => {
+  startFileShare = async (_useMediaSoup?: boolean) => {
     const files = await openFileSelector();
-    if (!files) {
+    if (!files || !files[0]) {
       return;
     }
     const file = files[0];
     this.Player().clearState();
-    const leftVideo = this.HTMLInterface.getVideoEl();
-    leftVideo.src = URL.createObjectURL(file);
-    leftVideo.play();
-    //@ts-expect-error
-    this.localStreamToPublish = leftVideo?.captureStream();
-    this.isLocalStreamAFile = true;
-    if (this.localStreamToPublish) {
-      this.socket.emit("CMD:joinScreenShare", {
-        file: true,
-        mediasoup: useMediaSoup,
-      });
+    if (this.localMediaCoordinator) {
+      try {
+        const objectUrl = await this.localMediaCoordinator.selectLocalFile(file);
+        const leftVideo = this.HTMLInterface.getVideoEl();
+        if (leftVideo) {
+          leftVideo.src = objectUrl;
+          leftVideo.play().catch(console.warn);
+        }
+        this.setLoadingFalse();
+      } catch (err) {
+        console.error("Failed to start local media share:", err);
+      }
     }
   };
 
@@ -2858,8 +2905,8 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   hasDuration = () => {
-    // Youtube, link, or magnet, etc. Has a defined runtime (not WebRTC)
-    return isHttp(this.state.roomMedia) || isMagnet(this.state.roomMedia);
+    // Youtube, link, or magnet, etc. Has a defined runtime (not WebRTC live stream)
+    return isHttp(this.state.roomMedia) || isMagnet(this.state.roomMedia) || isLocalMedia(this.state.roomMedia);
   };
 
   playingScreenShare = () => {
