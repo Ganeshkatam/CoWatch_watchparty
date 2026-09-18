@@ -2235,7 +2235,8 @@ async function runConcurrencyStressTest() {
         ).catch(() => {});
       }
     } catch (cleanupErr) {
-      console.error("Test 12 teardown encountered an error:", cleanupErr);
+      console.error("[TEST12] fixture teardown failed:", cleanupErr);
+      throw cleanupErr;
     }
     console.log("TEST 12 Teardown complete. All test fixtures and entitlements restored.");
   }
