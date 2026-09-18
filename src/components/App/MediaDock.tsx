@@ -111,7 +111,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   const scheduleCollapse = React.useCallback(() => {
     clearCollapseTimer();
     if (
-      !isMobileViewport ||
       !hasActiveMedia ||
       Object.keys(openMenusRef.current).length > 0
     ) {
@@ -120,7 +119,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
     collapseTimerRef.current = window.setTimeout(() => {
       setIsCollapsed(true);
     }, 3000);
-  }, [clearCollapseTimer, isMobileViewport, hasActiveMedia]);
+  }, [clearCollapseTimer, hasActiveMedia]);
 
   const handleMenuChange = React.useCallback(
     (key: string, opened: boolean) => {
@@ -153,6 +152,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 
   const handleDockMouseEnter = React.useCallback(() => {
     clearCollapseTimer();
+    setIsCollapsed(false);
   }, [clearCollapseTimer]);
 
   const handleDockMouseLeave = React.useCallback(() => {
@@ -160,18 +160,23 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   }, [scheduleCollapse]);
 
   const handleDockClick = React.useCallback(() => {
-    if (isMobileViewport) {
-      scheduleCollapse();
-    }
-  }, [isMobileViewport, scheduleCollapse]);
+    scheduleCollapse();
+  }, [scheduleCollapse]);
 
-  // Keep desktop dock visible and clean up timers when resizing to desktop
+  // Wake up dock when mouse moves anywhere over the dock shell / player area
   React.useEffect(() => {
-    if (!isMobileViewport) {
-      setIsCollapsed(false);
-      clearCollapseTimer();
-    }
-  }, [isMobileViewport, clearCollapseTimer]);
+    const handleGlobalMouseMove = () => {
+      if (hasActiveMedia && Object.keys(openMenusRef.current).length === 0) {
+        setIsCollapsed(false);
+        scheduleCollapse();
+      }
+    };
+
+    window.addEventListener("mousemove", handleGlobalMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMouseMove);
+    };
+  }, [hasActiveMedia, scheduleCollapse]);
 
   // Expand and reset timer when media status changes
   React.useEffect(() => {
@@ -219,7 +224,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
     <div className={styles.dockShell}>
       <div
         className={`${styles.dockContainer} ${
-          isMobileViewport && isCollapsed ? styles.dockCollapsed : ""
+          isCollapsed ? styles.dockCollapsed : ""
         }`}
         onTouchStart={handleDockTouchStart}
         onTouchEnd={handleDockTouchEnd}
@@ -518,7 +523,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
       )}
       </div>
 
-      {isMobileViewport && isCollapsed && (
+      {isCollapsed && (
         <button
           type="button"
           className={styles.expandHandle}
