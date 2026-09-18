@@ -3,15 +3,13 @@ import { Link } from "react-router-dom";
 import { Badge, Button } from "@mantine/core";
 import {
   IconCirclePlusFilled,
-  IconBrandGithub,
   IconArrowRight,
   IconCheck,
   IconX,
-  IconExternalLink,
   IconSparkles,
   IconPlayerPlay,
   IconVideo,
-  IconBrowser,
+  IconScreenShare,
   IconShieldLock,
   IconServer,
   IconCpu,
@@ -58,7 +56,7 @@ const TENETS = [
     badgeColor: "var(--color-violet)",
     icon: <IconPlayerPlay size={24} color="var(--color-violet)" />,
     iconBg: "rgba(139, 92, 246, 0.12)",
-    text: "Sub-second playback alignment across YouTube, cloud Virtual Browsers, direct video streams, and screenshares with automatic drift compensation.",
+    text: "Sub-second playback alignment across YouTube, direct video streams, screen sharing, and WebTorrent with automatic drift compensation.",
     highlights: [
       "Sub-second continuous clock synchronization",
       "Unified timeline controls across heterogeneous media",
@@ -80,17 +78,17 @@ const TENETS = [
     ],
   },
   {
-    title: "Cloud Virtual Browsers (VBrowser)",
-    badge: "Cloud Grid",
+    title: "Screen & System Audio Sharing",
+    badge: "Display Capture",
     badgeBg: "rgba(34, 211, 238, 0.15)",
     badgeColor: "var(--color-cyan)",
-    icon: <IconBrowser size={24} color="var(--color-cyan)" />,
+    icon: <IconScreenShare size={24} color="var(--color-cyan)" />,
     iconBg: "rgba(34, 211, 238, 0.12)",
-    text: "Dedicated cloud-hosted Chromium instances streamed over WebRTC, allowing entire rooms to browse media together with shared controls.",
+    text: "Direct browser-to-browser screen and window capture with native system audio forwarding, letting you stream presentations, games, and web media effortlessly.",
     highlights: [
-      "Isolated headless Chromium cloud instances",
-      "Sub-second display streaming via WebRTC video",
-      "Pass-through remote mouse and keyboard inputs",
+      "Share any application window, desktop, or browser tab",
+      "Integrated system audio forwarding without extra drivers",
+      "Hardware-accelerated encoding for smooth framerates",
     ],
   },
   {
@@ -153,24 +151,24 @@ const ARCHITECTURE_LAYERS = {
       { text: "/>", type: "keyword" },
     ],
   },
-  vbrowser: {
-    badge: "Virtual Browser Grid",
-    title: "Isolated Chromium Container Fabric",
+  media: {
+    badge: "Media Pipeline",
+    title: "Multi-Source Media & WebTorrent Pipeline",
     description:
-      "On-demand cloud containers running headless Chromium with custom WebRTC pipelines, giving watch parties shared access to any web media without local hardware encoding.",
+      "A versatile media orchestration engine supporting synchronized YouTube playback, direct MP4/HLS streams, and peer-to-peer WebTorrent mesh transfers.",
     points: [
-      "Containerized sandbox isolation ensuring zero cross-room data contamination",
-      "Ultra-low latency H.264 video encoding directly forwarded through WebRTC",
-      "Shared remote control delegation managed by room host permissions",
+      "Direct support for MP4, WebM, and adaptive HLS (.m3u8) video streaming",
+      "Peer-to-peer WebTorrent mesh streaming directly inside browser memory",
+      "Unified seek, pause, and rate synchronization across all media types",
     ],
-    terminalTitle: "vbrowser/grid-allocator.ts",
+    terminalTitle: "media/pipeline-coordinator.ts",
     terminalLines: [
-      { text: "// Virtual Browser container allocation", type: "comment" },
-      { text: "const instance = await vBrowserGrid.provision({", type: "keyword" },
-      { text: "  roomId: session.roomId,", type: "code" },
-      { text: "  resolution: '1080p60',", type: "accent" },
-      { text: "  codec: 'H264',", type: "value" },
-      { text: "  idleTimeoutSeconds: 30", type: "value" },
+      { text: "// Multi-source playback orchestrator", type: "comment" },
+      { text: "const player = mediaCoordinator.initialize({", type: "keyword" },
+      { text: "  sourceType: room.mediaSource.type,", type: "code" },
+      { text: "  mediaUrl: room.mediaSource.url,", type: "code" },
+      { text: "  hlsAdaptiveStreaming: true,", type: "accent" },
+      { text: "  webtorrentP2P: true,", type: "value" },
       { text: "});", type: "keyword" },
     ],
   },
@@ -210,7 +208,7 @@ const TECH_CATEGORIES = [
   {
     category: "Backend & Engine",
     icon: <IconServer size={16} color="var(--color-teal)" />,
-    skills: ["Node.js", "Express", "Docker VBrowser Grid", "X11 Display Mirroring", "PulseAudio"],
+    skills: ["Node.js", "Express", "Socket.IO Clustering", "WebRTC Mesh Signaling", "Redis Coordination"],
   },
   {
     category: "Data & Security",
@@ -253,7 +251,7 @@ export const About: React.FC = () => {
       "Discover the engineering, architecture, and philosophy behind CoWatch: browser-native synchronization, low-latency WebRTC media, and privacy by design.",
   });
 
-  const [activeLayer, setActiveLayer] = useState<"sync" | "client" | "vbrowser" | "security">("sync");
+  const [activeLayer, setActiveLayer] = useState<"sync" | "client" | "media" | "security">("sync");
   const currentLayer = ARCHITECTURE_LAYERS[activeLayer];
 
   return (
@@ -293,29 +291,26 @@ export const About: React.FC = () => {
               Start a Watch Party
             </Button>
             <Button
-              component="a"
-              href="https://github.com/Ganeshkatam/CoWatch_watchparty"
-              target="_blank"
-              rel="noopener noreferrer"
-              size="lg"
-              variant="default"
-              leftSection={<IconBrandGithub size={20} />}
-              rightSection={<IconExternalLink size={15} />}
-              id="about-hero-github-btn"
-              className={styles.heroSecondaryBtn}
-            >
-              Explore GitHub Source
-            </Button>
-            <Button
               component={Link}
               to="/join"
               size="lg"
-              variant="subtle"
+              variant="default"
               leftSection={<IconCompass size={18} />}
               id="about-hero-join-btn"
               className={styles.heroSecondaryBtn}
             >
-              Join Room
+              Join a Watch Party
+            </Button>
+            <Button
+              component={Link}
+              to="/faq"
+              size="lg"
+              variant="subtle"
+              leftSection={<IconHelpCircle size={18} />}
+              id="about-hero-faq-btn"
+              className={styles.heroSecondaryBtn}
+            >
+              Platform FAQ
             </Button>
           </div>
         </div>
@@ -422,7 +417,7 @@ export const About: React.FC = () => {
                 <div>
                   <div className={styles.comparisonItemTitle}>Continuous Sub-Second Drift Correction</div>
                   <p className={styles.comparisonItemDesc}>
-                    Active timecode synchronization keeps every viewer on the exact same frame across YouTube, files, and VBrowsers.
+                    Active timecode synchronization keeps every viewer on the exact same frame across YouTube, files, and screenshares.
                   </p>
                 </div>
               </li>
@@ -438,9 +433,9 @@ export const About: React.FC = () => {
               <li className={styles.comparisonItem}>
                 <IconCheck size={18} className={`${styles.comparisonStatusIcon} ${styles.comparisonStatusIconNew}`} />
                 <div>
-                  <div className={styles.comparisonItemTitle}>Cloud Virtual Browsers (VBrowser)</div>
+                  <div className={styles.comparisonItemTitle}>Screen &amp; Tab Audio Forwarding</div>
                   <p className={styles.comparisonItemDesc}>
-                    Dedicated cloud Chromium instances stream pristine 1080p video directly via WebRTC with shared controls.
+                    Share any application window, desktop, or browser tab with pristine forwarded system audio and no extra software.
                   </p>
                 </div>
               </li>
@@ -511,7 +506,7 @@ export const About: React.FC = () => {
           </h2>
           <p className={styles.sectionDescription}>
             Explore the four layers of the CoWatch real-time stack, from client-side WebRTC topologies
-            to cloud Virtual Browser containers and PostgreSQL persistence.
+            to multi-source media streaming and PostgreSQL persistence.
           </p>
         </div>
 
@@ -540,12 +535,12 @@ export const About: React.FC = () => {
             <button
               type="button"
               role="tab"
-              aria-selected={activeLayer === "vbrowser"}
-              className={`${styles.blueprintTabBtn} ${activeLayer === "vbrowser" ? styles.blueprintTabBtnActive : ""}`}
-              onClick={() => setActiveLayer("vbrowser")}
+              aria-selected={activeLayer === "media"}
+              className={`${styles.blueprintTabBtn} ${activeLayer === "media" ? styles.blueprintTabBtnActive : ""}`}
+              onClick={() => setActiveLayer("media")}
             >
-              <IconBrowser size={18} />
-              <span>Virtual Browser Grid</span>
+              <IconDeviceTv size={18} />
+              <span>Media Pipeline</span>
             </button>
             <button
               type="button"
@@ -669,48 +664,44 @@ export const About: React.FC = () => {
         </div>
       </section>
 
-      {/* 8. Open Source & Roadmap (Dual Panel) */}
-      <section className={styles.sectionContainer} aria-labelledby="community-heading">
+      {/* 8. Production Release & Roadmap (Dual Panel) */}
+      <section className={styles.sectionContainer} aria-labelledby="milestones-heading">
         <div className={styles.dualSectionGrid}>
-          {/* Open Source Panel */}
-          <div className={styles.openSourcePanel}>
-            <div className={styles.openSourceBadgeRow}>
+          {/* Production Release Panel */}
+          <div className={styles.releasePanel}>
+            <div className={styles.releaseBadgeRow}>
               <Badge color="violet" variant="filled">
-                Open Source
+                Production Release
               </Badge>
               <Badge color="gray" variant="light">
-                Release v1.2.0
+                Version v1.2.0
               </Badge>
             </div>
 
-            <h3 className={styles.openSourceTitle}>Transparent, Community-Driven</h3>
-            <p className={styles.openSourceText}>
-              CoWatch is developed in the open. We believe in software transparency, independent development,
-              and code quality that anyone can inspect, audit, or extend.
+            <h3 className={styles.releaseTitle}>Enterprise-Grade Reliability</h3>
+            <p className={styles.releaseText}>
+              Every build of CoWatch undergoes rigorous automated testing, database hardening, and concurrency
+              verification. We engineer platform uptime, strict Row Level Security, and sub-50ms synchronization into every layer.
             </p>
 
-            <div className={styles.openSourceActions}>
+            <div className={styles.releaseActions}>
               <Button
-                component="a"
-                href="https://github.com/Ganeshkatam/CoWatch_watchparty"
-                target="_blank"
-                rel="noopener noreferrer"
+                component={Link}
+                to="/faq"
                 variant="filled"
                 color="violet"
-                leftSection={<IconBrandGithub size={18} />}
-                rightSection={<IconExternalLink size={14} />}
+                leftSection={<IconHelpCircle size={18} />}
               >
-                GitHub Repository
+                Platform FAQ
               </Button>
               <Button
-                component="a"
-                href="https://github.com/Ganeshkatam/CoWatch_watchparty/releases"
-                target="_blank"
-                rel="noopener noreferrer"
+                component={Link}
+                to="/support"
                 variant="default"
+                leftSection={<IconShieldLock size={18} />}
                 className={styles.heroSecondaryBtn}
               >
-                View Release Notes
+                Support Center
               </Button>
             </div>
           </div>
@@ -732,7 +723,7 @@ export const About: React.FC = () => {
                 <div>
                   <strong>Shipped in v1.2.0: </strong>
                   <span>
-                    Durable server admission gateway, hardened database catalog, VBrowser concurrency limits, and
+                    Durable server admission gateway, hardened database catalog, real-time presence recovery, and
                     in-app update detector.
                   </span>
                 </div>
@@ -758,9 +749,9 @@ export const About: React.FC = () => {
               <li className={styles.roadmapItem}>
                 <IconSparkles size={18} className={styles.roadmapItemIconNext} />
                 <div>
-                  <strong>Multi-Region VBrowser Routing: </strong>
+                  <strong>Multi-Region Edge Signaling: </strong>
                   <span>
-                    Lowering input latency by automatically routing cloud browsers to the closest edge datacenter.
+                    Lowering connection latency by routing WebSocket and WebRTC signaling through distributed edge nodes.
                   </span>
                 </div>
               </li>

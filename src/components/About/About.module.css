@@ -835,7 +835,7 @@
 }
 
 /* ==========================================================================
-   Open Source & Roadmap Cards
+   Production Release & Roadmap Cards
    ========================================================================== */
 .dualSectionGrid {
   display: grid;
@@ -843,7 +843,7 @@
   gap: 28px;
 }
 
-.openSourcePanel {
+.releasePanel {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -855,21 +855,21 @@
   overflow: hidden;
 }
 
-.openSourceBadgeRow {
+.releaseBadgeRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
 
-.openSourceTitle {
+.releaseTitle {
   font-size: 22px;
   font-weight: 800;
   color: var(--text-primary);
   margin: 0 0 12px 0;
 }
 
-.openSourceText {
+.releaseText {
   font-size: 14.5px;
   line-height: 1.65;
   color: var(--text-secondary);
@@ -877,7 +877,7 @@
   flex-grow: 1;
 }
 
-.openSourceActions {
+.releaseActions {
   display: flex;
   align-items: center;
   gap: 12px;
