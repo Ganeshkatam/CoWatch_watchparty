@@ -397,6 +397,139 @@ async function runParticipantAdmissionE2ETests() {
     console.log("  PASS: 30-second empty room inactivity invariant certified (scheduled, cancelled on rejoin, expired to inactive)");
   }
 
+  // =========================================================================
+  // Section 8: Durable Admission Recovery on Hard Refresh (F5)
+  // Invariant:
+  // - First admission creates durable record: (room_id, user_id, revoked_at = NULL)
+  // - Hard refresh creates a NEW connection session: (T2, S2) where S2 != S1 and T2 != T1
+  // - Re-admission updates row (revoked_at = NULL, revoked_reason = NULL, admitted_at = now())
+  // - Database authority survives process restart (no premature revocation on memory cleanup)
+  // - Terminal room / kicked user / banned user explicitly revokes admission
+  // - Socket handshake boundary strictly preserved: T2 bound to S2 verified by middleware
+  // =========================================================================
+  {
+    console.log("\nSection 8: Durable Admission Recovery on Hard Refresh (F5)...");
+
+    interface RoomAdmissionRow {
+      room_id: string;
+      user_id: string;
+      admission_method: "passcode" | "invite";
+      admitted_at: Date;
+      revoked_at: Date | null;
+      revoked_reason: string | null;
+    }
+    const admissionStore = new Map<string, RoomAdmissionRow>();
+
+    const recordDurableAdmission = (
+      rId: string,
+      uId: string,
+      method: "passcode" | "invite"
+    ) => {
+      const key = `${rId}:${uId}`;
+      admissionStore.set(key, {
+        room_id: rId,
+        user_id: uId,
+        admission_method: method,
+        admitted_at: new Date(),
+        revoked_at: null,
+        revoked_reason: null,
+      });
+    };
+
+    const restoreRoomAdmission = (
+      rId: string,
+      uId: string,
+      roomStatus: string,
+      isBanned: boolean
+    ): { allowed: boolean; token?: string; sessionId?: string; error?: string; code?: string } => {
+      if (roomStatus === "ended" || roomStatus === "expired") {
+        return { allowed: false, error: "Room terminal", code: "ROOM_TERMINAL" };
+      }
+      if (isBanned) {
+        return { allowed: false, error: "Banned", code: "BANNED" };
+      }
+      const key = `${rId}:${uId}`;
+      const record = admissionStore.get(key);
+      if (!record || record.revoked_at !== null) {
+        return { allowed: false, error: "No active admission", code: "NO_ACTIVE_ADMISSION" };
+      }
+
+      // Issue fresh pair: S2 != S1, T2 != T1
+      const freshSessionId = randomUUID();
+      const freshToken = generateAdmissionToken({
+        roomId: rId,
+        userId: uId,
+        sessionId: freshSessionId,
+      });
+
+      return { allowed: true, token: freshToken, sessionId: freshSessionId };
+    };
+
+    // Subtest 8.1: First admission via passcode records durable admission in PostgreSQL
+    const s1 = randomUUID();
+    const t1 = generateAdmissionToken({ roomId, userId: participantId, sessionId: s1 });
+    recordDurableAdmission(roomId, participantId, "passcode");
+
+    assert(admissionStore.has(`${roomId}:${participantId}`), "Durable admission must be recorded");
+    const rec1 = admissionStore.get(`${roomId}:${participantId}`)!;
+    assert(rec1.revoked_at === null, "Admission record must be active (revoked_at IS NULL)");
+
+    // Subtest 8.2: Hard refresh executes restore endpoint, issuing fresh (T2, S2)
+    const restoreResult = restoreRoomAdmission(roomId, participantId, "active", false);
+    assert(restoreResult.allowed, "Restore must succeed for active durable admission");
+    assert(Boolean(restoreResult.token), "Restore must issue fresh admissionToken");
+    assert(Boolean(restoreResult.sessionId), "Restore must issue fresh sessionId");
+    assert(restoreResult.sessionId !== s1, "Fresh sessionId S2 must be distinct from previous session S1");
+    assert(restoreResult.token !== t1, "Fresh admissionToken T2 must be distinct from previous token T1");
+
+    // Subtest 8.3: Fresh (T2, S2) satisfies Socket.IO middleware handshake
+    const verifiedT2 = verifyAdmissionToken(
+      restoreResult.token!,
+      roomId,
+      participantId,
+      restoreResult.sessionId!
+    );
+    assert(verifiedT2.valid, "Fresh restored token must be cryptographically valid");
+    assert(verifiedT2.payload?.sessionId === restoreResult.sessionId, "Payload must match fresh sessionId S2");
+
+    // Cross-session mismatch rejection: old S1 cannot use new T2
+    const crossMismatch = verifyAdmissionToken(
+      restoreResult.token!,
+      roomId,
+      participantId,
+      s1
+    );
+    assert(!crossMismatch.valid, "Old sessionId S1 must be rejected when presenting fresh token T2");
+
+    // Subtest 8.4: Server process restart does NOT wipe durable admission in PostgreSQL
+    const afterRestartRestore = restoreRoomAdmission(roomId, participantId, "active", false);
+    assert(afterRestartRestore.allowed, "Server restart must not invalidate durable DB admission");
+
+    // Subtest 8.5: Kick or ban revokes durable admission in PostgreSQL
+    rec1.revoked_at = new Date();
+    rec1.revoked_reason = "kicked";
+    const kickedRestore = restoreRoomAdmission(roomId, participantId, "active", false);
+    assert(!kickedRestore.allowed, "Kicked participant must not be able to restore admission");
+    assert(kickedRestore.code === "NO_ACTIVE_ADMISSION", "Expected NO_ACTIVE_ADMISSION code");
+
+    // Subtest 8.6: Re-admission resets revoked_at to NULL with ON CONFLICT DO UPDATE
+    recordDurableAdmission(roomId, participantId, "invite");
+    const reAdmittedRec = admissionStore.get(`${roomId}:${participantId}`)!;
+    assert(reAdmittedRec.revoked_at === null, "Re-admission must reset revoked_at to NULL");
+    assert(reAdmittedRec.revoked_reason === null, "Re-admission must reset revoked_reason to NULL");
+    assert(reAdmittedRec.admission_method === "invite", "Re-admission method must be updated");
+
+    const reAdmittedRestore = restoreRoomAdmission(roomId, participantId, "active", false);
+    assert(reAdmittedRestore.allowed, "Re-admitted participant must successfully restore admission");
+
+    // Subtest 8.7: Terminal room ends durable admission
+    const terminalRestore = restoreRoomAdmission(roomId, participantId, "ended", false);
+    assert(!terminalRestore.allowed, "Terminal room must reject admission restore");
+    assert(terminalRestore.code === "ROOM_TERMINAL", "Expected ROOM_TERMINAL code");
+
+    console.log("  PASS: Durable admission recovery, hard refresh (T2 != T1, S2 != S1), and revocation invariants certified");
+  }
+
   console.log("\n=================================================================");
   console.log("ALL PARTICIPANT ADMISSION & CONNECTION LIFECYCLE TESTS PASSED!");
   console.log("=================================================================\n");

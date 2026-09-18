@@ -88,6 +88,7 @@ import {
 } from "../../utils/postRoomContext";
 import {
   loadAdmissionSession,
+  saveAdmissionSession,
   clearAdmissionSession,
   fingerprintToken,
 } from "../../utils/roomAdmissionSession";
@@ -467,7 +468,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (!roomId) return;
     const panel = showColumn ? (tab === "chat" ? "chat" : "participants") : "none";
     const newUrl = getWatchUrl(roomId, panel);
-    window.history.replaceState(null, "", newUrl);
+    window.history.replaceState(window.history.state, "", newUrl);
   };
 
   syncDocumentMetadata = () => {
@@ -824,19 +825,24 @@ export class App extends React.Component<AppProps, AppState> {
     try {
       // INVARIANT: A URL can identify a room, but can NEVER authenticate a participant.
       // Any query credentials (?passcode=, ?pass=, ?password=) are strictly IGNORED and NEVER copied into state.
-      // Admission token and session ID are read from route transport state, with sessionStorage fallback on page refresh.
-      const routeLocationState =
+      // Admission token and session ID are read from route transport state, with sessionStorage fallback and durable server restore on page refresh.
+      const rawHistoryState =
         (this.props.location?.state as any) ||
+        (window.history?.state as any)?.state ||
         (window.history?.state as any)?.usr ||
         (window.history?.state as any);
+      const routeLocationState = rawHistoryState;
+      if (rawHistoryState?.admissionToken && rawHistoryState?.sessionId) {
+        saveAdmissionSession(cleanRoomId, rawHistoryState.admissionToken, rawHistoryState.sessionId);
+      }
       const storedAdmission = !routeLocationState?.admissionToken
         ? loadAdmissionSession(cleanRoomId)
         : null;
-      const routeAdmissionToken =
+      let routeAdmissionToken =
         routeLocationState?.admissionToken ||
         storedAdmission?.admissionToken ||
         this.state.admissionToken;
-      const routeSessionId =
+      let routeSessionId =
         routeLocationState?.sessionId ||
         storedAdmission?.sessionId ||
         this.state.sessionId;
@@ -884,8 +890,50 @@ export class App extends React.Component<AppProps, AppState> {
         // Admission Gateway Invariant:
         // /join/:roomId is the ONLY admission gateway for participants.
         // A non-owner without a valid server-issued admissionToken must never enter /watch/:roomId.
-        // Gracefully redirect them to /join/:roomId where they must obtain an admissionToken.
+        // On hard refresh, we attempt to restore durable admission from PostgreSQL via POST /room-admission/restore.
+        // If no active admission exists, gracefully redirect them to /join/:roomId where they must obtain an admissionToken.
         if (!access.isOwner) {
+          // If we don't have fresh in-memory router state, attempt durable server-side admission restore
+          if (!routeLocationState?.admissionToken) {
+            try {
+              const sessionData = await safeGetSession(1200);
+              const user = sessionData?.data?.session?.user;
+              const token = sessionData?.data?.session?.access_token;
+              if (user?.id && token) {
+                const restoreResp = await fetch(`${serverPath}/room-admission/restore`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                    "x-user-id": user.id,
+                  },
+                  body: JSON.stringify({ roomId: cleanRoomId }),
+                });
+                if (restoreResp.ok) {
+                  const restoreData = await restoreResp.json();
+                  if (restoreData.valid && restoreData.admissionToken && restoreData.sessionId) {
+                    routeAdmissionToken = restoreData.admissionToken;
+                    routeSessionId = restoreData.sessionId;
+                    saveAdmissionSession(cleanRoomId, routeAdmissionToken, routeSessionId);
+                    this.setState({
+                      admissionToken: routeAdmissionToken,
+                      sessionId: routeSessionId,
+                    });
+                    console.log(
+                      `[ADMISSION_TRACE:RESTORE] Restored durable admission: room=${cleanRoomId} session=${routeSessionId} tokenFp=${fingerprintToken(routeAdmissionToken)}`
+                    );
+                  }
+                } else if (restoreResp.status === 401 || restoreResp.status === 403) {
+                  clearAdmissionSession(cleanRoomId);
+                  routeAdmissionToken = undefined;
+                  routeSessionId = undefined;
+                }
+              }
+            } catch (restoreErr) {
+              console.warn("[ADMISSION] Durable admission restoration request failed:", restoreErr);
+            }
+          }
+
           if (!routeAdmissionToken) {
             // Double-check: wait for auth to settle in case session was still loading
             const retrySession = await safeGetSession(1000);
@@ -2099,7 +2147,7 @@ export class App extends React.Component<AppProps, AppState> {
     const panel = this.state.showChatColumn
       ? (this.state.currentTab === "chat" ? "chat" : "participants")
       : "none";
-    window.history.replaceState("", "", getWatchUrl(this.state.roomId, panel));
+    window.history.replaceState(window.history.state, "", getWatchUrl(this.state.roomId, panel));
     operationCoordinator.recordRoomStateReceived(epoch ?? operationCoordinator.getConnectionEpoch());
     this.checkAndAdvanceToReady();
   };

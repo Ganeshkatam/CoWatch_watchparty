@@ -250,6 +250,23 @@ export async function executeInvitationAdmission(
     [callerUid, inv.id],
   );
 
+  // 8. Record durable room admission
+  try {
+    await pool.query(
+      `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+       VALUES ($1, $2, 'invite', now(), NULL, NULL)
+       ON CONFLICT (room_id, user_id) DO UPDATE
+       SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
+      [inv.room_id, callerUid],
+    );
+  } catch (admDbErr) {
+    console.warn('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
+  }
+
+  if (memoryRoom) {
+    memoryRoom.admittedMembers?.add(callerUid);
+  }
+
   return {
     status: 200,
     body: {

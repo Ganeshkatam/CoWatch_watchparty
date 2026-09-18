@@ -2958,6 +2958,13 @@ export class Room {
 
     const targetUid = this.clientToUidMap[targetIdentity] || targetSocket?.uid;
     if (targetUid) {
+      this.admittedMembers.delete(targetUid);
+      if (postgres) {
+        postgres.query(
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_id = $1 AND user_id = $2`,
+          [this.roomId, targetUid]
+        ).catch((err) => console.warn("[Admission] Failed to revoke admission on kick in DB:", err));
+      }
       const moderationEventId = operationId || randomUUID();
       notificationService
         .notifyUser({
@@ -3016,6 +3023,13 @@ export class Room {
     this.admittedParticipants.delete(targetIdentity);
 
     if (targetUid) {
+      this.admittedMembers.delete(targetUid);
+      if (postgres) {
+        postgres.query(
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_id = $1 AND user_id = $2`,
+          [this.roomId, targetUid]
+        ).catch((err) => console.warn("[Admission] Failed to revoke admission on ban in DB:", err));
+      }
       const moderationEventId = operationId || randomUUID();
       notificationService
         .notifyUser({

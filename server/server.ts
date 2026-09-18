@@ -2187,12 +2187,164 @@ app.post("/verifyPasscode", async (req, res) => {
       return;
     }
 
+    if (postgres) {
+      try {
+        await postgres.query(
+          `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+           VALUES ($1, $2, 'passcode', now(), NULL, NULL)
+           ON CONFLICT (room_id, user_id) DO UPDATE
+           SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode'`,
+          [cleanRoomId, callerUid]
+        );
+      } catch (admDbErr) {
+        console.warn("[Admission] Failed to record durable admission in DB:", admDbErr);
+      }
+    }
+
+    if (memoryRoom && callerUid) {
+      memoryRoom.admittedMembers.add(callerUid);
+    }
+
     // Success: reset rate limit attempts for this target and return token
     await resetPasscodeLimits(rateLimitTarget);
     res.json({ valid: true, admissionToken: admissionAuth.admissionToken, sessionId: cleanSessionId });
   } catch (err) {
     console.error("Error verifying passcode:", err);
     res.status(500).json({ valid: false, error: "Server error verifying passcode." });
+  }
+});
+
+app.post("/room-admission/restore", async (req, res) => {
+  const { roomId } = req.body || {};
+  if (!roomId || typeof roomId !== "string") {
+    res.status(400).json({ valid: false, error: "Missing room identifier." });
+    return;
+  }
+
+  const cleanRoomId = sanitizeRoomId(roomId);
+
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : (req.query?.token as string | undefined);
+  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+
+  let callerUid: string | undefined;
+  if (token && uid) {
+    try {
+      const decoded = await validateUserToken(String(uid), String(token));
+      if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
+        callerUid = decoded.uid;
+      }
+    } catch {}
+  }
+
+  if (!callerUid) {
+    res.status(401).json({
+      valid: false,
+      error: "Authentication required to restore room admission.",
+      code: "AUTH_REQUIRED",
+    });
+    return;
+  }
+
+  try {
+    const roomResult = await postgres?.query(
+      `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt" FROM rooms WHERE "roomId" = $1`,
+      [cleanRoomId]
+    );
+
+    if (!roomResult || roomResult.rows.length === 0) {
+      res.status(404).json({ valid: false, error: "Room not found.", code: "ROOM_NOT_FOUND" });
+      return;
+    }
+
+    const row = roomResult.rows[0];
+    if (isTerminalRoom(row)) {
+      res.status(401).json({ valid: false, error: "This room has ended or expired.", code: "ROOM_TERMINAL" });
+      return;
+    }
+
+    const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
+
+    // 1. Check bans in database
+    const banResult = await postgres?.query(
+      `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2 LIMIT 1`,
+      [cleanRoomId, callerUid]
+    );
+    if (banResult && banResult.rows.length > 0) {
+      res.status(403).json({ valid: false, error: "You have been banned from this room.", code: "BANNED" });
+      return;
+    }
+
+    // 2. Check live memory room ban state
+    const memoryRoom = rooms.get(cleanRoomId);
+    if (memoryRoom && memoryRoom.isBanned?.(undefined, callerUid)) {
+      res.status(403).json({ valid: false, error: "You have been removed from this room.", code: "BANNED" });
+      return;
+    }
+
+    // 3. Durable admission check (non-owners must have an active admission record)
+    if (!isOwner) {
+      const admResult = await postgres?.query(
+        `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2`,
+        [cleanRoomId, callerUid]
+      );
+      if (!admResult || admResult.rows.length === 0 || admResult.rows[0].revoked_at) {
+        res.status(401).json({
+          valid: false,
+          error: "No active room admission found.",
+          code: "NO_ACTIVE_ADMISSION",
+        });
+        return;
+      }
+    }
+
+    // 4. Resolve host authority
+    let isHost = isOwner;
+    if (memoryRoom && callerUid) {
+      if (typeof memoryRoom.isHostUid === "function") {
+        isHost = isHost || memoryRoom.isHostUid(callerUid);
+      } else if (memoryRoom.currentHostUid) {
+        isHost = isHost || memoryRoom.currentHostUid === callerUid;
+      }
+    }
+
+    // 5. Generate fresh session ID for this new connection
+    const freshSessionId = crypto.randomUUID();
+
+    // 6. Use shared authoritative admission engine issueRoomAdmissionToken
+    const admissionAuth = issueRoomAdmissionToken({
+      roomId: cleanRoomId,
+      callerUid,
+      sessionId: freshSessionId,
+      roomRow: row,
+      memoryRoom,
+      isHost,
+    });
+
+    if (!admissionAuth.allowed) {
+      res.status(admissionAuth.status).json({
+        valid: false,
+        error: admissionAuth.error,
+        code: admissionAuth.code,
+      });
+      return;
+    }
+
+    if (memoryRoom && callerUid) {
+      memoryRoom.admittedMembers.add(callerUid);
+    }
+
+    res.json({
+      valid: true,
+      admissionToken: admissionAuth.admissionToken,
+      sessionId: freshSessionId,
+      restored: true,
+    });
+  } catch (err) {
+    console.error("Error restoring room admission:", err);
+    res.status(500).json({ valid: false, error: "Server error restoring admission." });
   }
 });
 
@@ -2651,6 +2803,13 @@ app.post("/endRoom", async (req, res) => {
 
     const newStatus: string = endResult?.status || 'ended';
     const isPermanent: boolean = Boolean(endResult?.isPermanent);
+
+    if (!isPermanent && postgres) {
+      postgres.query(
+        `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'session_ended' WHERE room_id = $1 AND revoked_at IS NULL`,
+        [roomId]
+      ).catch((e) => console.warn("[Admission] Failed to revoke admissions for ended temporary room:", e));
+    }
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
     if (memoryRoom) {
