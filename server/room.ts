@@ -30,6 +30,9 @@ import { providerRegistry } from "./vm/provider-registry.ts";
 import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 import { TimelineAuthority } from "./timelineAuthority.ts";
 import { notificationService } from "./notifications/notificationService.ts";
+import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
+import { LocalMediaSignaling } from "./media/local/LocalMediaSignaling.ts";
+import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -227,6 +230,8 @@ export class Room {
   private bannedIdentities: Set<string> = new Set();
   private processedOperationIds: Set<string> = new Set();
   public timeline: TimelineAuthority = new TimelineAuthority();
+  private localMediaSignaling: LocalMediaSignaling;
+  public localMediaAuthority: LocalMediaAuthority;
 
   public isBanned = (clientId?: string, uid?: string): boolean => {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
@@ -570,6 +575,8 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
+    this.localMediaSignaling = new LocalMediaSignaling(this.io.of(this.roomId) as any);
+    this.localMediaAuthority = new LocalMediaAuthority(postgres, this.localMediaSignaling);
 
     if (roomData) {
       this.deserialize(roomData);
@@ -807,6 +814,7 @@ export class Room {
       }
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
+      this.localMediaAuthority.registerPeer(this.roomId, clientId, socket.id);
       if (!this.roster.find(user => user.id === clientId)) {
         this.roster.push({ id: clientId });
       }
@@ -1253,6 +1261,38 @@ export class Room {
         validateNotExpired() && this.sendSignal(socket, data, "signalSS"),
       );
 
+      // LOCAL-MEDIA-001: P2P Local Media distribution commands
+      socket.on("CMD_LOCAL_MEDIA_ANNOUNCE", async (data: { roomId: string; manifest: ServerLocalMediaManifest }) => {
+        if (!validateNotExpired()) return;
+        const context = this.buildAuthorizationContext(socket);
+        const auth = pureAuthorizeRoomAction(context, "room:set_media");
+        if (!auth.allowed) {
+          socket.emit("CMD:error", { code: "FORBIDDEN" });
+          return;
+        }
+        if (!socket.uid) {
+          socket.emit("CMD:error", { code: "AUTH_REQUIRED", message: "Authentication required to share local media." });
+          return;
+        }
+        const session = await this.localMediaAuthority.announceSession(
+          this.roomId,
+          socket.uid,
+          this.isHost(socket),
+          data?.manifest
+        );
+        if (session) {
+          this.cmdHost(socket, "localmedia://" + data.manifest.mediaId);
+        }
+      });
+
+      socket.on("CMD_LOCAL_MEDIA_SIGNAL", (data: any) => {
+        if (!validateNotExpired()) return;
+        const targetSocketId = this.socketIdMap[data?.toPeerId];
+        if (targetSocketId) {
+          this.localMediaAuthority.handleSignalRelay(socket, targetSocketId, data);
+        }
+      });
+
       // Resolve profile for authenticated socket
       if (socket.uid) {
         this.clientToUidMap[clientId] = socket.uid;
@@ -1447,6 +1487,7 @@ export class Room {
       clearTimeout(this.inactivityTimeout);
       this.inactivityTimeout = undefined;
     }
+    this.localMediaAuthority.terminateSession(this.roomId);
   };
 
   public getRosterForStats = () => {
@@ -1688,6 +1729,9 @@ export class Room {
   private cmdHost = (socket: Socket | null, data: string) => {
     if (data && data.length > 50000) {
       return;
+    }
+    if (this.video?.startsWith("localmedia://") && !data?.startsWith("localmedia://")) {
+      this.localMediaAuthority.terminateSession(this.roomId);
     }
     this.video = data;
     this.videoTS = 0;
@@ -2842,6 +2886,7 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
+      this.localMediaAuthority.unregisterPeer(this.roomId, clientId);
 
       // Transition admitted participant to disconnected state with timestamp for grace period
       const admittedRecord = this.admittedParticipants.get(clientId);
