@@ -8,7 +8,7 @@
   min-height: 100vh;
   background-color: var(--bg-app);
   color: var(--text-primary);
-  overflow-x: hidden;
+  overflow-x: clip;
   position: relative;
   background-image: 
     radial-gradient(ellipse at 20% 0%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
@@ -26,21 +26,31 @@
   grid-template-columns: 280px 1fr;
   gap: 64px;
   position: relative;
+  align-items: start;
 }
 
 /* ==========================================================================
    Left Sticky Sidebar: Studio Emblem & Chapter Index
    ========================================================================== */
 .studioSidebar {
-  position: relative;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  z-index: 20;
 }
 
 .stickySidebarInner {
-  position: sticky;
-  top: 96px;
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: 32px;
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.stickySidebarInner::-webkit-scrollbar {
+  display: none;
 }
 
 .studioEmblemGroup {
