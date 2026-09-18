@@ -193,8 +193,7 @@ html[data-color-scheme="dark"] {
 html,
 body {
   margin: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
@@ -205,7 +204,7 @@ body {
 #root {
   max-width: 100%;
   width: 100%;
-  overflow-x: clip;
+  min-height: 100vh;
 }
 
 /* Sleek Global Custom Scrollbars */
