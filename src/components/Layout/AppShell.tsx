@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { isBottomNavVisible } from "../Navigation/navigationPolicy";
 import { MobileBottomNav } from "../Navigation/MobileBottomNav";
 import { Announce } from "../Announce/Announce";
+import { UpdatePrompt } from "../UpdateNotification/UpdatePrompt";
 import { IconWifiOff } from "@tabler/icons-react";
 import styles from "./AppShell.module.css";
 
@@ -41,6 +42,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </div>
       )}
       <Announce />
+      <UpdatePrompt />
       <main className={`${styles.mainContent} ${isNavVisible ? styles.hasBottomNav : ""}`}>
         {children}
       </main>

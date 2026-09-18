@@ -124,3 +124,11 @@ interface ShardMetric {
   users: number;
   vbWaiting: number;
 }
+
+declare const __APP_BUILD_INFO__: {
+  buildId: string;
+  commit: string;
+  appVersion: string;
+  protocolVersion: number;
+  deploymentTime: string;
+} | undefined;
