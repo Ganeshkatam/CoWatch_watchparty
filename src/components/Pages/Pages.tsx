@@ -1,6 +1,6 @@
 import React from "react";
 import { Container, Paper, Title, Text, Accordion, List, Anchor, Button } from "@mantine/core";
-import { useHistory } from "react-router-dom";
+import { useHistory, Link } from "react-router-dom";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 
@@ -240,6 +240,20 @@ export const FAQ = () => {
           </Accordion.Control>
           <Accordion.Panel>
             You can link to <Anchor href={`${typeof window !== "undefined" ? window.location.origin : ""}/create?video=URL_HERE`} target="_blank" rel="noopener noreferrer" c="var(--color-violet)">{`${typeof window !== "undefined" ? window.location.origin : ""}/create?video=URL_HERE`}</Anchor> to do this!
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        <Accordion.Item value="about-cowatch">
+          <Accordion.Control>
+            <Text fw={600} size="md" c="var(--text-primary)">
+              Where can I learn more about CoWatch's architecture, philosophy, and story?
+            </Text>
+          </Accordion.Control>
+          <Accordion.Panel>
+            Read our complete product philosophy, engineering tenets, privacy practices, and roadmap on the{" "}
+            <Anchor component={Link} to="/about" c="var(--color-violet)" fw={600}>
+              About CoWatch page
+            </Anchor>.
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

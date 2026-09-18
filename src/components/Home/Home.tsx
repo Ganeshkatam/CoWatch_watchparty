@@ -31,6 +31,7 @@ import {
   IconCompass,
   IconAlertCircle,
   IconFlame,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import styles from "./Home.module.css";
 import { MetadataContext } from "../../MetadataContext";
@@ -840,6 +841,17 @@ export const Home: React.FC = () => {
                 className={styles.finalCtaSecondaryBtn}
               >
                 Join Existing Room
+              </Button>
+              <Button
+                component={Link}
+                to="/about"
+                size="lg"
+                variant="default"
+                leftSection={<IconInfoCircle size={18} />}
+                id="footer-about-party-btn"
+                className={styles.finalCtaSecondaryBtn}
+              >
+                About CoWatch
               </Button>
             </div>
           </div>

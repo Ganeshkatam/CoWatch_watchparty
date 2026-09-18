@@ -1,7 +1,7 @@
 import React from "react";
 import { Container, Paper, Title, Text, Button, Group, Stack } from "@mantine/core";
 import { Link, useHistory, useLocation } from "react-router-dom";
-import { IconHome, IconSearch, IconHelp, IconArrowLeft } from "@tabler/icons-react";
+import { IconHome, IconSearch, IconHelp, IconArrowLeft, IconInfoCircle } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { parseNotFoundParams } from "../../utils/routeParams";
 
@@ -93,6 +93,15 @@ export const NotFound: React.FC = () => {
               leftSection={<IconHelp size={16} />}
             >
               Help & Support
+            </Button>
+            <Button
+              component={Link}
+              to="/about"
+              variant="subtle"
+              color="gray"
+              leftSection={<IconInfoCircle size={16} />}
+            >
+              About CoWatch
             </Button>
           </Group>
         </Stack>

@@ -12,6 +12,7 @@ import {
   IconHelpCircle,
   IconBook,
   IconAlertTriangle,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import styles from "./Support.module.css";
@@ -243,6 +244,14 @@ export const Support: React.FC = () => {
             leftSection={<IconHelpCircle size={18} />}
           >
             Frequently Asked Questions
+          </Button>
+          <Button
+            component={Link}
+            to="/about"
+            variant="default"
+            leftSection={<IconInfoCircle size={18} />}
+          >
+            About CoWatch
           </Button>
         </div>
       </div>

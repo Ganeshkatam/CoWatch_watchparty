@@ -20,6 +20,7 @@ import {
   IconUsers,
   IconHome,
   IconHelpCircle,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import { useAppearance } from "../../theme/ThemeProvider";
 import { TopBarSearch } from "./TopBarSearch";
@@ -355,6 +356,10 @@ const NavigationMenuContent: React.FC<{
             <IconHelpCircle size={18} stroke={1.5} />
             <span>Support &amp; Help</span>
           </Link>
+          <Link to="/about" className={styles.drawerNavLink} onClick={onClose}>
+            <IconInfoCircle size={18} stroke={1.5} />
+            <span>About</span>
+          </Link>
         </div>
 
         {/* In-room actions if applicable */}
@@ -604,6 +609,15 @@ export const TopBar = (props: {
               Join
             </Link>
           )}
+          <Link
+            to="/about"
+            className={`${styles.middleNavLink} ${location.pathname === "/about"
+              ? styles.middleNavLinkActive
+              : ""
+              }`}
+          >
+            About
+          </Link>
         </nav>
       )}
 
