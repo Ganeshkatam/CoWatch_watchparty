@@ -606,13 +606,31 @@ export const autoCreateUsername = (
   email?: string | null,
   suffix?: number
 ): string => {
-  const emailPrefix = email
-    ? email.split("@")[0].toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-    : "";
+  // Requirement: Generated from email, all small letters only, must have numbers, unique, no capitals or space
+  let source = "";
+  if (email && email.trim()) {
+    source = email.split("@")[0];
+  } else if (name && name.trim()) {
+    source = name;
+  }
 
-  const base = emailPrefix || "user";
+  // Normalize diacritics / accents: e.g. "François" -> "Francois"
+  const normalized = source
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // Small letters only, no capitals, no space. Underscores allowed as separator.
+  const clean = normalized
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 18);
+
+  const base = clean.replace(/_[0-9]+$/, "") || "user";
   const num = suffix ?? Math.floor(1000 + Math.random() * 9000);
-  return `${base.slice(0, 18)}_${num}`;
+  return `${base}_${num}`;
 };
 
 export const getFileName = (input: string) => {

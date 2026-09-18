@@ -91,5 +91,14 @@ assert(
   autoCreateUsername("A Very Long Profile Name Exceeding Eighteen Characters", null, 1111).startsWith("a_very_long_profil_1111"),
   "long names should be cleanly truncated"
 );
+// Invariant tests: generated from email, lowercase only, has numbers, never space or capitals
+const emailUsername = autoCreateUsername("Ganesh Reddy", "Ganesh.Katam+cowatch@Example.COM", 4829);
+assert(
+  emailUsername === "ganesh_katam_cowat_4829",
+  `Generated username from email must be lowercase, space-free with numbers: got ${emailUsername}`
+);
+assert(!/[A-Z]/.test(emailUsername), "Username must NEVER contain capital letters");
+assert(!/\s/.test(emailUsername), "Username must NEVER contain spaces");
+assert(/[0-9]/.test(emailUsername), "Username MUST contain numbers");
 
 console.log("All parseRoomInput and autoCreateUsername tests passed successfully!");
