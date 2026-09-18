@@ -1933,7 +1933,288 @@ async function runConcurrencyStressTest() {
   );
   console.log("TEST 11 Case D PASSED: Decoupled VBrowser entitlement & concurrency enforcement verified.");
 
-  await pool.end();
+  // --------------------------------------------------------------------------
+  // TEST 12: PHASE 7A AUTHORITATIVE VBROWSER CONCURRENCY STRESS SUITE
+  // --------------------------------------------------------------------------
+  console.log("\n=== TEST 12: PHASE 7A AUTHORITATIVE VBROWSER CONCURRENCY STRESS SUITE ===");
+
+  const P7A_PROVIDER = `p7a-provider-${Date.now()}`;
+  const P7A_POOL = `p7a-pool-${Date.now()}`;
+
+  // Step 0: Ensure test provider and pool exist
+  // Provider capacity: 20
+  // Pool capacity: 3 (deliberately constrained)
+  // All other limits: 20 (non-limiting)
+  await pool.query(
+    `INSERT INTO public.vbrowser_providers
+       (id, display_name, provider_type, enabled, lifecycle, max_concurrent_sessions, max_sessions_per_user, max_sessions_per_room, max_large_sessions)
+     VALUES ($1, 'P7A Test Provider', 'docker', true, 'ENABLED', 20, 20, 20, 20)
+     ON CONFLICT (id) DO NOTHING`,
+    [P7A_PROVIDER]
+  );
+  await pool.query(
+    `INSERT INTO public.vbrowser_pools
+       (id, provider_id, region, enabled, lifecycle, min_size, limit_size, max_sessions_per_user, max_sessions_per_room, max_large_sessions)
+     VALUES ($1, $2, 'test-region', true, 'ENABLED', 0, 3, 20, 20, 20)
+     ON CONFLICT (id) DO NOTHING`,
+    [P7A_POOL, P7A_PROVIDER]
+  );
+
+  // Fetch 10 distinct user IDs from profiles
+  const profileRes = await pool.query("SELECT id FROM public.profiles LIMIT 10");
+  if (profileRes.rows.length < 10) {
+    throw new Error(`TEST 12 requires at least 10 profiles, found ${profileRes.rows.length}`);
+  }
+  const testUserIds: string[] = profileRes.rows.map(r => r.id);
+
+  // Ensure all 10 users have non-limiting entitlements
+  for (const uid of testUserIds) {
+    await pool.query(
+      `INSERT INTO public.account_room_limits (account_id, plan_id, override_vbrowser_allowed, override_vbrowser_concurrency)
+       VALUES ($1, 'premium', true, 20)
+       ON CONFLICT (account_id) DO UPDATE
+       SET plan_id = 'premium', override_vbrowser_allowed = true, override_vbrowser_concurrency = 20`,
+      [uid]
+    );
+  }
+
+  // TEST 12 Case A: Parallel Pool Capacity Isolation (vbrowser_acquire_reservation)
+  console.log("\n--- TEST 12 Case A: 10 Parallel Allocations on Constrained Pool (limit = 3) ---");
+  const testRoomsA: string[] = [];
+  for (let i = 0; i < testUserIds.length; i++) {
+    const roomId = `p7a-room-a-${Date.now()}-${i}`;
+    const fp = `p7a-fp-a-${Date.now()}-${i}`;
+    await pool.query(
+      `SELECT public.create_room_authoritative($1, $2, 'watch', 'P7A Room A', null, 'hash', 'enc', $3, null, false, now() + INTERVAL '3 hours', 10)`,
+      [testUserIds[i], roomId, fp]
+    );
+    testRoomsA.push(roomId);
+  }
+
+  const caseAPromises = testUserIds.map((uid, idx) => {
+    return pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 20, 3) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsA[idx], uid]
+    )
+    .then(res => ({ success: true, reservationId: res.rows[0].reservation_id, error: null }))
+    .catch(err => ({ success: false, reservationId: null, error: err.message }));
+  });
+
+  const caseAResults = await Promise.all(caseAPromises);
+  const caseASuccesses = caseAResults.filter(r => r.success);
+  const caseAFailures = caseAResults.filter(r => !r.success);
+
+  console.log(`Total parallel requests: ${testUserIds.length}`);
+  console.log(`Successes: ${caseASuccesses.length} (Expected: 3)`);
+  console.log(`Failures: ${caseAFailures.length} (Expected: 7)`);
+
+  const poolActiveResA = await pool.query(
+    "SELECT count(*)::int AS count FROM public.vbrowser_reservations WHERE pool_id = $1 AND status IN ('RESERVED', 'ALLOCATED')",
+    [P7A_POOL]
+  );
+  const activeCountA = poolActiveResA.rows[0].count;
+  console.log(`Active reservations in DB (RESERVED + ALLOCATED): ${activeCountA} (Expected: 3)`);
+
+  if (caseASuccesses.length !== 3) {
+    throw new Error(`TEST 12 Case A FAILED: Expected 3 successes, got ${caseASuccesses.length}`);
+  }
+  if (caseAFailures.length !== 7) {
+    throw new Error(`TEST 12 Case A FAILED: Expected 7 failures, got ${caseAFailures.length}`);
+  }
+  const caseAInvalidFailures = caseAFailures.filter(f => !f.error.includes("POOL_CAPACITY_EXCEEDED"));
+  if (caseAInvalidFailures.length > 0) {
+    throw new Error(`TEST 12 Case A FAILED: Unexpected failure errors: ${JSON.stringify(caseAInvalidFailures)}`);
+  }
+  if (activeCountA !== 3) {
+    throw new Error(`TEST 12 Case A FAILED: Expected active count = 3, got ${activeCountA}`);
+  }
+  console.log("TEST 12 Case A PASSED: Parallel pool capacity isolation strictly enforced (3 allowed, 7 rejected, DB active = 3).");
+
+  // Clean up reservations and rooms from Case A
+  await pool.query("DELETE FROM public.vbrowser_reservations WHERE pool_id = $1", [P7A_POOL]);
+  for (let i = 0; i < testUserIds.length; i++) {
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [testUserIds[i], testRoomsA[i]]);
+  }
+
+  // TEST 12 Case B: User Plan Concurrency Isolation
+  console.log("\n--- TEST 12 Case B: 5 Parallel Allocations for Single User (max_concurrency = 1) ---");
+  const singleUser = testUserIds[0];
+  // Configure unconstrained pool (limit = 20) and constrain user to max_vbrowser_concurrency = 1
+  await pool.query(
+    "UPDATE public.vbrowser_pools SET limit_size = 20 WHERE id = $1",
+    [P7A_POOL]
+  );
+  await pool.query(
+    `UPDATE public.account_room_limits
+     SET plan_id = 'premium', override_vbrowser_allowed = true, override_vbrowser_concurrency = 1
+     WHERE account_id = $1`,
+    [singleUser]
+  );
+
+  const testRoomsB: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const roomId = `p7a-room-b-${Date.now()}-${i}`;
+    const fp = `p7a-fp-b-${Date.now()}-${i}`;
+    await pool.query(
+      `SELECT public.create_room_authoritative($1, $2, 'watch', 'P7A Room B', null, 'hash', 'enc', $3, null, false, now() + INTERVAL '3 hours', 10)`,
+      [singleUser, roomId, fp]
+    );
+    testRoomsB.push(roomId);
+  }
+
+  const caseBPromises = Array.from({ length: 5 }).map((_, idx) => {
+    return pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 20, 20) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsB[idx], singleUser]
+    )
+    .then(res => ({ success: true, reservationId: res.rows[0].reservation_id, error: null }))
+    .catch(err => ({ success: false, reservationId: null, error: err.message }));
+  });
+
+  const caseBResults = await Promise.all(caseBPromises);
+  const caseBSuccesses = caseBResults.filter(r => r.success);
+  const caseBFailures = caseBResults.filter(r => !r.success);
+
+  console.log(`Total parallel user requests: 5`);
+  console.log(`Successes: ${caseBSuccesses.length} (Expected: 1)`);
+  console.log(`Failures: ${caseBFailures.length} (Expected: 4)`);
+
+  const userActiveResB = await pool.query(
+    "SELECT count(*)::int AS count FROM public.vbrowser_reservations WHERE user_id = $1 AND status IN ('RESERVED', 'ALLOCATED')",
+    [singleUser]
+  );
+  const activeCountB = userActiveResB.rows[0].count;
+  console.log(`Active reservations for user in DB: ${activeCountB} (Expected: 1)`);
+
+  if (caseBSuccesses.length !== 1) {
+    throw new Error(`TEST 12 Case B FAILED: Expected 1 success, got ${caseBSuccesses.length}`);
+  }
+  if (caseBFailures.length !== 4) {
+    throw new Error(`TEST 12 Case B FAILED: Expected 4 failures, got ${caseBFailures.length}`);
+  }
+  const caseBInvalidFailures = caseBFailures.filter(f => !f.error.includes("VBROWSER_CONCURRENCY_LIMIT_REACHED"));
+  if (caseBInvalidFailures.length > 0) {
+    throw new Error(`TEST 12 Case B FAILED: Unexpected failure errors: ${JSON.stringify(caseBInvalidFailures)}`);
+  }
+  if (activeCountB !== 1) {
+    throw new Error(`TEST 12 Case B FAILED: Expected user active count = 1, got ${activeCountB}`);
+  }
+  console.log("TEST 12 Case B PASSED: User plan concurrency isolation strictly enforced (1 allowed, 4 rejected with VBROWSER_CONCURRENCY_LIMIT_REACHED, DB active = 1).");
+
+  // Clean up reservations and rooms from Case B
+  await pool.query("DELETE FROM public.vbrowser_reservations WHERE pool_id = $1", [P7A_POOL]);
+  for (const rId of testRoomsB) {
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [singleUser, rId]);
+  }
+
+  // TEST 12 Case C: Shared Capacity Invariant Across Mixed Paths
+  console.log("\n--- TEST 12 Case C: Mixed Paths (3 reserve_vbrowser_capacity + 3 vbrowser_acquire_reservation) on Pool limit = 3 ---");
+  await pool.query(
+    "UPDATE public.vbrowser_pools SET limit_size = 3 WHERE id = $1",
+    [P7A_POOL]
+  );
+  // Reset test user 0 to non-limiting concurrency = 20
+  await pool.query(
+    "UPDATE public.account_room_limits SET override_vbrowser_concurrency = 20 WHERE account_id = $1",
+    [singleUser]
+  );
+
+  const testRoomsC: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const roomId = `p7a-room-c-${Date.now()}-${i}`;
+    const fp = `p7a-fp-c-${Date.now()}-${i}`;
+    await pool.query(
+      `SELECT public.create_room_authoritative($1, $2, 'watch', 'P7A Room C', null, 'hash', 'enc', $3, null, false, now() + INTERVAL '3 hours', 10)`,
+      [testUserIds[i], roomId, fp]
+    );
+    testRoomsC.push(roomId);
+  }
+
+  // 6 distinct requests across the 2 functions (3 of each) using distinct users and rooms
+  const caseCPromises = [
+    // 3 via reserve_vbrowser_capacity
+    pool.query(
+      "SELECT public.reserve_vbrowser_capacity($1, $2, $3, $4, false, 20, 3, 300) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[0], testUserIds[0]]
+    ).then(res => ({ path: 'reserve_vbrowser_capacity', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'reserve_vbrowser_capacity', success: false, reservationId: null, error: err.message })),
+
+    pool.query(
+      "SELECT public.reserve_vbrowser_capacity($1, $2, $3, $4, false, 20, 3, 300) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[1], testUserIds[1]]
+    ).then(res => ({ path: 'reserve_vbrowser_capacity', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'reserve_vbrowser_capacity', success: false, reservationId: null, error: err.message })),
+
+    pool.query(
+      "SELECT public.reserve_vbrowser_capacity($1, $2, $3, $4, false, 20, 3, 300) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[2], testUserIds[2]]
+    ).then(res => ({ path: 'reserve_vbrowser_capacity', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'reserve_vbrowser_capacity', success: false, reservationId: null, error: err.message })),
+
+    // 3 via vbrowser_acquire_reservation
+    pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 20, 3) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[3], testUserIds[3]]
+    ).then(res => ({ path: 'vbrowser_acquire_reservation', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'vbrowser_acquire_reservation', success: false, reservationId: null, error: err.message })),
+
+    pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 20, 3) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[4], testUserIds[4]]
+    ).then(res => ({ path: 'vbrowser_acquire_reservation', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'vbrowser_acquire_reservation', success: false, reservationId: null, error: err.message })),
+
+    pool.query(
+      "SELECT public.vbrowser_acquire_reservation($1, $2, $3, $4, false, 300, 20, 3) AS reservation_id",
+      [P7A_PROVIDER, P7A_POOL, testRoomsC[5], testUserIds[5]]
+    ).then(res => ({ path: 'vbrowser_acquire_reservation', success: true, reservationId: res.rows[0].reservation_id, error: null }))
+     .catch(err => ({ path: 'vbrowser_acquire_reservation', success: false, reservationId: null, error: err.message })),
+  ];
+
+  const caseCResults = await Promise.all(caseCPromises);
+  const caseCSuccesses = caseCResults.filter(r => r.success);
+  const caseCFailures = caseCResults.filter(r => !r.success);
+
+  console.log(`Total mixed requests: 6`);
+  console.log(`Mixed Successes: ${caseCSuccesses.length} (Expected: 3)`);
+  console.log(`Mixed Failures: ${caseCFailures.length} (Expected: 3)`);
+
+  const poolActiveResC = await pool.query(
+    "SELECT count(*)::int AS count FROM public.vbrowser_reservations WHERE pool_id = $1 AND status IN ('RESERVED', 'ALLOCATED')",
+    [P7A_POOL]
+  );
+  const activeCountC = poolActiveResC.rows[0].count;
+  console.log(`Active reservations in DB across mixed paths: ${activeCountC} (Expected: 3)`);
+
+  if (caseCSuccesses.length !== 3) {
+    throw new Error(`TEST 12 Case C FAILED: Expected 3 successes across mixed paths, got ${caseCSuccesses.length}`);
+  }
+  if (caseCFailures.length !== 3) {
+    throw new Error(`TEST 12 Case C FAILED: Expected 3 failures across mixed paths, got ${caseCFailures.length}`);
+  }
+  if (activeCountC !== 3) {
+    throw new Error(`TEST 12 Case C FAILED: Expected active count = 3, got ${activeCountC}`);
+  }
+  console.log("TEST 12 Case C PASSED: Shared capacity invariant protected across mixed authoritative paths (never > 3).");
+
+  // Teardown Test 12 fixtures and reset user entitlements
+  await pool.query("DELETE FROM public.vbrowser_reservations WHERE pool_id = $1", [P7A_POOL]);
+  for (let i = 0; i < 6; i++) {
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [testUserIds[i], testRoomsC[i]]);
+  }
+  await pool.query("DELETE FROM public.vbrowser_pools WHERE id = $1", [P7A_POOL]);
+  await pool.query("DELETE FROM public.vbrowser_providers WHERE id = $1", [P7A_PROVIDER]);
+  for (const uid of testUserIds) {
+    await pool.query(
+      `UPDATE public.account_room_limits
+       SET plan_id = 'free',
+           override_vbrowser_allowed = NULL,
+           override_vbrowser_concurrency = NULL
+       WHERE account_id = $1`,
+      [uid]
+    );
+  }
+  console.log("TEST 12 Teardown complete. All test fixtures and entitlements restored.");
   console.log("\nALL CONCURRENCY AND AUTHORITATIVE ACCEPTANCE TESTS COMPLETED SUCCESSFULLY.");
   process.exit(0);
 
