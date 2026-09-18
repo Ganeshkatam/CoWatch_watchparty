@@ -28,16 +28,16 @@ function getActionIcon(action?: PostRoomAction) {
   if (!action) return undefined;
   const label = action.label.toLowerCase();
   if (label.includes("return") || label.includes("open") || label.includes("reconnect")) {
-    return <IconRotateClockwise size={18} />;
+    return <IconRotateClockwise size={16} />;
   }
   if (label.includes("home")) {
-    return <IconHome size={18} />;
+    return <IconHome size={16} />;
   }
   if (label.includes("join")) {
-    return <IconDoorEnter size={18} />;
+    return <IconDoorEnter size={16} />;
   }
   if (label.includes("create")) {
-    return <IconCirclePlus size={18} />;
+    return <IconCirclePlus size={16} />;
   }
   return undefined;
 }
@@ -149,7 +149,7 @@ export const PostRoom: React.FC<PostRoomProps> = ({ location: propLocation }) =>
             component={Link}
             to={presentation.primaryAction.to}
             color={presentation.primaryAction.color || "violet"}
-            size="md"
+            size="sm"
             leftSection={getActionIcon(presentation.primaryAction)}
             className={styles.primaryButton}
           >
@@ -161,7 +161,7 @@ export const PostRoom: React.FC<PostRoomProps> = ({ location: propLocation }) =>
               component={Link}
               to={presentation.secondaryAction.to}
               variant={presentation.secondaryAction.variant || "default"}
-              size="md"
+              size="sm"
               leftSection={getActionIcon(presentation.secondaryAction)}
               className={styles.secondaryButton}
             >
