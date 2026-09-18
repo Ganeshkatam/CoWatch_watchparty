@@ -598,7 +598,7 @@ class CoWatch extends React.Component {
         <ThemeConsumer>
           {(resolvedColorScheme) => (
             <MantineProvider theme={theme} defaultColorScheme="light" forceColorScheme={resolvedColorScheme}>
-              <Notifications position="bottom-right" limit={5} />
+              <Notifications position="top-right" limit={5} />
               <MetadataContext.Provider value={this.state}>
                 <AuthContext.Provider
                   value={{
