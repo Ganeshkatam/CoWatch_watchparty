@@ -15,7 +15,7 @@ import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
 import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
-import { verifyAdmissionToken } from "./utils/admissionToken.ts";
+import { verifyAdmissionToken, fingerprintToken } from "./utils/admissionToken.ts";
 import {
   fetchYoutubeVideo,
   getYoutubeVideoID,
@@ -659,12 +659,17 @@ export class Room {
         if (!isOwner) {
           const admissionToken = socket.handshake.auth?.admissionToken;
           const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
+          const tokenFp = fingerprintToken(admissionToken);
 
           const verification = verifyAdmissionToken(
             admissionToken,
             this.roomId,
             socket.uid,
             handshakeSessionId
+          );
+
+          console.log(
+            `[ADMISSION_TRACE:F] Server verification: room=${this.roomId} uid=${socket.uid || "none"} session=${handshakeSessionId || "none"} tokenFp=${tokenFp} valid=${verification.valid} error=${verification.error || "none"}`
           );
 
           if (!verification.valid) {

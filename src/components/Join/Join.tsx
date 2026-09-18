@@ -29,7 +29,7 @@ import { serverPath } from "../../utils/utils";
 import { parseJoinRoute, normalizeRoomId } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
 import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
-import { saveAdmissionSession } from "../../utils/roomAdmissionSession";
+import { saveAdmissionSession, fingerprintToken } from "../../utils/roomAdmissionSession";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
@@ -116,6 +116,10 @@ export const Join: React.FC = () => {
     setStage("ready");
 
     const prefs = preferencesRef.current;
+    const navFp = fingerprintToken(admissionTokenRef.current);
+    console.log(
+      `[ADMISSION_TRACE:C] Navigating to watch: room=${targetRoomId} hasHistoryToken=${Boolean(admissionTokenRef.current)} session=${sessionIdRef.current} tokenFp=${navFp}`
+    );
     history.push(`/watch/${encodeURIComponent(targetRoomId)}`, {
       admissionToken: admissionTokenRef.current,
       sessionId: sessionIdRef.current,
@@ -308,8 +312,22 @@ export const Join: React.FC = () => {
 
       if (acceptRes.ok && acceptData.valid && acceptData.admissionToken) {
         admissionTokenRef.current = acceptData.admissionToken;
+        const aFp = fingerprintToken(acceptData.admissionToken);
+        console.log(
+          `[ADMISSION_TRACE:A] Issued via invite: room=${effectiveRoomId} session=${sessionIdRef.current} tokenFp=${aFp}`
+        );
         if (cleanRouteRoomId) {
           saveAdmissionSession(cleanRouteRoomId, acceptData.admissionToken, sessionIdRef.current);
+          const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(cleanRouteRoomId.toLowerCase())}`) : null;
+          const parsedCheck = rawCheck ? JSON.parse(rawCheck) : null;
+          const bFp = fingerprintToken(parsedCheck?.admissionToken);
+          console.log(
+            `[ADMISSION_TRACE:B] Storage write verified (invite): room=${cleanRouteRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
+          );
+        } else {
+          console.warn(
+            `[ADMISSION_TRACE:B] SKIPPED storage write (invite): cleanRouteRoomId is empty (effectiveRoomId=${effectiveRoomId})`
+          );
         }
         setStage("preflight");
       } else {
@@ -437,8 +455,18 @@ export const Join: React.FC = () => {
 
             if (verifyResp.ok && verifyData.valid && verifyData.admissionToken) {
               admissionTokenRef.current = verifyData.admissionToken;
+              const aFp = fingerprintToken(verifyData.admissionToken);
+              console.log(
+                `[ADMISSION_TRACE:A] Issued via no-passcode: room=${cleanRouteRoomId} session=${sessionIdRef.current} tokenFp=${aFp}`
+              );
               if (cleanRouteRoomId) {
                 saveAdmissionSession(cleanRouteRoomId, verifyData.admissionToken, sessionIdRef.current);
+                const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(cleanRouteRoomId.toLowerCase())}`) : null;
+                const parsedCheck = rawCheck ? JSON.parse(rawCheck) : null;
+                const bFp = fingerprintToken(parsedCheck?.admissionToken);
+                console.log(
+                  `[ADMISSION_TRACE:B] Storage write verified (no-passcode): room=${cleanRouteRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
+                );
               }
               setStage("preflight");
             } else {
@@ -672,8 +700,18 @@ export const Join: React.FC = () => {
 
       // Success: store cryptographically signed admission token and advance to preflight
       admissionTokenRef.current = data.admissionToken;
+      const aFp = fingerprintToken(data.admissionToken);
+      console.log(
+        `[ADMISSION_TRACE:A] Issued via passcode: room=${cleanRouteRoomId} session=${sessionIdRef.current} tokenFp=${aFp}`
+      );
       if (cleanRouteRoomId) {
         saveAdmissionSession(cleanRouteRoomId, data.admissionToken, sessionIdRef.current);
+        const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(cleanRouteRoomId.toLowerCase())}`) : null;
+        const parsedCheck = rawCheck ? JSON.parse(rawCheck) : null;
+        const bFp = fingerprintToken(parsedCheck?.admissionToken);
+        console.log(
+          `[ADMISSION_TRACE:B] Storage write verified (passcode): room=${cleanRouteRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
+        );
       }
       setStage("preflight");
     } catch {

@@ -39,6 +39,23 @@ function fromBase64Url(str: string): Buffer {
 }
 
 /**
+ * Computes a non-reversible 12-char fingerprint of an admission token for secure correlation across trace checkpoints.
+ */
+export function fingerprintToken(token?: string | null): string {
+  if (!token || typeof token !== "string") return "none";
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9dc5811c;
+  for (let i = 0; i < token.length; i++) {
+    const ch = token.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 0x01000193);
+    h2 = Math.imul(h2 ^ (ch << 1), 0x01000193);
+  }
+  const hex1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const hex2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  return (hex1 + hex2).slice(0, 12);
+}
+
+/**
  * Generates a signed, short-lived admission token for a participant.
  * Binds the room ID, verified user ID, and client session ID.
  */

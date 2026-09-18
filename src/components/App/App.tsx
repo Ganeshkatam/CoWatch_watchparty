@@ -89,6 +89,7 @@ import {
 import {
   loadAdmissionSession,
   clearAdmissionSession,
+  fingerprintToken,
 } from "../../utils/roomAdmissionSession";
 import { pipManager, type PiPState } from "../../utils/pipManager";
 import {
@@ -839,6 +840,21 @@ export class App extends React.Component<AppProps, AppState> {
         routeLocationState?.sessionId ||
         storedAdmission?.sessionId ||
         this.state.sessionId;
+
+      let classification = "NONE";
+      if (routeLocationState?.admissionToken) {
+        classification = "ROUTER_STATE";
+      } else if (storedAdmission?.admissionToken) {
+        classification = "SESSION_STORAGE";
+      } else if (this.state.admissionToken) {
+        classification = "APP_STATE";
+      }
+
+      const dFp = fingerprintToken(routeAdmissionToken);
+      console.log(
+        `[ADMISSION_TRACE:D] Fresh App join: room=${cleanRoomId} source=${classification} session=${routeSessionId || "none"} tokenFp=${dFp} (hasRouterState=${Boolean(routeLocationState?.admissionToken)}, hasSessionStorage=${Boolean(storedAdmission?.admissionToken)})`
+      );
+
       const initialCameraOn = routeLocationState?.initialCameraOn;
       const initialMicOn = routeLocationState?.initialMicOn;
       const cameraDeviceId = routeLocationState?.cameraDeviceId;
@@ -945,6 +961,17 @@ export class App extends React.Component<AppProps, AppState> {
       // Strict handshake: auth contains { token, sessionId, admissionToken }
       // Zero raw passcodes sent over socket query or handshake
       const safeNamespace = encodeURIComponent(cleanRoomId);
+      const authSessionId = routeSessionId || this.state.sessionId || getOrCreateSessionId();
+      const authFp = fingerprintToken(routeAdmissionToken);
+      let sessionIdSource = "NONE";
+      if (routeSessionId) sessionIdSource = "RECOVERED_ROUTE_OR_STORAGE";
+      else if (this.state.sessionId) sessionIdSource = "APP_STATE";
+      else sessionIdSource = "FALLBACK_LOCALSTORAGE";
+
+      console.log(
+        `[ADMISSION_TRACE:E] Socket auth construction: room=${cleanRoomId} session=${authSessionId} sessionSource=${sessionIdSource} tokenFp=${authFp} pairCorrelated=${Boolean(routeAdmissionToken && routeSessionId && authSessionId === routeSessionId)}`
+      );
+
       const socket = io(serverPath + "/" + safeNamespace, {
         transports: ["websocket", "polling"],
         reconnection: true,
@@ -958,7 +985,7 @@ export class App extends React.Component<AppProps, AppState> {
           roomId: cleanRoomId,
         },
         auth: {
-          sessionId: routeSessionId || this.state.sessionId || getOrCreateSessionId(),
+          sessionId: authSessionId,
           token,
           admissionToken: routeAdmissionToken,
         },
@@ -972,6 +999,8 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("connect", async () => {
         this.socketConnecting = false;
         operationCoordinator.beginConnectionEpoch();
+        console.log(`[ADMISSION_TRACE:G] Socket CONNECTED successfully for room=${cleanRoomId}`);
+        console.log(`[MEDIA_TRACE:H] Video stream re-acquisition check: ourStreamPresent=${Boolean(window.cowatch?.ourStream)}`);
         this.setState({ initStage: "synchronizing" });
         this.stopWaitingPoll();
         if (!this.state.isWaitingForHost) {
@@ -1020,12 +1049,13 @@ export class App extends React.Component<AppProps, AppState> {
         if (this.state.isHostSessionEnded) {
           return;
         }
+        const errMsg = err?.message || "";
+        console.log(`[ADMISSION_TRACE:G] Socket CONNECT_ERROR: room=${cleanRoomId} message=${errMsg}`);
         console.error("Socket connect_error:", err);
         if (this.startingTimer) {
           window.clearTimeout(this.startingTimer);
           this.startingTimer = null;
         }
-        const errMsg = err?.message || "";
         if (errMsg === "ROOM_NOT_STARTED") {
           // Loop Elimination: Switch to waiting state and poll via HTTP instead of cycling back and forth
           this.socket?.disconnect();
