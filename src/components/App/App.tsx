@@ -2093,7 +2093,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
     try {
       const { data: profile } = await supabase
-        .from("profiles")
+        .from("public_profiles")
         .select("display_name, username")
         .eq("id", ownerId)
         .maybeSingle();
