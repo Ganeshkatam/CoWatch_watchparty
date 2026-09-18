@@ -5,7 +5,7 @@ import { MODAL_SIZES } from "../../utils/designSystem";
 
 export const FileShareModal = (props: {
   closeModal: () => void;
-  startFileShare: (useMediaSoup: boolean) => void;
+  startFileShare: (useMediaSoup?: boolean) => void;
   startConvert: () => void;
 }) => {
   const { closeModal } = props;
@@ -40,12 +40,12 @@ export const FileShareModal = (props: {
             <Group justify="space-between">
               <Group gap="xs">
                 <IconServer size={18} color="var(--mantine-color-violet-filled)" />
-                <Text size="sm" fw={600}>Smooth Sharing</Text>
+                <Text size="sm" fw={600}>Direct Peer-to-Peer</Text>
               </Group>
               <Badge color="violet" variant="light">Recommended</Badge>
             </Group>
             <Text size="xs" c="dimmed">
-              The best way to share! It saves your internet and plays perfectly for your friends.
+              Original file quality — no server-side transcoding. Distributed directly between participants over WebRTC DataChannels.
             </Text>
           </Stack>
         </Card>
@@ -66,12 +66,12 @@ export const FileShareModal = (props: {
             <Group justify="space-between">
               <Group gap="xs">
                 <IconArrowsShuffle size={18} color="var(--mantine-color-blue-filled)" />
-                <Text size="sm" fw={600}>Fix Video Format</Text>
+                <Text size="sm" fw={600}>Server Format Conversion</Text>
               </Group>
-              <Badge color="blue" variant="light">Works Everywhere</Badge>
+              <Badge color="blue" variant="light">Fallback</Badge>
             </Group>
             <Text size="xs" c="dimmed">
-              Use this if your video won't play for everyone. We'll magically change it so it works on any phone or computer!
+              Use this if your video codec is not supported by your friends' browsers. Transcodes the file on the server.
             </Text>
           </Stack>
         </Card>
@@ -85,14 +85,14 @@ export const FileShareModal = (props: {
             leftSection={<IconVideo size={16} />}
             onClick={() => {
               if (selectedMode === "relay") {
-                props.startFileShare(true);
+                props.startFileShare();
               } else {
                 props.startConvert();
               }
               props.closeModal();
             }}
           >
-            {selectedMode === "relay" ? "Share Smoothly" : "Fix Format & Share"}
+            {selectedMode === "relay" ? "Share Directly" : "Convert & Share"}
           </Button>
         </Group>
       </Stack>
