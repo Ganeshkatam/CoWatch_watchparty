@@ -3,19 +3,20 @@
  * Authoritative controller for room-scoped local media sessions, failover, and lifecycle reconciliation.
  */
 
+import type { Pool } from "pg";
 import type { DatabasePool } from "../../db.ts";
 import { LocalMediaPeerRegistry } from "./LocalMediaPeerRegistry.ts";
 import { LocalMediaSession, type ServerLocalMediaManifest } from "./LocalMediaSession.ts";
 import { LocalMediaSignaling, type SignalMessagePayload } from "./LocalMediaSignaling.ts";
 
 export class LocalMediaAuthority {
-  private db: DatabasePool | null;
+  private db: DatabasePool | Pool | null;
   private signaling: LocalMediaSignaling;
   private sessions: Map<string, LocalMediaSession> = new Map();
   private registries: Map<string, LocalMediaPeerRegistry> = new Map();
 
-  constructor(db: DatabasePool | null, signaling: LocalMediaSignaling) {
-    this.db = db;
+  constructor(db: DatabasePool | Pool | null | undefined, signaling: LocalMediaSignaling) {
+    this.db = db || null;
     this.signaling = signaling;
   }
 
