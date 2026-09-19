@@ -395,6 +395,38 @@ export class App extends React.Component<AppProps, AppState> {
   hasReceivedRoster: boolean = false;
   hasAttemptedSocketRestore: boolean = false;
   hasAttemptedNamespaceRetry: boolean = false;
+  private socketGeneration: number = 0;
+  private tsInterval: any = null;
+
+  teardownSocket = () => {
+    this.socketGeneration++;
+    if (this.socket) {
+      try {
+        this.socket.removeAllListeners();
+        if (this.socket.io) {
+          this.socket.io.removeAllListeners();
+        }
+        this.socket.disconnect();
+      } catch (err) {
+        console.warn("Error during socket teardown:", err);
+      }
+      this.socket = null!;
+    }
+    this.socketConnecting = false;
+    this.stopWaitingPoll();
+    if (this.tsInterval) {
+      window.clearInterval(this.tsInterval);
+      this.tsInterval = null;
+    }
+    if (this.startingTimer) {
+      window.clearTimeout(this.startingTimer);
+      this.startingTimer = null;
+    }
+    if (this.localMediaCoordinator) {
+      this.localMediaCoordinator.reset();
+      this.localMediaCoordinator = null;
+    }
+  };
 
   checkAndAdvanceToReady = () => {
     if (operationCoordinator.checkDualBarrier() || operationCoordinator.isRoomReady()) {
@@ -433,6 +465,7 @@ export class App extends React.Component<AppProps, AppState> {
         if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
           this.stopWaitingPoll();
           this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+            this.teardownSocket();
             this.join(cleanId);
           });
         }
@@ -462,6 +495,7 @@ export class App extends React.Component<AppProps, AppState> {
       if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
         this.stopWaitingPoll();
         this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+          this.teardownSocket();
           this.join(cleanId);
         });
       }
@@ -491,6 +525,7 @@ export class App extends React.Component<AppProps, AppState> {
             if (this.socket && this.socket.connected) {
               this.socket.emit("CMD:startSession");
             } else {
+              this.teardownSocket();
               this.join(cleanId);
             }
           });
@@ -735,6 +770,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.mediaSessionInterval = undefined;
     }
     this.stopWaitingPoll();
+    this.teardownSocket();
     if (this.metadataCleanup) {
       this.metadataCleanup();
       this.metadataCleanup = undefined;
@@ -839,6 +875,7 @@ export class App extends React.Component<AppProps, AppState> {
   join = async (roomId: string, explicitPasscode?: string) => {
     const cleanRoomId = (roomId || "").trim();
     if (!cleanRoomId) {
+      this.socketConnecting = false;
       operationCoordinator.setInitStage("failed");
       this.setState({ state: "connected", initStage: "failed", overlayMsg: USER_MESSAGES.INVALID_ROOM_LINK.message });
       return;
@@ -847,6 +884,11 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.socketConnecting) {
       return;
     }
+
+    // Teardown any pre-existing socket to enforce the one-socket invariant
+    this.teardownSocket();
+    const currentGeneration = this.socketGeneration;
+    const isCurrentGeneration = () => this.socketGeneration === currentGeneration;
 
     this.sessionStartTime = Date.now();
     this.peakParticipantCount = 1;
@@ -928,6 +970,10 @@ export class App extends React.Component<AppProps, AppState> {
 
       try {
         const access = await this.checkRoomAccess(cleanRoomId);
+        if (!isCurrentGeneration()) {
+          this.socketConnecting = false;
+          return;
+        }
 
         // Admission Gateway Invariant:
         // /join/:roomId is the ONLY admission gateway for participants.
@@ -939,10 +985,18 @@ export class App extends React.Component<AppProps, AppState> {
           // via single-flight restoreAdmissionSession to obtain a fresh server-issued sessionId & admissionToken.
           try {
             const sessionData = await safeGetSession(1200);
+            if (!isCurrentGeneration()) {
+              this.socketConnecting = false;
+              return;
+            }
             const user = sessionData?.data?.session?.user;
             const token = sessionData?.data?.session?.access_token;
             if (user?.id && token) {
               const restoreResult = await restoreAdmissionSession(cleanRoomId, serverPath, token, user.id);
+              if (!isCurrentGeneration()) {
+                this.socketConnecting = false;
+                return;
+              }
               if (restoreResult.valid && restoreResult.admissionToken && restoreResult.sessionId) {
                 routeAdmissionToken = restoreResult.admissionToken;
                 routeSessionId = restoreResult.sessionId;
@@ -966,6 +1020,10 @@ export class App extends React.Component<AppProps, AppState> {
           if (!routeAdmissionToken) {
             // Double-check: wait for auth to settle in case session was still loading
             const retrySession = await safeGetSession(1000);
+            if (!isCurrentGeneration()) {
+              this.socketConnecting = false;
+              return;
+            }
             const retryUser = retrySession?.data?.session?.user;
             const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
             if (!retryIsOwner) {
@@ -1007,6 +1065,11 @@ export class App extends React.Component<AppProps, AppState> {
         console.warn("Room access verification error:", e);
       }
 
+      if (!isCurrentGeneration()) {
+        this.socketConnecting = false;
+        return;
+      }
+
       this.socketConnecting = true;
       operationCoordinator.setInitStage("connecting");
       this.setState({ initStage: "connecting" });
@@ -1028,6 +1091,10 @@ export class App extends React.Component<AppProps, AppState> {
           safeGetSession(2000),
           getAccessToken(2000),
         ]);
+        if (!isCurrentGeneration()) {
+          this.socketConnecting = false;
+          return;
+        }
         token = freshToken || sessionData?.data?.session?.access_token;
         uid = sessionData?.data?.session?.user?.id;
       } catch (e) {
@@ -1070,6 +1137,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.socket = socket;
 
       socket.on("REC:assignedClientId", (assignedClientId: string) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ myClientId: assignedClientId });
         if (this.localMediaCoordinator) {
           this.localMediaCoordinator.reset();
@@ -1091,6 +1159,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.on("LOCAL_MEDIA_UNAVAILABLE", () => {
+        if (!isCurrentGeneration()) return;
         if (isLocalMedia(this.state.roomMedia)) {
           this.localMediaCoordinator?.reset();
           const leftVideo = this.HTMLInterface.getVideoEl();
@@ -1102,6 +1171,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.on("connect", async () => {
+        if (!isCurrentGeneration()) return;
         this.socketConnecting = false;
         this.hasAttemptedSocketRestore = false;
         this.hasAttemptedNamespaceRetry = false;
@@ -1120,6 +1190,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
         // Use the name in our state, generate one if empty
         const currentName = this.context.displayName || this.state.myName || (await generateName());
+        if (!isCurrentGeneration()) return;
         this.updateName(currentName);
         const currentPicture = this.context.avatarUrl || this.state.myPicture;
         if (currentPicture) {
@@ -1132,6 +1203,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.io?.on("reconnect_attempt", (attempt: number) => {
+        if (!isCurrentGeneration()) return;
         const keepGoing = operationCoordinator.recordReconnectAttempt(attempt);
         if (!keepGoing) {
           socket.disconnect();
@@ -1142,16 +1214,19 @@ export class App extends React.Component<AppProps, AppState> {
       });
 
       socket.io?.on("reconnect_failed", () => {
+        if (!isCurrentGeneration()) return;
         operationCoordinator.markTerminalFailure("Reconnection failed");
         this.setState({ overlayMsg: USER_MESSAGES.CONNECTION_FAILED.message, initStage: "failed" });
       });
 
       socket.io?.on("reconnect_error", () => {
+        if (!isCurrentGeneration()) return;
         operationCoordinator.recordReconnectAttempt();
         this.setState({ initStage: operationCoordinator.getInitStage() });
       });
 
       socket.on("connect_error", (err: any) => {
+        if (!isCurrentGeneration()) return;
         this.socketConnecting = false;
         if (this.state.isHostSessionEnded) {
           return;
@@ -1175,6 +1250,7 @@ export class App extends React.Component<AppProps, AppState> {
             this.hasAttemptedNamespaceRetry = true;
             console.log(`[ADMISSION_TRACE:RETRY] Retrying namespace connection for room=${cleanRoomId}`);
             window.setTimeout(() => {
+              if (!isCurrentGeneration()) return;
               if (this.socket) {
                 this.socket.connect();
               } else {
@@ -1200,10 +1276,12 @@ export class App extends React.Component<AppProps, AppState> {
             void (async () => {
               try {
                 const sessionData = await safeGetSession(1200);
+                if (!isCurrentGeneration()) return;
                 const user = sessionData?.data?.session?.user;
                 const token = sessionData?.data?.session?.access_token;
                 if (user?.id && token) {
                   const recovery = await restoreAdmissionSession(cleanRoomId, serverPath, token, user.id);
+                  if (!isCurrentGeneration()) return;
                   if (recovery.valid && recovery.admissionToken && recovery.sessionId) {
                     this.setState({
                       admissionToken: recovery.admissionToken,
@@ -1224,6 +1302,7 @@ export class App extends React.Component<AppProps, AppState> {
                 console.warn("[ADMISSION] Socket connect_error recovery failed:", recErr);
               }
 
+              if (!isCurrentGeneration()) return;
               // Terminal authoritative check rejected: clean up storage and redirect to sole gateway /join/:roomId
               clearAdmissionSession(cleanRoomId);
               operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
@@ -1239,6 +1318,7 @@ export class App extends React.Component<AppProps, AppState> {
             return;
           }
 
+          if (!isCurrentGeneration()) return;
           // Terminal authoritative check rejected: clean up storage and redirect to sole gateway /join/:roomId
           clearAdmissionSession(cleanRoomId);
           operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
@@ -1271,6 +1351,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("ROOM_SESSION_STOPPED", (data?: { isPermanent?: boolean; status?: string }) => {
+        if (!isCurrentGeneration()) return;
         if (this.state.isHostSessionEnded || this.isRoomOwner()) {
           return;
         }
@@ -1297,10 +1378,12 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("REC:sessionStarted", () => {
+        if (!isCurrentGeneration()) return;
         this.stopWaitingPoll();
         this.setState({ isWaitingForHost: false, overlayMsg: "" });
       });
       socket.on("disconnect", (reason) => {
+        if (!isCurrentGeneration()) return;
         this.socketConnecting = false;
         operationCoordinator.markTransportDisconnected("Socket disconnected");
         if (this.state.isHostSessionEnded || this.state.isWaitingForHost || this.state.leavingRoom) {
@@ -1321,6 +1404,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("errorMessage", (err: string) => {
+        if (!isCurrentGeneration()) return;
         const sanitized = sanitizeServerErrorMessage(err);
         operationCoordinator.rejectDomainOperations("host-authority", sanitized);
         operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
@@ -1338,9 +1422,11 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("successMessage", (success: string) => {
+        if (!isCurrentGeneration()) return;
         showUserMessage({ ...USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS, message: success });
       });
       const handleHostUpdate = (data: any) => {
+        if (!isCurrentGeneration()) return;
         if (!data) return;
         if (!operationCoordinator.canAcceptSyncEvent(data.__epoch)) {
           return;
@@ -1381,6 +1467,7 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:hostChange", handleHostUpdate);
       socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", (data?: { message?: string }) => {
+        if (!isCurrentGeneration()) return;
         clearAdmissionSession(this.state.roomId);
         showUserMessage(USER_MESSAGES.MOD_KICKED_SELF);
         const ctx: PostRoomContext = {
@@ -1401,6 +1488,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("banned", (data?: { message?: string }) => {
+        if (!isCurrentGeneration()) return;
         clearAdmissionSession(this.state.roomId);
         showUserMessage(USER_MESSAGES.MOD_BANNED_SELF);
         const ctx: PostRoomContext = {
@@ -1421,14 +1509,17 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("REC:play", (data?: any) => {
+        if (!isCurrentGeneration()) return;
         if (!operationCoordinator.canAcceptSyncEvent(data?.__epoch)) return;
         this.localPlay();
       });
       socket.on("REC:pause", (data?: any) => {
+        if (!isCurrentGeneration()) return;
         if (!operationCoordinator.canAcceptSyncEvent(data?.__epoch)) return;
         this.localPause();
       });
       socket.on("REC:playbackSync", (data: any) => {
+        if (!isCurrentGeneration()) return;
         if (!data) return;
         const epoch = typeof data === "object" ? data?.epoch : undefined;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
@@ -1438,12 +1529,14 @@ export class App extends React.Component<AppProps, AppState> {
         this.playbackSyncController.onPlaybackSyncReceived(data);
       });
       socket.on("REC:seek", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const time = typeof data === "object" ? data?.time : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.localSeek(time);
       });
       socket.on("REC:playbackRate", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const rate = typeof data === "object" ? data?.rate : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
@@ -1453,6 +1546,7 @@ export class App extends React.Component<AppProps, AppState> {
         }
       });
       socket.on("REC:subtitle", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const sub = typeof data === "object" ? data?.subtitle : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
@@ -1461,18 +1555,21 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("REC:loop", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const loop = typeof data === "object" ? data?.loop : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ roomLoop: loop });
       });
       socket.on("REC:changeController", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const ctrl = typeof data === "object" ? data?.controller : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         this.setState({ controller: ctrl });
       });
       socket.on("REC:host", async (data: HostState) => {
+        if (!isCurrentGeneration()) return;
         if (!data) return;
         const epoch = (data as any)?.__epoch;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) {
@@ -1529,6 +1626,7 @@ export class App extends React.Component<AppProps, AppState> {
             isLiveStream: false,
           },
           async () => {
+            if (!isCurrentGeneration()) return;
             const leftVideo = this.HTMLInterface.getVideoEl();
 
             const localMedia = isLocalMedia(currentMedia);
@@ -1773,6 +1871,7 @@ export class App extends React.Component<AppProps, AppState> {
         );
       });
       socket.on("REC:chat", (data: ChatMessage) => {
+        if (!isCurrentGeneration()) return;
         if (
           !getCurrentSettings().disableChatSound &&
           !data.system &&
@@ -1795,6 +1894,7 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("REC:editMessage", (data: ChatMessage) => {
+        if (!isCurrentGeneration()) return;
         const { chat } = this.state;
         const msgIndex = chat.findIndex((m) => m.dbId === data.dbId);
         if (msgIndex === -1) {
@@ -1804,6 +1904,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ chat });
       });
       socket.on("REC:chatMessagesDeleted", (data: { messageIds: string[] }) => {
+        if (!isCurrentGeneration()) return;
         if (!data?.messageIds || !Array.isArray(data.messageIds)) return;
         const deletedSet = new Set(data.messageIds);
         const updatedChat = this.state.chat.map((m) =>
@@ -1814,6 +1915,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ chat: updatedChat });
       });
       socket.on("REC:addReaction", (data: Reaction) => {
+        if (!isCurrentGeneration()) return;
         const { chat } = this.state;
         const msgIndex = chat.findIndex(
           (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
@@ -1837,6 +1939,7 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("REC:removeReaction", (data: Reaction) => {
+        if (!isCurrentGeneration()) return;
         const { chat } = this.state;
         const msg = chat.find(
           (m) => m.id === data.msgId && m.timestamp === data.msgTimestamp,
@@ -1850,6 +1953,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ chat });
       });
       socket.on("REC:tsMap", (data: NumberDict) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ tsMap: data }, () => {
           // Dynamic playback rate based on timestamps
           // Disable for sharing types where the users can have different timestamps
@@ -1886,12 +1990,15 @@ export class App extends React.Component<AppProps, AppState> {
         });
       });
       socket.on("REC:nameMap", (data: StringDict) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ nameMap: data });
       });
       socket.on("REC:pictureMap", (data: StringDict) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ pictureMap: data });
       });
       socket.on("REC:lock", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const lock = typeof data === "object" ? data?.lock : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
@@ -1899,6 +2006,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ roomLock: lock });
       });
       socket.on("REC:participantsLock", (data: any) => {
+        if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
         const locked = typeof data === "object" ? data?.locked : data;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
@@ -1906,6 +2014,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.setState({ participantsLocked: Boolean(locked) });
       });
       socket.on("roster", (data: any[]) => {
+        if (!isCurrentGeneration()) return;
         const epoch = (data as any)?.__epoch;
         if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
         const currentPeerIds = new Set((data || []).map((p) => p.id));
@@ -1960,9 +2069,11 @@ export class App extends React.Component<AppProps, AppState> {
         this.checkAndAdvanceToReady();
       });
       socket.on("chatinit", (data: ChatMessage[]) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ chat: data, scrollTimestamp: Date.now() });
       });
       socket.on("playlist", (data: PlaylistVideo[]) => {
+        if (!isCurrentGeneration()) return;
         this.setState({ playlist: data });
       });
       socket.on(
@@ -1972,6 +2083,7 @@ export class App extends React.Component<AppProps, AppState> {
           from: string;
           sharer: boolean;
         }) => {
+          if (!isCurrentGeneration()) return;
           config.NODE_ENV === "development" && console.log(data);
           // Handle messages received from signaling server
           const msg = data.msg;
@@ -2018,9 +2130,17 @@ export class App extends React.Component<AppProps, AppState> {
           }
         },
       );
-      socket.on("REC:getRoomState", this.handleRoomState);
-      window.setInterval(() => {
-        if (this.state.roomMedia) {
+      socket.on("REC:getRoomState", (data: any) => {
+        if (!isCurrentGeneration()) return;
+        this.handleRoomState(data);
+      });
+      if (this.tsInterval) {
+        window.clearInterval(this.tsInterval);
+        this.tsInterval = null;
+      }
+      this.tsInterval = window.setInterval(() => {
+        if (!isCurrentGeneration()) return;
+        if (this.socket && this.state.roomMedia) {
           const currentTime = this.Player().getCurrentTime();
           const toSend = this.getRoomTSToSet(currentTime);
           this.socket.emit("CMD:ts", toSend);
