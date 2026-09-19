@@ -2,9 +2,9 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "./index.css";
 
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Redirect, Switch } from "react-router-dom";
+import { BrowserRouter, Route, Redirect, Switch, useLocation } from "react-router-dom";
 
 import type { User } from "@supabase/supabase-js";
 import {
@@ -30,31 +30,53 @@ import { ThemeProvider, useAppearance } from "./theme/ThemeProvider";
 import type { AppearanceMode } from "./theme/types";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { Analytics } from "@vercel/analytics/react";
+import { lazyWithChunkRetry, triggerChunkReload, clearChunkReload } from "./utils/updatePolicy";
 
-// Route-level code splitting for rapid initial page loads
-const Home = lazy(() => import("./components/Home/Home").then((m) => ({ default: m.Home })));
-const App = lazy(() => import("./components/App/App").then((m) => ({ default: m.App })));
-const AuthLayout = lazy(() => import("./components/Auth/AuthLayout").then((m) => ({ default: m.AuthLayout })));
-const Create = lazy(() => import("./components/Create/Create").then((m) => ({ default: m.Create })));
-const Profile = lazy(() => import("./components/Profile/Profile").then((m) => ({ default: m.Profile })));
-const MyRooms = lazy(() => import("./components/MyRooms/MyRooms").then((m) => ({ default: m.MyRooms })));
-const RoomDetails = lazy(() => import("./components/MyRooms/RoomDetails").then((m) => ({ default: m.RoomDetails })));
-const Terms = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Terms })));
-const Privacy = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.Privacy })));
-const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default: m.FAQ })));
-const CommunityGuidelines = lazy(() => import("./components/Pages/CommunityGuidelines").then((m) => ({ default: m.CommunityGuidelines })));
-const Support = lazy(() => import("./components/Support/Support").then((m) => ({ default: m.Support })));
-const About = lazy(() => import("./components/About/About").then((m) => ({ default: m.About })));
-const Creator = lazy(() => import("./components/Creator/Creator").then((m) => ({ default: m.Creator })));
-const NotFound = lazy(() => import("./components/Pages/NotFound").then((m) => ({ default: m.NotFound })));
-const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
-const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
-const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
-const ResetPassword = lazy(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
-const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
-const Join = lazy(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
-const PostRoom = lazy(() => import("./components/PostRoom/PostRoom").then((m) => ({ default: m.PostRoom })));
-const MediaPreflight = lazy(() => import("./components/Preflight/MediaPreflight").then((m) => ({ default: m.MediaPreflight })));
+// Catch low-level Vite chunk preload failures and trigger deterministic auto-reload
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    const handled = triggerChunkReload();
+    if (handled) {
+      event.preventDefault();
+    }
+  });
+}
+
+// Route-level code splitting with deployment-update resilience
+const Home = lazyWithChunkRetry(() => import("./components/Home/Home").then((m) => ({ default: m.Home })));
+const App = lazyWithChunkRetry(() => import("./components/App/App").then((m) => ({ default: m.App })));
+const AuthLayout = lazyWithChunkRetry(() => import("./components/Auth/AuthLayout").then((m) => ({ default: m.AuthLayout })));
+const Create = lazyWithChunkRetry(() => import("./components/Create/Create").then((m) => ({ default: m.Create })));
+const Profile = lazyWithChunkRetry(() => import("./components/Profile/Profile").then((m) => ({ default: m.Profile })));
+const MyRooms = lazyWithChunkRetry(() => import("./components/MyRooms/MyRooms").then((m) => ({ default: m.MyRooms })));
+const RoomDetails = lazyWithChunkRetry(() => import("./components/MyRooms/RoomDetails").then((m) => ({ default: m.RoomDetails })));
+const Terms = lazyWithChunkRetry(() => import("./components/Pages/Pages").then((m) => ({ default: m.Terms })));
+const Privacy = lazyWithChunkRetry(() => import("./components/Pages/Pages").then((m) => ({ default: m.Privacy })));
+const FAQ = lazyWithChunkRetry(() => import("./components/Pages/Pages").then((m) => ({ default: m.FAQ })));
+const CommunityGuidelines = lazyWithChunkRetry(() => import("./components/Pages/CommunityGuidelines").then((m) => ({ default: m.CommunityGuidelines })));
+const Support = lazyWithChunkRetry(() => import("./components/Support/Support").then((m) => ({ default: m.Support })));
+const About = lazyWithChunkRetry(() => import("./components/About/About").then((m) => ({ default: m.About })));
+const Creator = lazyWithChunkRetry(() => import("./components/Creator/Creator").then((m) => ({ default: m.Creator })));
+const NotFound = lazyWithChunkRetry(() => import("./components/Pages/NotFound").then((m) => ({ default: m.NotFound })));
+const Login = lazyWithChunkRetry(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
+const Signup = lazyWithChunkRetry(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
+const ForgotPassword = lazyWithChunkRetry(() => import("./components/Auth/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazyWithChunkRetry(() => import("./components/Auth/ResetPassword").then((m) => ({ default: m.ResetPassword })));
+const VerifyEmail = lazyWithChunkRetry(() => import("./components/Auth/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
+const Join = lazyWithChunkRetry(() => import("./components/Join/Join").then((m) => ({ default: m.Join })));
+const PostRoom = lazyWithChunkRetry(() => import("./components/PostRoom/PostRoom").then((m) => ({ default: m.PostRoom })));
+const MediaPreflight = lazyWithChunkRetry(() => import("./components/Preflight/MediaPreflight").then((m) => ({ default: m.MediaPreflight })));
+
+const ChunkRecoveryWatcher: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    // When a route renders operational content without error, clear any recovery marker
+    clearChunkReload();
+  }, [location.pathname]);
+
+  return null;
+};
 
 const RouteFallback = () => (
   <Center style={{ minHeight: "60vh", width: "100%" }}>
@@ -138,7 +160,7 @@ const theme = createTheme({
   },
 });
 
-const Debug = lazy(() => import("./components/Debug/Debug"));
+const Debug = lazyWithChunkRetry(() => import("./components/Debug/Debug"));
 
 const supabaseUrl = config.VITE_SUPABASE_URL;
 
@@ -609,6 +631,7 @@ class CoWatch extends React.Component {
                   }}
                 >
                   <BrowserRouter>
+                    <ChunkRecoveryWatcher />
                     <RootErrorBoundary>
                       <AppShell>
                         <SpeedInsights />

@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
-import { Container, Paper, Title, Text, Button, Group, Stack, Alert } from "@mantine/core";
+import { Container, Paper, Title, Text, Button, Group, Stack, Alert, Loader } from "@mantine/core";
 import { IconAlertTriangle, IconRefresh, IconHome } from "@tabler/icons-react";
+import { isChunkLoadError, hasChunkReloadAttempted, triggerChunkReload } from "../../utils/updatePolicy";
 
 interface Props {
   children: ReactNode;
@@ -23,6 +24,9 @@ export class RootErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught application error caught by RootErrorBoundary:", error, errorInfo);
+    if (isChunkLoadError(error)) {
+      triggerChunkReload();
+    }
   }
 
   private handleReload = () => {
@@ -36,6 +40,96 @@ export class RootErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const isChunk = isChunkLoadError(this.state.error);
+      const alreadyAttempted = hasChunkReloadAttempted();
+
+      // State A: Chunk error detected and automatic reload initiated
+      if (isChunk && !alreadyAttempted) {
+        return (
+          <div
+            style={{
+              minHeight: "100vh",
+              backgroundColor: "var(--bg-base)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <Stack align="center" gap="sm">
+              <Loader color="violet" size="md" />
+              <Text size="sm" c="var(--text-secondary)">
+                Updating to the latest version of CoWatch...
+              </Text>
+            </Stack>
+          </div>
+        );
+      }
+
+      // State B: Chunk error detected, automatic reload already attempted
+      if (isChunk && alreadyAttempted) {
+        return (
+          <div style={{ minHeight: "100vh", backgroundColor: "var(--bg-base)", display: "flex", alignItems: "center" }}>
+            <Container size="sm" style={{ padding: "40px 20px" }}>
+              <Paper
+                radius="lg"
+                p={36}
+                withBorder
+                style={{
+                  backgroundColor: "var(--bg-surface)",
+                  borderColor: "var(--border-subtle)",
+                  textAlign: "center",
+                  boxShadow: "var(--shadow-lg)",
+                }}
+              >
+                <Stack align="center" gap="md">
+                  <div
+                    style={{
+                      width: "60px",
+                      height: "60px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(139, 92, 246, 0.12)",
+                      display: "grid",
+                      placeItems: "center",
+                      color: "var(--color-violet, #8b5cf6)",
+                    }}
+                  >
+                    <IconRefresh size={32} />
+                  </div>
+
+                  <Title order={2} fw={800} style={{ color: "var(--text-primary)" }}>
+                    CoWatch couldn't load the latest version
+                  </Title>
+
+                  <Text c="var(--text-secondary)" size="sm" maw={440}>
+                    A new version of CoWatch was recently published, but the latest assets could not be retrieved. Please check your internet connection and try again.
+                  </Text>
+
+                  <Group justify="center" gap="sm" mt="lg">
+                    <Button
+                      variant="default"
+                      leftSection={<IconRefresh size={16} />}
+                      onClick={this.handleReload}
+                    >
+                      Try Again
+                    </Button>
+                    <Button
+                      leftSection={<IconHome size={16} />}
+                      onClick={this.handleGoHome}
+                      style={{
+                        background: "linear-gradient(135deg, var(--color-violet), var(--color-pink))",
+                        color: "#ffffff",
+                      }}
+                    >
+                      Return Home
+                    </Button>
+                  </Group>
+                </Stack>
+              </Paper>
+            </Container>
+          </div>
+        );
+      }
+
+      // State C: Ordinary application error
       return (
         <div style={{ minHeight: "100vh", backgroundColor: "var(--bg-base)", display: "flex", alignItems: "center" }}>
           <Container size="sm" style={{ padding: "40px 20px" }}>
