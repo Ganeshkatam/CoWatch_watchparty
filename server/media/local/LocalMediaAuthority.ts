@@ -43,7 +43,7 @@ export class LocalMediaAuthority {
 
     if (this.db) {
       try {
-        await this.db.query(
+        await (this.db as any).query(
           `INSERT INTO public.room_media_sessions (
             media_id, room_id, owner_user_id, status, filename, mime_type, byte_size,
             duration_seconds, codec, container, content_hash, chunk_size, total_chunks

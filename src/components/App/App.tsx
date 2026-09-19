@@ -130,6 +130,7 @@ declare global {
       webtorrent?: WebTorrent.Instance;
       hls?: Hls;
       dash?: MediaPlayerClass;
+      getVideoDiagnostics?: (targetId?: string) => any;
     };
   }
 }

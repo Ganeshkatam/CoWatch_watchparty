@@ -124,10 +124,37 @@ export class VideoChat extends React.Component<VideoChatProps> {
         ? this.props.initialMicOn
         : (this.context.profile?.pref_mic_on ?? false);
     this.socket?.on("signal", this.handleSignal);
+
+    if (typeof window !== "undefined" && window.cowatch) {
+      window.cowatch.getVideoDiagnostics = (targetId?: string) => {
+        const pcs = window.cowatch.videoPCs || {};
+        const remoteStreams = window.cowatch.remoteStreams || {};
+        const videoRefs = window.cowatch.videoRefs || {};
+        const inspectId = targetId || Object.keys(pcs)[0];
+        const pc = inspectId ? pcs[inspectId] : undefined;
+        const stream = inspectId ? remoteStreams[inspectId] : undefined;
+        const videoEl = inspectId ? videoRefs[inspectId] : undefined;
+        return {
+          inspectId,
+          signalingState: pc?.signalingState,
+          connectionState: pc?.connectionState,
+          iceConnectionState: pc?.iceConnectionState,
+          localTracks: window.cowatch.ourStream?.getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })) || [],
+          remoteTracks: stream?.getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })) || [],
+          videoWidth: videoEl?.videoWidth,
+          videoHeight: videoEl?.videoHeight,
+          paused: videoEl?.paused,
+          readyState: videoEl?.readyState,
+        };
+      };
+    }
   }
 
   componentWillUnmount() {
     this.socket?.off("signal", this.handleSignal);
+    if (typeof window !== "undefined" && window.cowatch && window.cowatch.getVideoDiagnostics) {
+      delete window.cowatch.getVideoDiagnostics;
+    }
   }
 
   componentDidUpdate(prevProps: VideoChatProps) {
@@ -166,6 +193,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   makingOffer: Record<string, boolean> = {};
   ignoreOffer: Record<string, boolean> = {};
+  isSettingRemoteAnswerPending: Record<string, boolean> = {};
 
   handleSignal = async (data: any) => {
     // Handle messages received from signaling server
@@ -179,22 +207,39 @@ export class VideoChat extends React.Component<VideoChatProps> {
       pc = this.createPeerConnection(from);
     }
 
-    console.log("recv", from, data);
-
     try {
       if (msg.sdp) {
-        const isOfferer = selfId < from;
-        const polite = !isOfferer;
-        const offerCollision =
-          msg.sdp.type === "offer" &&
-          (this.makingOffer[from] || pc.signalingState !== "stable");
+        const polite = selfId > from;
+        const readyForOffer =
+          !this.makingOffer[from] &&
+          (pc.signalingState === "stable" || this.isSettingRemoteAnswerPending[from]);
+        const offerCollision = msg.sdp.type === "offer" && !readyForOffer;
 
         this.ignoreOffer[from] = !polite && offerCollision;
         if (this.ignoreOffer[from]) {
           return;
         }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        if (offerCollision) {
+          try {
+            await Promise.all([
+              pc.setLocalDescription({ type: "rollback" }),
+              pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)),
+            ]);
+          } catch (rbErr) {
+            console.warn("Rollback handling error:", rbErr);
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          }
+        } else {
+          if (msg.sdp.type === "answer") {
+            this.isSettingRemoteAnswerPending[from] = true;
+          }
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          } finally {
+            this.isSettingRemoteAnswerPending[from] = false;
+          }
+        }
 
         if (msg.sdp.type === "offer") {
           const answer = await pc.createAnswer();
@@ -271,6 +316,8 @@ export class VideoChat extends React.Component<VideoChatProps> {
       }
 
       window.cowatch.ourStream = stream;
+      // Immediately synchronize local tracks to existing peer connections
+      this.updateWebRTC();
       // alert server we've joined video chat
       this.socket?.emit("CMD:joinVideo");
       this.emitUserMute();
@@ -383,6 +430,21 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
 
+    // Attach Perfect Negotiation handler on both peers before adding tracks
+    pc.onnegotiationneeded = async () => {
+      try {
+        this.makingOffer[id] = true;
+        const offer = await pc.createOffer();
+        if (pc.signalingState !== "stable") return;
+        await pc.setLocalDescription(offer);
+        this.sendSignal(id, { sdp: pc.localDescription });
+      } catch (e) {
+        console.warn("Negotiation error for peer", id, e);
+      } finally {
+        this.makingOffer[id] = false;
+      }
+    };
+
     // Add our own video as outgoing stream
     if (ourStream) {
       ourStream.getTracks().forEach((track) => {
@@ -402,22 +464,45 @@ export class VideoChat extends React.Component<VideoChatProps> {
     };
 
     pc.ontrack = (event: RTCTrackEvent) => {
-      const remoteStream = event.streams?.[0];
-      if (remoteStream) {
-        if (!window.cowatch.remoteStreams) {
-          window.cowatch.remoteStreams = {};
-        }
-        window.cowatch.remoteStreams[id] = remoteStream;
+      if (!window.cowatch.remoteStreams) {
+        window.cowatch.remoteStreams = {};
       }
-      if (videoRefs && videoRefs[id] && remoteStream) {
-        try {
-          if (videoRefs[id].srcObject !== remoteStream) {
-            videoRefs[id].srcObject = remoteStream;
+      let stream = window.cowatch.remoteStreams[id];
+      if (!stream) {
+        stream = event.streams?.[0] || new MediaStream();
+        window.cowatch.remoteStreams[id] = stream;
+      }
+      if (!stream.getTracks().some((t: MediaStreamTrack) => t.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+
+      event.track.onunmute = () => {
+        const videoEl = window.cowatch.videoRefs?.[id];
+        if (videoEl && stream) {
+          if (videoEl.srcObject !== stream) {
+            videoEl.srcObject = stream;
           }
+          videoEl.play().catch((err) => {
+            console.warn("Playback retry on track onunmute deferred:", err);
+          });
+        }
+      };
+
+      const videoEl = window.cowatch.videoRefs?.[id];
+      if (videoEl && stream) {
+        try {
+          if (videoEl.srcObject !== stream) {
+            videoEl.srcObject = stream;
+          }
+          videoEl.play().catch((e) => {
+            console.warn("Autoplay playback attempt deferred for remote peer", id, e);
+          });
         } catch (e) {
           console.warn("Could not set remote stream on video element:", e);
         }
       }
+
+      this.forceUpdate();
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -459,26 +544,6 @@ export class VideoChat extends React.Component<VideoChatProps> {
         operationCoordinator.setPeerRtcStatus(id, "closed");
       }
     };
-
-    // For each pair, have the lexicographically smaller ID be the offerer
-    const selfId = this.getSelfId();
-    const isOfferer = selfId < id;
-    if (isOfferer) {
-      pc.onnegotiationneeded = async () => {
-        try {
-          this.makingOffer[id] = true;
-          // Start connection for peer's video
-          const offer = await pc.createOffer();
-          if (pc.signalingState !== "stable") return;
-          await pc.setLocalDescription(offer);
-          this.sendSignal(id, { sdp: pc.localDescription });
-        } catch (e) {
-          console.warn("Negotiation error:", e);
-        } finally {
-          this.makingOffer[id] = false;
-        }
-      };
-    }
 
     return pc;
   };
@@ -527,12 +592,27 @@ export class VideoChat extends React.Component<VideoChatProps> {
               if (videoRefs[id].srcObject !== ourStream) {
                 videoRefs[id].srcObject = ourStream;
               }
+              videoRefs[id].play().catch(() => {});
             } catch (e) {
               console.warn("Could not set local stream on video element:", e);
             }
           }
         } else {
-          this.createPeerConnection(id);
+          const pc = this.createPeerConnection(id);
+          // Synchronize local tracks to existing PeerConnection if missing
+          if (pc && ourStream) {
+            const senders = pc.getSenders();
+            ourStream.getTracks().forEach((track) => {
+              const hasSender = senders.some((s: RTCRtpSender) => s.track === track);
+              if (!hasSender) {
+                try {
+                  pc.addTrack(track, ourStream);
+                } catch (e) {
+                  console.warn("Could not add track to existing peer connection:", id, e);
+                }
+              }
+            });
+          }
         }
       });
     } catch (err) {
@@ -583,11 +663,30 @@ export class VideoChat extends React.Component<VideoChatProps> {
                       if (el) {
                         videoRefs[p.id] = el;
                         const targetStream = isSelf ? ourStream : window.cowatch.remoteStreams?.[p.id];
-                        if (targetStream && el.srcObject !== targetStream) {
-                          el.srcObject = targetStream;
+                        if (targetStream) {
+                          if (el.srcObject !== targetStream) {
+                            el.srcObject = targetStream;
+                          }
+                          el.play().catch((playErr) => {
+                            console.warn("Autoplay attempt deferred for", p.id, playErr);
+                          });
                         }
                       } else {
                         delete videoRefs[p.id];
+                      }
+                    }}
+                    onLoadedMetadata={(e) => {
+                      const videoEl = e.currentTarget;
+                      videoEl.play().catch((playErr) => {
+                        console.warn("Play on loadedmetadata deferred:", playErr);
+                      });
+                    }}
+                    onClick={(e) => {
+                      const videoEl = e.currentTarget;
+                      if (videoEl && videoEl.paused) {
+                        videoEl.play().catch((err) => {
+                          console.warn("User gesture playback retry deferred:", err);
+                        });
                       }
                     }}
                     autoPlay
