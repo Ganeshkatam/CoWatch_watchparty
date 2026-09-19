@@ -89,16 +89,34 @@ export const mapYoutubeResult = (
   };
 };
 
+export interface YouTubeSearchResultPage {
+  items: PlaylistVideo[];
+  nextPageToken?: string | null;
+}
+
 export const searchYoutube = async (
   query: string,
-): Promise<PlaylistVideo[]> => {
-  const response = await Youtube?.search.list({
-    part: ["snippet"],
-    type: ["video"],
-    maxResults: 25,
-    q: query,
-  });
-  return response?.data?.items?.map(mapYoutubeSearchResult) ?? [];
+  pageToken?: string,
+): Promise<YouTubeSearchResultPage> => {
+  try {
+    const response = await Youtube?.search.list({
+      part: ["snippet"],
+      type: ["video"],
+      maxResults: 25,
+      q: query,
+      pageToken: pageToken || undefined,
+    });
+    return {
+      items: response?.data?.items?.map(mapYoutubeSearchResult) ?? [],
+      nextPageToken: response?.data?.nextPageToken ?? null,
+    };
+  } catch (err) {
+    console.warn("YouTube search API error:", err);
+    return {
+      items: [],
+      nextPageToken: null,
+    };
+  }
 };
 
 export const youtubePlaylist = async (

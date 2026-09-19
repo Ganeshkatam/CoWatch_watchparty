@@ -456,24 +456,43 @@ export async function getStreamPathResults(
   }));
 }
 
+export type YouTubeSearchResults = SearchResult[] & { nextPageToken?: string };
+
 export async function getYouTubeResults(
   query: string,
-): Promise<SearchResult[]> {
+  pageToken?: string,
+): Promise<YouTubeSearchResults> {
   try {
-    const response = await fetch(
-      serverPath + "/youtube?q=" + encodeURIComponent(query),
-    );
+    let url = serverPath + "/youtube?q=" + encodeURIComponent(query);
+    if (pageToken) {
+      url += "&pageToken=" + encodeURIComponent(pageToken);
+    }
+    url += "&paginated=1";
+    const response = await fetch(url);
     if (!response.ok) {
-      return [];
+      const emptyResults: any = [];
+      emptyResults.nextPageToken = undefined;
+      return emptyResults;
     }
     const data = await response.json();
-    if (!Array.isArray(data)) {
-      return [];
+    let rawItems: any[] = [];
+    let nextToken: string | undefined = undefined;
+
+    if (Array.isArray(data)) {
+      rawItems = data;
+    } else if (data && Array.isArray(data.items)) {
+      rawItems = data.items;
+      nextToken = data.nextPageToken || undefined;
     }
-    return data.map((d: any) => ({ ...d, type: "youtube" }));
+
+    const results: any = rawItems.map((d: any) => ({ ...d, type: "youtube" }));
+    results.nextPageToken = nextToken;
+    return results;
   } catch (err) {
     console.warn("Failed to fetch YouTube results:", err);
-    return [];
+    const emptyResults: any = [];
+    emptyResults.nextPageToken = undefined;
+    return emptyResults;
   }
 }
 

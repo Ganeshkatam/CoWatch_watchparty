@@ -1360,8 +1360,16 @@ app.get("/youtube", async (req, res) => {
   if (typeof req.query.q === "string") {
     try {
       redisCount("youtubeSearch");
-      const items = await searchYoutube(req.query.q);
-      res.json(items);
+      const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : undefined;
+      const result = await searchYoutube(req.query.q, pageToken);
+      if (req.query.paginated === "1" || req.query.pageToken) {
+        res.json({
+          items: result.items,
+          nextPageToken: result.nextPageToken,
+        });
+      } else {
+        res.json(result.items);
+      }
     } catch {
       res.status(500).json({ error: "youtube error" });
     }

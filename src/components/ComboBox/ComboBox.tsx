@@ -53,6 +53,8 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterCategory>("all");
   const [items, setItems] = useState<SearchResult[]>(examples);
   const [loading, setLoading] = useState<boolean>(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [addedUrls, setAddedUrls] = useState<Record<string, boolean>>({});
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,13 +99,16 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
             setLoading(true);
             const pathItems = await getMediaPathResults(mediaPath, "");
             setItems(pathItems.length > 0 ? pathItems : examples);
+            setNextPageToken(null);
           } catch {
             setItems(examples);
+            setNextPageToken(null);
           } finally {
             setLoading(false);
           }
         } else {
           setItems(examples);
+          setNextPageToken(null);
           setLoading(false);
         }
         return;
@@ -112,6 +117,7 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
       // If it's direct HTTP or Magnet, no need to query YouTube
       if (isHttp(trimmed) || isMagnet(trimmed)) {
         setLoading(false);
+        setNextPageToken(null);
         return;
       }
 
@@ -120,9 +126,11 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
       try {
         const youtubeResults = await getYouTubeResults(trimmed);
         setItems(youtubeResults);
+        setNextPageToken(youtubeResults?.nextPageToken || null);
       } catch (err) {
         console.error("Failed to fetch search results", err);
         setItems([]);
+        setNextPageToken(null);
       } finally {
         setLoading(false);
       }
@@ -141,10 +149,30 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
   const handleClear = () => {
     setInputMedia("");
     setItems(examples);
+    setNextPageToken(null);
     inputRef.current?.focus();
   };
 
   const trimmedInput = inputMedia.trim();
+
+  const handleLoadMore = useCallback(async () => {
+    if (!nextPageToken || loadingMore || !trimmedInput) return;
+    setLoadingMore(true);
+    try {
+      const moreResults = await getYouTubeResults(trimmedInput, nextPageToken);
+      setItems((prevItems) => {
+        const existingUrls = new Set(prevItems.map((i) => i.url));
+        const newUnique = moreResults.filter((i) => !existingUrls.has(i.url));
+        return [...prevItems, ...newUnique];
+      });
+      setNextPageToken(moreResults?.nextPageToken || null);
+    } catch (err) {
+      console.warn("Failed to load more YouTube results:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextPageToken, loadingMore, trimmedInput]);
+
   const isDirect = Boolean(
     trimmedInput && (isHttp(trimmedInput) || isMagnet(trimmedInput)),
   );
@@ -461,6 +489,34 @@ export const ComboBox: React.FC<ComboBoxProps> = ({
             </div>
           );
         })}
+
+        {Boolean(
+          nextPageToken &&
+            trimmedInput &&
+            !isDirect &&
+            (activeFilter === "all" || activeFilter === "youtube"),
+        ) && (
+          <div className={classes.loadMoreWrapper}>
+            <button
+              type="button"
+              className={classes.loadMoreBtn}
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? (
+                <>
+                  <Loader size={14} color="violet" />
+                  <span>Loading more results...</span>
+                </>
+              ) : (
+                <>
+                  <IconBrandYoutubeFilled size={15} color="var(--media-youtube)" />
+                  <span>Load more YouTube results</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Footer bar with keyboard hints */}

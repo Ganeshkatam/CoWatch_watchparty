@@ -63,6 +63,8 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterCategory>("all");
   const [items, setItems] = useState<SearchResult[]>(examples);
   const [loading, setLoading] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [addedUrls, setAddedUrls] = useState<Record<string, boolean>>({});
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
@@ -173,13 +175,16 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
             setLoading(true);
             const pathItems = await getMediaPathResults(mediaPath, "");
             setItems(pathItems.length > 0 ? pathItems : examples);
+            setNextPageToken(null);
           } catch {
             setItems(examples);
+            setNextPageToken(null);
           } finally {
             setLoading(false);
           }
         } else {
           setItems(examples);
+          setNextPageToken(null);
           setLoading(false);
         }
         return;
@@ -187,23 +192,24 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 
       if (isHttp(trimmed) || isMagnet(trimmed)) {
         setLoading(false);
+        setNextPageToken(null);
         return;
       }
 
       setLoading(true);
       try {
-        const searchPromises: Promise<SearchResult[]>[] = [
+        const searchPromises: [Promise<any>, Promise<SearchResult[]>] = [
           getYouTubeResults(trimmed),
+          streamPath
+            ? getStreamPathResults(streamPath, trimmed).catch(() => [])
+            : Promise.resolve([]),
         ];
-        if (streamPath) {
-          searchPromises.push(
-            getStreamPathResults(streamPath, trimmed).catch(() => []),
-          );
-        }
         const [ytResults, streamResults = []] = await Promise.all(searchPromises);
         setItems([...ytResults, ...streamResults]);
+        setNextPageToken(ytResults?.nextPageToken || null);
       } catch {
         setItems([]);
+        setNextPageToken(null);
       } finally {
         setLoading(false);
       }
@@ -223,10 +229,30 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
   const handleClear = () => {
     setQuery("");
     setItems(examples);
+    setNextPageToken(null);
     inputRef.current?.focus();
   };
 
   const trimmed = query.trim();
+
+  const handleLoadMore = useCallback(async () => {
+    if (!nextPageToken || loadingMore || !trimmed) return;
+    setLoadingMore(true);
+    try {
+      const moreYtResults = await getYouTubeResults(trimmed, nextPageToken);
+      setItems((prevItems) => {
+        const existingUrls = new Set(prevItems.map((i) => i.url));
+        const newUnique = moreYtResults.filter((i) => !existingUrls.has(i.url));
+        return [...prevItems, ...newUnique];
+      });
+      setNextPageToken(moreYtResults.nextPageToken || null);
+    } catch (err) {
+      console.warn("Failed to load more YouTube results:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextPageToken, loadingMore, trimmed]);
+
   const isDirect = Boolean(
     trimmed && (isHttp(trimmed) || isMagnet(trimmed) || isYouTube(trimmed)),
   );
@@ -463,7 +489,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
               </div>
             )}
 
-            {filteredItems.slice(0, 20).map((item, index) => {
+            {filteredItems.map((item, index) => {
               const isAdded = Boolean(addedUrls[item.url]);
               return (
                 <div
@@ -559,6 +585,34 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
                 </div>
               );
             })}
+
+            {Boolean(
+              nextPageToken &&
+                trimmed &&
+                !isDirect &&
+                (activeFilter === "all" || activeFilter === "youtube"),
+            ) && (
+              <div className={styles.loadMoreWrapper}>
+                <button
+                  type="button"
+                  className={styles.loadMoreBtn}
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader size={14} color="violet" />
+                      <span>Loading more results...</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconBrandYoutubeFilled size={15} color="var(--media-youtube)" />
+                      <span>Load more YouTube results</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Footer Bar */}
