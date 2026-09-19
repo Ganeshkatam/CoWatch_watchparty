@@ -170,6 +170,7 @@ export interface IssueRoomAdmissionTokenParams {
   memoryRoom?: any;
   isHost: boolean;
   ttlSeconds?: number;
+  isRestoration?: boolean;
 }
 
 export interface IssueRoomAdmissionTokenResult {
@@ -188,7 +189,7 @@ export interface IssueRoomAdmissionTokenResult {
 export function issueRoomAdmissionToken(
   params: IssueRoomAdmissionTokenParams
 ): IssueRoomAdmissionTokenResult {
-  const { roomId, callerUid, sessionId, roomRow, memoryRoom, isHost, ttlSeconds = 900 } = params;
+  const { roomId, callerUid, sessionId, roomRow, memoryRoom, isHost, ttlSeconds = 900, isRestoration = false } = params;
 
   // 1. Room lifecycle check (handles dynamic expiration for temporary rooms)
   if (isTerminalRoom(roomRow)) {
@@ -200,8 +201,8 @@ export function issueRoomAdmissionToken(
     };
   }
 
-  // 2. Participant lock check
-  if (roomRow.participants_locked && !isHost) {
+  // 2. Participant lock check: returning admitted participants with active admission are not new participants
+  if (roomRow.participants_locked && !isHost && !isRestoration) {
     return {
       allowed: false,
       status: 403,
@@ -215,7 +216,10 @@ export function issueRoomAdmissionToken(
     if (typeof roomRow.max_participants === "number") {
       memoryRoom.maxParticipants = roomRow.max_participants;
     }
-    if (typeof memoryRoom.isRoomFull === "function" && memoryRoom.isRoomFull(isHost)) {
+    const isFull = typeof memoryRoom.isRoomFull === "function"
+      ? memoryRoom.isRoomFull(isHost, sessionId, callerUid)
+      : false;
+    if (isFull) {
       return {
         allowed: false,
         status: 403,

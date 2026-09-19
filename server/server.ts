@@ -2313,7 +2313,7 @@ app.post("/room-admission/restore", async (req, res) => {
     // 5. Generate fresh session ID for this new connection
     const freshSessionId = crypto.randomUUID();
 
-    // 6. Use shared authoritative admission engine issueRoomAdmissionToken
+    // 6. Use shared authoritative admission engine issueRoomAdmissionToken with isRestoration: true
     const admissionAuth = issueRoomAdmissionToken({
       roomId: cleanRoomId,
       callerUid,
@@ -2321,6 +2321,7 @@ app.post("/room-admission/restore", async (req, res) => {
       roomRow: row,
       memoryRoom,
       isHost,
+      isRestoration: true,
     });
 
     if (!admissionAuth.allowed) {
