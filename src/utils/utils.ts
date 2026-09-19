@@ -462,38 +462,115 @@ export async function getYouTubeResults(
   query: string,
   pageToken?: string,
 ): Promise<YouTubeSearchResults> {
-  try {
-    let url = serverPath + "/youtube?q=" + encodeURIComponent(query);
-    if (pageToken) {
-      url += "&pageToken=" + encodeURIComponent(pageToken);
-    }
-    url += "&paginated=1";
-    const response = await fetch(url);
-    if (!response.ok) {
-      const emptyResults: any = [];
-      emptyResults.nextPageToken = undefined;
-      return emptyResults;
-    }
-    const data = await response.json();
-    let rawItems: any[] = [];
-    let nextToken: string | undefined = undefined;
-
-    if (Array.isArray(data)) {
-      rawItems = data;
-    } else if (data && Array.isArray(data.items)) {
-      rawItems = data.items;
-      nextToken = data.nextPageToken || undefined;
-    }
-
-    const results: any = rawItems.map((d: any) => ({ ...d, type: "youtube" }));
-    results.nextPageToken = nextToken;
-    return results;
-  } catch (err) {
-    console.warn("Failed to fetch YouTube results:", err);
+  const cleanQuery = query?.trim();
+  if (!cleanQuery) {
     const emptyResults: any = [];
     emptyResults.nextPageToken = undefined;
     return emptyResults;
   }
+
+  // 1. Try active serverPath first
+  try {
+    let url = `${serverPath}/youtube?q=${encodeURIComponent(cleanQuery)}`;
+    if (pageToken) {
+      url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    }
+    url += "&paginated=1";
+    const response = await fetch(url, { signal: AbortSignal.timeout(4500) });
+    if (response.ok) {
+      const data = await response.json();
+      let rawItems: any[] = [];
+      let nextToken: string | undefined = undefined;
+
+      if (Array.isArray(data)) {
+        rawItems = data;
+      } else if (data && Array.isArray(data.items)) {
+        rawItems = data.items;
+        nextToken = data.nextPageToken || undefined;
+      }
+
+      if (rawItems.length > 0) {
+        const results: any = rawItems.map((d: any) => ({ ...d, type: "youtube" }));
+        results.nextPageToken = nextToken;
+        return results;
+      }
+    }
+  } catch (err) {
+    console.warn("Primary backend YouTube search error:", err);
+  }
+
+  // 2. Try secondary serverCandidates if active server failed or returned empty
+  for (const candidate of serverCandidates) {
+    if (candidate === serverPath) continue;
+    try {
+      let url = `${candidate}/youtube?q=${encodeURIComponent(cleanQuery)}`;
+      if (pageToken) {
+        url += `&pageToken=${encodeURIComponent(pageToken)}`;
+      }
+      url += "&paginated=1";
+      const response = await fetch(url, { signal: AbortSignal.timeout(4500) });
+      if (response.ok) {
+        const data = await response.json();
+        let rawItems: any[] = [];
+        let nextToken: string | undefined = undefined;
+
+        if (Array.isArray(data)) {
+          rawItems = data;
+        } else if (data && Array.isArray(data.items)) {
+          rawItems = data.items;
+          nextToken = data.nextPageToken || undefined;
+        }
+
+        if (rawItems.length > 0) {
+          setServerPath(candidate);
+          const results: any = rawItems.map((d: any) => ({ ...d, type: "youtube" }));
+          results.nextPageToken = nextToken;
+          return results;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Client-side fallback to verified public Invidious instances with CORS
+  const fallbackInstances = [
+    "https://invidious.f5.si",
+  ];
+  const pageNum =
+    pageToken && !isNaN(Number(pageToken)) ? Math.max(1, Number(pageToken)) : 1;
+
+  for (const instance of fallbackInstances) {
+    try {
+      const invRes = await fetch(
+        `${instance}/api/v1/search?q=${encodeURIComponent(cleanQuery)}&page=${pageNum}&type=video`,
+        {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(4500),
+        },
+      );
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        if (Array.isArray(invData) && invData.length > 0) {
+          const items = invData.map((d: any) => ({
+            name: d.title || "YouTube Video",
+            url: `https://www.youtube.com/watch?v=${d.videoId}`,
+            img:
+              d.videoThumbnails?.[0]?.url ||
+              `https://i.ytimg.com/vi/${d.videoId}/hqdefault.jpg`,
+            channel: d.author || "YouTube",
+            duration: Number(d.lengthSeconds) || 0,
+            type: "youtube" as const,
+          }));
+          const results: any = items;
+          results.nextPageToken = items.length >= 10 ? String(pageNum + 1) : undefined;
+          return results;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const emptyResults: any = [];
+  emptyResults.nextPageToken = undefined;
+  return emptyResults;
 }
 
 export async function openFileSelector(accept?: string) {
