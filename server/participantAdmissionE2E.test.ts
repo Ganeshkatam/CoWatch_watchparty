@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { generateAdmissionToken, verifyAdmissionToken } from "./utils/admissionToken.ts";
+import { generateAdmissionToken, verifyAdmissionToken, issueRoomAdmissionToken } from "./utils/admissionToken.ts";
 import { hashRoomPasscode, verifyRoomPasscode } from "./utils/roomPasscode.ts";
 import { EMPTY_ROOM_INACTIVITY_TIMEOUT_MS } from "./room.ts";
 
@@ -526,6 +526,69 @@ async function runParticipantAdmissionE2ETests() {
     const terminalRestore = restoreRoomAdmission(roomId, participantId, "ended", false);
     assert(!terminalRestore.allowed, "Terminal room must reject admission restore");
     assert(terminalRestore.code === "ROOM_TERMINAL", "Expected ROOM_TERMINAL code");
+
+    // Subtest 8.8: Participants locked allows returning admitted participant with isRestoration: true
+    const lockedRow = {
+      status: "active",
+      participants_locked: true,
+      max_participants: 10,
+    };
+    const returningAdmittedRestore = issueRoomAdmissionToken({
+      roomId,
+      callerUid: participantId,
+      sessionId: randomUUID(),
+      roomRow: lockedRow,
+      isHost: false,
+      isRestoration: true,
+    });
+    assert(returningAdmittedRestore.allowed, "Returning admitted user must be allowed to restore when room is locked");
+    assert(Boolean(returningAdmittedRestore.admissionToken), "Must issue signed token to returning admitted user");
+
+    // Subtest 8.9: Participants locked strictly rejects non-admitted / new participant (isRestoration: false)
+    const newParticipantBlocked = issueRoomAdmissionToken({
+      roomId,
+      callerUid: "new_unadmitted_user",
+      sessionId: randomUUID(),
+      roomRow: lockedRow,
+      isHost: false,
+      isRestoration: false,
+    });
+    assert(!newParticipantBlocked.allowed, "New unadmitted user must be rejected when room is locked");
+    assert(newParticipantBlocked.code === "PARTICIPANTS_LOCKED", "Expected PARTICIPANTS_LOCKED code");
+
+    // Subtest 8.10: Multi-session independence (two tabs, same account)
+    const s2Desktop = randomUUID();
+    const s3Mobile = randomUUID();
+    const restoreDesktop = issueRoomAdmissionToken({
+      roomId,
+      callerUid: participantId,
+      sessionId: s2Desktop,
+      roomRow: { status: "active" },
+      isHost: false,
+      isRestoration: true,
+    });
+    const restoreMobile = issueRoomAdmissionToken({
+      roomId,
+      callerUid: participantId,
+      sessionId: s3Mobile,
+      roomRow: { status: "active" },
+      isHost: false,
+      isRestoration: true,
+    });
+    assert(restoreDesktop.allowed && restoreMobile.allowed, "Both desktop and mobile must derive valid tokens");
+    assert(restoreDesktop.admissionToken !== restoreMobile.admissionToken, "Tokens must be unique per session");
+
+    // Verify both tokens independently satisfy handshake
+    const verifyDesktop = verifyAdmissionToken(restoreDesktop.admissionToken!, roomId, participantId, s2Desktop);
+    const verifyMobile = verifyAdmissionToken(restoreMobile.admissionToken!, roomId, participantId, s3Mobile);
+    assert(verifyDesktop.valid, "Desktop session must validate");
+    assert(verifyMobile.valid, "Mobile session must validate");
+
+    // Subtest 8.11: Cross-session cross-talk rejection
+    const crossDesktopWithMobile = verifyAdmissionToken(restoreDesktop.admissionToken!, roomId, participantId, s3Mobile);
+    assert(!crossDesktopWithMobile.valid, "Desktop token must reject mobile session ID");
+    const crossMobileWithDesktop = verifyAdmissionToken(restoreMobile.admissionToken!, roomId, participantId, s2Desktop);
+    assert(!crossMobileWithDesktop.valid, "Mobile token must reject desktop session ID");
 
     console.log("  PASS: Durable admission recovery, hard refresh (T2 != T1, S2 != S1), and revocation invariants certified");
   }
