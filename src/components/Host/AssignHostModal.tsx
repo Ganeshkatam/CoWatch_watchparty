@@ -73,8 +73,8 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
         ) : (
           candidates.map((participant) => {
             const isSelected = selectedClientId === participant.id;
-            const displayName = nameMap[participant.id] || participant.id;
-            const photoUrl = pictureMap[participant.id];
+            const displayName = nameMap[participant.id] || participant.name || "Guest";
+            const photoUrl = pictureMap[participant.id] || participant.picture;
             const initial = (displayName.charAt(0) || "U").toUpperCase();
 
             return (

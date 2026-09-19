@@ -641,7 +641,8 @@ export class VideoChat extends React.Component<VideoChatProps> {
           const displayName =
             (isSelf ? this.context.displayName : null) ||
             nameMap[p.id] ||
-            p.id;
+            p.name ||
+            "Guest";
           const videoTS = tsMap[p.id];
           const hasVideo = p.isVideoChat;
           const isLeader =
@@ -702,7 +703,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
               ) : (
                 <div className={styles.avatarPlaceholder}>
                   <Avatar
-                    src={pictureMap[p.id] || getDefaultPicture(displayName, getColorForStringHex(p.id))}
+                    src={pictureMap[p.id] || p.picture || getDefaultPicture(displayName, getColorForStringHex(p.id))}
                     alt={displayName}
                     size={84}
                     radius="100%"

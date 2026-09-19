@@ -1842,9 +1842,38 @@ export class App extends React.Component<AppProps, AppState> {
         if (Array.isArray(data)) {
           this.peakParticipantCount = Math.max(this.peakParticipantCount, data.length);
         }
-        this.setState({ participants: data, rosterUpdateTS: Date.now(), initStage: operationCoordinator.getInitStage() }, () => {
-          this.setupRTCConnections();
-        });
+        const updatedNameMap = { ...this.state.nameMap };
+        const updatedPictureMap = { ...this.state.pictureMap };
+        let hasMapUpdate = false;
+        if (Array.isArray(data)) {
+          for (const user of data) {
+            if (user?.id) {
+              if (user.name && updatedNameMap[user.id] !== user.name) {
+                updatedNameMap[user.id] = user.name;
+                hasMapUpdate = true;
+              }
+              if (user.picture && updatedPictureMap[user.id] !== user.picture) {
+                updatedPictureMap[user.id] = user.picture;
+                hasMapUpdate = true;
+              }
+            }
+          }
+        }
+        const nextState: Pick<AppState, "participants" | "rosterUpdateTS" | "initStage"> & Partial<Pick<AppState, "nameMap" | "pictureMap">> = {
+          participants: data,
+          rosterUpdateTS: Date.now(),
+          initStage: operationCoordinator.getInitStage(),
+        };
+        if (hasMapUpdate) {
+          nextState.nameMap = updatedNameMap;
+          nextState.pictureMap = updatedPictureMap;
+        }
+        this.setState(
+          nextState as any,
+          () => {
+            this.setupRTCConnections();
+          }
+        );
         this.checkAndAdvanceToReady();
       });
       socket.on("chatinit", (data: ChatMessage[]) => {
@@ -3829,7 +3858,7 @@ export class App extends React.Component<AppProps, AppState> {
                             onChange={this.changeController}
                             disabled={!this.haveLock()}
                             data={this.state.participants.map((p) => ({
-                              label: this.state.nameMap[p.id] || p.id,
+                              label: this.state.nameMap[p.id] || p.name || (p.id ? "Guest" : "Participant"),
                               value: p.id,
                             }))}
                           />

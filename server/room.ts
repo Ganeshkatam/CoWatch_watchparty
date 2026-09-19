@@ -191,6 +191,8 @@ export class Room {
   private chat: ChatMessage[] = [];
   private nameMap: StringDict = {};
   private pictureMap: StringDict = {};
+  private uidToNameMap: StringDict = {};
+  private uidToPictureMap: StringDict = {};
   public vBrowser: AssignedVM | undefined = undefined;
   public vBrowserProviderId: string | undefined = undefined;
   public vBrowserPoolId: string | undefined = undefined;
@@ -365,8 +367,23 @@ export class Room {
     if (sessionId) {
       for (const [oldClientId, rec] of this.admittedParticipants.entries()) {
         if (oldClientId !== clientId && rec.sessionId === sessionId) {
+          if (this.nameMap[oldClientId] && !this.nameMap[clientId]) {
+            this.nameMap[clientId] = this.nameMap[oldClientId];
+          }
+          if (this.pictureMap[oldClientId] && !this.pictureMap[clientId]) {
+            this.pictureMap[clientId] = this.pictureMap[oldClientId];
+          }
           this.admittedParticipants.delete(oldClientId);
         }
+      }
+    }
+
+    if (uid) {
+      if (this.uidToNameMap[uid] && !this.nameMap[clientId]) {
+        this.nameMap[clientId] = this.uidToNameMap[uid];
+      }
+      if (this.uidToPictureMap[uid] && !this.pictureMap[clientId]) {
+        this.pictureMap[clientId] = this.uidToPictureMap[uid];
       }
     }
 
@@ -815,8 +832,14 @@ export class Room {
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
       this.localMediaAuthority.registerPeer(this.roomId, clientId, socket.id);
-      if (!this.roster.find(user => user.id === clientId)) {
-        this.roster.push({ id: clientId });
+      const initialName = this.nameMap[clientId] || (socket.uid ? this.uidToNameMap[socket.uid] : undefined);
+      const initialPicture = this.pictureMap[clientId] || (socket.uid ? this.uidToPictureMap[socket.uid] : undefined);
+      const existingUser = this.roster.find(user => user.id === clientId);
+      if (!existingUser) {
+        this.roster.push({ id: clientId, name: initialName, picture: initialPicture });
+      } else {
+        if (initialName && !existingUser.name) existingUser.name = initialName;
+        if (initialPicture && !existingUser.picture) existingUser.picture = initialPicture;
       }
 
       if (this.inactivityTimeout) {
@@ -1294,6 +1317,12 @@ export class Room {
       if (socket.uid) {
         this.clientToUidMap[clientId] = socket.uid;
         this.admittedMembers.add(socket.uid);
+        if (this.uidToNameMap[socket.uid] && !this.nameMap[clientId]) {
+          this.nameMap[clientId] = this.uidToNameMap[socket.uid];
+        }
+        if (this.uidToPictureMap[socket.uid] && !this.pictureMap[clientId]) {
+          this.pictureMap[clientId] = this.uidToPictureMap[socket.uid];
+        }
         if (this.owner_id && socket.uid === this.owner_id) {
           await this.reclaimHostForOwner(socket);
         }
@@ -1306,11 +1335,17 @@ export class Room {
             if (profileRes.rows && profileRes.rows.length > 0) {
               const profile = profileRes.rows[0];
               const resolvedName = profile.display_name?.trim() || profile.username?.trim();
-              if (resolvedName && (!this.nameMap[clientId] || this.nameMap[clientId].startsWith("Guest") || this.nameMap[clientId] === clientId)) {
+              if (resolvedName) {
                 this.nameMap[clientId] = resolvedName;
+                this.uidToNameMap[socket.uid] = resolvedName;
+                const match = this.roster.find((user) => user.id === clientId);
+                if (match) match.name = resolvedName;
               }
-              if (profile.avatar_url && !this.pictureMap[clientId]) {
+              if (profile.avatar_url) {
                 this.pictureMap[clientId] = profile.avatar_url;
+                this.uidToPictureMap[socket.uid] = profile.avatar_url;
+                const match = this.roster.find((user) => user.id === clientId);
+                if (match) match.picture = profile.avatar_url;
               }
             }
           } catch (e) {
@@ -1336,8 +1371,8 @@ export class Room {
         hostName: this.getHostDisplayName(),
         isOwner: this.getHostMode() === "owner",
       });
-      socket.emit("REC:nameMap", this.nameMap);
-      socket.emit("REC:pictureMap", this.pictureMap);
+      this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
+      this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
       socket.emit("REC:lock", this.lock);
       socket.emit("REC:participantsLock", this.participantsLocked);
@@ -1490,7 +1525,7 @@ export class Room {
   public getRosterForStats = () => {
     return this.roster.map((p) => ({
       id: p.id,
-      name: this.nameMap[p.id] || p.id,
+      name: this.nameMap[p.id] || p.name || "Guest",
       ts: this.tsMap[p.id],
       // TODO this will not work behind nginx reverse proxy, pass it and read from X-Real-IP instead
       // socket.handshake.headers["x-real-ip"]
@@ -1513,6 +1548,8 @@ export class Room {
     return this.roster.map((p) => {
       return {
         ...p,
+        name: this.nameMap[p.id] || p.name || undefined,
+        picture: this.pictureMap[p.id] || p.picture || undefined,
         isScreenShare: p.id === this.getSharerId(),
       };
     });
@@ -1844,7 +1881,15 @@ export class Room {
       return;
     }
     this.nameMap[socket.clientId] = data;
+    if (socket.uid) {
+      this.uidToNameMap[socket.uid] = data;
+    }
+    const match = this.roster.find((user) => user.id === socket.clientId);
+    if (match) {
+      match.name = data;
+    }
     this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
+    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
     if (this.isHost(socket)) {
       this.io.of(this.roomId).emit("REC:hostChange", {
         hostId: this.currentHostUid,
@@ -1861,7 +1906,15 @@ export class Room {
       return;
     }
     this.pictureMap[socket.clientId] = data;
+    if (socket.uid) {
+      this.uidToPictureMap[socket.uid] = data;
+    }
+    const match = this.roster.find((user) => user.id === socket.clientId);
+    if (match) {
+      match.picture = data;
+    }
     this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
+    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
 
   private startHosting = async (socket: Socket, data: string) => {
