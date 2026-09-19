@@ -56,7 +56,7 @@ const mockItems: WheelNavigationItem[] = [
   { id: 'rooms', label: 'Rooms', icon: DummyIcon, href: '/myrooms', isActive: true, ariaLabel: 'Rooms' },
   { id: 'create', label: 'New Room', icon: DummyIcon, href: '/create', isActive: false, ariaLabel: 'Create' },
   { id: 'profile', label: 'Profile', icon: DummyIcon, href: '/account/profile', isActive: false, ariaLabel: 'Profile' },
-  { id: 'theme', label: 'Theme', icon: DummyIcon, action: () => {}, isActive: false, ariaLabel: 'Theme' },
+  { id: 'join', label: 'Join', icon: DummyIcon, href: '/join', isActive: false, ariaLabel: 'Join' },
 ];
 
 const activeItem = mockItems.find((i) => i.isActive) || mockItems[0];
@@ -65,7 +65,7 @@ const orbitingItems = mockItems.filter((i) => i.id !== activeItem.id);
 assert(activeItem.id === 'rooms', 'Center dock must represent the active destination');
 assert(orbitingItems.length === 4, 'Orbiting items must contain exactly 4 remaining destinations');
 assert(!orbitingItems.some((i) => i.id === 'rooms'), 'Active item must not duplicate in orbit');
-assert(orbitingItems.some((i) => i.id === 'theme'), 'Theme action must remain an orbiting destination');
+assert(orbitingItems.some((i) => i.id === 'join'), 'Join destination must remain an orbiting destination');
 console.log('  PASS: Item partitioning verified.\n');
 
 // 4. Test Sector Resolution in Bottom-Right Arc

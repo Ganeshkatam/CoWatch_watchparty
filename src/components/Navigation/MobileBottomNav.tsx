@@ -5,14 +5,12 @@ import {
   IconDeviceTv,
   IconPlus,
   IconUser,
-  IconSun,
-  IconMoon,
+  IconUsers,
   IconHelpCircle,
   IconSparkles,
   IconLogin,
 } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
-import { useAppearance } from "../../theme/ThemeProvider";
 import { isBottomNavVisible, isRouteActive } from "./navigationPolicy";
 import {
   CircularNavigationWheel,
@@ -22,16 +20,8 @@ import {
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
-  const { resolvedColorScheme, setAppearance } = useAppearance();
 
   const isVisible = isBottomNavVisible(location.pathname);
-  const isDark = resolvedColorScheme === "dark";
-
-  const toggleTheme = React.useCallback(() => {
-    setAppearance(isDark ? "light" : "mantine");
-  }, [isDark, setAppearance]);
-
-  const themeLabel = isDark ? "Switch to light theme" : "Switch to dark theme";
 
   const navigationItems = useMemo<WheelNavigationItem[]>(() => {
     if (user) {
@@ -72,12 +62,12 @@ export const MobileBottomNav: React.FC = () => {
           ariaLabel: "Navigate to Account Profile",
         },
         {
-          id: "theme",
-          label: "Theme",
-          icon: isDark ? IconSun : IconMoon,
-          action: toggleTheme,
-          isActive: false,
-          ariaLabel: themeLabel,
+          id: "join",
+          label: "Join",
+          icon: IconUsers,
+          href: "/join",
+          isActive: isRouteActive(location.pathname, "/join", false),
+          ariaLabel: "Join a Watch Party Room",
         },
       ];
     }
@@ -101,12 +91,12 @@ export const MobileBottomNav: React.FC = () => {
         ariaLabel: "Navigate to Frequently Asked Questions",
       },
       {
-        id: "join",
-        label: "Join",
+        id: "signup",
+        label: "Sign Up",
         icon: IconSparkles,
         href: "/signup",
         isActive: isRouteActive(location.pathname, "/signup", true),
-        ariaLabel: "Join CoWatch / Get Started",
+        ariaLabel: "Create Account / Sign Up",
       },
       {
         id: "signin",
@@ -117,15 +107,15 @@ export const MobileBottomNav: React.FC = () => {
         ariaLabel: "Sign in to CoWatch",
       },
       {
-        id: "theme",
-        label: "Theme",
-        icon: isDark ? IconSun : IconMoon,
-        action: toggleTheme,
-        isActive: false,
-        ariaLabel: themeLabel,
+        id: "join",
+        label: "Join",
+        icon: IconUsers,
+        href: "/join",
+        isActive: isRouteActive(location.pathname, "/join", false),
+        ariaLabel: "Join a Watch Party Room",
       },
     ];
-  }, [user, location.pathname, isDark, toggleTheme, themeLabel]);
+  }, [user, location.pathname]);
 
   if (!isVisible) {
     return null;
