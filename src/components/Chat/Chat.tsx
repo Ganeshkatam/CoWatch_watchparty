@@ -11,7 +11,7 @@ import Picker from "@emoji-mart/react";
 import { init } from "emoji-mart";
 import Linkify from "react-linkify";
 import { SecureLink } from "react-secure-link";
-import { IconCheck, IconMoodSmile, IconSend, IconTrash, IconX } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowDown, IconCheck, IconInfoCircle, IconMoodSmile, IconPencil, IconSend, IconTrash, IconX } from "@tabler/icons-react";
 import styles from "./Chat.module.css";
 import { useEffect, useState, useCallback } from 'react';
 import { createUuid } from "../../utils/utils";
@@ -180,6 +180,8 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
       yPosition: 0,
       xPosition: 0,
     },
+    newMessageCount: 0,
+    unreadStartTimestamp: "" as string,
   };
   messagesRef = React.createRef<HTMLDivElement>();
   chatInputRef = React.createRef<HTMLInputElement>();
@@ -196,8 +198,31 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
         this.scrollToBottom();
       }
     }
+
+    if (this.props.chat.length > prevProps.chat.length) {
+      const previousNewest = prevProps.chat.reduce((latest, message) => {
+        const time = new Date(message.timestamp).getTime();
+        return time > latest ? time : latest;
+      }, 0);
+      const newlyArrived = this.props.chat.filter((message) => {
+        const time = new Date(message.timestamp).getTime();
+        return time > previousNewest;
+      });
+
+      if (newlyArrived.length > 0 && !this.state.isNearBottom) {
+        this.setState((state) => ({
+          newMessageCount: state.newMessageCount + newlyArrived.length,
+          unreadStartTimestamp:
+            state.unreadStartTimestamp ||
+            newlyArrived[0].timestamp,
+        }));
+      }
+    }
+
     if (this.props.hide !== prevProps.hide) {
-      this.scrollToBottom();
+      if (!this.props.hide) {
+        this.scrollToBottom();
+      }
     }
   }
 
@@ -280,7 +305,13 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
   };
 
   onScroll = () => {
-    this.setState({ isNearBottom: this.isChatNearBottom() });
+    const nearBottom = this.isChatNearBottom();
+    this.setState({
+      isNearBottom: nearBottom,
+      ...(nearBottom
+        ? { newMessageCount: 0, unreadStartTimestamp: "" }
+        : {}),
+    });
     if (this.messagesRef.current && this.messagesRef.current.scrollTop === 0) {
       if (this.props.onLoadMore) {
         this.props.onLoadMore();
@@ -302,6 +333,11 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
     if (this.messagesRef.current) {
       this.messagesRef.current.scrollTop =
         this.messagesRef.current.scrollHeight;
+      this.setState({
+        isNearBottom: true,
+        newMessageCount: 0,
+        unreadStartTimestamp: "",
+      });
     }
   };
 
@@ -448,44 +484,63 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
                 </div>
               </div>
             )}
-            {this.props.chat.filter((msg) => !msg.cmd).map((msg) => (
-              <ChatMessage
-                key={msg.timestamp + msg.id}
-                className={
-                  msg.id === this.state.reactionMenu.selectedMsgId &&
-                    msg.timestamp === this.state.reactionMenu.selectedMsgTimestamp
-                    ? styles.selected
-                    : ""
-                }
-                message={msg}
-                pictureMap={this.props.pictureMap}
-                nameMap={this.props.nameMap}
-                formatMessage={this.formatMessage}
-                owner={this.props.owner}
-                isHost={this.props.isHost}
-                socket={this.props.socket}
-                isChatDisabled={this.props.isChatDisabled}
-                setReactionMenu={this.setReactionMenu}
-                handleReactionClick={this.handleReactionClick}
-                onReply={this.setReplyTo}
-                onEdit={this.props.onEdit}
-                myClientId={this.getMyClientId()}
-              />
-            ))}
-            {/* <div ref={this.messagesEndRef} /> */}
+            {this.props.chat.map((msg) => {
+              const messageTime = new Date(msg.timestamp).getTime();
+              const unreadStart = this.state.unreadStartTimestamp
+                ? new Date(this.state.unreadStartTimestamp).getTime()
+                : 0;
+              const showNewDivider =
+                Boolean(this.state.unreadStartTimestamp) &&
+                messageTime >= unreadStart &&
+                this.props.chat.findIndex((item) => {
+                  return new Date(item.timestamp).getTime() >= unreadStart;
+                }) === this.props.chat.indexOf(msg);
+
+              return (
+                <React.Fragment key={msg.timestamp + msg.id}>
+                  {showNewDivider && (
+                    <div className={styles.newMessagesDivider} role="status">
+                      <span>New Messages</span>
+                    </div>
+                  )}
+                  <ChatMessage
+                    className={
+                      msg.id === this.state.reactionMenu.selectedMsgId &&
+                        msg.timestamp === this.state.reactionMenu.selectedMsgTimestamp
+                        ? styles.selected
+                        : ""
+                    }
+                    message={msg}
+                    pictureMap={this.props.pictureMap}
+                    nameMap={this.props.nameMap}
+                    formatMessage={this.formatMessage}
+                    owner={this.props.owner}
+                    isHost={this.props.isHost}
+                    socket={this.props.socket}
+                    isChatDisabled={this.props.isChatDisabled}
+                    setReactionMenu={this.setReactionMenu}
+                    handleReactionClick={this.handleReactionClick}
+                    onReply={this.setReplyTo}
+                    onEdit={this.props.onEdit}
+                    myClientId={this.getMyClientId()}
+                  />
+                </React.Fragment>
+              );
+            })}
           </div>
           {!this.state.isNearBottom && (
             <Button
               size="xs"
+              variant="light"
+              color="violet"
+              leftSection={<IconArrowDown size={14} />}
               onClick={this.scrollToBottom}
-              style={{
-                position: "sticky",
-                bottom: 0,
-                display: "block",
-                margin: "0 auto",
-              }}
+              className={styles.unreadJumpButton}
+              aria-label="Jump to newest messages"
             >
-              Jump to bottom
+              {this.state.newMessageCount > 0
+                ? `${this.state.newMessageCount} new message${this.state.newMessageCount === 1 ? "" : "s"}`
+                : "Jump to bottom"}
             </Button>
           )}
         </div>
@@ -674,18 +729,11 @@ const ChatMessage = ({
   const imageMsg = renderImageString(msg);
   return (
     <div
-      style={{
-        display: "flex",
-        gap: "8px",
-        alignItems: "center",
-        position: "relative",
-        overflowWrap: "anywhere",
-      }}
-      className={`${styles.comment} ${className} ${message.replyToUserId === myId ? styles.replyMessage : ""
-        }`}
+      className={`${styles.comment} ${className} ${message.replyToUserId === myId ? styles.replyMessage : ""} ${cmd || system ? styles.systemMessage : ""} ${id === myId ? styles.selfMessage : styles.otherMessage}`}
     >
-      {id ? (
+      {!cmd && id ? (
         <Avatar
+          className={styles.messageAvatar}
           src={
             (id === myId ? (pictureMap[id] || avatarUrl) : pictureMap[id]) ||
             picture ||
@@ -693,53 +741,45 @@ const ChatMessage = ({
           }
         />
       ) : null}
-      <div>
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "flex-end",
-            fontSize: 14,
-          }}
-        >
-          {isHost || id === myId ? (
-            <UserMenu
-              displayName={nameMap[id] || name || 'Unknown'}
-              timestamp={timestamp}
-              socket={socket}
-              userToManage={id}
-              isChatMessage
-              isHost={isHost}
-              selfClientId={myId}
-              trigger={
-                <div
-                  style={{ cursor: "pointer", fontWeight: 700 }}
-                  title={""}
-                  className={`${styles.light} ${styles.hoverEffect}`}
-                >
-                  {Boolean(system) && "System"}
-                  {nameMap[id] || name || 'Unknown'}
+      <div className={styles.messageBody}>
+        <div className={styles.messageHeader}>
+          {!cmd && (
+            <>
+              {isHost || id === myId ? (
+                <UserMenu
+                  displayName={nameMap[id] || name || "Unknown"}
+                  timestamp={timestamp}
+                  socket={socket}
+                  userToManage={id}
+                  isChatMessage
+                  isHost={isHost}
+                  selfClientId={myId}
+                  trigger={
+                    <div className={`${styles.messageAuthor} ${styles.hoverEffect}`}>
+                      {nameMap[id] || name || "Unknown"}
+                    </div>
+                  }
+                />
+              ) : (
+                <div className={styles.messageAuthor}>
+                  {nameMap[id] || name || "Unknown"}
                 </div>
-              }
-            />
-          ) : (
-            <div
-              style={{ fontWeight: 700 }}
-              className={styles.light}
-            >
-              {Boolean(system) && "System"}
-              {nameMap[id] || name || 'Unknown'}
-            </div>
+              )}
+              {id === myId && <span className={styles.selfBadge}>You</span>}
+              {userId === owner && <span className={styles.hostBadge}>Host</span>}
+              <div className={styles.messageTime}>
+                {new Date(timestamp).toLocaleTimeString()} {updatedAt ? "· edited" : ""}
+              </div>
+            </>
           )}
-          <div className={styles.small + " " + styles.dark}>
-            <div title={new Date(timestamp).toLocaleDateString()}>
-              {new Date(timestamp).toLocaleTimeString()} {updatedAt ? "· edited" : ""}
+        </div>
+        <div className={styles.messageBubble}>
+          {cmd || system ? (
+            <div className={styles.systemPill}>
+              <IconInfoCircle size={14} />
+              <span>{cmd ? formatMessage(cmd, msg) : msg}</span>
             </div>
-          </div>
-        </div>
-        <div className={styles.light + " " + styles.system}>
-          {cmd && formatMessage(cmd, msg)}
-        </div>
+          ) : null}
         {message.replyToUserId && (
           <HoverCard withinPortal={false} openDelay={120}>
             <HoverCard.Target>
@@ -826,9 +866,7 @@ const ChatMessage = ({
                 marginRight: 4,
               }}
             >
-              <span role="img" aria-label="Edit" style={{ margin: 0, fontSize: 16 }}>
-                ✎
-              </span>
+              <IconPencil size={16} />
             </ActionIcon>
           )}
           {id && id !== myId && (
@@ -845,9 +883,7 @@ const ChatMessage = ({
                 marginRight: 4,
               }}
             >
-              <span role="img" aria-label="Reply" style={{ margin: 0, fontSize: 16 }}>
-                ↩
-              </span>
+              <IconArrowBackUp size={16} />
             </ActionIcon>
           )}
           <ActionIcon
