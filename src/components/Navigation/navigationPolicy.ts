@@ -71,9 +71,20 @@ export function normalizeAngle(angle: number): number {
 }
 
 export function angularDistance(a: number, b: number): number {
-  let diff = (a - b) % (2 * Math.PI);
-  if (diff < -Math.PI) diff += 2 * Math.PI;
-  if (diff > Math.PI) diff -= 2 * Math.PI;
-  return Math.abs(diff);
+  const diff = Math.abs(a - b) % (2 * Math.PI);
+  return diff > Math.PI ? 2 * Math.PI - diff : diff;
 }
+
+/**
+ * Calculates the stationary radial angle for an orbiting item.
+ * Fans out upward and leftward into the viewport from -82deg to -182deg
+ * so every option is 100% on screen, stationary, and easily accessible.
+ */
+export function getOrbitItemAngle(index: number, total: number): number {
+  if (total <= 1) return -Math.PI / 2;
+  const startAngle = (-82 * Math.PI) / 180;
+  const endAngle = (-182 * Math.PI) / 180;
+  return startAngle + (index / (total - 1)) * (endAngle - startAngle);
+}
+
 

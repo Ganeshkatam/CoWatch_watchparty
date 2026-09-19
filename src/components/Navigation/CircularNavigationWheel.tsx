@@ -11,6 +11,7 @@ import {
   WheelNavigationItem,
   normalizeAngle,
   angularDistance,
+  getOrbitItemAngle,
 } from './navigationPolicy';
 
 export {
@@ -22,6 +23,7 @@ export {
   type WheelNavigationItem,
   normalizeAngle,
   angularDistance,
+  getOrbitItemAngle,
 };
 
 export interface CircularNavigationWheelProps {
@@ -46,7 +48,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   const history = useHistory();
   const [wheelState, setWheelState] = useState<WheelInteractionState>('CLOSED');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [wheelRotation, setWheelRotation] = useState<number>(0);
   const [radius, setRadius] = useState<number>(getResponsiveRadius);
   const [navigatingItemId, setNavigatingItemId] = useState<string | null>(null);
 
@@ -55,8 +56,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   const closingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const dockCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const startPointerAngleRef = useRef<number>(0);
-  const baseRotationRef = useRef<number>(0);
   const isGestureActiveRef = useRef<boolean>(false);
   const prevSelectedIdRef = useRef<string | null>(null);
 
@@ -85,7 +84,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
 
   // Determine current active item as center anchor
   const activeItem = items.find((item) => item.isActive) || items[0];
-  // Orbit items are all other destinations
+  // Orbit items are all other destinations (held at fixed radial positions)
   const orbitingItems = items.filter((item) => item.id !== activeItem?.id);
 
   // Trigger smooth navigation with selected destination moving toward center
@@ -106,7 +105,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
         setWheelState('CLOSED');
         setSelectedItemId(null);
         setNavigatingItemId(null);
-        setWheelRotation(0);
       }, 190);
     },
     [history, onNavigate]
@@ -118,7 +116,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     closingTimerRef.current = setTimeout(() => {
       setWheelState('CLOSED');
       setSelectedItemId(null);
-      setWheelRotation(0);
     }, 180);
   }, [wheelState]);
 
@@ -135,11 +132,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     }
 
     pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
-    startPointerAngleRef.current = Math.atan2(
-      e.clientY - dockCenterRef.current.y,
-      e.clientX - dockCenterRef.current.x
-    );
-    baseRotationRef.current = wheelRotation;
     isGestureActiveRef.current = false;
 
     try {
@@ -172,29 +164,23 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
       setWheelState('OPEN');
     }
 
-    // Process rotation and destination angle selection if wheel is active
+    // Process destination angle selection if wheel is active
     if (wheelState === 'OPEN' || wheelState === 'SELECTING' || isGestureActiveRef.current) {
       const centerX = dockCenterRef.current.x;
       const centerY = dockCenterRef.current.y;
       const pointerAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
       const distFromCenter = Math.hypot(e.clientX - centerX, e.clientY - centerY);
 
-      // Rotate wheel proportionally to angular delta
-      const deltaAngle = pointerAngle - startPointerAngleRef.current;
-      setWheelRotation(baseRotationRef.current + deltaAngle * 0.65);
-
-      // Angular sector selection: resolve nearest destination
-      if (distFromCenter >= 26 && orbitingItems.length > 0) {
+      // Angular sector selection: resolve nearest stationary destination in bottom-right arc
+      if (distFromCenter >= 24 && orbitingItems.length > 0) {
         setWheelState('SELECTING');
-        const angleStep = (2 * Math.PI) / orbitingItems.length;
 
         let nearestItem: WheelNavigationItem | null = null;
         let smallestDiff = Infinity;
 
         orbitingItems.forEach((item, index) => {
-          const itemBaseAngle = -Math.PI / 2 + index * angleStep;
-          const currentVisualAngle = normalizeAngle(itemBaseAngle + wheelRotation);
-          const diff = angularDistance(currentVisualAngle, pointerAngle);
+          const itemBaseAngle = getOrbitItemAngle(index, orbitingItems.length);
+          const diff = angularDistance(itemBaseAngle, pointerAngle);
 
           if (diff < smallestDiff) {
             smallestDiff = diff;
@@ -202,8 +188,9 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           }
         });
 
-        // If closest item is within sector threshold, highlight it
-        if (nearestItem && smallestDiff < (angleStep / 2) * 1.35) {
+        // Sector threshold: within sector span
+        const sectorSpan = Math.PI / Math.max(1, orbitingItems.length);
+        if (nearestItem && smallestDiff < sectorSpan * 0.9) {
           const matchedId = (nearestItem as WheelNavigationItem).id;
           if (matchedId !== prevSelectedIdRef.current) {
             try {
@@ -380,11 +367,10 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
               const isSelected = selectedItemId === item.id;
               const isNavigating = navigatingItemId === item.id;
 
-              // Calculate polar coordinates
-              const itemBaseAngle = -Math.PI / 2 + index * angleStep;
-              const visualAngle = itemBaseAngle + wheelRotation;
-              const x = Math.round(Math.cos(visualAngle) * radius);
-              const y = Math.round(Math.sin(visualAngle) * radius);
+              // Calculate stationary polar coordinates in bottom-right arc (options do not rotate)
+              const itemBaseAngle = getOrbitItemAngle(index, orbitingItems.length);
+              const x = Math.round(Math.cos(itemBaseAngle) * radius);
+              const y = Math.round(Math.sin(itemBaseAngle) * radius);
 
               return (
                 <button

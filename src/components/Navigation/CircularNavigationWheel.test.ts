@@ -7,6 +7,7 @@ import {
   WheelNavigationItem,
   normalizeAngle,
   angularDistance,
+  getOrbitItemAngle,
 } from './navigationPolicy';
 
 function assert(condition: boolean, message: string) {
@@ -67,18 +68,17 @@ assert(!orbitingItems.some((i) => i.id === 'rooms'), 'Active item must not dupli
 assert(orbitingItems.some((i) => i.id === 'theme'), 'Theme action must remain an orbiting destination');
 console.log('  PASS: Item partitioning verified.\n');
 
-// 4. Test Sector Resolution
-console.log('Case 4: Testing Nearest Angular Destination Sector Matching...');
+// 4. Test Sector Resolution in Bottom-Right Arc
+console.log('Case 4: Testing Nearest Angular Destination Sector Matching in Bottom-Right Arc...');
 const N = orbitingItems.length;
-const angleStep = (2 * Math.PI) / N;
 
-// Point directly at index 0 (top: -PI/2)
-const pointerTop = -Math.PI / 2;
+// Point near index 0 (top angle ~ -82deg)
+const pointerTop = (-82 * Math.PI) / 180;
 let nearestIdx = -1;
 let smallestDiff = Infinity;
 
 orbitingItems.forEach((_, idx) => {
-  const itemAngle = normalizeAngle(-Math.PI / 2 + idx * angleStep);
+  const itemAngle = getOrbitItemAngle(idx, N);
   const diff = angularDistance(itemAngle, pointerTop);
   if (diff < smallestDiff) {
     smallestDiff = diff;

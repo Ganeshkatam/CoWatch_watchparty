@@ -10,9 +10,10 @@
   .wheelRoot {
     display: block;
     position: fixed;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    right: 22px;
+    left: auto;
+    transform: none;
     z-index: 850;
     user-select: none;
     -webkit-user-select: none;
@@ -121,16 +122,16 @@
     width: 0;
     height: 0;
     pointer-events: none;
-    z-index: 852;
+    z-index: 860;
   }
 
   /* Destination Circle Button */
   .orbitItem {
     position: absolute;
-    width: 46px;
-    height: 46px;
-    margin-left: -23px;
-    margin-top: -23px;
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    margin-top: -24px;
     border-radius: 50%;
     background: var(--bg-surface, #ffffff);
     border: 1.5px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
@@ -142,6 +143,7 @@
     cursor: pointer;
     pointer-events: auto;
     padding: 0;
+    z-index: 865;
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
                 background-color 0.15s ease,
                 color 0.15s ease,
@@ -169,7 +171,7 @@
     border-color: #ffffff;
     color: #ffffff;
     box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35), 0 8px 24px rgba(139, 92, 246, 0.5);
-    z-index: 860;
+    z-index: 870;
   }
 
   :global([data-mantine-color-scheme="dark"]) .orbitItemSelected {
