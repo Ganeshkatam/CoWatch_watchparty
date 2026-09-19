@@ -368,7 +368,7 @@ export const About: React.FC = () => {
                   <span className={`${styles.labConsoleDot} ${styles.labDot2}`} />
                   <span className={`${styles.labConsoleDot} ${styles.labDot3}`} />
                 </div>
-                <span className={styles.labConsoleTitle}>COWATCH_CORE_ENGINE // v1.2.0</span>
+                <span className={styles.labConsoleTitle}>COWATCH_CORE_ENGINE // v1.2.1</span>
               </div>
 
               <div className={styles.labConsoleNav} role="tablist" aria-label="Engine Components">
@@ -568,7 +568,7 @@ export const About: React.FC = () => {
                   >
                     Designed &amp; Developed by Ganesh Reddy Katam &amp; Prasanna Lakshmi Challa
                   </Button>
-                  <span className={styles.creatorHallmarkDate}>Version 1.2.0 • September 2026</span>
+                  <span className={styles.creatorHallmarkDate}>Version 1.2.1 • September 2026</span>
                 </div>
               </div>
             </div>
