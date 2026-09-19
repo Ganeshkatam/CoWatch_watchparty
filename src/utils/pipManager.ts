@@ -324,11 +324,18 @@ class PiPManager {
   ): Promise<void> => {
     try {
       if (document.pictureInPictureElement === video) {
+        if (this.nativeSession) {
+          this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+          this.nativeSession = null;
+        }
         await document.exitPictureInPicture();
-        this.nativeSession = null;
         this.autoTriggered = false;
         this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
       } else {
+        if (this.nativeSession) {
+          this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+          this.nativeSession = null;
+        }
         this.autoTriggered = autoTriggered;
         this.setState({ stage: "opening", active: false, mode: "native", target: video, autoTriggered });
         const leaveHandler = () => {
@@ -344,7 +351,10 @@ class PiPManager {
       }
     } catch (e) {
       console.warn("Failed to toggle native Picture-in-Picture:", e);
-      this.nativeSession = null;
+      if (this.nativeSession) {
+        this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+        this.nativeSession = null;
+      }
       this.autoTriggered = false;
       this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     }
@@ -400,13 +410,11 @@ class PiPManager {
   };
 
   /**
-   * Handles returning to the tab. Only automatically docks back if the session was auto-triggered.
-   * Manual PiP sessions remain floating when returning to the tab.
+   * Handles returning to the tab. Preserves active Picture-in-Picture sessions
+   * so users can multitask, read chat, or view the room without losing their PiP window.
    */
   public handleTabVisible = async (): Promise<void> => {
-    if (this.state.active && this.autoTriggered) {
-      await this.restoreAndClose();
-    }
+    // Preserve active Picture-in-Picture sessions.
   };
 
   /**
@@ -422,8 +430,11 @@ class PiPManager {
   public restoreAndClose = async (): Promise<void> => {
     this.autoTriggered = false;
     if (this.session) {
-      const { pipWindow, themeObserver } = this.session;
+      const { pipWindow, themeObserver, pagehideHandler } = this.session;
       this.setState({ stage: "closing", active: false, mode: null, target: null, autoTriggered: false });
+      try {
+        pipWindow.removeEventListener("pagehide", pagehideHandler);
+      } catch (_) {}
       themeObserver?.disconnect();
       this.restoreSessionDOM(this.session);
       this.session = null;
@@ -436,6 +447,11 @@ class PiPManager {
       }
       this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     } else if (this.nativeSession) {
+      const { video, leaveHandler } = this.nativeSession;
+      try {
+        video.removeEventListener("leavepictureinpicture", leaveHandler);
+      } catch (_) {}
+      this.nativeSession = null;
       try {
         if (document.pictureInPictureElement) {
           await document.exitPictureInPicture();
@@ -443,7 +459,13 @@ class PiPManager {
       } catch (e) {
         console.warn("Error exiting native PiP:", e);
       }
-      this.nativeSession = null;
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
+    } else if (typeof document !== "undefined" && document.pictureInPictureElement) {
+      try {
+        await document.exitPictureInPicture();
+      } catch (e) {
+        console.warn("Error exiting native PiP element fallback:", e);
+      }
       this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     }
   };
@@ -453,7 +475,10 @@ class PiPManager {
    */
   public cleanup = (): void => {
     if (this.session) {
-      const { pipWindow, themeObserver } = this.session;
+      const { pipWindow, themeObserver, pagehideHandler } = this.session;
+      try {
+        pipWindow.removeEventListener("pagehide", pagehideHandler);
+      } catch (_) {}
       themeObserver?.disconnect();
       this.restoreSessionDOM(this.session);
       this.session = null;
@@ -466,6 +491,11 @@ class PiPManager {
       }
     }
     if (this.nativeSession) {
+      const { video, leaveHandler } = this.nativeSession;
+      try {
+        video.removeEventListener("leavepictureinpicture", leaveHandler);
+      } catch (_) {}
+      this.nativeSession = null;
       try {
         if (document.pictureInPictureElement) {
           document.exitPictureInPicture().catch(() => {});
@@ -473,9 +503,10 @@ class PiPManager {
       } catch (e) {
         // best-effort
       }
-      this.nativeSession = null;
+    } else if (typeof document !== "undefined" && document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
     }
-    this.setState({ stage: "idle", active: false, mode: null, target: null });
+    this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
   };
 }
 

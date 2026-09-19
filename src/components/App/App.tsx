@@ -1641,7 +1641,7 @@ export class App extends React.Component<AppProps, AppState> {
             roomSubtitle: data.subtitle,
             roomLoop: data.loop,
             roomPlaybackRate: data.playbackRate,
-            loading: Boolean(data.video),
+            loading: this.state.roomMedia !== currentMedia ? Boolean(data.video) : this.state.loading,
             nonPlayableMedia: false,
             isVBrowserLarge: data.isVBrowserLarge,
             vBrowserResolution: "1280x720@30",
@@ -4282,8 +4282,9 @@ export class App extends React.Component<AppProps, AppState> {
                       <video
                         style={{
                           display:
-                            (this.usingNative() && !this.state.loading) ||
-                              this.state.fullScreen
+                            this.usingNative() ||
+                            this.state.pipState?.active ||
+                            this.state.fullScreen
                               ? "block"
                               : "none",
                           width: "100%",

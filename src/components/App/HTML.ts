@@ -41,8 +41,10 @@ export class HTML implements Player {
   setSrcAndTime = async (src: string, time: number) => {
     const leftVideo = this.getVideoEl();
     if (leftVideo) {
+      if (leftVideo.src !== src) {
+        leftVideo.src = src;
+      }
       leftVideo.currentTime = time;
-      leftVideo.src = src;
       try {
         if ("autoPictureInPicture" in leftVideo) {
           (leftVideo as any).autoPictureInPicture = pipManager.isSmartPiPEnabled();
