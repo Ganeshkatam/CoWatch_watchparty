@@ -1448,14 +1448,16 @@ export class App extends React.Component<AppProps, AppState> {
           async () => {
             const leftVideo = this.HTMLInterface.getVideoEl();
 
+            const localMedia = isLocalMedia(currentMedia);
+
             // Stop all players
-            // Unless the user is sharing a file, because we play it in leftVideo and capture stream
-            if (!this.isLocalStreamAFile) {
+            // Unless the user is sharing a file or local media, because we play it in leftVideo
+            if (!this.isLocalStreamAFile && !localMedia) {
               this.HTMLInterface.pauseVideo();
             }
             this.YouTubeInterface.stopVideo();
 
-            if (!this.isLocalStreamAFile) {
+            if (!this.isLocalStreamAFile && !localMedia) {
               this.Player().clearState();
             }
             if (data.subtitle) {
@@ -1465,7 +1467,11 @@ export class App extends React.Component<AppProps, AppState> {
               this.Player().setPlaybackRate(data.playbackRate);
             }
 
-            if (isLocalMedia(currentMedia)) {
+            if (localMedia) {
+              const coordState = this.localMediaCoordinator?.getState();
+              if (coordState?.objectUrl && leftVideo && leftVideo.src !== coordState.objectUrl) {
+                leftVideo.src = coordState.objectUrl;
+              }
               if (!data.paused) {
                 this.localPlay();
               }

@@ -36,6 +36,7 @@ export class LocalMediaCoordinator {
   private manifest: LocalMediaManifest | null = null;
   private objectUrl: string | null = null;
   private scheduleTimer: any = null;
+  private lastKnownTime: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
 
   constructor(socket: Socket, roomId: string, userId: string, onStateChange?: (state: LocalMediaState) => void) {
@@ -210,13 +211,13 @@ export class LocalMediaCoordinator {
     if (this.scheduleTimer) clearInterval(this.scheduleTimer);
     this.scheduleTimer = setInterval(() => {
       if (this.scheduler && this.manifest) {
-        // Query current leader time from player if attached, otherwise start from 0
-        this.scheduler.schedule(0);
+        this.scheduler.schedule(this.lastKnownTime);
       }
     }, 250);
   }
 
   public notifyTimelineTick(currentSeconds: number): void {
+    this.lastKnownTime = currentSeconds;
     if (this.scheduler && this.role === "PARTICIPANT_PEER") {
       this.scheduler.schedule(currentSeconds);
     }
@@ -269,6 +270,7 @@ export class LocalMediaCoordinator {
     this.scheduler = null;
     this.manifest = null;
     this.objectUrl = null;
+    this.lastKnownTime = 0;
     this.role = "IDLE";
     this.notifyState();
   }
