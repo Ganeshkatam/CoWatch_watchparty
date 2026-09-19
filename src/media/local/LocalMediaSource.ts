@@ -66,6 +66,7 @@ export class LocalMediaSource {
 
       this.sourceBuffer.addEventListener("updateend", () => {
         this.isAppending = false;
+        this.onReadyCallback?.();
         this.processNextAppend();
       });
 
@@ -118,7 +119,7 @@ export class LocalMediaSource {
   }
 
   public isReady(): boolean {
-    return !!this.sourceBuffer && this.mediaSource?.readyState === "open";
+    return !!this.sourceBuffer && this.mediaSource?.readyState === "open" && this.appendedChunks.size > 0;
   }
 
   public getObjectUrl(): string | null {

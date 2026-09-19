@@ -1171,8 +1171,12 @@ export class App extends React.Component<AppProps, AppState> {
               const leftVideo = this.HTMLInterface.getVideoEl();
               if (leftVideo && leftVideo.src !== state.objectUrl) {
                 leftVideo.src = state.objectUrl;
-                this.setLoadingFalse();
               }
+              this.setState({ nonPlayableMedia: false, loading: false }, () => {
+                if (!this.state.roomPaused && state.isReady) {
+                  this.localPlay();
+                }
+              });
             }
           }
         );
@@ -1673,7 +1677,7 @@ export class App extends React.Component<AppProps, AppState> {
               if (coordState?.objectUrl && leftVideo && leftVideo.src !== coordState.objectUrl) {
                 leftVideo.src = coordState.objectUrl;
               }
-              if (!data.paused) {
+              if (!data.paused && coordState?.objectUrl && coordState?.isReady) {
                 this.localPlay();
               }
               this.setLoadingFalse();
@@ -3216,6 +3220,13 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.roomMedia) {
       return;
     }
+    if (isLocalMedia(this.state.roomMedia)) {
+      const coord = this.localMediaCoordinator?.getState();
+      const leftVideo = this.HTMLInterface.getVideoEl();
+      if (!coord?.objectUrl || !leftVideo?.src || !coord.isReady) {
+        return;
+      }
+    }
     const canAutoplay = this.state.isAutoPlayable || (await testAutoplay());
     this.setState(
       { roomPaused: false, isAutoPlayable: canAutoplay },
@@ -3233,7 +3244,11 @@ export class App extends React.Component<AppProps, AppState> {
           await this.Player().playVideo();
         } catch (e: any) {
           console.warn(e, e.name);
-          if (e.name === "NotSupportedError" && this.usingNative()) {
+          if (
+            e.name === "NotSupportedError" &&
+            this.usingNative() &&
+            !isLocalMedia(this.state.roomMedia)
+          ) {
             this.setState({ loading: false, nonPlayableMedia: true });
           }
         }
