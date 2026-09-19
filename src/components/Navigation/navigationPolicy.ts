@@ -42,3 +42,38 @@ export function isRouteActive(
   const match = matchPath(pathname, { path: targetPath, exact });
   return Boolean(match);
 }
+
+/* ==========================================================================
+   WHEEL NAVIGATION CONFIGURATION & MATHEMATICAL HELPERS
+   ========================================================================== */
+
+export const HOLD_THRESHOLD_MS = 180;
+export const MOVE_JITTER_TOLERANCE_PX = 8;
+export const MIN_RADIUS = 72;
+export const MAX_RADIUS = 100;
+export const DEFAULT_RADIUS = 82;
+
+export interface WheelNavigationItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number | string; stroke?: number | string; className?: string }>;
+  href?: string;
+  action?: () => void;
+  isActive: boolean;
+  ariaLabel: string;
+}
+
+export function normalizeAngle(angle: number): number {
+  let a = angle % (2 * Math.PI);
+  if (a < -Math.PI) a += 2 * Math.PI;
+  if (a > Math.PI) a -= 2 * Math.PI;
+  return a;
+}
+
+export function angularDistance(a: number, b: number): number {
+  let diff = (a - b) % (2 * Math.PI);
+  if (diff < -Math.PI) diff += 2 * Math.PI;
+  if (diff > Math.PI) diff -= 2 * Math.PI;
+  return Math.abs(diff);
+}
+
