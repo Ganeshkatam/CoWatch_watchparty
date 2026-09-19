@@ -48,4 +48,11 @@ export class LocalMediaSignaling {
       mediaId,
     });
   }
+
+  public sendSessionToSocket(targetSocketId: string, manifest: any): void {
+    if (!targetSocketId) return;
+    this.io.to(targetSocketId).emit("LOCAL_MEDIA_ANNOUNCE", {
+      manifest,
+    });
+  }
 }

@@ -10,7 +10,7 @@ export const ScreenShareModal = ({
   closeModal: () => void;
   startScreenShare: (useMediaSoup: boolean) => void;
 }) => {
-  const [selectedMode, setSelectedMode] = useState<"relay" | "p2p">("relay");
+  const [selectedMode, setSelectedMode] = useState<"relay" | "p2p">("p2p");
 
   return (
     <Modal
@@ -25,6 +25,7 @@ export const ScreenShareModal = ({
           Share your screen or a browser tab with everyone in the room. Audio sharing is supported when sharing a browser tab or entire screen.
         </Text>
 
+        {/* Server-based relay (Smooth Sharing) is disabled as server-based media routing is not configured
         <Card 
           withBorder 
           padding="sm" 
@@ -50,14 +51,15 @@ export const ScreenShareModal = ({
             </Text>
           </Stack>
         </Card>
+        */}
 
         <Card 
           withBorder 
           padding="sm" 
           radius="md" 
           style={{ 
-            background: selectedMode === "p2p" ? "rgba(51, 154, 240, 0.1)" : "var(--bg-surface)",
-            borderColor: selectedMode === "p2p" ? "var(--mantine-color-blue-filled)" : "var(--mantine-color-default-border)",
+            background: "rgba(51, 154, 240, 0.1)",
+            borderColor: "var(--mantine-color-blue-filled)",
             cursor: "pointer",
             transition: "all 0.2s ease"
           }}
@@ -69,10 +71,10 @@ export const ScreenShareModal = ({
                 <IconScreenShare size={18} color="var(--mantine-color-blue-filled)" />
                 <Text size="sm" fw={600}>Direct Share</Text>
               </Group>
-              <Badge color="blue" variant="light">Basic</Badge>
+              <Badge color="blue" variant="light">Direct P2P</Badge>
             </Group>
             <Text size="xs" c="dimmed">
-              Shares directly with friends. Use this only if Smooth Sharing doesn't work for you.
+              Shares directly with friends in the room via peer-to-peer WebRTC connection.
             </Text>
           </Stack>
         </Card>
@@ -82,10 +84,10 @@ export const ScreenShareModal = ({
             Cancel
           </Button>
           <Button
-            color={selectedMode === "relay" ? "violet" : "blue"}
+            color="blue"
             leftSection={<IconScreenShare size={16} />}
             onClick={() => {
-              startScreenShare(selectedMode === "relay");
+              startScreenShare(false);
               closeModal();
             }}
           >

@@ -53,4 +53,8 @@ export class LocalMediaSession {
   public terminate(): void {
     this.status = "ENDED";
   }
+
+  public isActive(): boolean {
+    return this.status === "ACTIVE";
+  }
 }

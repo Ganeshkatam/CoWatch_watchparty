@@ -116,6 +116,11 @@ export class LocalMediaAuthority {
       this.registries.set(roomId, registry);
     }
     registry.registerPeer(peerId, socketId);
+
+    const session = this.sessions.get(roomId);
+    if (session && session.isActive() && session.ownerId !== peerId) {
+      this.signaling.sendSessionToSocket(socketId, session.manifest);
+    }
   }
 
   public unregisterPeer(roomId: string, peerId: string): void {

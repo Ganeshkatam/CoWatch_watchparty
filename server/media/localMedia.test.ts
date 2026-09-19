@@ -16,11 +16,16 @@ class MockDatabase {
 
 class MockSignaling {
   public broadcasts: { roomId: string; manifest: any }[] = [];
+  public directEmits: { socketId: string; manifest: any }[] = [];
   public unavailables: { roomId: string; mediaId: string }[] = [];
   public relayedSignals: any[] = [];
 
   broadcastSession(roomId: string, manifest: any) {
     this.broadcasts.push({ roomId, manifest });
+  }
+
+  sendSessionToSocket(socketId: string, manifest: any) {
+    this.directEmits.push({ socketId, manifest });
   }
 
   broadcastUnavailable(roomId: string, mediaId: string) {
@@ -83,12 +88,15 @@ async function runLocalMediaServerTests() {
   assert(db.queries[0].sql.includes("room_media_sessions"), "Test 3: Should insert into room_media_sessions");
   console.log("  PASS [Test 3: Session metadata persisted to PostgreSQL room_media_sessions]");
 
-  // Test 4: Registering peers in registry
+  // Test 4: Registering peers in registry and proactive manifest dispatch
   authority.registerPeer("room_alpha", "peer_2", "socket_peer_2");
   authority.registerPeer("room_alpha", "peer_3", "socket_peer_3");
   const session = authority.getSession("room_alpha");
   assert(session !== null && session.status === "ACTIVE", "Test 4: Session should remain active");
-  console.log("  PASS [Test 4: Peer registration in room registry]");
+  assert(signaling.directEmits.length === 2, "Test 4: Manifest should be proactively sent to registering peers");
+  assert(signaling.directEmits[0].socketId === "socket_peer_2", "Test 4: Peer 2 socket received manifest");
+  assert(signaling.directEmits[1].socketId === "socket_peer_3", "Test 4: Peer 3 socket received manifest");
+  console.log("  PASS [Test 4: Peer registration and proactive manifest dispatch for reconnects]");
 
   // Test 5: WebRTC signal relay
   const signalOk = authority.handleSignalRelay({} as any, "socket_peer_2", {
