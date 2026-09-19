@@ -110,6 +110,7 @@ interface PersistentRoom {
   expiresAt?: Date | string;
   endedAt?: Date | string;
   participants_locked?: boolean;
+  max_participants?: number;
 }
 
 interface LinkAccount {

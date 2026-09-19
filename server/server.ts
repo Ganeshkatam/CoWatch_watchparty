@@ -177,50 +177,92 @@ const io = new Server(server, {
 });
 registerNotificationNamespace(io);
 notificationService.setIo(io);
-io.engine.use(async (req: any, res: Response, next: () => void) => {
-  const rawRoomId = req._query.roomId;
+const rooms = new Map<string, Room>();
+
+export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
+  const cleanId = sanitizeRoomId(rawRoomId);
+  if (!cleanId) return null;
+  const existing = rooms.get(cleanId);
+  if (existing) return existing;
+
+  const shard = resolveShard(cleanId);
+  const isCorrectShard = !config.SHARD || shard === Number(config.SHARD);
+  if (!isCorrectShard) return null;
+
+  if (!postgres) return null;
+  try {
+    const persistedRoom = (
+      await postgres.query<PersistentRoom>(
+        `SELECT * from rooms where "roomId" = $1`,
+        [cleanId],
+      )
+    )?.rows?.[0];
+
+    if (!persistedRoom) return null;
+
+    if (rooms.has(cleanId)) return rooms.get(cleanId)!;
+
+    const data = persistedRoom.data
+      ? JSON.stringify(persistedRoom.data)
+      : undefined;
+    const room = new Room(io, cleanId, data);
+    room.status = persistedRoom.status || 'inactive';
+    room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
+    room.owner_id = persistedRoom.owner_id;
+    room.isPermanent = persistedRoom.isPermanent || false;
+    room.participantsLocked = Boolean(persistedRoom.participants_locked);
+    room.maxParticipants = persistedRoom.max_participants || 10;
+    room.roomTitle = persistedRoom.roomTitle || undefined;
+    rooms.set(cleanId, room);
+    console.log(
+      "loading room %s into memory on shard %s",
+      cleanId,
+      config.SHARD,
+    );
+    return room;
+  } catch (err) {
+    console.error(`[Room] Failed to load room ${cleanId} from database:`, err);
+    return null;
+  }
+}
+
+// Background engine pre-load
+io.engine.use((req: any, res: Response, next: () => void) => {
+  const rawRoomId = req._query?.roomId;
   if (!rawRoomId) {
     return next();
   }
   const roomId = sanitizeRoomId(rawRoomId);
   req._query.roomId = roomId;
-  // Attempt to ensure the room being connected to is loaded in memory
-  // If it doesn't exist, we may fail later with "invalid namespace"
-  const shard = resolveShard(roomId);
-  const key = roomId;
-  // Check to make sure this shard should load this room
-  const isCorrectShard = !config.SHARD || shard === Number(config.SHARD);
-  // Get the room data from postgres
-  const persistedRoom = (
-    await postgres?.query<PersistentRoom>(
-      `SELECT * from rooms where "roomId" = $1`,
-      [key],
-    )
-  )?.rows?.[0];
-  // Don't await after this because we may have a race condition where 2 rquests both try to load the room
-  if (isCorrectShard && !rooms.has(key)) {
-    if (persistedRoom) {
-      const data = persistedRoom.data
-        ? JSON.stringify(persistedRoom.data)
-        : undefined;
-      const room = new Room(io, key, data);
-      room.status = persistedRoom.status || 'inactive';
-      room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
-      room.owner_id = persistedRoom.owner_id;
-      room.isPermanent = persistedRoom.isPermanent || false;
-      room.participantsLocked = Boolean(persistedRoom.participants_locked);
-      rooms.set(key, room);
-      console.log(
-        "loading room %s into memory on shard %s",
-        roomId,
-        config.SHARD,
-      );
-    }
+  if (!rooms.has(roomId)) {
+    getOrCreateRoom(roomId).catch((err) => {
+      console.warn(`[Engine] Background room pre-load error for ${roomId}:`, err);
+    });
   }
   next();
 });
 
-const rooms = new Map<string, Room>();
+// Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
+const dynamicRoomNsp = io.of(/^\/[a-zA-Z0-9_\-\s%]+$/);
+dynamicRoomNsp.use(async (socket, next) => {
+  const cleanId = sanitizeRoomId(socket.nsp.name);
+  if (!cleanId || cleanId === "notifications") {
+    return next();
+  }
+  try {
+    let memoryRoom = rooms.get(cleanId);
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(cleanId)) || undefined;
+    }
+    if (!memoryRoom) {
+      return next(new Error("ROOM_NOT_FOUND"));
+    }
+    next();
+  } catch (err) {
+    console.error(`[Socket] Failed loading dynamic room namespace ${cleanId}:`, err);
+    next(new Error("ROOM_LOAD_ERROR"));
+  }
+});
 // Following functions iterate over in-memory rooms
 setInterval(minuteMetrics, 60 * 1000);
 setInterval(release, releaseInterval);
@@ -2016,7 +2058,10 @@ app.get("/roomInfo/:roomId", async (req, res) => {
 
     const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
     let isHost = isOwner;
-    const memoryRoom = rooms.get(cleanRoomId);
+    let memoryRoom = rooms.get(cleanRoomId);
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
+    }
     let isHostPresent = false;
     if (memoryRoom && typeof memoryRoom.isHostPresent === "function") {
       isHostPresent = memoryRoom.isHostPresent();
@@ -2278,7 +2323,10 @@ app.post("/room-admission/restore", async (req, res) => {
     }
 
     // 2. Check live memory room ban state
-    const memoryRoom = rooms.get(cleanRoomId);
+    let memoryRoom = rooms.get(cleanRoomId);
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
+    }
     if (memoryRoom && memoryRoom.isBanned?.(undefined, callerUid)) {
       res.status(403).json({ valid: false, error: "You have been removed from this room.", code: "BANNED" });
       return;
@@ -2714,7 +2762,10 @@ app.post("/startRoom", async (req, res) => {
   const roomId = sanitizeRoomId(rawRoomId);
 
   try {
-    const memoryRoom = rooms.get(roomId);
+    let memoryRoom = rooms.get(roomId);
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(roomId)) || undefined;
+    }
     if (memoryRoom && !memoryRoom.isHostUid(decoded.uid) && memoryRoom.owner_id !== decoded.uid) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can start this room" } });
       return;
@@ -2739,6 +2790,10 @@ app.post("/startRoom", async (req, res) => {
     if (result.status !== "active") {
       res.status(400).json({ error: { code: "FORBIDDEN", message: "Failed to start the session." } });
       return;
+    }
+
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(roomId)) || undefined;
     }
 
     if (memoryRoom) {

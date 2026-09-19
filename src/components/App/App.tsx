@@ -394,6 +394,7 @@ export class App extends React.Component<AppProps, AppState> {
   hasReceivedRoomState: boolean = false;
   hasReceivedRoster: boolean = false;
   hasAttemptedSocketRestore: boolean = false;
+  hasAttemptedNamespaceRetry: boolean = false;
 
   checkAndAdvanceToReady = () => {
     if (operationCoordinator.checkDualBarrier() || operationCoordinator.isRoomReady()) {
@@ -466,6 +467,41 @@ export class App extends React.Component<AppProps, AppState> {
       }
     } catch (e) {
       console.warn("Manual status check error:", e);
+    }
+  };
+
+  handleHostStartSession = async () => {
+    const cleanId = (this.state.roomId || "").trim();
+    if (!cleanId) return;
+    try {
+      const session = await safeGetSession(1200);
+      const token = session?.data?.session?.access_token;
+      if (token) {
+        const resp = await fetch(`${serverPath}/startRoom`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ roomId: cleanId }),
+        });
+        if (resp.ok) {
+          this.stopWaitingPoll();
+          this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+            if (this.socket && this.socket.connected) {
+              this.socket.emit("CMD:startSession");
+            } else {
+              this.join(cleanId);
+            }
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("handleHostStartSession HTTP start error:", e);
+    }
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("CMD:startSession");
     }
   };
 
@@ -1068,6 +1104,7 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("connect", async () => {
         this.socketConnecting = false;
         this.hasAttemptedSocketRestore = false;
+        this.hasAttemptedNamespaceRetry = false;
         operationCoordinator.beginConnectionEpoch();
         console.log(`[ADMISSION_TRACE:G] Socket CONNECTED successfully for room=${cleanRoomId}`);
         console.log(`[MEDIA_TRACE:H] Video stream re-acquisition check: ourStreamPresent=${Boolean(window.cowatch?.ourStream)}`);
@@ -1134,6 +1171,18 @@ export class App extends React.Component<AppProps, AppState> {
           this.startWaitingPoll(cleanRoomId);
           return;
         } else if (errMsg === "Invalid namespace" || errMsg.includes("ROOM_NOT_FOUND")) {
+          if (!this.hasAttemptedNamespaceRetry) {
+            this.hasAttemptedNamespaceRetry = true;
+            console.log(`[ADMISSION_TRACE:RETRY] Retrying namespace connection for room=${cleanRoomId}`);
+            window.setTimeout(() => {
+              if (this.socket) {
+                this.socket.connect();
+              } else {
+                this.join(cleanRoomId);
+              }
+            }, 800);
+            return;
+          }
           operationCoordinator.markTerminalFailure("Room not found");
           this.setState({ overlayMsg: USER_MESSAGES.ROOM_NOT_FOUND.message, state: "connected", initStage: "failed" });
         } else if (
@@ -3653,9 +3702,7 @@ export class App extends React.Component<AppProps, AppState> {
             hostName={this.state.hostName}
             onCheckStatus={this.handleManualStatusCheck}
             isOwner={this.isRoomOwner()}
-            onStartSession={() => {
-              this.socket?.emit("CMD:startSession");
-            }}
+            onStartSession={this.handleHostStartSession}
           />
         )}
         {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && this.state.overlayMsg && (
