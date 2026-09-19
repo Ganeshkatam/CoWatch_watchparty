@@ -37,7 +37,7 @@ export const Footer = () => (
                 textDecoration: "none",
               }}
             >
-              Ganesh Katam
+              Ganesh Reddy Katam &amp; Prasanna Lakshmi Challa
             </Text>
           </Text>
         </Group>

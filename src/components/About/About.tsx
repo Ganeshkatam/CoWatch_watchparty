@@ -191,14 +191,27 @@ export const About: React.FC = () => {
               <div className={styles.creatorSidebarCard}>
                 <div className={styles.creatorNameRow}>
                   <div className={styles.creatorAvatarOrb} aria-hidden="true">
-                    GK
+                    GRK
                   </div>
                   <div className={styles.creatorMeta}>
-                    <div className={styles.creatorName}>Ganesh Katam</div>
+                    <div className={styles.creatorName}>Ganesh Reddy Katam</div>
                     <div className={styles.creatorRole}>Creator &amp; Architect</div>
                   </div>
                 </div>
-                <div className={styles.creatorPill}>View Developer Profile &rarr;</div>
+                <div className={styles.creatorNameRow} style={{ marginTop: 8 }}>
+                  <div
+                    className={styles.creatorAvatarOrb}
+                    style={{ background: "linear-gradient(135deg, var(--color-teal), #ec4899)" }}
+                    aria-hidden="true"
+                  >
+                    PL
+                  </div>
+                  <div className={styles.creatorMeta}>
+                    <div className={styles.creatorName}>Prasanna Lakshmi Challa</div>
+                    <div className={styles.creatorRole}>Co-Creator &amp; Product Engineer</div>
+                  </div>
+                </div>
+                <div className={styles.creatorPill} style={{ marginTop: 10 }}>View Creators Profile &rarr;</div>
               </div>
             </Link>
           </div>
@@ -529,11 +542,18 @@ export const About: React.FC = () => {
               <div className={styles.creatorSignatureBlock}>
                 <div className={styles.creatorSignMeta}>
                   <div className={styles.creatorSignAvatar} aria-hidden="true">
-                    GK
+                    GRK
+                  </div>
+                  <div
+                    className={styles.creatorSignAvatar}
+                    style={{ background: "linear-gradient(135deg, var(--color-teal), #ec4899)", marginLeft: -10 }}
+                    aria-hidden="true"
+                  >
+                    PL
                   </div>
                   <div className={styles.creatorSignInfo}>
-                    <div className={styles.creatorSignName}>Ganesh Katam</div>
-                    <div className={styles.creatorSignTitle}>Creator &amp; Lead Architect, CoWatch</div>
+                    <div className={styles.creatorSignName}>Ganesh Reddy Katam &amp; Prasanna Lakshmi Challa</div>
+                    <div className={styles.creatorSignTitle}>Creators &amp; Architects, CoWatch</div>
                   </div>
                 </div>
 
@@ -546,7 +566,7 @@ export const About: React.FC = () => {
                     color="violet"
                     rightSection={<IconArrowRight size={12} />}
                   >
-                    Designed &amp; Developed by Ganesh Katam
+                    Designed &amp; Developed by Ganesh Reddy Katam &amp; Prasanna Lakshmi Challa
                   </Button>
                   <span className={styles.creatorHallmarkDate}>Version 1.2.0 • September 2026</span>
                 </div>

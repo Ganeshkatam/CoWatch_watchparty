@@ -85,9 +85,9 @@ const PILLARS: Pillar[] = [
 
 export const Creator: React.FC = () => {
   useDocumentMetadata({
-    title: "Ganesh Katam | Creator & Software Architect of CoWatch",
+    title: "Ganesh Reddy Katam & Prasanna Lakshmi Challa | Creators of CoWatch",
     description:
-      "Explore the engineering portfolio, architectural design principles, and background of Ganesh Katam, creator and lead full-stack architect of CoWatch.",
+      "Explore the engineering portfolio, architectural design principles, and background of Ganesh Reddy Katam and Prasanna Lakshmi Challa, creators of CoWatch.",
   });
 
   return (
@@ -96,61 +96,25 @@ export const Creator: React.FC = () => {
         {/* Hero Presentation Card */}
         <header className={styles.heroCard}>
           <div className={styles.heroContent}>
-            <div className={styles.avatarColumn}>
-              <div className={styles.avatarRing}>
-                <div className={styles.avatarOrb} aria-label="Ganesh Katam Initials">
-                  GK
-                </div>
-              </div>
-              <div className={styles.availabilityBadge}>
-                <span className={styles.availabilityDot} aria-hidden="true" />
-                <span>Creator &amp; Architect</span>
-              </div>
-            </div>
-
             <div className={styles.introColumn}>
               <div className={styles.eyebrow}>
                 <IconSparkles size={16} />
-                <span>Software Architect &amp; Full-Stack Engineer</span>
+                <span>Creators &amp; Software Architects</span>
               </div>
 
-              <h1 className={styles.heroName}>Ganesh Katam</h1>
+              <h1 className={styles.heroName}>The Creators of CoWatch</h1>
 
               <p className={styles.heroHeadline}>
                 Crafting synchronous living rooms, distributed real-time systems, and human-centered web software.
               </p>
 
               <p className={styles.heroBio}>
-                I am the sole creator, designer, and full-stack software architect behind CoWatch. My focus is building
-                resilient, sub-second real-time platforms where deep low-level networking primitives (WebRTC,
-                WebSockets, media pipelines) meet meticulous user experience craft.
+                CoWatch was conceived, designed, and built by Ganesh Reddy Katam and Prasanna Lakshmi Challa. Our focus is
+                building resilient, sub-second real-time platforms where deep low-level networking primitives (WebRTC,
+                WebSockets, media synchronization) meet meticulous user experience craft.
               </p>
 
               <div className={styles.heroActions}>
-                <Button
-                  component="a"
-                  href="https://github.com/Ganeshkatam"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                  variant="default"
-                  leftSection={<IconBrandGithub size={16} />}
-                  id="creator-github-btn"
-                >
-                  GitHub Profile
-                </Button>
-                <Button
-                  component="a"
-                  href="https://github.com/Ganeshkatam/CoWatch_watchparty"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                  variant="default"
-                  leftSection={<IconCode size={16} />}
-                  id="creator-repo-btn"
-                >
-                  CoWatch Repository
-                </Button>
                 <Button
                   component={Link}
                   to="/create"
@@ -173,7 +137,154 @@ export const Creator: React.FC = () => {
                 >
                   Read Manifesto
                 </Button>
+                <Button
+                  component="a"
+                  href="https://github.com/Ganeshkatam/CoWatch_watchparty"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                  variant="default"
+                  leftSection={<IconCode size={16} />}
+                  id="creator-repo-btn"
+                >
+                  CoWatch Repository
+                </Button>
+                <Button
+                  component="a"
+                  href="https://github.com/Ganeshkatam"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                  variant="default"
+                  leftSection={<IconBrandGithub size={16} />}
+                  id="creator-github-btn"
+                >
+                  GitHub Profile
+                </Button>
               </div>
+            </div>
+
+            {/* Creators Profile Cards Grid */}
+            <div className={styles.creatorsGrid}>
+              {/* Creator 1: Ganesh Reddy Katam */}
+              <article className={styles.creatorCard}>
+                <div className={styles.creatorCardTop}>
+                  <div className={styles.avatarRing}>
+                    <div className={styles.avatarOrb} aria-label="Ganesh Reddy Katam Initials">
+                      GRK
+                    </div>
+                  </div>
+                  <div className={styles.creatorCardMeta}>
+                    <div className={styles.availabilityBadge}>
+                      <span className={styles.availabilityDot} aria-hidden="true" />
+                      <span>Creator &amp; Architect</span>
+                    </div>
+                    <h2 className={styles.creatorCardName}>Ganesh Reddy Katam</h2>
+                    <span className={styles.creatorCardRole}>Lead Software Architect &amp; Full-Stack Engineer</span>
+                  </div>
+                </div>
+
+                <p className={styles.creatorCardBio}>
+                  Leading full-stack software architecture, distributed real-time state synchronization, authoritative
+                  media clock drift-compensation algorithms, and WebRTC streaming infrastructure.
+                </p>
+
+                <div className={styles.creatorCardFocus}>
+                  <span className={styles.creatorCardFocusLabel}>Core Engineering Focus</span>
+                  <div className={styles.creatorCardTags}>
+                    <span className={styles.techTag}>Systems Architecture</span>
+                    <span className={styles.techTag}>WebRTC &amp; SFU</span>
+                    <span className={styles.techTag}>Clock Synchronization</span>
+                    <span className={styles.techTag}>PostgreSQL RLS</span>
+                    <span className={styles.techTag}>Node.js Concurrency</span>
+                  </div>
+                </div>
+
+                <div className={styles.heroActions} style={{ marginTop: "auto", paddingTop: 8 }}>
+                  <Button
+                    component="a"
+                    href="https://github.com/Ganeshkatam"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconBrandGithub size={14} />}
+                    id="ganesh-github-btn"
+                  >
+                    GitHub
+                  </Button>
+                  <Button
+                    component="a"
+                    href="mailto:katamganesh61@gmail.com"
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconMail size={14} />}
+                    id="ganesh-email-btn"
+                  >
+                    Email
+                  </Button>
+                </div>
+              </article>
+
+              {/* Creator 2: Prasanna Lakshmi Challa */}
+              <article className={styles.creatorCard}>
+                <div className={styles.creatorCardTop}>
+                  <div className={`${styles.avatarRing} ${styles.avatarRingAlt}`}>
+                    <div className={styles.avatarOrb} aria-label="Prasanna Lakshmi Challa Initials">
+                      PL
+                    </div>
+                  </div>
+                  <div className={styles.creatorCardMeta}>
+                    <div className={styles.availabilityBadge}>
+                      <span className={styles.availabilityDot} aria-hidden="true" />
+                      <span>Co-Creator &amp; Collaborator</span>
+                    </div>
+                    <h2 className={styles.creatorCardName}>Prasanna Lakshmi Challa</h2>
+                    <span className={styles.creatorCardRoleAlt}>Co-Creator &amp; Product Engineer</span>
+                  </div>
+                </div>
+
+                <p className={styles.creatorCardBio}>
+                  Co-architecting the real-time social watching experience, intuitive collaborative playback workflows,
+                  multi-user interaction paradigms, and continuous platform experience testing.
+                </p>
+
+                <div className={styles.creatorCardFocus}>
+                  <span className={styles.creatorCardFocusLabel}>Core Engineering Focus</span>
+                  <div className={styles.creatorCardTags}>
+                    <span className={styles.techTag}>Product Architecture</span>
+                    <span className={styles.techTag}>Collaborative Media UX</span>
+                    <span className={styles.techTag}>Real-Time Interactions</span>
+                    <span className={styles.techTag}>Platform Quality</span>
+                    <span className={styles.techTag}>Room Lifecycle</span>
+                  </div>
+                </div>
+
+                <div className={styles.heroActions} style={{ marginTop: "auto", paddingTop: 8 }}>
+                  <Button
+                    component={Link}
+                    to="/create"
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconCirclePlusFilled size={14} />}
+                    id="prasanna-create-room-btn"
+                  >
+                    Create Room
+                  </Button>
+                  <Button
+                    component="a"
+                    href="https://github.com/Ganeshkatam/CoWatch_watchparty"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconCode size={14} />}
+                    id="prasanna-repo-btn"
+                  >
+                    Repository
+                  </Button>
+                </div>
+              </article>
             </div>
           </div>
         </header>
@@ -336,9 +447,10 @@ export const Creator: React.FC = () => {
         {/* Connect & Colophon */}
         <footer className={styles.colophonCard} id="contact">
           <div className={styles.colophonInfo}>
-            <h2 className={styles.colophonTitle}>Connect with Ganesh Katam</h2>
+            <h2 className={styles.colophonTitle}>Connect with the Creators</h2>
             <p className={styles.colophonSubtitle}>
-              Open to technical discussions, architectural inquiries, collaborations, and engineering feedback.
+              Open to technical discussions, architectural inquiries, collaborations, and engineering feedback with
+              Ganesh Reddy Katam and Prasanna Lakshmi Challa.
             </p>
           </div>
 
