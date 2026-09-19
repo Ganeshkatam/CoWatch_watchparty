@@ -242,6 +242,13 @@ io.engine.use((req: any, res: Response, next: () => void) => {
   next();
 });
 
+// Helper to cleanly unregister room namespaces regardless of slash prefix
+export function unregisterRoomNamespace(roomId: string) {
+  if (!roomId) return;
+  (io as any)._nsps?.delete(roomId);
+  (io as any)._nsps?.delete(`/${roomId}`);
+}
+
 // Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
 const dynamicRoomNsp = io.of(/^\/[a-zA-Z0-9_\-\s%]+$/);
 dynamicRoomNsp.use(async (socket, next) => {
@@ -1828,7 +1835,7 @@ app.delete("/deleteAccount", async (req, res) => {
       if (memRoom) {
         memRoom.destroy();
         rooms.delete(rId);
-        io._nsps.delete("/" + rId);
+        unregisterRoomNamespace(rId);
       }
     }
 
@@ -2018,9 +2025,9 @@ app.get("/roomInfo/:roomId", async (req, res) => {
     : (req.query?.token as string | undefined);
   const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
 
-  if (token && uid) {
+  if (token) {
     try {
-      const decoded = await validateUserToken(String(uid), String(token));
+      const decoded = await validateUserToken(String(uid || ""), String(token));
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
@@ -2086,6 +2093,7 @@ app.get("/roomInfo/:roomId", async (req, res) => {
       maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
       isOwner,
       isHost,
+      owner_id: isOwner ? row.owner_id : null,
       isHostPresent: Boolean(isHostPresent),
       hostName: row.hostName || "Host",
       isPermanent: Boolean(row.isPermanent),
@@ -2961,7 +2969,7 @@ app.delete("/deleteRoom", async (req, res) => {
     if (memoryRoom) {
       memoryRoom.disconnectAllSockets();
       rooms.delete(roomId);
-      io._nsps.delete(roomId);
+      unregisterRoomNamespace(roomId);
       memoryRoom.destroy();
       await memoryRoom.stopVBrowserInternal();
     }
@@ -3054,7 +3062,7 @@ async function saveRooms() {
         rooms.delete(key);
         saveCount += 1;
         // Unregister the namespace to avoid dupes on reload
-        io._nsps.delete(key);
+        unregisterRoomNamespace(key);
       } else if (room.roster.length) {
         room.lastUpdateTime = new Date();
         await room.saveRoom();
