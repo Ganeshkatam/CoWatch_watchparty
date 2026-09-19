@@ -187,18 +187,20 @@ export const About: React.FC = () => {
             </nav>
 
             {/* Creator Profile Hallmark */}
-            <div className={styles.creatorSidebarCard}>
-              <div className={styles.creatorNameRow}>
-                <div className={styles.creatorAvatarOrb} aria-hidden="true">
-                  G
+            <Link to="/creator" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+              <div className={styles.creatorSidebarCard}>
+                <div className={styles.creatorNameRow}>
+                  <div className={styles.creatorAvatarOrb} aria-hidden="true">
+                    GK
+                  </div>
+                  <div className={styles.creatorMeta}>
+                    <div className={styles.creatorName}>Ganesh Katam</div>
+                    <div className={styles.creatorRole}>Creator &amp; Architect</div>
+                  </div>
                 </div>
-                <div className={styles.creatorMeta}>
-                  <div className={styles.creatorName}>Ganesh Katam</div>
-                  <div className={styles.creatorRole}>Creator &amp; Architect</div>
-                </div>
+                <div className={styles.creatorPill}>View Developer Profile &rarr;</div>
               </div>
-              <div className={styles.creatorPill}>Independent Private Studio</div>
-            </div>
+            </Link>
           </div>
         </aside>
 
@@ -536,7 +538,16 @@ export const About: React.FC = () => {
                 </div>
 
                 <div className={styles.creatorHallmark}>
-                  <span className={styles.creatorHallmarkTag}>CoWatch Private Studio</span>
+                  <Button
+                    component={Link}
+                    to="/creator"
+                    size="xs"
+                    variant="light"
+                    color="violet"
+                    rightSection={<IconArrowRight size={12} />}
+                  >
+                    Designed &amp; Developed by Ganesh Katam
+                  </Button>
                   <span className={styles.creatorHallmarkDate}>Version 1.2.0 • September 2026</span>
                 </div>
               </div>

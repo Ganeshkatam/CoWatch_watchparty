@@ -45,6 +45,7 @@ const FAQ = lazy(() => import("./components/Pages/Pages").then((m) => ({ default
 const CommunityGuidelines = lazy(() => import("./components/Pages/CommunityGuidelines").then((m) => ({ default: m.CommunityGuidelines })));
 const Support = lazy(() => import("./components/Support/Support").then((m) => ({ default: m.Support })));
 const About = lazy(() => import("./components/About/About").then((m) => ({ default: m.About })));
+const Creator = lazy(() => import("./components/Creator/Creator").then((m) => ({ default: m.Creator })));
 const NotFound = lazy(() => import("./components/Pages/NotFound").then((m) => ({ default: m.NotFound })));
 const Login = lazy(() => import("./components/Auth/Login").then((m) => ({ default: m.Login })));
 const Signup = lazy(() => import("./components/Auth/Signup").then((m) => ({ default: m.Signup })));
@@ -696,6 +697,13 @@ class CoWatch extends React.Component {
                                 );
                               }}
                             />
+                            <Route path={["/creator", "/developer"]} exact>
+                              <>
+                                <TopBar />
+                                <Creator />
+                                <Footer />
+                              </>
+                            </Route>
                             <Route path="/about" exact>
                               <>
                                 <TopBar />
