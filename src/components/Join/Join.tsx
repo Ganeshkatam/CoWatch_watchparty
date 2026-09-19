@@ -24,7 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
-import { safeGetSession } from "../../utils/supabaseClient";
+import { safeGetSession, getCachedSupabaseToken } from "../../utils/supabaseClient";
 import { serverPath, getOrCreateSessionId } from "../../utils/utils";
 import { parseJoinRoute, normalizeRoomId } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
@@ -558,7 +558,7 @@ export const Join: React.FC = () => {
     if (!cleanRouteRoomId) return;
     try {
       const session = await safeGetSession(1000);
-      const token = session?.data?.session?.access_token;
+      const token = session?.data?.session?.access_token || getCachedSupabaseToken();
       if (!token) {
         setFormError("Authentication required to start session.");
         return;

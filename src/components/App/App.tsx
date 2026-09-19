@@ -44,7 +44,7 @@ import { ErrorModal } from "../Modal/ErrorModal";
 import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
-import { supabase, safeGetSession, getAccessToken } from "../../utils/supabaseClient";
+import { supabase, safeGetSession, getAccessToken, getCachedSupabaseToken, getCachedSupabaseUser } from "../../utils/supabaseClient";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -509,7 +509,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (!cleanId) return;
     try {
       const session = await safeGetSession(1200);
-      const token = session?.data?.session?.access_token;
+      const token = session?.data?.session?.access_token || getCachedSupabaseToken();
       if (token) {
         const resp = await fetch(`${serverPath}/startRoom`, {
           method: "POST",
@@ -522,7 +522,15 @@ export class App extends React.Component<AppProps, AppState> {
         if (resp.ok) {
           this.stopWaitingPoll();
           this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
-            if (this.socket && this.socket.connected) {
+            const safeNamespace = `/${encodeURIComponent(cleanId)}`;
+            const socketNsp = (this.socket as any)?.nsp;
+            const isHealthyOwnerSocket = Boolean(
+              this.socket &&
+              this.socket.connected &&
+              this.isRoomOwner() &&
+              (socketNsp === safeNamespace || socketNsp === `/${cleanId}`)
+            );
+            if (isHealthyOwnerSocket) {
               this.socket.emit("CMD:startSession");
             } else {
               this.teardownSocket();
@@ -535,8 +543,19 @@ export class App extends React.Component<AppProps, AppState> {
     } catch (e) {
       console.warn("handleHostStartSession HTTP start error:", e);
     }
-    if (this.socket && this.socket.connected) {
+    const safeNamespace = `/${encodeURIComponent(cleanId)}`;
+    const socketNsp = (this.socket as any)?.nsp;
+    const isHealthyOwnerSocket = Boolean(
+      this.socket &&
+      this.socket.connected &&
+      this.isRoomOwner() &&
+      (socketNsp === safeNamespace || socketNsp === `/${cleanId}`)
+    );
+    if (isHealthyOwnerSocket) {
       this.socket.emit("CMD:startSession");
+    } else {
+      this.teardownSocket();
+      this.join(cleanId);
     }
   };
 
@@ -799,8 +818,8 @@ export class App extends React.Component<AppProps, AppState> {
       operationCoordinator.setInitStage("authenticating");
       this.setState({ initStage: "authenticating" });
       const sessionData = await safeGetSession(1200);
-      const user = sessionData?.data?.session?.user;
-      const token = sessionData?.data?.session?.access_token;
+      const user = sessionData?.data?.session?.user || getCachedSupabaseUser();
+      const token = sessionData?.data?.session?.access_token || getCachedSupabaseToken();
 
       // Primary check: Query server endpoint /roomInfo/:roomId (server derives isOwner safely)
       try {
@@ -828,7 +847,8 @@ export class App extends React.Component<AppProps, AppState> {
           const requiresPasscode = Boolean(info.requiresPasscode);
           const isHostPresent = Boolean(info.isHostPresent);
           const isWaiting = info.status !== "active";
-          return { isOwner, requiresPasscode, owner_id: null as string | null, isWaiting, isHostPresent };
+          const owner_id = isOwner ? (info.owner_id || user?.id || null) : null;
+          return { isOwner, requiresPasscode, owner_id, isWaiting, isHostPresent };
         }
       } catch (e) {
         console.warn("/roomInfo fetch failed, falling back to Supabase client:", e);
@@ -865,7 +885,7 @@ export class App extends React.Component<AppProps, AppState> {
       const requiresPasscode = Boolean(data.passcode);
       const isWaiting = data.status !== "active";
 
-      return { isOwner, requiresPasscode, owner_id: data.owner_id as string | null, isWaiting };
+      return { isOwner, requiresPasscode, owner_id: isOwner ? (data.owner_id as string | null) : null, isWaiting };
     } catch (e) {
       console.warn("checkRoomAccess error:", e);
       return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
@@ -1024,8 +1044,8 @@ export class App extends React.Component<AppProps, AppState> {
               this.socketConnecting = false;
               return;
             }
-            const retryUser = retrySession?.data?.session?.user;
-            const retryIsOwner = Boolean(retryUser && access.owner_id && access.owner_id === retryUser.id);
+            const retryUser = retrySession?.data?.session?.user || getCachedSupabaseUser();
+            const retryIsOwner = Boolean(access.isOwner || (retryUser && access.owner_id && access.owner_id === retryUser.id));
             if (!retryIsOwner) {
               if (this.startingTimer) {
                 window.clearTimeout(this.startingTimer);
