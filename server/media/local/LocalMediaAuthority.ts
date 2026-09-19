@@ -9,6 +9,25 @@ import { LocalMediaPeerRegistry } from "./LocalMediaPeerRegistry.ts";
 import { LocalMediaSession, type ServerLocalMediaManifest } from "./LocalMediaSession.ts";
 import { LocalMediaSignaling, type SignalMessagePayload } from "./LocalMediaSignaling.ts";
 
+function toUuid(id: string): string {
+  if (!id) return "00000000-0000-4000-a000-000000000000";
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  let hash1 = 0x811c9dc5;
+  let hash2 = 0xcbf29ce4;
+  for (let i = 0; i < id.length; i++) {
+    const code = id.charCodeAt(i);
+    hash1 = Math.imul(hash1 ^ code, 0x01000193);
+    hash2 = Math.imul(hash2 ^ code, 0x5bd1e995);
+  }
+  const h1 = (hash1 >>> 0).toString(16).padStart(8, "0");
+  const h2 = (hash2 >>> 0).toString(16).padStart(8, "0");
+  const h3 = ((hash1 ^ hash2) >>> 0).toString(16).padStart(8, "0");
+  const h4 = (((hash1 * 31) ^ (hash2 * 17)) >>> 0).toString(16).padStart(8, "0");
+  const raw = `${h1}${h2}${h3}${h4}`;
+  return `${raw.substring(0, 8)}-${raw.substring(8, 12)}-4${raw.substring(13, 16)}-a${raw.substring(17, 20)}-${raw.substring(20, 32)}`;
+}
+
 export class LocalMediaAuthority {
   private db: DatabasePool | Pool | null;
   private signaling: LocalMediaSignaling;
@@ -43,6 +62,9 @@ export class LocalMediaAuthority {
 
     if (this.db) {
       try {
+        const validMediaId = toUuid(manifest.mediaId);
+        const validOwnerId = toUuid(actorId || manifest.ownerId);
+
         await (this.db as any).query(
           `INSERT INTO public.room_media_sessions (
             media_id, room_id, owner_user_id, status, filename, mime_type, byte_size,
@@ -52,9 +74,9 @@ export class LocalMediaAuthority {
           ) ON CONFLICT (media_id) DO UPDATE SET
             status = 'ACTIVE'`,
           [
-            manifest.mediaId,
+            validMediaId,
             roomId,
-            actorId,
+            validOwnerId,
             manifest.filename,
             manifest.mimeType,
             manifest.byteLength,

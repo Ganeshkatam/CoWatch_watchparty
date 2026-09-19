@@ -2369,6 +2369,13 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.localMediaCoordinator) {
       try {
         const objectUrl = await this.localMediaCoordinator.selectLocalFile(file);
+        const manifest = this.localMediaCoordinator.getState().manifest;
+        if (manifest) {
+          this.setState({
+            roomMedia: "localmedia://" + manifest.mediaId,
+            loading: false,
+          });
+        }
         const leftVideo = this.HTMLInterface.getVideoEl();
         if (leftVideo) {
           leftVideo.src = objectUrl;

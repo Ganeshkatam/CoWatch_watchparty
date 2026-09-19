@@ -6,6 +6,17 @@
 import { LocalMediaChunk, LocalMediaChunkHeader, LocalMediaManifest, calculateTotalChunks, detectMediaContainer } from "./LocalMediaManifest";
 import { cyrb53 } from "../../utils/hash";
 
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export class LocalMediaChunker {
   private file: File | Blob;
   private filename: string;
@@ -33,7 +44,7 @@ export class LocalMediaChunker {
     this.mimeType = file.type || "video/mp4";
     this.chunkSize = options?.chunkSize || 131072; // 128 KB standard chunk size
     this.totalChunks = calculateTotalChunks(this.file.size, this.chunkSize);
-    this.mediaId = options?.mediaId || `media_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    this.mediaId = options?.mediaId || generateUUID();
     this.epoch = options?.epoch ?? 1;
     this.durationSeconds = options?.durationSeconds ?? 0;
     this.contentHash = `${this.file.size}_${cyrb53(this.filename)}`;

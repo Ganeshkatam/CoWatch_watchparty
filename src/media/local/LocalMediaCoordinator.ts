@@ -93,9 +93,11 @@ export class LocalMediaCoordinator {
     // 2. Host directly creates an Object URL from local file for instant zero-copy playback
     this.objectUrl = URL.createObjectURL(file);
 
-    // 3. Cache all host chunks for seeding to peers
-    this.cache = new LocalMediaCache(this.manifest, this.manifest.totalChunks);
-    for (let i = 0; i < this.manifest.totalChunks; i++) {
+    // 3. Cache only initial header chunks (first 2 chunks, ~256KB) for fast startup.
+    // Remaining chunks are read from disk on-demand via chunker in handleChunkRequested.
+    this.cache = new LocalMediaCache(this.manifest, 500);
+    const initChunksToPreload = Math.min(2, this.manifest.totalChunks);
+    for (let i = 0; i < initChunksToPreload; i++) {
       const chunk = await this.chunker.getChunk(i);
       if (chunk) {
         this.cache.putChunk(i, chunk.data);
@@ -194,12 +196,19 @@ export class LocalMediaCoordinator {
     this.notifyState();
   }
 
-  private handleChunkRequested(requesterId: string, chunkIndices: number[]): void {
+  private async handleChunkRequested(requesterId: string, chunkIndices: number[]): Promise<void> {
     const peer = this.peers.get(requesterId);
-    if (!peer || !this.cache) return;
+    if (!peer) return;
 
     for (const idx of chunkIndices) {
-      const chunkData = this.cache.getChunk(idx);
+      let chunkData = this.cache?.getChunk(idx);
+      if (!chunkData && this.chunker) {
+        const chunk = await this.chunker.getChunk(idx);
+        if (chunk) {
+          chunkData = chunk.data;
+          this.cache?.putChunk(idx, chunkData);
+        }
+      }
       if (chunkData) {
         const sent = peer.sendChunk(idx, chunkData);
         if (!sent) break; // Backpressure reached
@@ -225,7 +234,9 @@ export class LocalMediaCoordinator {
 
   public getState(): LocalMediaState {
     const total = this.manifest?.totalChunks || 1;
-    const available = this.cache?.getAvailableChunks().length || 0;
+    const available = this.role === "HOST_SEED"
+      ? total
+      : (this.cache?.getAvailableChunks().length || 0);
     const bufferedPercent = Math.min(100, Math.round((available / total) * 100));
 
     return {

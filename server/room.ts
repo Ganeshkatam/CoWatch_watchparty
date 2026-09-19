@@ -1270,14 +1270,11 @@ export class Room {
           socket.emit("CMD:error", { code: "FORBIDDEN" });
           return;
         }
-        if (!socket.uid) {
-          socket.emit("CMD:error", { code: "AUTH_REQUIRED", message: "Authentication required to share local media." });
-          return;
-        }
+        const actorId = socket.uid || socket.clientId || "";
         const session = await this.localMediaAuthority.announceSession(
           this.roomId,
-          socket.uid,
-          this.isHost(socket),
+          actorId,
+          auth.allowed,
           data?.manifest
         );
         if (session) {

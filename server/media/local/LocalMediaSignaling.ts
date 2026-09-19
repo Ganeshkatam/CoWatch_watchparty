@@ -27,7 +27,8 @@ export class LocalMediaSignaling {
   ): boolean {
     if (!targetSocketId) return false;
 
-    this.io.to(targetSocketId).emit("LOCAL_MEDIA_SIGNAL", {
+    const ns = typeof this.io.of === "function" ? this.io.of(payload.roomId) : this.io;
+    ns.to(targetSocketId).emit("LOCAL_MEDIA_SIGNAL", {
       fromPeerId: payload.fromPeerId,
       toPeerId: payload.toPeerId,
       signal: payload.signal,
@@ -38,14 +39,26 @@ export class LocalMediaSignaling {
   }
 
   public broadcastSession(roomId: string, manifest: any): void {
-    this.io.to(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
-      manifest,
-    });
+    if (typeof this.io.of === "function") {
+      this.io.of(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
+        manifest,
+      });
+    } else {
+      this.io.to(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
+        manifest,
+      });
+    }
   }
 
   public broadcastUnavailable(roomId: string, mediaId: string): void {
-    this.io.to(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
-      mediaId,
-    });
+    if (typeof this.io.of === "function") {
+      this.io.of(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
+        mediaId,
+      });
+    } else {
+      this.io.to(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
+        mediaId,
+      });
+    }
   }
 }
