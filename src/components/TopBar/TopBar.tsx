@@ -357,14 +357,18 @@ const NavigationMenuContent: React.FC<{
             <IconHelpCircle size={18} stroke={1.5} />
             <span>Support &amp; Help</span>
           </Link>
-          <Link to="/about" className={styles.drawerNavLink} onClick={onClose}>
-            <IconInfoCircle size={18} stroke={1.5} />
-            <span>About</span>
-          </Link>
-          <Link to="/creator" className={styles.drawerNavLink} onClick={onClose}>
-            <IconUser size={18} stroke={1.5} />
-            <span>Creator</span>
-          </Link>
+          {!user && (
+            <>
+              <Link to="/about" className={styles.drawerNavLink} onClick={onClose}>
+                <IconInfoCircle size={18} stroke={1.5} />
+                <span>About</span>
+              </Link>
+              <Link to="/creator" className={styles.drawerNavLink} onClick={onClose}>
+                <IconUser size={18} stroke={1.5} />
+                <span>Creator</span>
+              </Link>
+            </>
+          )}
         </div>
 
         {/* In-room actions if applicable */}
@@ -614,24 +618,28 @@ export const TopBar = (props: {
               Join
             </Link>
           )}
-          <Link
-            to="/about"
-            className={`${styles.middleNavLink} ${location.pathname === "/about"
-              ? styles.middleNavLinkActive
-              : ""
-              }`}
-          >
-            About
-          </Link>
-          <Link
-            to="/creator"
-            className={`${styles.middleNavLink} ${location.pathname === "/creator" || location.pathname === "/developer"
-              ? styles.middleNavLinkActive
-              : ""
-              }`}
-          >
-            Creator
-          </Link>
+          {!context.user && (
+            <>
+              <Link
+                to="/about"
+                className={`${styles.middleNavLink} ${location.pathname === "/about"
+                  ? styles.middleNavLinkActive
+                  : ""
+                  }`}
+              >
+                About
+              </Link>
+              <Link
+                to="/creator"
+                className={`${styles.middleNavLink} ${location.pathname === "/creator" || location.pathname === "/developer"
+                  ? styles.middleNavLinkActive
+                  : ""
+                  }`}
+              >
+                Creator
+              </Link>
+            </>
+          )}
         </nav>
       )}
 
