@@ -26,7 +26,7 @@ export interface UpdateCheckResult {
 export const FALLBACK_BUILD_INFO: AppBuildInfo = {
   buildId: "development",
   commit: "dev",
-  appVersion: "1.2.1",
+  appVersion: "1.2.2",
   protocolVersion: 1,
   deploymentTime: new Date(0).toISOString(),
 };

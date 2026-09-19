@@ -37,7 +37,7 @@ function generateBuildId(commitSha: string): string {
 const commitSha = getCommitSha();
 const buildId = generateBuildId(commitSha);
 
-let appVersion = "1.2.1";
+let appVersion = "1.2.2";
 try {
   const pkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
   if (pkg.version) {
