@@ -12,7 +12,6 @@ export const HIDDEN_BOTTOM_NAV_ROUTES: RouteVisibilityRule[] = [
   { path: "/forgot-password", exact: true },
   { path: "/reset-password", exact: true },
   { path: "/verify-email", exact: true },
-  { path: "/join", exact: false },
   { path: "/preflight/:roomId", exact: false },
 ];
 

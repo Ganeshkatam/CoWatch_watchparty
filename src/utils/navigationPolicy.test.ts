@@ -23,6 +23,7 @@ assert(isBottomNavVisible("/"), "Should show on /");
 assert(isBottomNavVisible("/myrooms"), "Should show on /myrooms");
 assert(isBottomNavVisible("/myrooms/my-room-123"), "Should show on /rooms/:roomId");
 assert(isBottomNavVisible("/create"), "Should show on /create");
+assert(isBottomNavVisible("/join"), "Should show on /join");
 assert(isBottomNavVisible("/profile"), "Should show on /profile");
 assert(isBottomNavVisible("/account/profile"), "Should show on /account/profile");
 assert(isBottomNavVisible("/account/preferences"), "Should show on /account/preferences");
@@ -42,6 +43,8 @@ assert(!isRouteActive("/myrooms", "/"), "Root should not be active on /myrooms")
 assert(isRouteActive("/myrooms", "/myrooms"), "/myrooms should be active on /myrooms");
 assert(!isRouteActive("/room/detail-123", "/myrooms"), "/myrooms should NOT be active on /rooms/:roomId");
 assert(isRouteActive("/create", "/create"), "/create should be active on /create");
+assert(isRouteActive("/join", "/join"), "/join should be active on /join");
+assert(isRouteActive("/join/room-123", "/join", false), "/join/room-123 should be active on /join prefix");
 assert(isRouteActive("/account/profile", "/account/profile"), "/account/profile should be active on /account/profile");
 assert(isRouteActive("/faq", "/faq"), "/faq should be active on /faq");
 assert(isRouteActive("/about", "/about"), "/about should be active on /about");
