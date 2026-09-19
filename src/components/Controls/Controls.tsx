@@ -352,12 +352,30 @@ export const Controls = (props: ControlsProps) => {
         title="Fullscreen"
       />
       {props.isPiPSupported && props.togglePiP && (
-        <IconPictureInPicture
-          onClick={props.togglePiP}
-          className={`${styles.action} ${styles.desktopOnly}`}
-          style={props.isPiPActive ? { color: "var(--color-violet, #8B5CF6)" } : undefined}
-          title={props.isPiPActive ? "Exit Picture-in-Picture" : "Picture in Picture"}
-        />
+        <Tooltip
+          label={
+            props.isYouTube
+              ? "YouTube: Right-click video twice for Picture-in-Picture"
+              : props.isPiPActive
+              ? "Exit Picture-in-Picture"
+              : "Picture in Picture"
+          }
+          withArrow
+          withinPortal
+        >
+          <IconPictureInPicture
+            onClick={props.togglePiP}
+            className={`${styles.action} ${styles.desktopOnly}`}
+            style={props.isPiPActive ? { color: "var(--color-violet, #8B5CF6)" } : undefined}
+            title={
+              props.isYouTube
+                ? "YouTube: Right-click video twice for Picture-in-Picture"
+                : props.isPiPActive
+                ? "Exit Picture-in-Picture"
+                : "Picture in Picture"
+            }
+          />
+        </Tooltip>
       )}
       {muted ? (
         <IconVolumeOff

@@ -682,13 +682,18 @@ export class App extends React.Component<AppProps, AppState> {
           }
           : undefined,
       enterpictureinpicture: () => {
-        if (
-          pipManager.isSmartPiPEnabled() &&
-          !this.state.roomPaused &&
-          Boolean(this.state.roomMedia) &&
-          this.Player().isPictureInPictureSupported()
-        ) {
-          this.Player().togglePictureInPicture(true);
+        try {
+          if (
+            pipManager.isSmartPiPEnabled() &&
+            !this.state.roomPaused &&
+            Boolean(this.state.roomMedia) &&
+            !this.usingYoutube() &&
+            this.Player().isPictureInPictureSupported()
+          ) {
+            this.Player().togglePictureInPicture(true);
+          }
+        } catch (e) {
+          console.warn("MediaSession PiP handler error:", e);
         }
       },
     };
@@ -740,36 +745,40 @@ export class App extends React.Component<AppProps, AppState> {
   }
 
   handleVisibilityChange = async () => {
-    if (typeof document === "undefined") return;
+    try {
+      if (typeof document === "undefined") return;
 
-    if (document.hidden) {
-      // Do not automatically trigger Smart PiP / Document PiP relocation for YouTube on tab backgrounding.
-      // YouTube iframe relocation and Document PiP requestWindow require explicit user gestures and break iframe state.
-      if (this.usingYoutube()) {
-        return;
-      }
-
-      // Authoritative trigger: Only trigger if media is playing and Smart PiP is enabled
-      const isPlaying = !this.state.roomPaused && Boolean(this.state.roomMedia);
-      const isPiPSupported = this.Player().isPictureInPictureSupported();
-      const currentPipState = pipManager.getState();
-
-      if (
-        pipManager.isSmartPiPEnabled() &&
-        isPlaying &&
-        isPiPSupported &&
-        !currentPipState.active &&
-        currentPipState.stage === "idle"
-      ) {
-        try {
-          await this.Player().togglePictureInPicture(true);
-        } catch (e) {
-          console.warn("Smart PiP auto-trigger failed:", e);
+      if (document.hidden) {
+        // Do not automatically trigger Smart PiP / Document PiP relocation for YouTube on tab backgrounding.
+        // YouTube iframe relocation and Document PiP requestWindow require explicit user gestures and break iframe state.
+        if (this.usingYoutube()) {
+          return;
         }
+
+        // Authoritative trigger: Only trigger if media is playing and Smart PiP is enabled
+        const isPlaying = !this.state.roomPaused && Boolean(this.state.roomMedia);
+        const isPiPSupported = this.Player().isPictureInPictureSupported();
+        const currentPipState = pipManager.getState();
+
+        if (
+          pipManager.isSmartPiPEnabled() &&
+          isPlaying &&
+          isPiPSupported &&
+          !currentPipState.active &&
+          currentPipState.stage === "idle"
+        ) {
+          try {
+            await this.Player().togglePictureInPicture(true);
+          } catch (e) {
+            console.warn("Smart PiP auto-trigger failed:", e);
+          }
+        }
+      } else {
+        // Tab visible again: only dock back if this was an auto-triggered session
+        await pipManager.handleTabVisible();
       }
-    } else {
-      // Tab visible again: only dock back if this was an auto-triggered session
-      await pipManager.handleTabVisible();
+    } catch (err) {
+      console.warn("Error in handleVisibilityChange:", err);
     }
   };
 

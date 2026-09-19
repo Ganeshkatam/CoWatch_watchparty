@@ -135,6 +135,20 @@ class PiPManager {
       return false;
     }
 
+    // Safety guard: Cross-origin iframes (such as YouTube) must NEVER be relocated across window documents.
+    // Relocating an iframe causes its browsing context to be discarded and reloaded, breaking postMessage APIs,
+    // desyncing media playback, and causing unhandled React DOM reconciliation errors on restore.
+    const isIframe =
+      (typeof HTMLIFrameElement !== "undefined" && target instanceof HTMLIFrameElement) ||
+      target.tagName === "IFRAME" ||
+      (typeof target.querySelector === "function" && Boolean(target.querySelector("iframe")));
+
+    if (isIframe) {
+      console.warn("Document PiP aborted: target contains an iframe which cannot be safely relocated across documents.");
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
+      return false;
+    }
+
     if (this.state.stage !== "idle") {
       if (this.state.active && this.state.target === target) {
         await this.restoreAndClose();
@@ -147,6 +161,7 @@ class PiPManager {
     const originalParent = target.parentElement;
     if (!originalParent) {
       console.warn("PiP target has no parent element to attach placeholder.");
+      this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
       return false;
     }
 
@@ -305,13 +320,18 @@ class PiPManager {
 
   private restoreSessionDOM(session: PiPSession) {
     try {
-      if (session.placeholder.parentElement) {
+      if (session.placeholder && session.placeholder.parentElement) {
         session.placeholder.replaceWith(session.target);
-      } else if (session.originalParent) {
+      } else if (
+        session.originalParent &&
+        typeof document !== "undefined" &&
+        document.body &&
+        document.body.contains(session.originalParent)
+      ) {
         session.originalParent.appendChild(session.target);
       }
     } catch (e) {
-      console.warn("Failed to restore PiP target DOM:", e);
+      console.warn("Failed to restore PiP target DOM safely:", e);
     }
   }
 
@@ -369,31 +389,52 @@ class PiPManager {
     fallbackVideo?: HTMLVideoElement | null,
     autoTriggered: boolean = false
   ): Promise<void> => {
-    if (this.state.active || this.state.stage === "active") {
-      await this.restoreAndClose();
-      return;
-    }
+    try {
+      if (this.state.active || this.state.stage === "active") {
+        await this.restoreAndClose();
+        return;
+      }
 
-    if (this.state.stage !== "idle") {
-      return;
-    }
+      if (this.state.stage !== "idle") {
+        return;
+      }
 
-    // 1. Prefer native video PiP whenever an HTMLVideoElement is available or queryable
-    const videoEl =
-      fallbackVideo ||
-      (target instanceof HTMLVideoElement ? target : (target.querySelector?.("video") as HTMLVideoElement | null));
-    if (videoEl && this.isNativePiPSupported(videoEl)) {
-      await this.toggleNativePiP(videoEl, autoTriggered);
-      return;
-    }
+      // 1. Prefer native video PiP whenever an HTMLVideoElement is available or queryable
+      const isVideoElement =
+        (typeof HTMLVideoElement !== "undefined" && target instanceof HTMLVideoElement) ||
+        target.tagName === "VIDEO";
+      const videoEl =
+        fallbackVideo ||
+        (isVideoElement
+          ? (target as HTMLVideoElement)
+          : (typeof target.querySelector === "function"
+              ? (target.querySelector("video") as HTMLVideoElement | null)
+              : null));
+      if (videoEl && this.isNativePiPSupported(videoEl)) {
+        await this.toggleNativePiP(videoEl, autoTriggered);
+        return;
+      }
 
-    // 2. Fall back to Document PiP for elements without native video (e.g. YouTube iframes)
-    if (this.isDocumentPiPSupported()) {
-      await this.openDocumentPiP(target, undefined, autoTriggered);
-      return;
-    }
+      // 2. Guard against cross-origin iframes before attempting Document PiP
+      const isIframeTarget =
+        (typeof HTMLIFrameElement !== "undefined" && target instanceof HTMLIFrameElement) ||
+        target.tagName === "IFRAME" ||
+        (typeof target.querySelector === "function" && Boolean(target.querySelector("iframe")));
+      if (isIframeTarget) {
+        console.warn("Document PiP skipped: cross-origin iframes cannot be safely relocated across documents.");
+        return;
+      }
 
-    console.warn("Picture-in-Picture is not supported for this media in this browser.");
+      // 3. Fall back to Document PiP for non-video DOM containers
+      if (this.isDocumentPiPSupported()) {
+        await this.openDocumentPiP(target, undefined, autoTriggered);
+        return;
+      }
+
+      console.warn("Picture-in-Picture is not supported for this media in this browser.");
+    } catch (e) {
+      console.warn("Error in pipManager toggle:", e);
+    }
   };
 
   /**
@@ -435,8 +476,14 @@ class PiPManager {
       try {
         pipWindow.removeEventListener("pagehide", pagehideHandler);
       } catch (_) {}
-      themeObserver?.disconnect();
-      this.restoreSessionDOM(this.session);
+      try {
+        themeObserver?.disconnect();
+      } catch (_) {}
+      try {
+        this.restoreSessionDOM(this.session);
+      } catch (e) {
+        console.warn("Error restoring session DOM:", e);
+      }
       this.session = null;
       try {
         if (pipWindow && !pipWindow.closed) {
@@ -453,19 +500,18 @@ class PiPManager {
       } catch (_) {}
       this.nativeSession = null;
       try {
-        if (document.pictureInPictureElement) {
+        if (
+          typeof document !== "undefined" &&
+          document.pictureInPictureElement &&
+          document.pictureInPictureElement === video
+        ) {
           await document.exitPictureInPicture();
         }
       } catch (e) {
         console.warn("Error exiting native PiP:", e);
       }
       this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
-    } else if (typeof document !== "undefined" && document.pictureInPictureElement) {
-      try {
-        await document.exitPictureInPicture();
-      } catch (e) {
-        console.warn("Error exiting native PiP element fallback:", e);
-      }
+    } else {
       this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
     }
   };

@@ -56,5 +56,18 @@ assert(initialState.autoTriggered === false, "initialState.autoTriggered should 
 await pipManager.handleTabVisible();
 assert(pipManager.getState().stage === "idle", "handleTabVisible when idle remains idle");
 
+// 8. Iframe safety guard: targets containing iframes must be safely rejected without mutating stage
+const fakeIframeContainer = {
+  querySelector: (selector: string) => (selector === "iframe" ? {} : null),
+  parentElement: {},
+} as unknown as HTMLElement;
+const openResult = await pipManager.openDocumentPiP(fakeIframeContainer);
+assert(openResult === false, "openDocumentPiP must return false for iframe targets");
+assert(pipManager.getState().stage === "idle", "Stage must remain idle after iframe rejection");
+
+// 9. toggle with iframe container must be safe and never throw
+await pipManager.toggle(fakeIframeContainer);
+assert(pipManager.getState().stage === "idle", "toggle with iframe container remains safely idle");
+
 unsubscribe();
 console.log("All pipManager tests passed successfully!");

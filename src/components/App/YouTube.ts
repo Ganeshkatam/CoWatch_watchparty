@@ -2,6 +2,7 @@ import { MediaPlayerClass } from "dashjs";
 import { Player } from "./Player";
 import { pipManager } from "../../utils/pipManager";
 import { getYoutubeVideoID } from "../../utils/utils";
+import { notifications } from "@mantine/notifications";
 
 export class YouTube implements Player {
   coWatchYTPlayer: YT.Player | null;
@@ -235,15 +236,25 @@ export class YouTube implements Player {
   };
 
   isPictureInPictureSupported = (): boolean => {
-    return pipManager.isDocumentPiPSupported();
+    return true;
   };
 
   togglePictureInPicture = async (autoTriggered: boolean = false): Promise<void> => {
-    const isAuto = autoTriggered === true;
-    const container =
-      document.getElementById("leftYtContainer") ||
-      document.getElementById("leftYt");
-    if (!container) return;
-    await pipManager.toggle(container, null, isAuto);
+    try {
+      if (autoTriggered) {
+        return;
+      }
+      notifications.show({
+        id: "youtube-pip-guide",
+        title: "YouTube Picture-in-Picture",
+        message:
+          "YouTube restricts programmatic Picture-in-Picture due to browser security policies. To watch in Picture-in-Picture without interrupting playback, right-click the video twice and select 'Picture in picture'.",
+        color: "violet",
+        autoClose: 6000,
+        withCloseButton: true,
+      });
+    } catch (e) {
+      console.warn("YouTube PiP notification error:", e);
+    }
   };
 }
