@@ -3995,7 +3995,7 @@ export class App extends React.Component<AppProps, AppState> {
                 this.setState({
                   currentTab: tab,
                   showChatColumn: true,
-                  ...(tab === "chat" ? { unreadCount: 0 } : {}),
+                  unreadCount: tab === "chat" ? 0 : this.state.unreadCount,
                 }, () => {
                   this.syncPanelToUrl(tab, true);
                 });
@@ -4405,9 +4405,7 @@ export class App extends React.Component<AppProps, AppState> {
                   const nextTab = val ?? "people";
                   this.setState({
                     currentTab: nextTab,
-                    ...(nextTab === "chat" && this.state.showChatColumn
-                      ? { unreadCount: 0 }
-                      : {}),
+                    unreadCount: nextTab === "chat" && this.state.showChatColumn ? 0 : this.state.unreadCount,
                   }, () => {
                     this.syncPanelToUrl(nextTab, this.state.showChatColumn);
                   });

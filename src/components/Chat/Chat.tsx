@@ -162,10 +162,30 @@ interface ChatProps {
   clearChat?: () => void;
 }
 
-export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: () => void, hasMore?: boolean, isLoading?: boolean }> {
+interface ChatState {
+  chatMsg: string;
+  replyTo?: { id: string; timestamp: string; msg?: string };
+  isNearBottom: boolean;
+  isPickerOpen: boolean;
+  confirmClear: boolean;
+  reactionMenu: {
+    isOpen: boolean;
+    selectedMsgId?: string;
+    selectedMsgTimestamp?: string;
+    yPosition?: number;
+    xPosition?: number;
+  };
+  newMessageCount: number;
+  unreadStartTimestamp: string;
+}
+
+export class ChatComponent extends React.Component<
+  ChatProps & { onLoadMore?: () => void; hasMore?: boolean; isLoading?: boolean },
+  ChatState
+> {
   static contextType = MetadataContext;
   declare context: React.ContextType<typeof MetadataContext>;
-  public state = {
+  public state: ChatState = {
     chatMsg: "",
     replyTo: undefined as
       | { id: string; timestamp: string; msg?: string }
@@ -308,9 +328,8 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
     const nearBottom = this.isChatNearBottom();
     this.setState({
       isNearBottom: nearBottom,
-      ...(nearBottom
-        ? { newMessageCount: 0, unreadStartTimestamp: "" }
-        : {}),
+      newMessageCount: nearBottom ? 0 : this.state.newMessageCount,
+      unreadStartTimestamp: nearBottom ? "" : this.state.unreadStartTimestamp,
     });
     if (this.messagesRef.current && this.messagesRef.current.scrollTop === 0) {
       if (this.props.onLoadMore) {
@@ -319,8 +338,8 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
     }
   };
 
-  isChatNearBottom = () => {
-    return (
+  isChatNearBottom = (): boolean => {
+    return Boolean(
       this.messagesRef.current &&
       this.messagesRef.current.scrollHeight -
       this.messagesRef.current.scrollTop -
@@ -570,10 +589,10 @@ export class ChatComponent extends React.Component<ChatProps & { onLoadMore?: ()
             style={{
               position: "fixed",
               top: Math.min(
-                this.state.reactionMenu.yPosition - 150,
+                (this.state.reactionMenu.yPosition ?? 0) - 150,
                 window.innerHeight - 450,
               ),
-              left: this.state.reactionMenu.xPosition - 240,
+              left: (this.state.reactionMenu.xPosition ?? 0) - 240,
             }}
           >
             <Picker
@@ -851,6 +870,7 @@ const ChatMessage = ({
             {imageMsg}
           </>
         )}
+        </div>
         <div className={styles.commentMenu}>
           {userId === user?.id && !isEditing && (
             <ActionIcon
