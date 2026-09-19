@@ -29,7 +29,7 @@ import { serverPath, getOrCreateSessionId } from "../../utils/utils";
 import { parseJoinRoute, normalizeRoomId } from "../../utils/notificationAction";
 import { WaitingForHost } from "../App/WaitingForHost";
 import { MediaPreflight, type PreflightPreferences } from "../Preflight/MediaPreflight";
-import { saveAdmissionSession, fingerprintToken } from "../../utils/roomAdmissionSession";
+import { saveAdmissionSession, fingerprintToken, restoreAdmissionSession } from "../../utils/roomAdmissionSession";
 import styles from "./Join.module.css";
 
 interface JoinRouteParams {
@@ -419,6 +419,22 @@ export const Join: React.FC = () => {
           setRoomError("This room session has expired.");
           setStage("error");
           return;
+        }
+
+        // Phase 6 Invariant: Check if returning authenticated user already has an active durable admission
+        if (token && uid) {
+          try {
+            const restoreResult = await restoreAdmissionSession(cleanRouteRoomId, serverPath, token, uid);
+            if (isCancelled) return;
+            if (restoreResult.valid && restoreResult.admissionToken && restoreResult.sessionId) {
+              admissionTokenRef.current = restoreResult.admissionToken;
+              sessionIdRef.current = restoreResult.sessionId;
+              setStage("preflight");
+              return;
+            }
+          } catch (restoreErr) {
+            console.warn("[ADMISSION] Durable admission pre-check error in Join gateway:", restoreErr);
+          }
         }
 
         if (data.participantsLocked) {

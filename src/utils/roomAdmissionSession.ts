@@ -130,3 +130,82 @@ export function clearAdmissionSession(roomId: string): void {
     console.warn("[AdmissionSession] Failed to clear admission session:", err);
   }
 }
+
+// In-flight restoration promises keyed by cleanRoomId for strict single-flight execution
+const inFlightRestorations = new Map<
+  string,
+  Promise<{ valid: boolean; admissionToken?: string; sessionId?: string; error?: string; code?: string }>
+>();
+
+/**
+ * Authoritatively restores an active room admission for an authenticated user.
+ * Single-flight: concurrent calls for the same room await the existing request.
+ */
+export async function restoreAdmissionSession(
+  roomId: string,
+  serverPath: string,
+  token?: string,
+  uid?: string
+): Promise<{ valid: boolean; admissionToken?: string; sessionId?: string; error?: string; code?: string }> {
+  const cleanRoomId = (roomId || "").trim().toLowerCase();
+  if (!cleanRoomId) {
+    return { valid: false, error: "Missing roomId", code: "INVALID_ROOM" };
+  }
+
+  const existing = inFlightRestorations.get(cleanRoomId);
+  if (existing) {
+    return existing;
+  }
+
+  const restorationPromise = (async () => {
+    try {
+      if (!token || !uid) {
+        return { valid: false, error: "Authentication required", code: "AUTH_REQUIRED" };
+      }
+
+      const resp = await fetch(`${serverPath}/room-admission/restore`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-user-id": uid,
+        },
+        body: JSON.stringify({ roomId }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.valid && data.admissionToken && data.sessionId) {
+          saveAdmissionSession(roomId, data.admissionToken, data.sessionId);
+          return {
+            valid: true,
+            admissionToken: data.admissionToken,
+            sessionId: data.sessionId,
+          };
+        }
+        return { valid: false, error: data.error, code: data.code };
+      }
+
+      const errData = await resp.json().catch(() => ({}));
+      if (resp.status === 401 || resp.status === 403) {
+        clearAdmissionSession(roomId);
+      }
+      return {
+        valid: false,
+        error: errData.error || "Admission restoration failed",
+        code: errData.code,
+      };
+    } catch (err: any) {
+      return {
+        valid: false,
+        error: err?.message || "Network error",
+        code: "NETWORK_ERROR",
+      };
+    } finally {
+      inFlightRestorations.delete(cleanRoomId);
+    }
+  })();
+
+  inFlightRestorations.set(cleanRoomId, restorationPromise);
+  return restorationPromise;
+}

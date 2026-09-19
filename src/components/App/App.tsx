@@ -93,6 +93,7 @@ import {
   saveAdmissionSession,
   clearAdmissionSession,
   fingerprintToken,
+  restoreAdmissionSession,
 } from "../../utils/roomAdmissionSession";
 import { pipManager, type PiPState } from "../../utils/pipManager";
 import {
@@ -392,6 +393,7 @@ export class App extends React.Component<AppProps, AppState> {
   waitingPollTimer: number | null = null;
   hasReceivedRoomState: boolean = false;
   hasReceivedRoster: boolean = false;
+  hasAttemptedSocketRestore: boolean = false;
 
   checkAndAdvanceToReady = () => {
     if (operationCoordinator.checkDualBarrier() || operationCoordinator.isRoomReady()) {
@@ -897,45 +899,32 @@ export class App extends React.Component<AppProps, AppState> {
         // On hard refresh, we attempt to restore durable admission from PostgreSQL via POST /room-admission/restore.
         // If no active admission exists, gracefully redirect them to /join/:roomId where they must obtain an admissionToken.
         if (!access.isOwner) {
-          // If we don't have fresh in-memory router state, attempt durable server-side admission restore
-          if (!routeLocationState?.admissionToken) {
-            try {
-              const sessionData = await safeGetSession(1200);
-              const user = sessionData?.data?.session?.user;
-              const token = sessionData?.data?.session?.access_token;
-              if (user?.id && token) {
-                const restoreResp = await fetch(`${serverPath}/room-admission/restore`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                    "x-user-id": user.id,
-                  },
-                  body: JSON.stringify({ roomId: cleanRoomId }),
+          // If entering /watch as a non-owner, authoritatively restore durable admission from PostgreSQL
+          // via single-flight restoreAdmissionSession to obtain a fresh server-issued sessionId & admissionToken.
+          try {
+            const sessionData = await safeGetSession(1200);
+            const user = sessionData?.data?.session?.user;
+            const token = sessionData?.data?.session?.access_token;
+            if (user?.id && token) {
+              const restoreResult = await restoreAdmissionSession(cleanRoomId, serverPath, token, user.id);
+              if (restoreResult.valid && restoreResult.admissionToken && restoreResult.sessionId) {
+                routeAdmissionToken = restoreResult.admissionToken;
+                routeSessionId = restoreResult.sessionId;
+                this.setState({
+                  admissionToken: routeAdmissionToken,
+                  sessionId: routeSessionId,
                 });
-                if (restoreResp.ok) {
-                  const restoreData = await restoreResp.json();
-                  if (restoreData.valid && restoreData.admissionToken && restoreData.sessionId) {
-                    routeAdmissionToken = restoreData.admissionToken;
-                    routeSessionId = restoreData.sessionId;
-                    saveAdmissionSession(cleanRoomId, routeAdmissionToken, routeSessionId);
-                    this.setState({
-                      admissionToken: routeAdmissionToken,
-                      sessionId: routeSessionId,
-                    });
-                    console.log(
-                      `[ADMISSION_TRACE:RESTORE] Restored durable admission: room=${cleanRoomId} session=${routeSessionId} tokenFp=${fingerprintToken(routeAdmissionToken)}`
-                    );
-                  }
-                } else if (restoreResp.status === 401 || restoreResp.status === 403) {
-                  clearAdmissionSession(cleanRoomId);
-                  routeAdmissionToken = undefined;
-                  routeSessionId = undefined;
-                }
+                console.log(
+                  `[ADMISSION_TRACE:RESTORE] Restored durable admission: room=${cleanRoomId} session=${routeSessionId} tokenFp=${fingerprintToken(routeAdmissionToken)}`
+                );
+              } else if (restoreResult.code === "BANNED" || restoreResult.code === "ROOM_TERMINAL" || restoreResult.code === "NO_ACTIVE_ADMISSION") {
+                clearAdmissionSession(cleanRoomId);
+                routeAdmissionToken = undefined;
+                routeSessionId = undefined;
               }
-            } catch (restoreErr) {
-              console.warn("[ADMISSION] Durable admission restoration request failed:", restoreErr);
             }
+          } catch (restoreErr) {
+            console.warn("[ADMISSION] Durable admission restoration request failed:", restoreErr);
           }
 
           if (!routeAdmissionToken) {
@@ -1078,6 +1067,7 @@ export class App extends React.Component<AppProps, AppState> {
 
       socket.on("connect", async () => {
         this.socketConnecting = false;
+        this.hasAttemptedSocketRestore = false;
         operationCoordinator.beginConnectionEpoch();
         console.log(`[ADMISSION_TRACE:G] Socket CONNECTED successfully for room=${cleanRoomId}`);
         console.log(`[MEDIA_TRACE:H] Video stream re-acquisition check: ourStreamPresent=${Boolean(window.cowatch?.ourStream)}`);
@@ -1156,6 +1146,50 @@ export class App extends React.Component<AppProps, AppState> {
           errMsg.includes("ADMISSION_TOKEN_SIGNATURE_INVALID") ||
           errMsg.includes("ADMISSION_TOKEN_SESSION_MISMATCH")
         ) {
+          if (!this.state.isOwner && !this.hasAttemptedSocketRestore) {
+            this.hasAttemptedSocketRestore = true;
+            void (async () => {
+              try {
+                const sessionData = await safeGetSession(1200);
+                const user = sessionData?.data?.session?.user;
+                const token = sessionData?.data?.session?.access_token;
+                if (user?.id && token) {
+                  const recovery = await restoreAdmissionSession(cleanRoomId, serverPath, token, user.id);
+                  if (recovery.valid && recovery.admissionToken && recovery.sessionId) {
+                    this.setState({
+                      admissionToken: recovery.admissionToken,
+                      sessionId: recovery.sessionId,
+                    });
+                    if (this.socket) {
+                      this.socket.auth = {
+                        ...this.socket.auth,
+                        admissionToken: recovery.admissionToken,
+                        sessionId: recovery.sessionId,
+                      };
+                      this.socket.connect();
+                      return;
+                    }
+                  }
+                }
+              } catch (recErr) {
+                console.warn("[ADMISSION] Socket connect_error recovery failed:", recErr);
+              }
+
+              // Terminal authoritative check rejected: clean up storage and redirect to sole gateway /join/:roomId
+              clearAdmissionSession(cleanRoomId);
+              operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
+              this.stopWaitingPoll();
+              this.socket?.disconnect();
+              this.socket = null!;
+              if (this.props.history?.replace) {
+                this.props.history.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+              } else {
+                window.location.replace(`/join/${encodeURIComponent(cleanRoomId)}`);
+              }
+            })();
+            return;
+          }
+
           // Terminal authoritative check rejected: clean up storage and redirect to sole gateway /join/:roomId
           clearAdmissionSession(cleanRoomId);
           operationCoordinator.markTerminalFailure("Authentication / Passcode failed");
