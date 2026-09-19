@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
+import { Badge, Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -1912,8 +1912,8 @@ export class App extends React.Component<AppProps, AppState> {
           chat: this.state.chat,
           scrollTimestamp: Date.now(),
           unreadCount:
-            this.state.currentTab === "chat"
-              ? this.state.unreadCount
+            this.state.currentTab === "chat" && this.state.showChatColumn
+              ? 0
               : this.state.unreadCount + 1,
         });
       });
@@ -3992,7 +3992,11 @@ export class App extends React.Component<AppProps, AppState> {
                   this.syncPanelToUrl(this.state.currentTab, newVal);
                 });
               } else {
-                this.setState({ currentTab: tab, showChatColumn: true }, () => {
+                this.setState({
+                  currentTab: tab,
+                  showChatColumn: true,
+                  ...(tab === "chat" ? { unreadCount: 0 } : {}),
+                }, () => {
                   this.syncPanelToUrl(tab, true);
                 });
               }
@@ -4372,7 +4376,12 @@ export class App extends React.Component<AppProps, AppState> {
                       {this.state.showChatColumn ? (
                         <IconChevronRight size={16} />
                       ) : (
-                        <IconChevronLeft size={16} />
+                        <>
+                          <IconChevronLeft size={16} />
+                          {this.state.unreadCount > 0 && (
+                            <span className={styles.chatUnreadDot} aria-label="Unread chat messages" />
+                          )}
+                        </>
                       )}
                     </ActionIcon>
                   </div>
@@ -4394,7 +4403,12 @@ export class App extends React.Component<AppProps, AppState> {
                 value={this.state.currentTab}
                 onChange={(val) => {
                   const nextTab = val ?? "people";
-                  this.setState({ currentTab: nextTab }, () => {
+                  this.setState({
+                    currentTab: nextTab,
+                    ...(nextTab === "chat" && this.state.showChatColumn
+                      ? { unreadCount: 0 }
+                      : {}),
+                  }, () => {
                     this.syncPanelToUrl(nextTab, this.state.showChatColumn);
                   });
                 }}
@@ -4418,6 +4432,19 @@ export class App extends React.Component<AppProps, AppState> {
                   <Tabs.Tab
                     value="chat"
                     leftSection={<IconMessage size={16} />}
+                    rightSection={
+                      this.state.unreadCount > 0 ? (
+                        <Badge
+                          size="xs"
+                          color="violet"
+                          variant="filled"
+                          radius="xl"
+                          aria-label={`${this.state.unreadCount} unread messages`}
+                        >
+                          {this.state.unreadCount > 99 ? "99+" : this.state.unreadCount}
+                        </Badge>
+                      ) : null
+                    }
                     style={{ flexGrow: 1 }}
                   >
                     Messages
