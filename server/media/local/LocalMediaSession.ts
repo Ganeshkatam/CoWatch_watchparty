@@ -15,7 +15,8 @@ export interface ServerLocalMediaManifest {
   codec: string;
   chunkSize: number;
   totalChunks: number;
-  contentHash: string;
+  contentFingerprint?: string;
+  contentHash?: string;
   initializationSegmentByteLength: number;
   epoch: number;
   createdAt: number;

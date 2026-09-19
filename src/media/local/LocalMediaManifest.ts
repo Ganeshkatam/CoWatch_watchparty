@@ -15,7 +15,8 @@ export interface LocalMediaManifest {
   codec: string;
   chunkSize: number; // e.g., 131072 (128 KB)
   totalChunks: number;
-  contentHash: string;
+  contentFingerprint: string;
+  contentHash?: string; // Compatibility alias
   initializationSegmentByteLength: number;
   epoch: number;
   createdAt: number;
@@ -69,22 +70,29 @@ export function validateLocalMediaManifest(manifest: unknown): manifest is Local
   if (!manifest || typeof manifest !== "object") return false;
   const m = manifest as Record<string, unknown>;
 
+  const fingerprint = (m.contentFingerprint as string) || (m.contentHash as string);
+  if (typeof fingerprint !== "string" || fingerprint.trim().length === 0) return false;
+
+  const totalChunks = typeof m.totalChunks === "number" ? m.totalChunks : 0;
+  const chunkSize = typeof m.chunkSize === "number" ? m.chunkSize : 0;
+  const byteLength = typeof m.byteLength === "number" ? m.byteLength : 0;
+  const durationSeconds = typeof m.durationSeconds === "number" ? m.durationSeconds : 0;
+  const epoch = typeof m.epoch === "number" ? m.epoch : 0;
+
+  if (chunkSize <= 0 || byteLength <= 0 || totalChunks <= 0 || epoch < 1) return false;
+  if (totalChunks !== Math.ceil(byteLength / chunkSize)) return false;
+  if (durationSeconds <= 0) return false;
+
   return (
     typeof m.mediaId === "string" &&
-    m.mediaId.length > 0 &&
+    m.mediaId.trim().length > 0 &&
     typeof m.roomId === "string" &&
-    m.roomId.length > 0 &&
+    m.roomId.trim().length > 0 &&
     typeof m.ownerId === "string" &&
+    m.ownerId.trim().length > 0 &&
     typeof m.filename === "string" &&
-    typeof m.byteLength === "number" &&
-    m.byteLength > 0 &&
-    typeof m.durationSeconds === "number" &&
+    m.filename.trim().length > 0 &&
     typeof m.mimeType === "string" &&
-    typeof m.chunkSize === "number" &&
-    m.chunkSize > 0 &&
-    typeof m.totalChunks === "number" &&
-    m.totalChunks > 0 &&
-    typeof m.contentHash === "string" &&
-    typeof m.epoch === "number"
+    m.mimeType.trim().length > 0
   );
 }

@@ -83,7 +83,7 @@ export class LocalMediaAuthority {
             manifest.durationSeconds || 0,
             manifest.codec || "",
             manifest.container || "mp4",
-            manifest.contentHash,
+            manifest.contentFingerprint || manifest.contentHash || "",
             manifest.chunkSize,
             manifest.totalChunks,
           ]

@@ -6,7 +6,10 @@
 import { Socket } from "socket.io-client";
 import { LocalMediaCache } from "./LocalMediaCache";
 import { LocalMediaChunker } from "./LocalMediaChunker";
-import { LocalMediaManifest, validateLocalMediaManifest } from "./LocalMediaManifest";
+import {
+  LocalMediaManifest,
+  validateLocalMediaManifest,
+} from "./LocalMediaManifest";
 import { LocalMediaPeer } from "./LocalMediaPeer";
 import { LocalMediaScheduler } from "./LocalMediaScheduler";
 import { LocalMediaSource } from "./LocalMediaSource";
@@ -21,6 +24,196 @@ export interface LocalMediaState {
   inFlightRequests: number;
   peersCount: number;
   isReady: boolean;
+}
+
+export interface MediaCompatibilityProbeResult {
+  compatible: boolean;
+  duration: number;
+  codec: string;
+  error?: string;
+}
+
+export async function probeMediaCompatibility(
+  file: File,
+): Promise<MediaCompatibilityProbeResult> {
+  if (
+    typeof window === "undefined" ||
+    typeof MediaSource === "undefined" ||
+    typeof document === "undefined"
+  ) {
+    return {
+      compatible: true,
+      duration: 60,
+      codec: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+    };
+  }
+
+  let duration = 0;
+  try {
+    const tempVideo = document.createElement("video");
+    tempVideo.preload = "metadata";
+    const objectUrl = URL.createObjectURL(file);
+    tempVideo.src = objectUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(
+          new Error(
+            "Timeout probing video metadata (file took too long to parse)",
+          ),
+        );
+      }, 5000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        tempVideo.onloadedmetadata = null;
+        tempVideo.onerror = null;
+      }
+
+      tempVideo.onloadedmetadata = () => {
+        cleanup();
+        duration = tempVideo.duration || 0;
+        resolve();
+      };
+      tempVideo.onerror = () => {
+        cleanup();
+        reject(
+          new Error("Browser video decoder failed to read media metadata"),
+        );
+      };
+    });
+
+    URL.revokeObjectURL(objectUrl);
+  } catch (err: any) {
+    return {
+      compatible: false,
+      duration: 0,
+      codec: "",
+      error: err?.message || "Failed to parse video metadata",
+    };
+  }
+
+  if (duration <= 0 || !Number.isFinite(duration)) {
+    return {
+      compatible: false,
+      duration: 0,
+      codec: "",
+      error: "Unable to detect a valid video duration for streaming",
+    };
+  }
+
+  const lowerName = file.name.toLowerCase();
+  const lowerMime = (file.type || "").toLowerCase();
+  let candidateCodecs: string[] = [];
+
+  if (lowerName.endsWith(".webm") || lowerMime.includes("webm")) {
+    candidateCodecs = [
+      'video/webm; codecs="vp9, opus"',
+      'video/webm; codecs="vp8, opus"',
+      'video/webm; codecs="vp8, vorbis"',
+      "video/webm",
+    ];
+  } else {
+    candidateCodecs = [
+      'video/mp4; codecs="avc1.640028, mp4a.40.2"',
+      'video/mp4; codecs="avc1.4d401f, mp4a.40.2"',
+      'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      'video/mp4; codecs="avc1.42E01E"',
+      "video/mp4",
+    ];
+  }
+
+  let selectedCodec = "";
+  for (const candidate of candidateCodecs) {
+    if (MediaSource.isTypeSupported(candidate)) {
+      selectedCodec = candidate;
+      break;
+    }
+  }
+
+  if (!selectedCodec) {
+    return {
+      compatible: false,
+      duration,
+      codec: "",
+      error:
+        "No compatible MSE video codec found on this browser for this file container",
+    };
+  }
+
+  try {
+    const sandboxMs = new MediaSource();
+    const sandboxUrl = URL.createObjectURL(sandboxMs);
+    const sandboxVideo = document.createElement("video");
+    sandboxVideo.src = sandboxUrl;
+
+    const appendSucceeded = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, 4000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        sandboxMs.removeEventListener("sourceopen", onSourceOpen);
+        URL.revokeObjectURL(sandboxUrl);
+      }
+
+      async function onSourceOpen() {
+        try {
+          const sb = sandboxMs.addSourceBuffer(selectedCodec);
+          sb.addEventListener(
+            "updateend",
+            () => {
+              cleanup();
+              resolve(true);
+            },
+            { once: true },
+          );
+          sb.addEventListener(
+            "error",
+            () => {
+              cleanup();
+              resolve(false);
+            },
+            { once: true },
+          );
+
+          const chunk0Slice = await file.slice(0, 131072).arrayBuffer();
+          sb.appendBuffer(chunk0Slice);
+        } catch {
+          cleanup();
+          resolve(false);
+        }
+      }
+
+      sandboxMs.addEventListener("sourceopen", onSourceOpen);
+    });
+
+    if (!appendSucceeded) {
+      return {
+        compatible: false,
+        duration,
+        codec: selectedCodec,
+        error:
+          "Media is not formatted for direct MSE streaming (non-fragmented container). Please use WebRTC screenshare or convert to WebM/fMP4.",
+      };
+    }
+  } catch (err: any) {
+    return {
+      compatible: false,
+      duration,
+      codec: selectedCodec,
+      error: err?.message || "Sandbox append probe failed",
+    };
+  }
+
+  return {
+    compatible: true,
+    duration,
+    codec: selectedCodec,
+  };
 }
 
 export class LocalMediaCoordinator {
@@ -39,7 +232,12 @@ export class LocalMediaCoordinator {
   private lastKnownTime: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
 
-  constructor(socket: Socket, roomId: string, userId: string, onStateChange?: (state: LocalMediaState) => void) {
+  constructor(
+    socket: Socket,
+    roomId: string,
+    userId: string,
+    onStateChange?: (state: LocalMediaState) => void,
+  ) {
     this.socket = socket;
     this.roomId = roomId;
     this.userId = userId;
@@ -50,29 +248,42 @@ export class LocalMediaCoordinator {
 
   private setupSocketListeners(): void {
     // 1. Session announcement received from server
-    this.socket.on("LOCAL_MEDIA_ANNOUNCE", (data: { manifest: LocalMediaManifest }) => {
-      console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
-        mediaId: data?.manifest?.mediaId,
-        myRole: this.role,
-        myUserId: this.userId,
-        ownerId: data?.manifest?.ownerId,
-      });
-      if (validateLocalMediaManifest(data.manifest) && data.manifest.roomId === this.roomId) {
-        if (this.role !== "HOST_SEED") {
-          this.handleParticipantManifest(data.manifest);
+    this.socket.on(
+      "LOCAL_MEDIA_ANNOUNCE",
+      (data: { manifest: LocalMediaManifest }) => {
+        console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
+          mediaId: data?.manifest?.mediaId,
+          myRole: this.role,
+          myUserId: this.userId,
+          ownerId: data?.manifest?.ownerId,
+        });
+        if (
+          validateLocalMediaManifest(data.manifest) &&
+          data.manifest.roomId === this.roomId
+        ) {
+          if (this.role !== "HOST_SEED") {
+            this.handleParticipantManifest(data.manifest);
+          }
         }
-      }
-    });
+      },
+    );
 
     // 2. WebRTC Peer Signaling
     this.socket.on(
       "LOCAL_MEDIA_SIGNAL",
-      async (data: { fromPeerId: string; toPeerId: string; signal: any; epoch: number }) => {
+      async (data: {
+        fromPeerId: string;
+        toPeerId: string;
+        signal: any;
+        epoch: number;
+      }) => {
         console.log("[LOCAL_MEDIA] LOCAL_MEDIA_SIGNAL received", {
           fromPeerId: data.fromPeerId,
           toPeerId: data.toPeerId,
           isMe: data.toPeerId === this.userId,
-          signalType: data.signal?.sdp?.type || (data.signal?.candidate ? "candidate" : "unknown"),
+          signalType:
+            data.signal?.sdp?.type ||
+            (data.signal?.candidate ? "candidate" : "unknown"),
         });
         if (data.toPeerId === this.userId) {
           let peer = this.peers.get(data.fromPeerId);
@@ -81,7 +292,7 @@ export class LocalMediaCoordinator {
           }
           await peer.handleSignal(data.signal);
         }
-      }
+      },
     );
 
     // 3. Session termination or unavailable
@@ -94,11 +305,23 @@ export class LocalMediaCoordinator {
     this.reset();
     this.role = "HOST_SEED";
 
-    // 1. Initialize Chunker
+    // 0. Probe media compatibility gate before announcing
+    const probe = await probeMediaCompatibility(file);
+    if (!probe.compatible) {
+      throw new Error(
+        probe.error ||
+          "Selected media file is not compatible with Local Media streaming",
+      );
+    }
+
+    // 1. Initialize Chunker with verified duration and codec
     this.chunker = new LocalMediaChunker(file, {
       filename: file.name,
       chunkSize: 131072, // 128KB
+      durationSeconds: probe.duration,
+      codec: probe.codec,
     });
+    await this.chunker.initializeFingerprint();
 
     this.manifest = this.chunker.getManifest(this.roomId, this.userId);
 
@@ -126,7 +349,9 @@ export class LocalMediaCoordinator {
     return this.objectUrl;
   }
 
-  public async handleParticipantManifest(manifest: LocalMediaManifest): Promise<string | null> {
+  public async handleParticipantManifest(
+    manifest: LocalMediaManifest,
+  ): Promise<string | null> {
     this.reset();
     this.role = "PARTICIPANT_PEER";
     this.manifest = manifest;
@@ -159,7 +384,10 @@ export class LocalMediaCoordinator {
     return this.objectUrl;
   }
 
-  private createPeer(targetPeerId: string, isInitiator: boolean): LocalMediaPeer {
+  private createPeer(
+    targetPeerId: string,
+    isInitiator: boolean,
+  ): LocalMediaPeer {
     const peer = new LocalMediaPeer(
       targetPeerId,
       isInitiator,
@@ -182,7 +410,7 @@ export class LocalMediaCoordinator {
         onAvailabilityReceived: (senderId, availableChunks) => {
           this.scheduler?.updatePeerAvailability(senderId, availableChunks);
         },
-      }
+      },
     );
 
     this.peers.set(targetPeerId, peer);
@@ -211,13 +439,20 @@ export class LocalMediaCoordinator {
     // Broadcast our updated availability to all connected peers for mesh relay
     const available = this.cache.getAvailableChunks();
     for (const peer of this.peers.values()) {
-      peer.broadcastAvailability(this.manifest.mediaId, this.manifest.epoch, available);
+      peer.broadcastAvailability(
+        this.manifest.mediaId,
+        this.manifest.epoch,
+        available,
+      );
     }
 
     this.notifyState();
   }
 
-  private async handleChunkRequested(requesterId: string, chunkIndices: number[]): Promise<void> {
+  private async handleChunkRequested(
+    requesterId: string,
+    chunkIndices: number[],
+  ): Promise<void> {
     console.log("[LOCAL_MEDIA] chunk request", {
       requesterId,
       chunkIndices,
@@ -269,10 +504,14 @@ export class LocalMediaCoordinator {
 
   public getState(): LocalMediaState {
     const total = this.manifest?.totalChunks || 1;
-    const available = this.role === "HOST_SEED"
-      ? total
-      : (this.cache?.getAvailableChunks().length || 0);
-    const bufferedPercent = Math.min(100, Math.round((available / total) * 100));
+    const available =
+      this.role === "HOST_SEED"
+        ? total
+        : this.cache?.getAvailableChunks().length || 0;
+    const bufferedPercent = Math.min(
+      100,
+      Math.round((available / total) * 100),
+    );
 
     return {
       role: this.role,
@@ -281,7 +520,10 @@ export class LocalMediaCoordinator {
       bufferedPercent,
       inFlightRequests: this.scheduler?.getInFlightCount() ?? 0,
       peersCount: this.peers.size,
-      isReady: this.role === "HOST_SEED" ? !!this.objectUrl : (this.mediaSource?.isReady() ?? false),
+      isReady:
+        this.role === "HOST_SEED"
+          ? !!this.objectUrl
+          : (this.mediaSource?.isReady() ?? false),
     };
   }
 
