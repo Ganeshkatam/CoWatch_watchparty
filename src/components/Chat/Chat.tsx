@@ -746,6 +746,37 @@ const ChatMessage = ({
   const [editMsg, setEditMsg] = useState(msg || "");
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
+
+  const isDeleted = Boolean(
+    message.isDeleted ||
+    msg === "This message was deleted." ||
+    msg === "This message was deleted"
+  );
+  const isMe = id === myId || (Boolean(userId) && userId === user?.id);
+
+  if (isDeleted) {
+    return (
+      <div
+        className={`${styles.comment} ${styles.deletedComment} ${className}`}
+        role="status"
+        aria-label="Deleted message"
+      >
+        <div className={styles.deletedPill}>
+          <IconTrash size={12} className={styles.deletedIcon} />
+          <span className={styles.deletedText}>
+            {isMe ? "You deleted this message" : "This message was deleted"}
+          </span>
+          <span className={styles.deletedTime}>
+            {new Date(timestamp).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`${styles.comment} ${className} ${message.replyToUserId === myId ? styles.replyMessage : ""} ${cmd || system ? styles.systemMessage : ""} ${id === myId ? styles.selfMessage : styles.otherMessage}`}

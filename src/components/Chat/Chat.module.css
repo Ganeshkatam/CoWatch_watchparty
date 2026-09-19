@@ -343,6 +343,60 @@
   text-align: center;
 }
 
+.deletedComment {
+  display: flex !important;
+  align-items: center !important;
+  padding: 2px 4px !important;
+  margin: 1px 0 !important;
+  background: transparent !important;
+  border-radius: 6px !important;
+  cursor: default !important;
+  animation: messageSlideIn 180ms cubic-bezier(0.22, 0.8, 0.25, 1);
+}
+
+.deletedComment:hover,
+.deletedComment.selected {
+  background: transparent !important;
+  filter: none !important;
+}
+
+.deletedPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-surface) 50%, transparent);
+  border: 1px dashed var(--border-subtle);
+  color: var(--text-muted, #8a8a8a);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.35;
+  user-select: none;
+  max-width: 100%;
+}
+
+.deletedIcon {
+  flex-shrink: 0;
+  opacity: 0.55;
+  color: var(--text-muted, #8a8a8a);
+}
+
+.deletedText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deletedTime {
+  margin-left: 4px;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--text-muted, #71717a);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
 .newMessagesDivider {
   display: flex;
   align-items: center;
