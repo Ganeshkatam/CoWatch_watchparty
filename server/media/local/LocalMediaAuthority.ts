@@ -50,6 +50,13 @@ export class LocalMediaAuthority {
       return null;
     }
 
+    const contentFingerprint =
+      manifest.contentFingerprint ||
+      (typeof (manifest as any).contentHash === "string" ? (manifest as any).contentHash.trim() : "") ||
+      "";
+    manifest.contentFingerprint = contentFingerprint;
+    delete (manifest as any).contentHash;
+
     const session = new LocalMediaSession(manifest);
     this.sessions.set(roomId, session);
 
@@ -83,7 +90,7 @@ export class LocalMediaAuthority {
             manifest.durationSeconds || 0,
             manifest.codec || "",
             manifest.container || "mp4",
-            manifest.contentFingerprint || manifest.contentHash || "",
+            manifest.contentFingerprint,
             manifest.chunkSize,
             manifest.totalChunks,
           ]

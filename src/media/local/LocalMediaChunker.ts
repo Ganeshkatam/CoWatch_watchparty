@@ -113,7 +113,6 @@ export class LocalMediaChunker {
       chunkSize: this.chunkSize,
       totalChunks: this.totalChunks,
       contentFingerprint: this.contentFingerprint,
-      contentHash: this.contentFingerprint,
       initializationSegmentByteLength: this.initSegmentLength,
       epoch: this.epoch,
       createdAt: Date.now(),

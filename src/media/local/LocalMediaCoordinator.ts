@@ -8,6 +8,7 @@ import { LocalMediaCache } from "./LocalMediaCache";
 import { LocalMediaChunker } from "./LocalMediaChunker";
 import {
   LocalMediaManifest,
+  normalizeLocalMediaManifest,
   validateLocalMediaManifest,
 } from "./LocalMediaManifest";
 import { LocalMediaPeer } from "./LocalMediaPeer";
@@ -35,6 +36,7 @@ export interface MediaCompatibilityProbeResult {
 
 export async function probeMediaCompatibility(
   file: File,
+  chunkSize: number = 131072,
 ): Promise<MediaCompatibilityProbeResult> {
   if (
     typeof window === "undefined" ||
@@ -180,7 +182,8 @@ export async function probeMediaCompatibility(
             { once: true },
           );
 
-          const chunk0Slice = await file.slice(0, 131072).arrayBuffer();
+          const sliceLength = Math.min(file.size, chunkSize);
+          const chunk0Slice = await file.slice(0, sliceLength).arrayBuffer();
           sb.appendBuffer(chunk0Slice);
         } catch {
           cleanup();
@@ -250,19 +253,17 @@ export class LocalMediaCoordinator {
     // 1. Session announcement received from server
     this.socket.on(
       "LOCAL_MEDIA_ANNOUNCE",
-      (data: { manifest: LocalMediaManifest }) => {
+      (data: { manifest: unknown }) => {
+        const normalized = normalizeLocalMediaManifest(data?.manifest);
         console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
-          mediaId: data?.manifest?.mediaId,
+          mediaId: normalized?.mediaId,
           myRole: this.role,
           myUserId: this.userId,
-          ownerId: data?.manifest?.ownerId,
+          ownerId: normalized?.ownerId,
         });
-        if (
-          validateLocalMediaManifest(data.manifest) &&
-          data.manifest.roomId === this.roomId
-        ) {
+        if (normalized && normalized.roomId === this.roomId) {
           if (this.role !== "HOST_SEED") {
-            this.handleParticipantManifest(data.manifest);
+            this.handleParticipantManifest(normalized);
           }
         }
       },
@@ -306,7 +307,8 @@ export class LocalMediaCoordinator {
     this.role = "HOST_SEED";
 
     // 0. Probe media compatibility gate before announcing
-    const probe = await probeMediaCompatibility(file);
+    const CHUNK_SIZE = 131072; // 128KB standard production chunk size
+    const probe = await probeMediaCompatibility(file, CHUNK_SIZE);
     if (!probe.compatible) {
       throw new Error(
         probe.error ||
@@ -317,7 +319,7 @@ export class LocalMediaCoordinator {
     // 1. Initialize Chunker with verified duration and codec
     this.chunker = new LocalMediaChunker(file, {
       filename: file.name,
-      chunkSize: 131072, // 128KB
+      chunkSize: CHUNK_SIZE,
       durationSeconds: probe.duration,
       codec: probe.codec,
     });

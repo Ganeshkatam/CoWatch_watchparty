@@ -66,7 +66,6 @@ async function runLocalMediaServerTests() {
     chunkSize: 131072,
     totalChunks: 40,
     contentFingerprint: "hash_abc_123",
-    contentHash: "hash_abc_123",
     initializationSegmentByteLength: 262144,
     epoch: 1,
     createdAt: Date.now(),

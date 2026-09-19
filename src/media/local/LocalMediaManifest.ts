@@ -16,7 +16,6 @@ export interface LocalMediaManifest {
   chunkSize: number; // e.g., 131072 (128 KB)
   totalChunks: number;
   contentFingerprint: string;
-  contentHash?: string; // Compatibility alias
   initializationSegmentByteLength: number;
   epoch: number;
   createdAt: number;
@@ -64,6 +63,21 @@ export function detectMediaContainer(filename: string, mimeType: string): "mp4" 
 export function calculateTotalChunks(byteLength: number, chunkSize: number): number {
   if (byteLength <= 0 || chunkSize <= 0) return 0;
   return Math.ceil(byteLength / chunkSize);
+}
+
+export function normalizeLocalMediaManifest(raw: unknown): LocalMediaManifest | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = { ...(raw as Record<string, unknown>) };
+
+  if (!m.contentFingerprint && typeof m.contentHash === "string" && m.contentHash.trim().length > 0) {
+    m.contentFingerprint = m.contentHash.trim();
+  }
+  delete m.contentHash;
+
+  if (validateLocalMediaManifest(m)) {
+    return m as unknown as LocalMediaManifest;
+  }
+  return null;
 }
 
 export function validateLocalMediaManifest(manifest: unknown): manifest is LocalMediaManifest {
