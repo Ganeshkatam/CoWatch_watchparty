@@ -3,7 +3,7 @@
  * Relays WebRTC SDP offers/answers and ICE candidates securely between room participants.
  */
 
-import { Server, Socket } from "socket.io";
+import { Namespace, Server, Socket } from "socket.io";
 
 export interface SignalMessagePayload {
   roomId: string;
@@ -14,9 +14,9 @@ export interface SignalMessagePayload {
 }
 
 export class LocalMediaSignaling {
-  private io: Server;
+  private io: Namespace | Server;
 
-  constructor(io: Server) {
+  constructor(io: Namespace | Server) {
     this.io = io;
   }
 
@@ -27,8 +27,7 @@ export class LocalMediaSignaling {
   ): boolean {
     if (!targetSocketId) return false;
 
-    const ns = typeof this.io.of === "function" ? this.io.of(payload.roomId) : this.io;
-    ns.to(targetSocketId).emit("LOCAL_MEDIA_SIGNAL", {
+    this.io.to(targetSocketId).emit("LOCAL_MEDIA_SIGNAL", {
       fromPeerId: payload.fromPeerId,
       toPeerId: payload.toPeerId,
       signal: payload.signal,
@@ -39,26 +38,14 @@ export class LocalMediaSignaling {
   }
 
   public broadcastSession(roomId: string, manifest: any): void {
-    if (typeof this.io.of === "function") {
-      this.io.of(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
-        manifest,
-      });
-    } else {
-      this.io.to(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
-        manifest,
-      });
-    }
+    this.io.emit("LOCAL_MEDIA_ANNOUNCE", {
+      manifest,
+    });
   }
 
   public broadcastUnavailable(roomId: string, mediaId: string): void {
-    if (typeof this.io.of === "function") {
-      this.io.of(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
-        mediaId,
-      });
-    } else {
-      this.io.to(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
-        mediaId,
-      });
-    }
+    this.io.emit("LOCAL_MEDIA_UNAVAILABLE", {
+      mediaId,
+    });
   }
 }

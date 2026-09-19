@@ -51,6 +51,12 @@ export class LocalMediaCoordinator {
   private setupSocketListeners(): void {
     // 1. Session announcement received from server
     this.socket.on("LOCAL_MEDIA_ANNOUNCE", (data: { manifest: LocalMediaManifest }) => {
+      console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
+        mediaId: data?.manifest?.mediaId,
+        myRole: this.role,
+        myUserId: this.userId,
+        ownerId: data?.manifest?.ownerId,
+      });
       if (validateLocalMediaManifest(data.manifest) && data.manifest.roomId === this.roomId) {
         if (this.role !== "HOST_SEED") {
           this.handleParticipantManifest(data.manifest);
@@ -62,6 +68,12 @@ export class LocalMediaCoordinator {
     this.socket.on(
       "LOCAL_MEDIA_SIGNAL",
       async (data: { fromPeerId: string; toPeerId: string; signal: any; epoch: number }) => {
+        console.log("[LOCAL_MEDIA] LOCAL_MEDIA_SIGNAL received", {
+          fromPeerId: data.fromPeerId,
+          toPeerId: data.toPeerId,
+          isMe: data.toPeerId === this.userId,
+          signalType: data.signal?.sdp?.type || (data.signal?.candidate ? "candidate" : "unknown"),
+        });
         if (data.toPeerId === this.userId) {
           let peer = this.peers.get(data.fromPeerId);
           if (!peer) {
@@ -181,11 +193,20 @@ export class LocalMediaCoordinator {
   private handleChunkReceived(chunkIndex: number, data: Uint8Array): void {
     if (!this.cache || !this.manifest) return;
 
+    console.log("[LOCAL_MEDIA] chunk received", {
+      chunkIndex,
+      bytes: data.byteLength,
+    });
+
     this.cache.putChunk(chunkIndex, data);
     this.scheduler?.onChunkReceived(chunkIndex);
 
     // Feed MSE buffer
     this.mediaSource?.pumpAvailableChunks();
+
+    console.log("[LOCAL_MEDIA] MSE pump", {
+      available: this.cache.getAvailableChunks().length,
+    });
 
     // Broadcast our updated availability to all connected peers for mesh relay
     const available = this.cache.getAvailableChunks();
@@ -197,6 +218,10 @@ export class LocalMediaCoordinator {
   }
 
   private async handleChunkRequested(requesterId: string, chunkIndices: number[]): Promise<void> {
+    console.log("[LOCAL_MEDIA] chunk request", {
+      requesterId,
+      chunkIndices,
+    });
     const peer = this.peers.get(requesterId);
     if (!peer) return;
 
@@ -210,6 +235,11 @@ export class LocalMediaCoordinator {
         }
       }
       if (chunkData) {
+        console.log("[LOCAL_MEDIA] sending chunk", {
+          requesterId,
+          chunkIndex: idx,
+          bytes: chunkData.byteLength,
+        });
         const sent = peer.sendChunk(idx, chunkData);
         if (!sent) break; // Backpressure reached
       }
@@ -220,6 +250,11 @@ export class LocalMediaCoordinator {
     if (this.scheduleTimer) clearInterval(this.scheduleTimer);
     this.scheduleTimer = setInterval(() => {
       if (this.scheduler && this.manifest) {
+        console.log("[LOCAL_MEDIA] scheduling", {
+          time: this.lastKnownTime,
+          inFlight: this.scheduler?.getInFlightCount(),
+          available: this.cache?.getAvailableChunks().length,
+        });
         this.scheduler.schedule(this.lastKnownTime);
       }
     }, 250);

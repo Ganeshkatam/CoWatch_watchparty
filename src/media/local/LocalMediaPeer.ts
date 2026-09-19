@@ -84,15 +84,17 @@ export class LocalMediaPeer {
     this.dc.binaryType = "arraybuffer";
 
     this.dc.onopen = () => {
+      console.log(`[LOCAL_MEDIA] DataChannel OPEN with peer ${this.peerId}`);
       this.isConnected = true;
     };
 
     this.dc.onclose = () => {
+      console.log(`[LOCAL_MEDIA] DataChannel CLOSED with peer ${this.peerId}`);
       this.isConnected = false;
     };
 
     this.dc.onerror = (err) => {
-      console.warn(`DataChannel error with peer ${this.peerId}:`, err);
+      console.warn(`[LOCAL_MEDIA] DataChannel error with peer ${this.peerId}:`, err);
     };
 
     this.dc.onmessage = (event) => {

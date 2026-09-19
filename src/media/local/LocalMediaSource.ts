@@ -62,6 +62,7 @@ export class LocalMediaSource {
 
       this.sourceBuffer = this.mediaSource.addSourceBuffer(mime);
       this.sourceBuffer.mode = "sequence";
+      console.log("[LOCAL_MEDIA] SourceBuffer created with mime:", mime);
 
       this.sourceBuffer.addEventListener("updateend", () => {
         this.isAppending = false;
@@ -69,14 +70,14 @@ export class LocalMediaSource {
       });
 
       this.sourceBuffer.addEventListener("error", (e) => {
-        console.warn("SourceBuffer error:", e);
+        console.error("[LOCAL_MEDIA] SourceBuffer error event:", e);
         this.onErrorCallback?.(new Error("SourceBuffer decode error"));
       });
 
       this.onReadyCallback?.();
       this.pumpAvailableChunks();
     } catch (err: any) {
-      console.warn("Failed to create SourceBuffer:", err);
+      console.warn("[LOCAL_MEDIA] Failed to create SourceBuffer:", err);
       this.onErrorCallback?.(err);
     }
   }
@@ -108,9 +109,10 @@ export class LocalMediaSource {
 
     try {
       this.isAppending = true;
+      console.log("[LOCAL_MEDIA] appendBuffer chunk", { bytes: nextChunk.byteLength });
       this.sourceBuffer.appendBuffer(nextChunk as unknown as BufferSource);
     } catch (err: any) {
-      console.warn("Error appending buffer to SourceBuffer:", err);
+      console.error("[LOCAL_MEDIA] Error appending buffer to SourceBuffer:", err);
       this.isAppending = false;
     }
   }
