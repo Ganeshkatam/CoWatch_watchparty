@@ -51,6 +51,8 @@
     "test:host-privileges": "tsx server/hostPrivilegeSecurity.test.ts",
     "test:url-security": "tsx server/urlDrivenSecurity.test.ts",
     "test:admission": "tsx server/participantAdmissionE2E.test.ts",
+    "test:room-data-boundaries": "tsx server/roomDataBoundaries.test.ts",
+    "test:integration-certification": "tsx server/integrationCertification.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {
