@@ -3,22 +3,7 @@ import { Container, Paper, Title, Text, Accordion, List, Anchor, Button } from "
 import { useHistory, Link } from "react-router-dom";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
-
-const containerStyle: React.CSSProperties = {
-  maxWidth: "840px",
-  padding: "24px 20px 64px",
-  marginTop: "20px",
-  marginBottom: "40px",
-};
-
-const paperStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-surface)",
-  border: "1px solid var(--border-subtle)",
-  padding: "36px",
-  borderRadius: "16px",
-  boxShadow: "var(--shadow-md)",
-  color: "var(--text-primary)",
-};
+import styles from "./Pages.module.css";
 
 const BackButton = () => {
   const history = useHistory();
@@ -47,22 +32,20 @@ export const Privacy = () => {
   });
 
   return (
-    <Container style={containerStyle}>
+    <div className={styles.pageContainer}>
       <BackButton />
-      <Paper radius="md" style={paperStyle}>
-        <Title order={1} mb="xl" style={{ color: "var(--color-violet)" }}>
-          Privacy Policy
-        </Title>
+      <div className={styles.contentCard}>
+        <h1 className={styles.pageTitle}>Privacy Policy</h1>
 
-        <Title order={2} size="h4" mb="sm">Rooms & Viewing History</Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Rooms & Viewing History</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>By default, rooms are temporary and expire after inactivity.</List.Item>
           <List.Item>Room owners have the option to make rooms permanent, which can be changed at any time.</List.Item>
           <List.Item>We do not track, profile, or retain logs of the media content you watch in rooms.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Account Information</Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Account Information</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>An account is required to host rooms or save preferences. Your username, display name, and avatar are displayed to participants in rooms you join.</List.Item>
           <List.Item>We never sell your personal information or email address to third parties.</List.Item>
           <List.Item>
@@ -70,33 +53,33 @@ export const Privacy = () => {
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Transactional Notifications & Email</Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Transactional Notifications & Email</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>We send transactional communications (such as room invitations, room expiration notices, and security alerts) based on your account activity.</List.Item>
           <List.Item>You can customize or disable email notification categories at any time in your Account Preferences.</List.Item>
           <List.Item>To protect your privacy, invalid or unsubscribed email addresses are protected using one-way cryptographic hashes rather than storing plaintext suppression records.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Live Audio, Video & WebRTC</Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Live Audio, Video & WebRTC</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>Real-time voice, webcam, and screen sharing are delivered via encrypted WebRTC connections.</List.Item>
           <List.Item>Direct peer-to-peer media streaming inherently exchanges network addresses (IP addresses) between participants in the room to route audio and video.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Virtual Browsers</Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Virtual Browsers</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>Cloud virtual browser containers are dedicated to your session and are automatically recycled and wiped upon session conclusion.</List.Item>
           <List.Item>Interactive control commands are encrypted in-transit between your browser and the cloud virtual machine.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">Third-Party Services</Title>
-        <List mb="sm" spacing="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>Third-Party Services</h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             Searching and streaming YouTube videos within CoWatch utilizes the YouTube API Services. Your interaction with YouTube content is governed by the <Anchor href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">Google Privacy Policy</Anchor>.
           </List.Item>
         </List>
-      </Paper>
-    </Container>
+      </div>
+    </div>
   );
 };
 
@@ -107,15 +90,13 @@ export const Terms = () => {
   });
 
   return (
-    <Container style={containerStyle}>
+    <div className={styles.pageContainer}>
       <BackButton />
-      <Paper radius="md" style={paperStyle}>
-        <Title order={1} mb="xl" style={{ color: "var(--color-violet)" }}>
-          Terms of Service
-        </Title>
+      <div className={styles.contentCard}>
+        <h1 className={styles.pageTitle}>Terms of Service</h1>
         
         <Text mb="md" c="var(--text-primary)" fw={500}>By using CoWatch, you agree to the following terms:</Text>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        <List className={styles.list} spacing="sm">
           <List.Item><strong>Age Requirement:</strong> You must be at least 18 years of age to register an account or use the service.</List.Item>
           <List.Item><strong>User Content & Rights:</strong> You warrant that you have all necessary rights, licenses, or permissions for any media content, URLs, files, or streams you share or broadcast in rooms.</List.Item>
           <List.Item><strong>Prohibited Conduct:</strong> You may not use the service to transmit illegal, infringing, defamatory, harassing, abusive, or sexually explicit material. Violating content will result in immediate termination.</List.Item>
@@ -125,12 +106,12 @@ export const Terms = () => {
           <List.Item><strong>Account Suspension & Termination:</strong> We reserve the right to suspend or terminate accounts that violate these Terms, our Community Guidelines, or applicable laws.</List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">YouTube Content</Title>
-        <Text mb="sm" c="var(--text-secondary)">
+        <h2 className={styles.sectionTitle}>YouTube Content</h2>
+        <Text mb="sm" c="var(--text-secondary)" style={{ fontSize: "14.5px", lineHeight: 1.65 }}>
           When playing YouTube videos through CoWatch, you are accessing YouTube content directly and agree to be bound by the <Anchor href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" c="var(--color-violet)">YouTube Terms of Service</Anchor>.
         </Text>
-      </Paper>
-    </Container>
+      </div>
+    </div>
   );
 };
 
@@ -141,9 +122,9 @@ export const FAQ = () => {
   });
 
   return (
-    <Container style={containerStyle}>
+    <div className={styles.pageContainer}>
       <BackButton />
-      <Title order={1} mb="xl" style={{ color: "var(--color-violet)", textAlign: "center", fontWeight: 800 }}>
+      <Title order={1} mb="xl" style={{ color: "var(--color-violet)", textAlign: "center", fontWeight: 800, fontSize: "clamp(24px, 4vw, 32px)" }}>
         Frequently Asked Questions
       </Title>
       
@@ -170,7 +151,7 @@ export const FAQ = () => {
         content: {
           color: "var(--text-secondary)",
           lineHeight: 1.7,
-          fontSize: "15px",
+          fontSize: "14.5px",
           padding: "0 20px 20px 20px",
         },
         chevron: {
@@ -257,6 +238,6 @@ export const FAQ = () => {
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-    </Container>
+    </div>
   );
 };

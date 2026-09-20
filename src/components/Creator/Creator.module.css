@@ -628,23 +628,44 @@
 
 @media (max-width: 640px) {
   .container {
-    padding: 32px 16px 80px;
-    gap: 40px;
+    padding: 24px 14px calc(var(--mobile-bottom-nav-clearance, 76px) + 24px);
+    gap: 36px;
   }
 
   .heroCard {
-    padding: 28px 20px;
+    padding: 24px 16px;
   }
 
   .heroName {
-    font-size: 32px;
+    font-size: 28px;
   }
 
   .heroHeadline {
-    font-size: 17px;
+    font-size: 16px;
+  }
+
+  .creatorCard {
+    padding: 24px 16px;
+  }
+
+  .creatorCardTop {
+    flex-direction: column;
+    text-align: center;
+    gap: 14px;
   }
 
   .metricsStrip {
     grid-template-columns: 1fr;
+  }
+
+  .connectLinks {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .connectLinks button,
+  .connectLinks a {
+    width: 100%;
   }
 }

@@ -899,3 +899,44 @@
     align-items: flex-start;
   }
 }
+
+@media (max-width: 640px) {
+  .studioContainer {
+    padding: 24px 14px calc(var(--mobile-bottom-nav-clearance, 76px) + 24px);
+    gap: 36px;
+  }
+
+  .manifestoCanvas {
+    gap: 48px;
+  }
+
+  .leadHeader {
+    gap: 16px;
+    padding-bottom: 28px;
+  }
+
+  .leadParagraph {
+    font-size: 15.5px;
+  }
+
+  .chapterSection {
+    gap: 20px;
+  }
+
+  .terminalWindow {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .dockButtonGroup {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .dockButtonGroup button,
+  .dockButtonGroup a {
+    width: 100%;
+  }
+}
+

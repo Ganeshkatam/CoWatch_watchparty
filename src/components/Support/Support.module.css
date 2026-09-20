@@ -146,3 +146,33 @@
   gap: 16px;
   flex-wrap: wrap;
 }
+
+@media (max-width: 640px) {
+  .supportContainer {
+    padding: 20px 14px calc(var(--mobile-bottom-nav-clearance, 76px) + 24px);
+  }
+
+  .heroSection {
+    padding: 16px 8px 28px;
+  }
+
+  .guideCard {
+    padding: 20px 16px;
+  }
+
+  .contactBanner {
+    padding: 24px 16px;
+  }
+
+  .contactActions {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .contactActions button,
+  .contactActions a {
+    width: 100%;
+  }
+}
+

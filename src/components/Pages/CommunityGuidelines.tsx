@@ -1,24 +1,9 @@
 import React from "react";
-import { Container, Paper, Title, Text, List, Button } from "@mantine/core";
+import { List, Button, Text } from "@mantine/core";
 import { useHistory } from "react-router-dom";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
-
-const containerStyle: React.CSSProperties = {
-  maxWidth: "840px",
-  padding: "24px 20px 64px",
-  marginTop: "20px",
-  marginBottom: "40px",
-};
-
-const paperStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-surface)",
-  border: "1px solid var(--border-subtle)",
-  padding: "36px",
-  borderRadius: "16px",
-  boxShadow: "var(--shadow-md)",
-  color: "var(--text-primary)",
-};
+import styles from "./Pages.module.css";
 
 const BackButton = () => {
   const history = useHistory();
@@ -47,12 +32,10 @@ export const CommunityGuidelines: React.FC = () => {
   });
 
   return (
-    <Container style={containerStyle}>
+    <div className={styles.pageContainer}>
       <BackButton />
-      <Paper radius="md" style={paperStyle}>
-        <Title order={1} mb="xl" style={{ color: "var(--color-violet)" }}>
-          Community Guidelines
-        </Title>
+      <div className={styles.contentCard}>
+        <h1 className={styles.pageTitle}>Community Guidelines</h1>
 
         <Text mb="lg" c="var(--text-secondary)" size="sm" style={{ lineHeight: 1.7 }}>
           CoWatch is dedicated to providing a safe, enjoyable, and collaborative space for watching
@@ -60,10 +43,10 @@ export const CommunityGuidelines: React.FC = () => {
           voice/video streams, text chat, and shared virtual browsers.
         </Text>
 
-        <Title order={2} size="h4" mb="sm">
+        <h2 className={styles.sectionTitle}>
           1. Respect &amp; Zero Tolerance for Harassment
-        </Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        </h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             <strong>No Bullying or Harassment:</strong> Do not engage in targeted attacks, intimidation,
             stalking, or deliberate disruption of other participants.
@@ -79,10 +62,10 @@ export const CommunityGuidelines: React.FC = () => {
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">
+        <h2 className={styles.sectionTitle}>
           2. Media Broadcasting &amp; Copyright Compliance
-        </Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        </h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             <strong>Lawful Media Sharing:</strong> You may only stream or share media that you own, have
             licensed, or is publicly authorized for viewing.
@@ -98,10 +81,10 @@ export const CommunityGuidelines: React.FC = () => {
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">
+        <h2 className={styles.sectionTitle}>
           3. Responsible Virtual Browser &amp; Infrastructure Use
-        </Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        </h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             <strong>Standard Interactive Use Only:</strong> Cloud virtual browsers are provisioned for
             interactive web browsing and media playback among room participants.
@@ -116,10 +99,10 @@ export const CommunityGuidelines: React.FC = () => {
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">
+        <h2 className={styles.sectionTitle}>
           4. Room Host Responsibilities
-        </Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        </h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             <strong>Host Authority:</strong> As a room creator or designated host, you have tools to maintain
             order, including room passcodes, participant locks, and kick/ban controls.
@@ -130,10 +113,10 @@ export const CommunityGuidelines: React.FC = () => {
           </List.Item>
         </List>
 
-        <Title order={2} size="h4" mb="sm">
+        <h2 className={styles.sectionTitle}>
           5. Reporting &amp; Enforcement
-        </Title>
-        <List mb="xl" spacing="sm" c="var(--text-secondary)">
+        </h2>
+        <List className={styles.list} spacing="sm">
           <List.Item>
             <strong>Reporting Violations:</strong> If you encounter harassment, hate speech, or prohibited
             content, use the in-room reporting options ("Report User" in the participant menu or "Report Room" in
@@ -144,7 +127,7 @@ export const CommunityGuidelines: React.FC = () => {
             suspension, or permanent account termination depending on the severity and frequency of the infraction.
           </List.Item>
         </List>
-      </Paper>
-    </Container>
+      </div>
+    </div>
   );
 };
