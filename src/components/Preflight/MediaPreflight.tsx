@@ -242,9 +242,12 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
             : true
           : false,
         audio: isMicOn
-          ? selectedAudioDevice
-            ? { deviceId: { exact: selectedAudioDevice } }
-            : true
+          ? {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              ...(selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : {}),
+            }
           : false,
       };
 
@@ -275,7 +278,13 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
         if (isCameraOn && isMicOn) {
           // Fallback to audio-only if camera failed
           try {
-            const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioOnly = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            });
             if (!isCancelled) {
               setPreviewStream(audioOnly);
               setIsCameraOn(false);

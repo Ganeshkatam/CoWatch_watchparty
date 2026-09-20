@@ -85,6 +85,79 @@ export class VideoChatErrorBoundary extends React.Component<
   }
 }
 
+class PeerAudioBooster {
+  private ctx: AudioContext | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
+  private peerNodes: Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }> = new Map();
+
+  private getAudioContext(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx || this.ctx.state === "closed") {
+      try {
+        this.ctx = new AudioCtx();
+        this.compressor = this.ctx.createDynamicsCompressor();
+        this.compressor.threshold.setValueAtTime(-18, this.ctx.currentTime);
+        this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
+        this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
+        this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
+        this.compressor.connect(this.ctx.destination);
+      } catch (err) {
+        console.warn("Could not create AudioContext or compressor:", err);
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
+    }
+    return this.ctx;
+  }
+
+  public attachStream(peerId: string, stream: MediaStream, boostFactor = 1.75): void {
+    if (!stream || stream.getAudioTracks().length === 0) return;
+    const ctx = this.getAudioContext();
+    if (!ctx || !this.compressor) return;
+
+    this.detachPeer(peerId);
+
+    try {
+      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(boostFactor, ctx.currentTime);
+      source.connect(gain);
+      gain.connect(this.compressor);
+      this.peerNodes.set(peerId, { source, gain });
+    } catch (err) {
+      console.warn("PeerAudioBooster error attaching peer:", peerId, err);
+    }
+  }
+
+  public detachPeer(peerId: string): void {
+    const node = this.peerNodes.get(peerId);
+    if (node) {
+      try {
+        node.source.disconnect();
+        node.gain.disconnect();
+      } catch {}
+      this.peerNodes.delete(peerId);
+    }
+  }
+
+  public detachAll(): void {
+    for (const peerId of Array.from(this.peerNodes.keys())) {
+      this.detachPeer(peerId);
+    }
+    if (this.ctx) {
+      try {
+        this.ctx.close();
+      } catch {}
+      this.ctx = null;
+      this.compressor = null;
+    }
+  }
+}
+
 export class VideoChat extends React.Component<VideoChatProps> {
 
   static contextType = MetadataContext;
@@ -92,6 +165,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   socket = this.props.socket;
   getSelfId = () => this.props.selfClientId || this.props.socket?.id || "";
+  private audioBooster = new PeerAudioBooster();
 
   state = {
     isInviteModalOpen: false,
@@ -152,6 +226,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   componentWillUnmount() {
     this.socket?.off("signal", this.handleSignal);
+    this.audioBooster.detachAll();
     if (typeof window !== "undefined" && window.cowatch && window.cowatch.getVideoDiagnostics) {
       delete window.cowatch.getVideoDiagnostics;
     }
@@ -295,7 +370,14 @@ export class VideoChat extends React.Component<VideoChatProps> {
         try {
           const constraints: MediaStreamConstraints = {
             audio: prefMicOn
-              ? (this.props.micDeviceId ? { deviceId: { exact: this.props.micDeviceId } } : true)
+              ? {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                  channelCount: 1,
+                  sampleRate: 48000,
+                  ...(this.props.micDeviceId ? { deviceId: { exact: this.props.micDeviceId } } : {}),
+                }
               : false,
             video: prefCameraOn
               ? (this.props.cameraDeviceId ? { deviceId: { exact: this.props.cameraDeviceId } } : true)
@@ -306,7 +388,13 @@ export class VideoChat extends React.Component<VideoChatProps> {
           console.warn("Failed initial getUserMedia with audio+video, falling back:", e);
           try {
             stream = await navigator?.mediaDevices?.getUserMedia({
-              audio: true,
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+                sampleRate: 48000,
+              },
               video: false,
             });
           } catch (fallbackErr) {
@@ -329,6 +417,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
 
   stopWebRTC = () => {
     try {
+      this.audioBooster.detachAll();
       const ourStream = window.cowatch.ourStream;
       const videoPCs = window.cowatch.videoPCs;
       if (ourStream) {
@@ -396,7 +485,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
       audioTrack.enabled = !audioTrack.enabled;
     } else {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000,
+          },
+        });
         const newTrack = stream.getAudioTracks()[0];
         ourStream.addTrack(newTrack);
         this.addTrackToAllPCs(newTrack);
@@ -463,7 +560,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       }
     };
 
-    pc.ontrack = (event: RTCTrackEvent) => {
+      pc.ontrack = (event: RTCTrackEvent) => {
       if (!window.cowatch.remoteStreams) {
         window.cowatch.remoteStreams = {};
       }
@@ -476,6 +573,10 @@ export class VideoChat extends React.Component<VideoChatProps> {
         stream.addTrack(event.track);
       }
 
+      if (stream.getAudioTracks().length > 0) {
+        this.audioBooster.attachStream(id, stream);
+      }
+
       event.track.onunmute = () => {
         const videoEl = window.cowatch.videoRefs?.[id];
         if (videoEl && stream) {
@@ -485,6 +586,9 @@ export class VideoChat extends React.Component<VideoChatProps> {
           videoEl.play().catch((err) => {
             console.warn("Playback retry on track onunmute deferred:", err);
           });
+        }
+        if (stream && stream.getAudioTracks().length > 0) {
+          this.audioBooster.attachStream(id, stream);
         }
       };
 
@@ -524,6 +628,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         if (window.cowatch.remoteStreams) {
           delete window.cowatch.remoteStreams[id];
         }
+        this.audioBooster.detachPeer(id);
         this.updateWebRTC();
       } else if (iceState === "closed") {
         operationCoordinator.setPeerRtcStatus(id, "closed");
@@ -574,6 +679,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
           if (window.cowatch.remoteStreams) {
             delete window.cowatch.remoteStreams[key];
           }
+          this.audioBooster.detachPeer(key);
         }
       });
 
