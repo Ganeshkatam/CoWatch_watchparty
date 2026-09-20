@@ -3356,6 +3356,9 @@ export class App extends React.Component<AppProps, AppState> {
     const target = Math.max(time, 0);
     const toSend = this.getRoomTSToSet(target);
     const operationId = operationCoordinator.createOperationId("media-playback", "seek");
+    try {
+      this.Player().seekVideo(target);
+    } catch {}
     this.socket.emit("CMD:seek", { time: toSend, operationId });
   };
 
@@ -3377,19 +3380,29 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   onKeydown = (e: any) => {
-    if (!document.activeElement || document.activeElement.tagName === "BODY") {
-      if (e.key === " ") {
+    const activeEl = document.activeElement as HTMLElement | null;
+    const isTyping =
+      activeEl &&
+      (activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
+        activeEl.tagName === "SELECT" ||
+        activeEl.isContentEditable);
+
+    if (!isTyping) {
+      if (e.key === " " || e.code === "Space") {
         e.preventDefault();
         this.roomTogglePlay();
       } else if (e.key === "ArrowRight") {
+        e.preventDefault();
         this.roomSeek(this.Player().getCurrentTime() + 10);
       } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
         this.roomSeek(this.Player().getCurrentTime() - 10);
-      } else if (e.key === "t") {
+      } else if (e.key === "t" || e.key === "T") {
         this.localFullScreen(false);
-      } else if (e.key === "f") {
+      } else if (e.key === "f" || e.key === "F") {
         this.localFullScreen(true);
-      } else if (e.key === "m") {
+      } else if (e.key === "m" || e.key === "M") {
         this.localToggleMute();
       }
     }

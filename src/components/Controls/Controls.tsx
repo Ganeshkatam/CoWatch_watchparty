@@ -16,6 +16,8 @@ import {
   IconMaximize,
   IconPictureInPicture,
   IconPlayerSkipForwardFilled,
+  IconPlayerTrackPrevFilled,
+  IconPlayerTrackNextFilled,
 } from "@tabler/icons-react";
 
 interface ControlsProps {
@@ -143,16 +145,40 @@ export const Controls = (props: ControlsProps) => {
   return (
     <div className={styles.controls}>
       {paused ? (
-        <IconPlayerPlayFilled {...playPauseProps} />
+        <Tooltip label="Play (Space)" withArrow position="top">
+          <IconPlayerPlayFilled {...playPauseProps} />
+        </Tooltip>
       ) : (
-        <IconPlayerPauseFilled {...playPauseProps} />
+        <Tooltip label="Pause (Space)" withArrow position="top">
+          <IconPlayerPauseFilled {...playPauseProps} />
+        </Tooltip>
+      )}
+      {!isLiveStream && (
+        <>
+          <Tooltip label="Rewind 10s (←)" withArrow position="top">
+            <IconPlayerTrackPrevFilled
+              className={styles.action}
+              onClick={() => !disabled && roomSeek(Math.max(0, currentTime - 10))}
+              style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+            />
+          </Tooltip>
+          <Tooltip label="Forward 10s (→)" withArrow position="top">
+            <IconPlayerTrackNextFilled
+              className={styles.action}
+              onClick={() => !disabled && roomSeek(Math.min(props.duration || Infinity, currentTime + 10))}
+              style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+            />
+          </Tooltip>
+        </>
       )}
       {playlist.length > 0 && (
-        <IconPlayerSkipForwardFilled
-          title="Skip to next"
-          className={styles.action}
-          onClick={() => roomPlaylistPlay(0)}
-        />
+        <Tooltip label="Skip to next video in playlist" withArrow position="top">
+          <IconPlayerSkipForwardFilled
+            className={styles.action}
+            onClick={() => !disabled && roomPlaylistPlay(0)}
+            style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+          />
+        </Tooltip>
       )}
       {isBehind && (
         <Tooltip label={`Behind by ~${Math.round(behindTime)}s — Click to catch up`} withArrow position="top">
