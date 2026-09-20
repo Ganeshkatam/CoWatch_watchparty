@@ -2,7 +2,7 @@
   "name": "cowatch",
   "version": "1.2.2",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "LICENSED",
   "type": "module",
   "engines": {
     "node": "24.x"
