@@ -142,11 +142,13 @@ export function verifyAdmissionToken(
     return { valid: false, error: "ADMISSION_TOKEN_ROOM_MISMATCH" };
   }
 
-  if (callerUid && payload.userId !== callerUid.trim()) {
+  const cleanCallerUid = (callerUid || "").trim();
+  if (!cleanCallerUid || payload.userId !== cleanCallerUid) {
     return { valid: false, error: "ADMISSION_TOKEN_USER_MISMATCH" };
   }
 
-  if (clientSessionId && payload.sessionId !== clientSessionId.trim()) {
+  const cleanClientSessionId = (clientSessionId || "").trim();
+  if (!cleanClientSessionId || payload.sessionId !== cleanClientSessionId) {
     return { valid: false, error: "ADMISSION_TOKEN_SESSION_MISMATCH" };
   }
 

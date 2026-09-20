@@ -341,7 +341,11 @@ export async function executeInvitationAdmission(
         [inv.room_id, callerUid],
       );
     } catch (admDbErr) {
-      console.warn('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
+      console.error('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
+      return {
+        status: 500,
+        body: { valid: false, error: 'Database error recording room admission. Please try again.', code: 'DATABASE_ERROR' },
+      };
     }
   }
 

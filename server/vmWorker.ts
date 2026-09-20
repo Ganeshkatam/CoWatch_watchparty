@@ -109,6 +109,20 @@ app.post("/updateSnapshot", async (req, res) => {
   res.send(result?.toString() + "\n");
 });
 
-app.listen(config.VMWORKER_PORT, () => {
-  console.log("vmWorker listening on %s", config.VMWORKER_PORT);
+// Enforce local loopback origin protection for internal VM worker control
+app.use((req, res, next) => {
+  const remoteAddress = req.socket.remoteAddress || req.ip || "";
+  const isLoopback =
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1";
+  if (!isLoopback) {
+    res.status(403).json({ error: "FORBIDDEN_EXTERNAL_ORIGIN" });
+    return;
+  }
+  next();
+});
+
+app.listen(config.VMWORKER_PORT, "127.0.0.1", () => {
+  console.log("vmWorker listening on 127.0.0.1:%s", config.VMWORKER_PORT);
 });

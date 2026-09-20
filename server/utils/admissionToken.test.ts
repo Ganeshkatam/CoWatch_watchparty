@@ -93,10 +93,44 @@ console.log("Starting Admission Token Cryptographic Invariant Tests...");
 
 // Test 7: Missing or malformed token rejection
 {
-  assert(verifyAdmissionToken(undefined, "test-room-1").valid === false, "Undefined token rejected");
-  assert(verifyAdmissionToken("", "test-room-1").valid === false, "Empty token rejected");
-  assert(verifyAdmissionToken("malformed-no-dot", "test-room-1").valid === false, "Malformed token rejected");
+  assert(verifyAdmissionToken(undefined, "test-room-1", "user-uuid-123", "session-uuid-456").valid === false, "Undefined token rejected");
+  assert(verifyAdmissionToken("", "test-room-1", "user-uuid-123", "session-uuid-456").valid === false, "Empty token rejected");
+  assert(verifyAdmissionToken("malformed-no-dot", "test-room-1", "user-uuid-123", "session-uuid-456").valid === false, "Malformed token rejected");
   console.log("PASS: Test 7 Passed: Missing and malformed tokens rejected");
+}
+
+// Test 8: Missing/unauthenticated callerUid rejection (FULL-001)
+{
+  const token = generateAdmissionToken({
+    roomId: "test-room-1",
+    userId: "user-uuid-123",
+    sessionId: "session-uuid-456",
+  });
+  const noUidResult = verifyAdmissionToken(token, "test-room-1", undefined, "session-uuid-456");
+  assert(noUidResult.valid === false, "Unauthenticated caller without UID must be rejected");
+  assert(noUidResult.error === "ADMISSION_TOKEN_USER_MISMATCH", "Error must indicate user mismatch");
+
+  const emptyUidResult = verifyAdmissionToken(token, "test-room-1", "", "session-uuid-456");
+  assert(emptyUidResult.valid === false, "Empty caller UID must be rejected");
+  assert(emptyUidResult.error === "ADMISSION_TOKEN_USER_MISMATCH", "Error must indicate user mismatch");
+  console.log("PASS: Test 8 Passed: Missing and empty caller UIDs are strictly rejected");
+}
+
+// Test 9: Missing clientSessionId rejection (FULL-001)
+{
+  const token = generateAdmissionToken({
+    roomId: "test-room-1",
+    userId: "user-uuid-123",
+    sessionId: "session-uuid-456",
+  });
+  const noSessionResult = verifyAdmissionToken(token, "test-room-1", "user-uuid-123", undefined);
+  assert(noSessionResult.valid === false, "Caller without session ID must be rejected");
+  assert(noSessionResult.error === "ADMISSION_TOKEN_SESSION_MISMATCH", "Error must indicate session mismatch");
+
+  const emptySessionResult = verifyAdmissionToken(token, "test-room-1", "user-uuid-123", "");
+  assert(emptySessionResult.valid === false, "Caller with empty session ID must be rejected");
+  assert(emptySessionResult.error === "ADMISSION_TOKEN_SESSION_MISMATCH", "Error must indicate session mismatch");
+  console.log("PASS: Test 9 Passed: Missing and empty session IDs are strictly rejected");
 }
 
 console.log("All Admission Token Cryptographic Invariant Tests Passed!");

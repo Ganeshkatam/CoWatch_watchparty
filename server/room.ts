@@ -793,6 +793,13 @@ export class Room {
           }
         } catch (dbErr) {
           console.error("Failed to check room_bans in postgres:", dbErr);
+          const err = new Error("SERVICE_UNAVAILABLE");
+          (err as any).data = {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Unable to verify authorization state. Please try again.",
+          };
+          next(err);
+          return;
         }
       }
 

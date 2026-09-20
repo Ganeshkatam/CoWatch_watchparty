@@ -2272,7 +2272,9 @@ app.post("/verifyPasscode", async (req, res) => {
           [cleanRoomId, callerUid]
         );
       } catch (admDbErr) {
-        console.warn("[Admission] Failed to record durable admission in DB:", admDbErr);
+        console.error("[Admission] Failed to record durable admission in DB:", admDbErr);
+        res.status(500).json({ valid: false, error: "Database error recording room admission. Please try again.", code: "DATABASE_ERROR" });
+        return;
       }
     }
 
