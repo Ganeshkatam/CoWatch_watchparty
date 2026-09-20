@@ -8,10 +8,14 @@ import {
   MIN_RADIUS,
   MAX_RADIUS,
   DEFAULT_RADIUS,
+  DOCK_HOVER_RADIUS,
+  WHEEL_HOVER_RADIUS_PADDING,
   WheelNavigationItem,
   normalizeAngle,
   angularDistance,
   getOrbitItemAngle,
+  isPointerWithinWheelRadius,
+  isPointerWithinDockRadius,
 } from './navigationPolicy';
 
 export {
@@ -20,10 +24,14 @@ export {
   MIN_RADIUS,
   MAX_RADIUS,
   DEFAULT_RADIUS,
+  DOCK_HOVER_RADIUS,
+  WHEEL_HOVER_RADIUS_PADDING,
   type WheelNavigationItem,
   normalizeAngle,
   angularDistance,
   getOrbitItemAngle,
+  isPointerWithinWheelRadius,
+  isPointerWithinDockRadius,
 };
 
 export interface CircularNavigationWheelProps {
@@ -93,27 +101,91 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     }, 180);
   }, [wheelState]);
 
-  // Hover handlers for laptop/desktop users
-  const handleMouseEnter = useCallback(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-      if (closingTimerRef.current) clearTimeout(closingTimerRef.current);
-      if (wheelState === 'CLOSED' || wheelState === 'CLOSING') {
-        setWheelState('OPEN');
-      }
-    }
-  }, [wheelState]);
+  const getDockCenter = useCallback((): { x: number; y: number } | null => {
+    if (!dockRef.current) return null;
+    const rect = dockRef.current.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }, []);
 
-  const handleMouseLeave = useCallback(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = setTimeout(() => {
-        if (wheelState === 'OPEN' || wheelState === 'SELECTING') {
-          closeWheel();
+  // Hover open handler strictly bounded to dock button radius
+  const handleDockHover = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (typeof window === 'undefined' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        return;
+      }
+      const center = getDockCenter();
+      if (!center) return;
+      const dx = e.clientX - center.x;
+      const dy = e.clientY - center.y;
+      if (isPointerWithinDockRadius(dx, dy)) {
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+          hoverTimerRef.current = null;
         }
-      }, 260);
+        if (closingTimerRef.current) {
+          clearTimeout(closingTimerRef.current);
+          closingTimerRef.current = null;
+        }
+        if (wheelState === 'CLOSED' || wheelState === 'CLOSING') {
+          setWheelState('OPEN');
+        }
+      }
+    },
+    [getDockCenter, wheelState]
+  );
+
+  // Active radial hover boundary tracker: checks mouse Euclidean distance while wheel is open
+  useEffect(() => {
+    if (!isOpen) return;
+    if (typeof window === 'undefined' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      return;
     }
-  }, [wheelState, closeWheel]);
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      const center = getDockCenter();
+      if (!center) return;
+
+      const dx = e.clientX - center.x;
+      const dy = e.clientY - center.y;
+      const withinRadius = isPointerWithinWheelRadius(dx, dy, radius);
+
+      if (withinRadius) {
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+          hoverTimerRef.current = null;
+        }
+      } else {
+        if (!hoverTimerRef.current) {
+          hoverTimerRef.current = setTimeout(() => {
+            closeWheel();
+          }, 140);
+        }
+      }
+    };
+
+    const handleWindowMouseLeave = () => {
+      if (!hoverTimerRef.current) {
+        hoverTimerRef.current = setTimeout(() => {
+          closeWheel();
+        }, 100);
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove, { passive: true });
+    document.addEventListener('mouseleave', handleWindowMouseLeave);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      document.removeEventListener('mouseleave', handleWindowMouseLeave);
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+    };
+  }, [isOpen, getDockCenter, radius, closeWheel]);
 
   // Determine current active item as center anchor
   const activeItem = items.find((item) => item.isActive) || items[0];
@@ -357,10 +429,8 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
       className={styles.wheelRoot}
       role="toolbar"
       aria-label="Circular Navigation Dial"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      {/* Capture layer for clean dismissal on outside tap */}
+      {/* Capture layer for clean dismissal on outside tap (touch devices only) */}
       {isOpen && (
         <div
           className={styles.captureBackdrop}
@@ -370,10 +440,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
       )}
 
       {/* Center Dock Container */}
-      <div
-        className={styles.centerDockContainer}
-        onMouseEnter={handleMouseEnter}
-      >
+      <div className={styles.centerDockContainer}>
         <button
           ref={dockRef}
           type="button"
@@ -381,6 +448,8 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           aria-label={`${activeItem.label}, current page. Hover, tap, or drag to open navigation dial.`}
           aria-expanded={isOpen}
           aria-current="page"
+          onMouseEnter={handleDockHover}
+          onMouseMove={handleDockHover}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -389,7 +458,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
         >
           <div className={styles.centerDockIconWrapper}>
             <CenterIcon size={22} stroke={2.4} />
-            <span className={styles.activeCenterDot} aria-hidden="true" />
           </div>
           <span className={styles.centerDockLabel}>{activeItem.label}</span>
         </button>
@@ -399,21 +467,164 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           <div
             className={styles.orbitArea}
             aria-hidden={!isOpen}
-            onMouseEnter={handleMouseEnter}
           >
-            {/* Concentric SVG Quadrant Plate */}
+            {/* Concentric SVG Quadrant Plate with Cinematic Watch Party Artwork */}
             <svg
               className={styles.arcGuideSvg}
               viewBox="-250 -250 500 500"
               aria-hidden="true"
             >
-              {/* Corner-Anchored Strict Circular Quadrant Sector Plate */}
+              <defs>
+                {/* Cinema Spotlight Beam Gradient */}
+                <radialGradient id="spotlightGlow" cx={rightOffset} cy={bottomOffset} r={cornerRadius} gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.22" />
+                  <stop offset="38%" stopColor="#ec4899" stopOpacity="0.12" />
+                  <stop offset="72%" stopColor="#06b6d4" stopOpacity="0.08" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </radialGradient>
+
+                {/* Filmstrip Ribbon Gradient */}
+                <linearGradient id="filmstripGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.45" />
+                  <stop offset="50%" stopColor="#a855f7" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#ec4899" stopOpacity="0.4" />
+                </linearGradient>
+
+                {/* 3D Glasses Lens Gradients */}
+                <linearGradient id="lensCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#0284c7" stopOpacity="0.55" />
+                </linearGradient>
+                <linearGradient id="lensRed" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#e11d48" stopOpacity="0.55" />
+                </linearGradient>
+
+                {/* VIP Gold Gradient */}
+                <linearGradient id="ticketGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.65" />
+                </linearGradient>
+
+                {/* Hub Stage Spotlight */}
+                <radialGradient id="stageSpotlight" cx="0" cy="0" r="105" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.28" />
+                  <stop offset="60%" stopColor="#a855f7" stopOpacity="0.1" />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+
+              {/* Clip path to quadrant boundaries */}
+              <clipPath id="cinemaQuadrantClip">
+                <path d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`} />
+              </clipPath>
+
+              {/* Base Frosted Glass Quadrant Plate */}
               <path
                 className={styles.sectorPlatePath}
                 d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`}
               />
 
-              {/* Circular Quadrant Outer Curved Rim */}
+              {/* Soft Spotlight Aura */}
+              <path
+                d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`}
+                fill="url(#spotlightGlow)"
+              />
+
+              {/* Cinematic Vector Artworks (Clipped) */}
+              <g clipPath="url(#cinemaQuadrantClip)">
+                {/* Cinema Projector Spotlight Cones */}
+                <polygon points="53,53 -180,-60 -120,-150" fill="url(#stageSpotlight)" opacity="0.6" />
+                <polygon points="53,53 -40,-180 30,-160" fill="url(#stageSpotlight)" opacity="0.4" />
+
+                {/* Flowing Filmstrip Ribbon */}
+                <path
+                  d="M 50 -130 C 0 -170 -70 -120 -110 -70 S -170 0 -180 35"
+                  fill="none"
+                  stroke="url(#filmstripGrad)"
+                  strokeWidth="16"
+                  strokeLinecap="round"
+                  className={styles.filmRibbonTrack}
+                />
+                {/* Filmstrip Sprocket Perforations */}
+                <path
+                  d="M 50 -130 C 0 -170 -70 -120 -110 -70 S -170 0 -180 35"
+                  fill="none"
+                  stroke="rgba(255, 255, 255, 0.75)"
+                  strokeWidth="2.5"
+                  strokeDasharray="4 6"
+                />
+
+                {/* Pocket 1: Cinema Film Reel Spool */}
+                <g transform="translate(22, -85) rotate(15)" className={styles.cinemaReelGroup}>
+                  <circle cx="0" cy="0" r="16" fill="none" stroke="rgba(139, 92, 246, 0.5)" strokeWidth="2.5" />
+                  <circle cx="0" cy="0" r="6" fill="rgba(139, 92, 246, 0.4)" />
+                  <circle cx="0" cy="-10" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                  <circle cx="9" cy="-5" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                  <circle cx="9" cy="5" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                  <circle cx="0" cy="10" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                  <circle cx="-9" cy="5" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                  <circle cx="-9" cy="-5" r="2.5" fill="rgba(255, 255, 255, 0.7)" />
+                </g>
+
+                {/* Pocket 2: Vintage VIP Movie Ticket Stub */}
+                <g transform="translate(-46, -72) rotate(-22)" className={styles.ticketStubGroup}>
+                  <rect x="-14" y="-8" width="28" height="16" rx="2.5" fill="url(#ticketGold)" />
+                  <line x1="-3" y1="-8" x2="-3" y2="8" stroke="rgba(255, 255, 255, 0.85)" strokeWidth="1" strokeDasharray="1.5 1.5" />
+                  {/* Star Cutout on Ticket */}
+                  <polygon points="5,-3 6,-1 8,-1 6.5,0.5 7,2.5 5,1.2 3,2.5 3.5,0.5 2,-1 4,-1" fill="#ffffff" />
+                  {/* Ticket Notch Semi-circles */}
+                  <circle cx="-14" cy="0" r="2" fill="#ffffff" />
+                  <circle cx="14" cy="0" r="2" fill="#ffffff" />
+                </g>
+
+                {/* Pocket 3: Retro 3D Cinema Glasses */}
+                <g transform="translate(-102, -102) rotate(-35)" className={styles.cinema3DGlasses}>
+                  {/* Frame */}
+                  <path d="M -16 -4 C -10 -7 10 -7 16 -4 L 14 3 C 8 0 -8 0 -14 3 Z" fill="rgba(255, 255, 255, 0.9)" />
+                  {/* Left Cyan Lens */}
+                  <rect x="-13" y="-3" width="9" height="7" rx="1.5" fill="url(#lensCyan)" />
+                  {/* Right Red Lens */}
+                  <rect x="4" y="-3" width="9" height="7" rx="1.5" fill="url(#lensRed)" />
+                  {/* Bridge */}
+                  <line x1="-4" y1="-2" x2="4" y2="-2" stroke="rgba(255, 255, 255, 0.95)" strokeWidth="1.2" />
+                </g>
+
+                {/* Pocket 4: Popcorn Bucket & Floating Kernels */}
+                <g transform="translate(-74, -42) rotate(12)" className={styles.popcornGroup}>
+                  {/* Striped Bucket */}
+                  <polygon points="-8,8 8,8 10,-3 -10,-3" fill="#f43f5e" />
+                  <polygon points="-5,8 -2,8 -3,-3 -6,-3" fill="#ffffff" />
+                  <polygon points="2,8 5,8 4,-3 1,-3" fill="#ffffff" />
+                  {/* Fluffy Popcorn Tops */}
+                  <circle cx="-5" cy="-5" r="3.2" fill="#fef08a" />
+                  <circle cx="0" cy="-6.5" r="3.6" fill="#fde047" />
+                  <circle cx="5" cy="-5" r="3.2" fill="#fef08a" />
+                  {/* Floating Popped Kernels */}
+                  <circle cx="-10" cy="-11" r="2" fill="#fef08a" className={styles.floatingKernel1} />
+                  <circle cx="2" cy="-14" r="2.2" fill="#fde047" className={styles.floatingKernel2} />
+                  <circle cx="11" cy="-10" r="1.8" fill="#fef08a" className={styles.floatingKernel3} />
+                </g>
+
+                {/* Cinema Play Sparkles (Floating Play Triangles & Sparkle Gems) */}
+                <g transform="translate(-25, -135) scale(0.9)" className={styles.cinemaPlaySparkle}>
+                  <polygon points="-3,-4 5,0 -3,4" fill="#a855f7" />
+                </g>
+                <g transform="translate(-135, -25) scale(0.9)" className={styles.cinemaPlaySparkle}>
+                  <polygon points="-3,-4 5,0 -3,4" fill="#ec4899" />
+                </g>
+                <g transform="translate(-118, -48) scale(0.8)" className={styles.cinemaStarGem}>
+                  <path d="M 0 -5 Q 0 0 5 0 Q 0 0 0 5 Q 0 0 -5 0 Q 0 0 0 -5 Z" fill="#fbbf24" />
+                </g>
+                <g transform="translate(-48, -118) scale(0.8)" className={styles.cinemaStarGem}>
+                  <path d="M 0 -5 Q 0 0 5 0 Q 0 0 0 5 Q 0 0 -5 0 Q 0 0 0 -5 Z" fill="#38bdf8" />
+                </g>
+
+                {/* Ambient Hub Glow */}
+                <circle cx="0" cy="0" r="88" fill="url(#stageSpotlight)" />
+              </g>
+
+              {/* Outer Circular Quadrant Rim */}
               <path
                 className={styles.outerRimPath}
                 d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset}`}

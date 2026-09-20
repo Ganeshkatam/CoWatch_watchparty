@@ -51,6 +51,8 @@ export const MOVE_JITTER_TOLERANCE_PX = 8;
 export const MIN_RADIUS = 120;
 export const MAX_RADIUS = 144;
 export const DEFAULT_RADIUS = 132;
+export const DOCK_HOVER_RADIUS = 36;
+export const WHEEL_HOVER_RADIUS_PADDING = 48;
 
 export interface WheelNavigationItem {
   id: string;
@@ -83,6 +85,49 @@ export function getOrbitItemAngle(index: number, total: number): number {
   const startAngle = (-90 * Math.PI) / 180;
   const endAngle = (-180 * Math.PI) / 180;
   return startAngle + (index / (total - 1)) * (endAngle - startAngle);
+}
+
+/**
+ * Validates whether pointer coordinates relative to dock center are within
+ * the allowed circular quadrant hover boundary.
+ *
+ * @param dx Horizontal offset from dock center (clientX - hubCenterX)
+ * @param dy Vertical offset from dock center (clientY - hubCenterY)
+ * @param radius Current active wheel orbit radius
+ * @param padding Maximum padding beyond the orbit radius (defaults to WHEEL_HOVER_RADIUS_PADDING)
+ */
+export function isPointerWithinWheelRadius(
+  dx: number,
+  dy: number,
+  radius: number,
+  padding = WHEEL_HOVER_RADIUS_PADDING
+): boolean {
+  const maxRadius = radius + padding;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance > maxRadius) {
+    return false;
+  }
+
+  // Corner bounds: Wheel is anchored at bottom-right expanding top-left.
+  // The center is 53px from bottom and right viewport edges.
+  // Allow margin up to the viewport edge.
+  if (dx > 56 || dy > 56) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Checks whether pointer coordinates are within the center dock trigger circle.
+ */
+export function isPointerWithinDockRadius(
+  dx: number,
+  dy: number,
+  dockRadius = DOCK_HOVER_RADIUS
+): boolean {
+  return Math.hypot(dx, dy) <= dockRadius;
 }
 
 

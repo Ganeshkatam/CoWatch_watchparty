@@ -36,8 +36,8 @@ export const MobileBottomNav: React.FC = () => {
           ariaLabel: "Navigate to Home",
         },
         {
-          id: "rooms",
-          label: "Rooms",
+          id: "myrooms",
+          label: "My Rooms",
           icon: IconDeviceTv,
           href: "/myrooms",
           isActive: isRouteActive(location.pathname, "/myrooms", true),

@@ -21,7 +21,7 @@
   }
 }
 
-/* Dismissal / capture layer (subtle blur backdrop) */
+/* Dismissal / capture layer (subtle blur backdrop on touch devices) */
 .captureBackdrop {
   position: fixed;
   inset: 0;
@@ -30,6 +30,12 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   animation: fadeIn 0.16s ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .captureBackdrop {
+    display: none !important;
+  }
 }
 
 /* Center Dock Container */
@@ -96,31 +102,21 @@
 }
 
 .centerDockLabel {
-  font-size: 9.5px;
+  font-size: 9px;
   line-height: 10px;
   font-weight: 700;
   letter-spacing: -0.01em;
   margin-top: 2px;
   color: var(--text-primary, #0f172a);
-  max-width: 50px;
+  max-width: 54px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
 }
 
 :global([data-mantine-color-scheme="dark"]) .centerDockLabel {
   color: #f1f5f9;
-}
-
-/* Active indicator dot */
-.activeCenterDot {
-  position: absolute;
-  top: 2px;
-  right: 5px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--color-teal, #14b8a6);
 }
 
 /* Orbit Area Container */
@@ -197,6 +193,72 @@
 
 :global([data-mantine-color-scheme="dark"]) .radialGuideLine {
   stroke: rgba(255, 255, 255, 0.08);
+}
+
+/* Cinematic Watch Party Vector Artworks - Ultra-subtle Ghosted Watermark Engravings */
+.filmRibbonTrack {
+  opacity: 0.07;
+}
+
+.cinemaReelGroup {
+  opacity: 0.08;
+}
+
+.ticketStubGroup {
+  opacity: 0.09;
+}
+
+.cinema3DGlasses {
+  opacity: 0.08;
+}
+
+.popcornGroup {
+  opacity: 0.08;
+}
+
+.floatingKernel1 {
+  opacity: 0.07;
+  animation: kernelBounce 3s ease-in-out infinite alternate;
+}
+
+.floatingKernel2 {
+  opacity: 0.07;
+  animation: kernelBounce 3.6s ease-in-out infinite alternate 0.5s;
+}
+
+.floatingKernel3 {
+  opacity: 0.07;
+  animation: kernelBounce 3.2s ease-in-out infinite alternate 1s;
+}
+
+.cinemaPlaySparkle {
+  opacity: 0.10;
+  animation: playSparklePulse 2.8s ease-in-out infinite alternate;
+}
+
+.cinemaStarGem {
+  opacity: 0.12;
+  animation: playSparklePulse 3.2s ease-in-out infinite alternate 0.6s;
+}
+
+@keyframes kernelBounce {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes playSparklePulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.06;
+  }
+  100% {
+    transform: scale(1.05);
+    opacity: 0.14;
+  }
 }
 
 /* Orbit Destination Circle Button */
