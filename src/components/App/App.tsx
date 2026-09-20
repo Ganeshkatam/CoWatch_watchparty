@@ -2641,6 +2641,7 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({
             roomMedia: "localmedia://" + manifest.mediaId,
             loading: false,
+            nonPlayableMedia: false,
           });
         }
         const leftVideo = this.HTMLInterface.getVideoEl();
@@ -3402,6 +3403,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.state.pipState?.active) {
       pipManager.restoreAndClose().catch(console.warn);
     }
+    this.setState({ nonPlayableMedia: false });
     const normalized = isYouTube(value) ? normalizeYouTubeUrl(value) : value;
     operationCoordinator.startOperation("media-playback", "set-media");
     this.socket.emit("CMD:host", normalized);
@@ -4198,7 +4200,7 @@ export class App extends React.Component<AppProps, AppState> {
                     )}
                     {(this.state.loading ||
                       !this.state.roomMedia ||
-                      this.state.nonPlayableMedia) &&
+                      (Boolean(this.state.roomMedia) && this.state.nonPlayableMedia)) &&
                       !this.state.isLiveStream && (
                         <div
                           id="loader"
@@ -4225,7 +4227,8 @@ export class App extends React.Component<AppProps, AppState> {
                               onOpenAddMedia={this.openQuickAdd}
                             />
                           )}
-                          {!this.state.loading &&
+                          {Boolean(this.state.roomMedia) &&
+                            !this.state.loading &&
                             this.state.nonPlayableMedia && (
                               <NonPlayableMediaState />
                             )}
