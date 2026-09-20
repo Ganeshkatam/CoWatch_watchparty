@@ -21,184 +21,186 @@
   }
 }
 
-  /* Dismissal / capture layer (subtle blur backdrop) */
-  .captureBackdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 840;
-    background: rgba(0, 0, 0, 0.32);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    animation: fadeIn 0.16s ease-out;
-  }
+/* Dismissal / capture layer (subtle blur backdrop) */
+.captureBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 840;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeIn 0.16s ease-out;
+}
 
-  /* Center Dock Container */
-  .centerDockContainer {
-    position: relative;
-    width: 58px;
-    height: 58px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+/* Center Dock Container */
+.centerDockContainer {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 
 
-  /* Center Dock Button - Crisp Frosted Glass Floating Trigger */
-  .centerDockButton {
-    width: 58px;
-    height: 58px;
-    border-radius: 50%;
-    background: #ffffff;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 2px solid var(--color-violet, #8b5cf6);
-    box-shadow: 0 6px 22px rgba(139, 92, 246, 0.35), 0 2px 8px rgba(0, 0, 0, 0.12);
-    color: var(--color-violet, #8b5cf6);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    position: relative;
-    z-index: 880;
-    padding: 0;
-    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.18s ease,
-                border-color 0.18s ease,
-                background 0.18s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
+/* Center Dock Button - Crisp Frosted Glass Floating Trigger */
+.centerDockButton {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #ffffff;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid var(--color-violet, #8b5cf6);
+  box-shadow: 0 6px 22px rgba(139, 92, 246, 0.35), 0 2px 8px rgba(0, 0, 0, 0.12);
+  color: var(--color-violet, #8b5cf6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  z-index: 880;
+  padding: 0;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .centerDockButton {
-    background: #1e1e2e;
-    border: 2px solid #8b5cf6;
-    box-shadow: 0 6px 22px rgba(139, 92, 246, 0.45), 0 2px 8px rgba(0, 0, 0, 0.4);
-    color: #c4b5fd;
-  }
+:global([data-mantine-color-scheme="dark"]) .centerDockButton {
+  background: #1e1e2e;
+  border: 2px solid #8b5cf6;
+  box-shadow: 0 6px 22px rgba(139, 92, 246, 0.45), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: #c4b5fd;
+}
 
-  .centerDockButton:focus-visible {
-    outline: 2px solid var(--color-teal, #14b8a6);
-    outline-offset: 3px;
-  }
+.centerDockButton:focus-visible {
+  outline: 2px solid var(--color-teal, #14b8a6);
+  outline-offset: 3px;
+}
 
-  .centerDockOpen {
-    transform: scale(1.06);
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3), 0 8px 24px rgba(139, 92, 246, 0.4);
-  }
+.centerDockOpen {
+  transform: scale(1.06);
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3), 0 8px 24px rgba(139, 92, 246, 0.4);
+}
 
-  .centerDockIconWrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-  }
+.centerDockIconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
 
-  .centerDockLabel {
-    font-size: 9.5px;
-    line-height: 10px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin-top: 2px;
-    color: var(--text-primary, #0f172a);
-    max-width: 50px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+.centerDockLabel {
+  font-size: 9.5px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-top: 2px;
+  color: var(--text-primary, #0f172a);
+  max-width: 50px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .centerDockLabel {
-    color: #f1f5f9;
-  }
+:global([data-mantine-color-scheme="dark"]) .centerDockLabel {
+  color: #f1f5f9;
+}
 
-  /* Active indicator dot */
-  .activeCenterDot {
-    position: absolute;
-    top: 2px;
-    right: 5px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--color-teal, #14b8a6);
-  }
+/* Active indicator dot */
+.activeCenterDot {
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-teal, #14b8a6);
+}
 
-  /* Orbit Area Container */
-  .orbitArea {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-    z-index: 860;
-  }
+/* Orbit Area Container */
+.orbitArea {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 860;
+}
 
-  /* Subtle Concentric Orbital Sector Plate, Arcs & Radial Lines */
-  .arcGuideSvg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 500px;
-    height: 500px;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    overflow: visible;
-    z-index: 852;
-    animation: fadeIn 0.18s ease-out;
-  }
+/* Subtle Concentric Orbital Sector Plate, Arcs & Radial Lines */
+.arcGuideSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 500px;
+  height: 500px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  z-index: 852;
+  animation: fadeIn 0.18s ease-out;
+}
 
-  .sectorPlatePath {
-    fill: rgba(246, 244, 255, 0.96);
-    filter: drop-shadow(-6px -6px 20px rgba(15, 23, 42, 0.14));
-  }
+.sectorPlatePath {
+  fill: rgba(246, 244, 255, 0.96);
+  filter: drop-shadow(-6px -6px 20px rgba(15, 23, 42, 0.14));
+}
 
-  :global([data-mantine-color-scheme="dark"]) .sectorPlatePath {
-    fill: rgba(22, 22, 36, 0.94);
-    filter: drop-shadow(-8px -8px 28px rgba(0, 0, 0, 0.45));
-  }
+:global([data-mantine-color-scheme="dark"]) .sectorPlatePath {
+  fill: rgba(22, 22, 36, 0.94);
+  filter: drop-shadow(-8px -8px 28px rgba(0, 0, 0, 0.45));
+}
 
-  .outerRimPath {
-    fill: none;
-    stroke: rgba(139, 92, 246, 0.35);
-    stroke-width: 1.5px;
-  }
+.outerRimPath {
+  fill: none;
+  stroke: rgba(139, 92, 246, 0.35);
+  stroke-width: 1.5px;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .outerRimPath {
-    stroke: rgba(255, 255, 255, 0.16);
-  }
+:global([data-mantine-color-scheme="dark"]) .outerRimPath {
+  stroke: rgba(255, 255, 255, 0.16);
+}
 
-  .innerDockGuideRing {
-    stroke: rgba(139, 92, 246, 0.2);
-    stroke-width: 1px;
-    stroke-dasharray: 2 3;
-  }
+.innerDockGuideRing {
+  stroke: rgba(139, 92, 246, 0.2);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .innerDockGuideRing {
-    stroke: rgba(255, 255, 255, 0.1);
-  }
+:global([data-mantine-color-scheme="dark"]) .innerDockGuideRing {
+  stroke: rgba(255, 255, 255, 0.1);
+}
 
-  .arcGuidePath {
-    fill: none;
-    stroke: rgba(139, 92, 246, 0.22);
-    stroke-width: 1.5px;
-    stroke-dasharray: 4 4;
-  }
+.arcGuidePath {
+  fill: none;
+  stroke: rgba(139, 92, 246, 0.22);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 4;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .arcGuidePath {
-    stroke: rgba(255, 255, 255, 0.12);
-  }
+:global([data-mantine-color-scheme="dark"]) .arcGuidePath {
+  stroke: rgba(255, 255, 255, 0.12);
+}
 
-  .radialGuideLine {
-    stroke: rgba(139, 92, 246, 0.14);
-    stroke-width: 1px;
-    stroke-dasharray: 2 4;
-  }
+.radialGuideLine {
+  stroke: rgba(139, 92, 246, 0.14);
+  stroke-width: 1px;
+  stroke-dasharray: 2 4;
+}
 
-  :global([data-mantine-color-scheme="dark"]) .radialGuideLine {
-    stroke: rgba(255, 255, 255, 0.08);
-  /* Orbit Destination Circle Button */
-  .orbitItem {
+:global([data-mantine-color-scheme="dark"]) .radialGuideLine {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+/* Orbit Destination Circle Button */
+.orbitItem {
     position: absolute;
     width: 42px;
     height: 42px;
@@ -220,10 +222,10 @@
     padding: 0;
     z-index: 865;
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                background 0.15s ease,
-                color 0.15s ease,
-                box-shadow 0.18s ease,
-                border-color 0.18s ease;
+      background 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -315,22 +317,24 @@
     z-index: 870;
   }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
 
-@keyframes sectorPop {
-  from {
-    opacity: 0;
-    transform: scale(0.65);
+    to {
+      opacity: 1;
+    }
   }
-  to {
-    opacity: 1;
-    transform: scale(1);
+
+  @keyframes sectorPop {
+    from {
+      opacity: 0;
+      transform: scale(0.65);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
-}
