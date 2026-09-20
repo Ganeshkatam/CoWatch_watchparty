@@ -211,14 +211,14 @@ export const MediaDock: React.FC<MediaDockProps> = ({
 
   const addMediaMenuWidth = isCompact ? Math.min(viewport.width - 24, 260) : 260;
   const playlistMenuWidth = isCompact
-    ? Math.min(viewport.width - 24, 300)
+    ? Math.min(viewport.width - 24, 380)
     : isMedium
-      ? 290
-      : 340;
+      ? Math.min(viewport.width - 32, 460)
+      : Math.min(viewport.width - 48, 520);
   const moreMenuWidth = isCompact ? Math.min(viewport.width - 24, 200) : 200;
   const playlistMaxHeight = isShortHeight
-    ? Math.min(viewport.height * 0.5, 260)
-    : 380;
+    ? Math.min(viewport.height * 0.6, 320)
+    : 440;
 
   return (
     <div className={styles.dockShell}>
