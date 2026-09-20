@@ -294,11 +294,17 @@ export class Room {
 
     const isOwner = Boolean(this.owner_id && socket.uid && socket.uid === this.owner_id);
     const isHost = this.isHost(socket);
-    const isMember =
-      isOwner ||
-      isHost ||
-      (Boolean(socket.uid) && (this.admittedMembers.has(socket.uid) || this.hasParticipantUid(socket.uid)));
-    const isLockHolder = Boolean(this.lock && socket.uid && socket.uid === this.lock);
+    const isAdmittedByRoster = Boolean(socket.clientId && this.roster.some((u) => u.id === socket.clientId));
+    const isAdmittedByRecord = Boolean(socket.clientId && this.admittedParticipants.has(socket.clientId));
+    const isAdmittedByUid = Boolean(
+      socket.uid &&
+      (this.admittedMembers.has(socket.uid) || this.hasParticipantUid(socket.uid) || this.clientToUidMap[socket.clientId] === socket.uid)
+    );
+    const isMember = isOwner || isHost || isAdmittedByRoster || isAdmittedByRecord || isAdmittedByUid;
+    const isLockHolder = Boolean(
+      this.lock &&
+      ((socket.uid && socket.uid === this.lock) || (socket.clientId && socket.clientId === this.lock))
+    );
 
     return {
       actorUid: socket.uid || "",
