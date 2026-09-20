@@ -19,6 +19,9 @@ export interface AdmissionPayload {
 export interface AdmissionVerificationResult {
   valid: boolean;
   error?: string;
+  reason?: string;
+  userId?: string;
+  sessionId?: string;
   payload?: AdmissionPayload;
 }
 
