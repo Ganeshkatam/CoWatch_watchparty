@@ -1917,6 +1917,18 @@ export class App extends React.Component<AppProps, AppState> {
         ) {
           new Audio("/clearly.mp3").play();
         }
+        const msgIndex = this.state.chat.findIndex(
+          (m) =>
+            (data.dbId && m.dbId && m.dbId === data.dbId) ||
+            (data.clientMessageId && m.clientMessageId && m.clientMessageId === data.clientMessageId) ||
+            (m.timestamp === data.timestamp && m.id === data.id)
+        );
+        if (msgIndex >= 0) {
+          const chat = [...this.state.chat];
+          chat[msgIndex] = { ...chat[msgIndex], ...data };
+          this.setState({ chat });
+          return;
+        }
         this.state.chat.push(data);
         if (this.state.chat.length > 100) {
           this.state.chat.shift();
@@ -1930,10 +1942,24 @@ export class App extends React.Component<AppProps, AppState> {
               : this.state.unreadCount + 1,
         });
       });
+      socket.on("REC:messagePersisted", (data: ChatMessage) => {
+        if (!isCurrentGeneration()) return;
+        const msgIndex = this.state.chat.findIndex(
+          (m) =>
+            (data.dbId && m.dbId === data.dbId) ||
+            (data.clientMessageId && m.clientMessageId && m.clientMessageId === data.clientMessageId) ||
+            (m.timestamp === data.timestamp && m.id === data.id)
+        );
+        if (msgIndex >= 0) {
+          const chat = [...this.state.chat];
+          chat[msgIndex] = { ...chat[msgIndex], ...data };
+          this.setState({ chat });
+        }
+      });
       socket.on("REC:editMessage", (data: ChatMessage) => {
         if (!isCurrentGeneration()) return;
         const { chat } = this.state;
-        const msgIndex = chat.findIndex((m) => m.dbId === data.dbId);
+        const msgIndex = chat.findIndex((m) => (data.dbId && m.dbId === data.dbId) || (data.clientMessageId && m.clientMessageId === data.clientMessageId) || (m.timestamp === data.timestamp && m.id === data.id));
         if (msgIndex === -1) {
           return;
         }
@@ -4555,6 +4581,8 @@ export class App extends React.Component<AppProps, AppState> {
                     display: "flex",
                     flexDirection: "column",
                     minHeight: 0,
+                    height: "100%",
+                    maxHeight: "100%",
                     marginTop: "8px",
                     borderRadius: "8px",
                     overflow: "hidden",

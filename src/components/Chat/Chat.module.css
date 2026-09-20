@@ -1,6 +1,9 @@
 .chatContainer {
   flex-grow: 1;
-  overflow: auto;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .hoverEffect:hover {
@@ -8,16 +11,19 @@
 }
 
 .light {
-  color: gainsboro;
-  font-size: 14px;
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13.5px;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .light.emoji {
   font-size: 24px;
+  line-height: 1.2;
 }
 
 .dark {
-  color: gray;
+  color: var(--text-muted, #8a8a8a);
 }
 
 .small {
@@ -27,32 +33,35 @@
 .system {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
 }
 
 .comment .commentMenu {
   display: none;
-  justify-content: center;
+  align-items: center;
+  gap: 3px;
   position: absolute;
-  right: 5px;
-  top: -13px;
-  padding: 4px !important;
-  border-radius: 3px;
-  cursor: pointer;
+  right: 8px;
+  top: -12px;
+  padding: 3px 6px !important;
+  border-radius: 8px;
+  background: var(--bg-surface, #1e1e24);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .comment .commentMenu:hover,
 .comment.selected .commentMenu {
-  background: rgb(46, 137, 212);
-  transition: background 0.2s ease-in-out;
+  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
 }
 
 .comment:hover,
 .comment.selected {
-  border-radius: 5px;
-  background: radial-gradient(at top right,
-      #7eaee02a,
-      transparent 70%) !important;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .comment:hover .commentMenu,

@@ -103,9 +103,10 @@
     width: 100% !important;
     max-width: 100% !important;
     flex-shrink: 1;
-    min-height: 50vh;
-    flex: 1;
-    height: auto !important;
+    min-height: 380px !important;
+    height: 52vh !important;
+    max-height: 60vh !important;
+    overflow: hidden;
   }
 
   .rightColumnCollapsed {

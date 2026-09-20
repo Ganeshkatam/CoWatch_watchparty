@@ -23,6 +23,7 @@ export interface RoomMessage {
   timestamp: string;
   videoTS?: number;
   dbId?: string;
+  clientMessageId?: string;
   name?: string;
   picture?: string;
   userId?: string;
@@ -44,7 +45,7 @@ export function useRoomMessages(socket: Socket | undefined) {
     const handleRoomMessages = (data: RoomMessage[]) => {
       setMessages((prev) => {
         const merged = [...prev, ...data];
-        const unique = Array.from(new Map(merged.map(item => [item.dbId || item.timestamp, item])).values());
+        const unique = Array.from(new Map(merged.map(item => [item.dbId || item.clientMessageId || item.timestamp, item])).values());
         unique.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         return unique;
       });
@@ -57,8 +58,16 @@ export function useRoomMessages(socket: Socket | undefined) {
 
     const handleRoomMessage = (data: RoomMessage) => {
       setMessages((prev) => {
-        if (prev.some(m => m.dbId === data.dbId || (m.timestamp === data.timestamp && m.id === data.id))) {
-          return prev;
+        const existingIdx = prev.findIndex(
+          (m) =>
+            (data.dbId && m.dbId && m.dbId === data.dbId) ||
+            (data.clientMessageId && m.clientMessageId && m.clientMessageId === data.clientMessageId) ||
+            (m.timestamp === data.timestamp && m.id === data.id)
+        );
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = { ...copy[existingIdx], ...data };
+          return copy;
         }
         return [...prev, data];
       });
@@ -86,6 +95,7 @@ export function useRoomMessages(socket: Socket | undefined) {
       setMessages((prev) =>
         prev.map((msg) =>
           (msg.dbId && data.dbId && msg.dbId === data.dbId) ||
+          (msg.clientMessageId && data.clientMessageId && msg.clientMessageId === data.clientMessageId) ||
           (msg.timestamp === data.timestamp && msg.id === data.id)
             ? { ...msg, ...data, msg: data.msg, updatedAt: data.updatedAt || new Date().toISOString() }
             : msg
@@ -98,6 +108,7 @@ export function useRoomMessages(socket: Socket | undefined) {
     socket.on("ROOM_MESSAGE_EDITED", handleMessageEdited);
     socket.on("chatinit", handleChatInit);
     socket.on("REC:chat", handleRoomMessage);
+    socket.on("REC:messagePersisted", handleMessageEdited);
     socket.on("REC:editMessage", handleMessageEdited);
     socket.on("REC:chatMessagesDeleted", handleMessagesDeleted);
 
@@ -107,6 +118,7 @@ export function useRoomMessages(socket: Socket | undefined) {
       socket.off("ROOM_MESSAGE_EDITED", handleMessageEdited);
       socket.off("chatinit", handleChatInit);
       socket.off("REC:chat", handleRoomMessage);
+      socket.off("REC:messagePersisted", handleMessageEdited);
       socket.off("REC:editMessage", handleMessageEdited);
       socket.off("REC:chatMessagesDeleted", handleMessagesDeleted);
     };
@@ -444,6 +456,9 @@ export class ChatComponent extends React.Component<
           flexDirection: "column",
           flexGrow: 1,
           minHeight: 0,
+          height: "100%",
+          maxHeight: "100%",
+          overflow: "hidden",
           marginTop: 0,
           marginBottom: 0,
           padding: "8px",
@@ -841,7 +856,7 @@ const ChatMessage = ({
               {id === myId && <span className={styles.selfBadge}>You</span>}
               {userId === owner && <span className={styles.hostBadge}>Host</span>}
               <div className={styles.messageTime}>
-                {new Date(timestamp).toLocaleTimeString()} {updatedAt ? "· edited" : ""}
+                {new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} {updatedAt ? "· edited" : ""}
               </div>
             </>
           )}

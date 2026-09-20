@@ -1925,11 +1925,14 @@ export class Room {
       return;
     }
 
-    const shouldPersist = !isCmd || (isCmd && ['room.inactive', 'room.reactivated', 'room.expired'].includes(chatMsg.cmd!));
+    // Broadcast immediately in realtime to all clients in the room (zero latency)
+    this.io.of(this.roomId).emit("REC:chat", { ...chatWithTime, userId: socket.uid });
+    this.io.of(this.roomId).emit("ROOM_MESSAGE", { ...chatWithTime, userId: socket.uid });
 
-    let dbId: string | undefined = undefined;
+    // Persist asynchronously in the background so database latency never blocks the live realtime WebSocket loop
+    const shouldPersist = !isCmd || (isCmd && ['room.inactive', 'room.reactivated', 'room.expired'].includes(chatMsg.cmd!));
     if (shouldPersist) {
-      const dbRow = await persistRoomMessage(
+      persistRoomMessage(
         this.roomId,
         socket.uid,
         chatMsg.msg || "",
@@ -1937,16 +1940,20 @@ export class Room {
         eventType,
         { clientId: socket?.clientId, videoTS: chatWithTime.videoTS, name: socket?.clientId ? this.nameMap[socket.clientId] : undefined, picture: socket?.clientId ? this.pictureMap[socket.clientId] : undefined },
         chatMsg.clientMessageId
-      );
-      if (dbRow) {
-        dbId = dbRow.id;
-      }
+      ).then((dbRow) => {
+        if (dbRow?.id) {
+          const persistedUpdate = {
+            ...chatWithTime,
+            dbId: dbRow.id,
+            userId: socket?.uid,
+          };
+          this.io.of(this.roomId).emit("REC:messagePersisted", persistedUpdate);
+          this.io.of(this.roomId).emit("ROOM_MESSAGE_EDITED", persistedUpdate);
+        }
+      }).catch((err) => {
+        console.error("Background message persist error:", err);
+      });
     }
-
-    // Still emit REC:chat for legacy UI compatibility while we transition
-    this.io.of(this.roomId).emit("REC:chat", { ...chatWithTime, dbId, userId: socket.uid });
-    // Emit new ROOM_MESSAGE event for the refactored frontend
-    this.io.of(this.roomId).emit("ROOM_MESSAGE", { ...chatWithTime, dbId, userId: socket.uid });
   };
 
   private changeUserName = (socket: Socket, data: string) => {
