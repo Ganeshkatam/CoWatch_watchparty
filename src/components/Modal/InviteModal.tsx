@@ -66,7 +66,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           if (user && token && serverPath) {
             // 1. Fetch room details
             const detailsRes = await fetch(
-              `${serverPath}/roomDetails?uid=${encodeURIComponent(user.id)}&token=${encodeURIComponent(token)}&roomId=${encodeURIComponent(cleanId)}`
+              `${serverPath}/roomDetails?roomId=${encodeURIComponent(cleanId)}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              }
             );
             if (detailsRes.ok) {
               const freshData = await detailsRes.json();

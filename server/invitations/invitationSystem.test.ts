@@ -73,8 +73,20 @@ class MockPostgresPool {
   public rooms: Map<string, MockRoomRow> = new Map();
   public profiles: Map<string, MockProfileRow> = new Map();
   public invitations: Map<string, MockInvitationRow> = new Map();
+  public admissions: Map<string, any> = new Map();
+
+  async connect() {
+    return {
+      query: (sql: string, params?: any[]) => this.query(sql, params),
+      release: () => {},
+    };
+  }
 
   async query(sql: string, params: any[] = []): Promise<{ rows: any[]; rowCount: number }> {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+      return { rows: [], rowCount: 0 };
+    }
+
     // 1. SELECT rooms
     if (sql.includes('FROM public.rooms') || sql.includes('FROM rooms')) {
       const roomId = params[0];
@@ -216,10 +228,25 @@ class MockPostgresPool {
         const invId = params[1];
         const inv = this.invitations.get(invId);
         if (inv) {
+          if (sql.includes('AND accepted_at IS NULL') && inv.accepted_at) {
+            return { rows: [], rowCount: 0 };
+          }
           inv.accepted_at = new Date().toISOString();
           inv.accepted_by_user_id = callerUid;
+          return { rows: [{ id: inv.id }], rowCount: 1 };
         }
-        return { rows: [], rowCount: 1 };
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('SET accepted_at = COALESCE(accepted_at, now())')) {
+        const callerUid = params[0];
+        const invId = params[1];
+        const inv = this.invitations.get(invId);
+        if (inv) {
+          inv.accepted_at = inv.accepted_at || new Date().toISOString();
+          inv.accepted_by_user_id = inv.accepted_by_user_id || callerUid;
+          return { rows: [{ id: inv.id }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
       }
       if (sql.includes('SET revoked_at = now()')) {
         const invId = params[0];
@@ -231,7 +258,19 @@ class MockPostgresPool {
       }
     }
 
-    // 6. Profiles lookup
+    // 6. INSERT into room_admissions
+    if (sql.includes('INSERT INTO public.room_admissions')) {
+      const roomId = params[0];
+      const userId = params[1];
+      this.admissions.set(`${roomId}:${userId}`, {
+        roomId,
+        userId,
+        admittedAt: new Date().toISOString(),
+      });
+      return { rows: [], rowCount: 1 };
+    }
+
+    // 7. Profiles lookup
     if (sql.includes('FROM public.profiles') && (sql.includes('lower(username)') || sql.includes('id::text'))) {
       const search = String(params[0]).toLowerCase();
       for (const profile of this.profiles.values()) {
@@ -318,18 +357,16 @@ async function runInvitationSystemTests() {
   supabaseAdmin.auth.getUser = (async (token: string) => {
     if (token && token.startsWith('valid-')) {
       const uid = token.replace('valid-', '');
-      if (mockPool.profiles.has(uid)) {
-        return {
-          data: {
-            user: {
-              id: uid,
-              email: `${uid}@example.com`,
-              email_confirmed_at: '2026-01-01T00:00:00Z',
-            } as any,
-          },
-          error: null,
-        };
-      }
+      return {
+        data: {
+          user: {
+            id: uid,
+            email: `${uid}@example.com`,
+            email_confirmed_at: '2026-01-01T00:00:00Z',
+          } as any,
+        },
+        error: null,
+      };
     }
     return { data: { user: null }, error: new Error('Invalid token') as any };
   }) as any;
@@ -557,6 +594,56 @@ async function runInvitationSystemTests() {
     });
     assert.strictEqual(permAccept2.status, 200, 'Reusable permanent invitation can be accepted multiple times');
     console.log('Passed Test 5.');
+
+    // -------------------------------------------------------------------------
+    // Test 5B: AUD-003 Concurrent Single-Use Invitation Redemption Atomicity
+    // -------------------------------------------------------------------------
+    console.log('Test 5B: AUD-003 Concurrent Single-Use Invitation Redemption Atomicity...');
+    const concurrentInviteRes = await fetch(`${baseUrl}/api/invitations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer test-user-${HOST_UID}`,
+      },
+      body: JSON.stringify({ roomId: 'temp-active-room', isReusable: false }),
+    });
+    assert.strictEqual(concurrentInviteRes.status, 201);
+    const concurrentInviteData = await concurrentInviteRes.json();
+
+    // Fire 8 concurrent acceptance requests simultaneously for the same single-use token
+    const candidateUids = [
+      PARTICIPANT_UID,
+      STRANGER_UID,
+      TARGET_UID,
+      '55555555-5555-5555-5555-555555555555',
+      '66666666-6666-6666-6666-666666666666',
+      '77777777-7777-7777-7777-777777777777',
+      '88888888-8888-8888-8888-888888888888',
+      '99999999-9999-9999-9999-999999999999',
+    ];
+
+    const concurrentPromises = candidateUids.map((uid) =>
+      fetch(`${baseUrl}/api/invitations/${concurrentInviteData.token}/accept`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer test-user-${uid}`,
+        },
+        body: JSON.stringify({ sessionId: `session-${uid.slice(0, 8)}` }),
+      }),
+    );
+
+    const concurrentResults = await Promise.all(concurrentPromises);
+    const successResponses = concurrentResults.filter((r) => r.status === 200);
+    const conflictResponses = concurrentResults.filter((r) => r.status === 409);
+
+    assert.strictEqual(successResponses.length, 1, `Exactly 1 concurrent request must succeed with 200, got ${successResponses.length}`);
+    assert.strictEqual(conflictResponses.length, 7, `Remaining 7 concurrent requests must fail with 409 Conflict, got ${conflictResponses.length}`);
+
+    const winningJson = await successResponses[0].json();
+    assert.strictEqual(winningJson.valid, true);
+    assert(winningJson.admissionToken, 'Winning request must receive admissionToken');
+    console.log('Passed Test 5B: Exactly 1 concurrent claim succeeded; 7 losing claims received 409 Conflict.');
 
     // -------------------------------------------------------------------------
     // Test 6: Targeted Recipient Authorization & Anti-Enumeration

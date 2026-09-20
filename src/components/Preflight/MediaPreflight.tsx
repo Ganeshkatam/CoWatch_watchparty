@@ -140,7 +140,6 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (uid) headers["x-user-id"] = uid;
 
         const res = await fetch(
           `${serverPath}/roomInfo/${encodeURIComponent(cleanRoomId)}`,

@@ -44,7 +44,7 @@ async function extractVerifiedCaller(req: Request): Promise<{ uid: string; email
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7).trim()
-    : (req.query?.token as string | undefined);
+    : undefined;
 
   if (!token) return null;
 
@@ -199,7 +199,7 @@ export async function executeInvitationAdmission(
     return { status: 400, body: { valid: false, error: 'This invitation has been revoked.' } };
   }
 
-  // 3. Reusability / Single-use consumption check
+  // 3. Early fast-check on acceptance (optimization only; database conditional update is authoritative)
   if (!inv.is_reusable && inv.accepted_at) {
     return { status: 409, body: { valid: false, error: 'This invitation has already been used.' } };
   }
@@ -221,58 +221,147 @@ export async function executeInvitationAdmission(
     }
   }
 
-  // 6. Post-credential authorization and cryptographic token issuance
-  const admissionAuth = issueRoomAdmissionToken({
-    roomId: inv.room_id,
-    callerUid,
-    sessionId,
-    roomRow: inv,
-    memoryRoom,
-    isHost,
-  });
-
-  if (!admissionAuth.allowed) {
+  // 6. Pre-admission validation (ensures invalid/locked/terminal rooms do NOT consume single-use invitation)
+  if (isTerminalRoom(inv)) {
     return {
-      status: admissionAuth.status,
-      body: {
-        valid: false,
-        error: admissionAuth.error,
-        code: admissionAuth.code,
-      },
+      status: 400,
+      body: { valid: false, error: 'This room has ended or expired.', code: 'ROOM_TERMINAL' },
     };
   }
 
-  // 7. Consume single-use invitation or record acceptance
-  await pool.query(
-    `UPDATE public.room_invitations
-     SET accepted_at = now(), accepted_by_user_id = $1
-     WHERE id = $2`,
-    [callerUid, inv.id],
-  );
-
-  // 8. Record durable room admission
-  try {
-    await pool.query(
-      `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-       VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
-       ON CONFLICT (room_id, user_id) DO UPDATE
-       SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
-      [inv.room_id, callerUid],
-    );
-  } catch (admDbErr) {
-    console.warn('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
+  if (inv.participants_locked && !isHost) {
+    return {
+      status: 403,
+      body: { valid: false, error: 'This room is currently locked to new participants.', code: 'PARTICIPANTS_LOCKED' },
+    };
   }
 
+  if (memoryRoom && !isHost) {
+    if (typeof inv.max_participants === 'number') {
+      memoryRoom.maxParticipants = inv.max_participants;
+    }
+    const isFull = typeof memoryRoom.isRoomFull === 'function'
+      ? memoryRoom.isRoomFull(isHost, sessionId, callerUid)
+      : false;
+    if (isFull) {
+      return {
+        status: 403,
+        body: { valid: false, error: 'This room has reached its participant limit.', code: 'ROOM_FULL' },
+      };
+    }
+  }
+
+  // 7. Atomic transactional boundary: claim invitation and establish durable admission
+  const hasPoolConnect = typeof (pool as any).connect === 'function';
+  if (hasPoolConnect) {
+    const client = await (pool as any).connect();
+    try {
+      await client.query('BEGIN');
+
+      if (!inv.is_reusable) {
+        const consumeResult = await client.query(
+          `UPDATE public.room_invitations
+           SET accepted_at = now(), accepted_by_user_id = $1
+           WHERE id = $2
+             AND revoked_at IS NULL
+             AND (expires_at IS NULL OR expires_at > now())
+             AND accepted_at IS NULL
+           RETURNING id`,
+          [callerUid, inv.id],
+        );
+
+        if (!consumeResult || !consumeResult.rows || consumeResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return {
+            status: 409,
+            body: { valid: false, error: 'This invitation has already been used.', code: 'ALREADY_ACCEPTED' },
+          };
+        }
+      } else {
+        await client.query(
+          `UPDATE public.room_invitations
+           SET accepted_at = COALESCE(accepted_at, now()), accepted_by_user_id = COALESCE(accepted_by_user_id, $1)
+           WHERE id = $2`,
+          [callerUid, inv.id],
+        );
+      }
+
+      await client.query(
+        `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+         VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
+         ON CONFLICT (room_id, user_id) DO UPDATE
+         SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
+        [inv.room_id, callerUid],
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } else {
+    // Non-pooled fallback (e.g. mock test pool)
+    if (!inv.is_reusable) {
+      const consumeResult = await pool.query(
+        `UPDATE public.room_invitations
+         SET accepted_at = now(), accepted_by_user_id = $1
+         WHERE id = $2
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > now())
+           AND accepted_at IS NULL
+         RETURNING id`,
+        [callerUid, inv.id],
+      );
+
+      if (!consumeResult || !consumeResult.rows || consumeResult.rows.length === 0) {
+        return {
+          status: 409,
+          body: { valid: false, error: 'This invitation has already been used.', code: 'ALREADY_ACCEPTED' },
+        };
+      }
+    } else {
+      await pool.query(
+        `UPDATE public.room_invitations
+         SET accepted_at = COALESCE(accepted_at, now()), accepted_by_user_id = COALESCE(accepted_by_user_id, $1)
+         WHERE id = $2`,
+        [callerUid, inv.id],
+      );
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+         VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
+         ON CONFLICT (room_id, user_id) DO UPDATE
+         SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
+        [inv.room_id, callerUid],
+      );
+    } catch (admDbErr) {
+      console.warn('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
+    }
+  }
+
+  // 8. Post-commit: memory roster update and generate cryptographic admission token
   if (memoryRoom) {
     memoryRoom.admittedMembers?.add(callerUid);
   }
+
+  const admissionToken = generateAdmissionToken({
+    roomId: inv.room_id,
+    userId: callerUid,
+    sessionId,
+  });
 
   return {
     status: 200,
     body: {
       valid: true,
       roomId: inv.room_id,
-      admissionToken: admissionAuth.admissionToken,
+      admissionToken,
       sessionId,
     },
   };

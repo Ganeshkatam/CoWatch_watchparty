@@ -175,10 +175,11 @@ export const EditRoomModal = ({
         setIsLoadingDetails(true);
         (async () => {
           try {
-            const { data: { user } } = await supabase.auth.getUser();
             const token = await getAccessToken();
-            if (user && token) {
-              const res = await fetch(`${serverPath}/roomDetails?uid=${user.id}&token=${token}&roomId=${encodeURIComponent(room.roomId)}`);
+            if (token) {
+              const res = await fetch(`${serverPath}/roomDetails?roomId=${encodeURIComponent(room.roomId)}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
               if (res.ok) {
                 const freshData = await res.json();
                 if (freshData.currentPasscode) {

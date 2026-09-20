@@ -207,7 +207,6 @@ export const Join: React.FC = () => {
 
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (uid) headers["x-user-id"] = uid;
 
         const previewRes = await fetch(
           `${serverPath}/api/invitations/by-id/${encodeURIComponent(queryInvitationId)}`,
@@ -276,7 +275,6 @@ export const Join: React.FC = () => {
         "Content-Type": "application/json",
       };
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      if (uid) headers["x-user-id"] = uid;
 
       let acceptRes: Response;
       if (routeToken) {
@@ -360,7 +358,6 @@ export const Join: React.FC = () => {
 
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (uid) headers["x-user-id"] = uid;
 
         const res = await fetch(
           `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
@@ -454,7 +451,6 @@ export const Join: React.FC = () => {
               headers: {
                 "Content-Type": "application/json",
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                ...(uid ? { "x-user-id": uid } : {}),
               },
               body: JSON.stringify({
                 roomId: cleanRouteRoomId,
@@ -522,7 +518,6 @@ export const Join: React.FC = () => {
 
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (uid) headers["x-user-id"] = uid;
 
         const res = await fetch(
           `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
@@ -590,7 +585,6 @@ export const Join: React.FC = () => {
       const uid = session?.data?.session?.user?.id;
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      if (uid) headers["x-user-id"] = uid;
 
       const res = await fetch(
         `${serverPath}/roomInfo/${encodeURIComponent(cleanRouteRoomId)}`,
@@ -682,7 +676,6 @@ export const Join: React.FC = () => {
         "Content-Type": "application/json",
       };
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      if (uid) headers["x-user-id"] = uid;
 
       const resp = await fetch(`${serverPath}/verifyPasscode`, {
         method: "POST",

@@ -70,7 +70,10 @@ export const TopBarSearch: React.FC = () => {
     try {
       const token = await getAccessToken();
       const res = await fetch(
-        `${serverPath}/listRooms?uid=${context.user.id}&token=${token}&limit=20`
+        `${serverPath}/listRooms?limit=20`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
       );
       if (res.ok) {
         const data = await res.json();

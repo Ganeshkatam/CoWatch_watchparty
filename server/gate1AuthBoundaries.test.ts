@@ -24,24 +24,23 @@ function createTestApp() {
   const app = express();
   app.use(express.json());
 
-  // Helper middleware mimicking server.ts token extraction
-  const extractAuth = (req: express.Request) => {
+  // Helper extracting Bearer token exclusively from Authorization header (AUD-008)
+  const extractBearerToken = (req: express.Request): string | undefined => {
     const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice(7).trim()
-      : (req.body?.token as string | undefined) || (req.query?.token as string | undefined);
-    const uid = (req.body?.uid as string | undefined) || (req.query?.uid as string | undefined) || (req.headers['x-user-id'] as string | undefined);
-    return { uid, token };
+    if (authHeader?.startsWith('Bearer ')) {
+      return authHeader.slice(7).trim();
+    }
+    return undefined;
   };
 
   // POST /createRoom
   app.post('/createRoom', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    if (!token || !uid) {
+    const token = extractBearerToken(req);
+    if (!token) {
       res.status(401).json({ error: 'Authentication is required to create a room.' });
       return;
     }
-    const decoded = await validateUserToken(uid, token);
+    const decoded = await validateUserToken(token);
     if (!decoded) {
       res.status(401).json({ error: 'Invalid authentication token.' });
       return;
@@ -50,13 +49,17 @@ function createTestApp() {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
     }
-    res.status(200).json({ success: true, roomId: 'test-room-123' });
+    res.status(200).json({ success: true, roomId: 'test-room-123', creatorUid: decoded.uid });
   });
 
   // GET /listRooms
   app.get('/listRooms', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    const decoded = await validateUserToken(String(uid), String(token));
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Authentication is required to view your rooms.' });
+      return;
+    }
+    const decoded = await validateUserToken(token);
     if (decoded === 'EMAIL_NOT_VERIFIED') {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
@@ -65,13 +68,17 @@ function createTestApp() {
       res.status(400).json({ error: 'invalid user token' });
       return;
     }
-    res.status(200).json({ rooms: [] });
+    res.status(200).json({ rooms: [], uid: decoded.uid });
   });
 
   // GET /roomDetails
   app.get('/roomDetails', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    const decoded = await validateUserToken(String(uid), String(token));
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Authentication is required to view room details.' });
+      return;
+    }
+    const decoded = await validateUserToken(token);
     if (decoded === 'EMAIL_NOT_VERIFIED') {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
@@ -80,13 +87,17 @@ function createTestApp() {
       res.status(400).json({ error: 'invalid user token' });
       return;
     }
-    res.status(200).json({ roomId: req.query.roomId, roomTitle: 'Test Room' });
+    res.status(200).json({ roomId: req.query.roomId, roomTitle: 'Test Room', uid: decoded.uid });
   });
 
   // POST /extendRoom
   app.post('/extendRoom', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    const decoded = await validateUserToken(String(uid), String(token));
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Authentication is required to extend room.' });
+      return;
+    }
+    const decoded = await validateUserToken(token);
     if (decoded === 'EMAIL_NOT_VERIFIED') {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
@@ -100,8 +111,12 @@ function createTestApp() {
 
   // POST /endRoom
   app.post('/endRoom', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    const decoded = await validateUserToken(String(uid), String(token));
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Authentication is required to end room.' });
+      return;
+    }
+    const decoded = await validateUserToken(token);
     if (decoded === 'EMAIL_NOT_VERIFIED') {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
@@ -115,8 +130,12 @@ function createTestApp() {
 
   // DELETE /deleteRoom
   app.delete('/deleteRoom', async (req, res) => {
-    const { uid, token } = extractAuth(req);
-    const decoded = await validateUserToken(String(uid), String(token));
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Authentication is required to delete a room.' });
+      return;
+    }
+    const decoded = await validateUserToken(token);
     if (decoded === 'EMAIL_NOT_VERIFIED') {
       res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
       return;
@@ -193,37 +212,51 @@ async function runGate1Tests() {
   });
 
   try {
-    // 1. Expired Token Rejection across endpoints
+    // 1. Expired and Malformed Token Rejection across endpoints
     console.log('Boundary 1: Expired and malformed token rejection...');
     const expiredCreate = await fetch(`${baseUrl}/createRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-verified-1', token: 'token-expired' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-expired',
+      },
+      body: JSON.stringify({ roomTitle: 'My Room' }),
     });
     assert(expiredCreate.status === 401, `Expired token on /createRoom must return 401, got ${expiredCreate.status}`);
 
-    const malformedList = await fetch(`${baseUrl}/listRooms?uid=usr-verified-1&token=token-malformed`);
+    const malformedList = await fetch(`${baseUrl}/listRooms`, {
+      headers: { Authorization: 'Bearer token-malformed' },
+    });
     assert(malformedList.status === 400, `Malformed token on /listRooms must return 400, got ${malformedList.status}`);
 
-    const expiredDetails = await fetch(`${baseUrl}/roomDetails?uid=usr-verified-1&token=token-expired&roomId=rm-1`);
+    const expiredDetails = await fetch(`${baseUrl}/roomDetails?roomId=rm-1`, {
+      headers: { Authorization: 'Bearer token-expired' },
+    });
     assert(expiredDetails.status === 400, `Expired token on /roomDetails must return 400, got ${expiredDetails.status}`);
 
     const expiredExtend = await fetch(`${baseUrl}/extendRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-verified-1', token: 'token-expired', roomId: 'rm-1', durationSeconds: 3600 }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-expired',
+      },
+      body: JSON.stringify({ roomId: 'rm-1', durationSeconds: 3600 }),
     });
     assert(expiredExtend.status === 400, `Expired token on /extendRoom must return 400, got ${expiredExtend.status}`);
 
     const expiredEnd = await fetch(`${baseUrl}/endRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-verified-1', token: 'token-expired', roomId: 'rm-1' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-expired',
+      },
+      body: JSON.stringify({ roomId: 'rm-1' }),
     });
     assert(expiredEnd.status === 400, `Expired token on /endRoom must return 400, got ${expiredEnd.status}`);
 
-    const expiredDelete = await fetch(`${baseUrl}/deleteRoom?uid=usr-verified-1&token=token-expired&roomId=rm-1`, {
+    const expiredDelete = await fetch(`${baseUrl}/deleteRoom?roomId=rm-1`, {
       method: 'DELETE',
+      headers: { Authorization: 'Bearer token-expired' },
     });
     assert(expiredDelete.status === 400, `Expired token on /deleteRoom must return 400, got ${expiredDelete.status}`);
     console.log('  PASS: Expired and malformed tokens consistently rejected across all room endpoints');
@@ -232,37 +265,51 @@ async function runGate1Tests() {
     console.log('Boundary 2: Unverified email bypass attempts...');
     const unverifiedCreate = await fetch(`${baseUrl}/createRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-unverified-2', token: 'token-unverified' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-unverified',
+      },
+      body: JSON.stringify({ roomTitle: 'My Room' }),
     });
     assert(unverifiedCreate.status === 403, `Unverified email must return 403 on /createRoom, got ${unverifiedCreate.status}`);
     const unverifiedCreateJson = await unverifiedCreate.json();
     assert(unverifiedCreateJson.error?.code === 'EMAIL_NOT_VERIFIED', 'Error code must be EMAIL_NOT_VERIFIED');
 
-    const unverifiedList = await fetch(`${baseUrl}/listRooms?uid=usr-unverified-2&token=token-unverified`);
+    const unverifiedList = await fetch(`${baseUrl}/listRooms`, {
+      headers: { Authorization: 'Bearer token-unverified' },
+    });
     assert(unverifiedList.status === 403, `Unverified email must return 403 on /listRooms, got ${unverifiedList.status}`);
     const unverifiedListJson = await unverifiedList.json();
     assert(unverifiedListJson.error?.code === 'EMAIL_NOT_VERIFIED', 'Error code must be EMAIL_NOT_VERIFIED');
 
-    const unverifiedDetails = await fetch(`${baseUrl}/roomDetails?uid=usr-unverified-2&token=token-unverified&roomId=rm-1`);
+    const unverifiedDetails = await fetch(`${baseUrl}/roomDetails?roomId=rm-1`, {
+      headers: { Authorization: 'Bearer token-unverified' },
+    });
     assert(unverifiedDetails.status === 403, `Unverified email must return 403 on /roomDetails, got ${unverifiedDetails.status}`);
 
     const unverifiedExtend = await fetch(`${baseUrl}/extendRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-unverified-2', token: 'token-unverified', roomId: 'rm-1', durationSeconds: 3600 }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-unverified',
+      },
+      body: JSON.stringify({ roomId: 'rm-1', durationSeconds: 3600 }),
     });
     assert(unverifiedExtend.status === 403, `Unverified email must return 403 on /extendRoom, got ${unverifiedExtend.status}`);
 
     const unverifiedEnd = await fetch(`${baseUrl}/endRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-unverified-2', token: 'token-unverified', roomId: 'rm-1' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-unverified',
+      },
+      body: JSON.stringify({ roomId: 'rm-1' }),
     });
     assert(unverifiedEnd.status === 403, `Unverified email must return 403 on /endRoom, got ${unverifiedEnd.status}`);
 
-    const unverifiedDelete = await fetch(`${baseUrl}/deleteRoom?uid=usr-unverified-2&token=token-unverified&roomId=rm-1`, {
+    const unverifiedDelete = await fetch(`${baseUrl}/deleteRoom?roomId=rm-1`, {
       method: 'DELETE',
+      headers: { Authorization: 'Bearer token-unverified' },
     });
     assert(unverifiedDelete.status === 403, `Unverified email must return 403 on /deleteRoom, got ${unverifiedDelete.status}`);
     console.log('  PASS: Unverified email bypass strictly rejected with 403 EMAIL_NOT_VERIFIED across all routes');
@@ -271,25 +318,47 @@ async function runGate1Tests() {
     console.log('Boundary 3: Token refresh and seamless authorization update...');
     const validCreate = await fetch(`${baseUrl}/createRoom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-verified-1', token: 'token-valid-verified' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-valid-verified',
+      },
+      body: JSON.stringify({ roomTitle: 'My Valid Room' }),
     });
     assert(validCreate.status === 200, 'Valid token must succeed with 200');
 
     // Subsequent operation using refreshed token
-    const refreshedList = await fetch(`${baseUrl}/listRooms?uid=usr-verified-1&token=token-refreshed-verified`);
+    const refreshedList = await fetch(`${baseUrl}/listRooms`, {
+      headers: { Authorization: 'Bearer token-refreshed-verified' },
+    });
     assert(refreshedList.status === 200, 'Refreshed token must succeed with 200 without re-login');
     console.log('  PASS: Refreshed token maintains authorized session seamlessly');
 
-    // 4. Identity Spoofing / UID Mismatch Guard
-    console.log('Boundary 4: Identity spoofing / UID mismatch guard...');
-    const mismatchRes = await fetch(`${baseUrl}/createRoom`, {
+    // 4. AUD-008 Transport Boundaries: Query-string and body token/uid injection rejection
+    console.log('Boundary 4: AUD-008 query and body token/uid injection rejection...');
+    const queryTokenRes = await fetch(`${baseUrl}/listRooms?token=token-valid-verified&uid=usr-verified-1`);
+    assert(queryTokenRes.status === 401, `Query string token must be rejected with 401, got ${queryTokenRes.status}`);
+
+    const bodyTokenRes = await fetch(`${baseUrl}/createRoom`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: 'usr-foreign-victim-99', token: 'token-valid-verified' }),
+      body: JSON.stringify({ token: 'token-valid-verified', uid: 'usr-verified-1' }),
     });
-    assert(mismatchRes.status === 401, `UID mismatch must be rejected with 401, got ${mismatchRes.status}`);
-    console.log('  PASS: UID mismatch against valid token rejected (no IDOR privilege escalation)');
+    assert(bodyTokenRes.status === 401, `Body token without Authorization header must be rejected with 401, got ${bodyTokenRes.status}`);
+
+    // Identity derivation is canonical from JWT, ignoring x-user-id or body uid
+    const spoofHeaderRes = await fetch(`${baseUrl}/createRoom`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-valid-verified',
+        'x-user-id': 'usr-foreign-victim-99',
+      },
+      body: JSON.stringify({ uid: 'usr-foreign-victim-99' }),
+    });
+    assert(spoofHeaderRes.status === 200, 'Request with valid Bearer token succeeds');
+    const spoofJson = await spoofHeaderRes.json();
+    assert(spoofJson.creatorUid === 'usr-verified-1', `Creator UID must be derived from token ('usr-verified-1'), got '${spoofJson.creatorUid}'`);
+    console.log('  PASS: Query/body credentials rejected; caller identity derived strictly from JWT subject');
 
     // 5. Hanging Session Timeout / Failsafe Emulation
     console.log('Boundary 5: Hanging session timeout resilience...');

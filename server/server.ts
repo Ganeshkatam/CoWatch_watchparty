@@ -390,6 +390,15 @@ function requireInternalAuth(req: any, res: any, next: any) {
   next();
 }
 
+function extractBearerToken(req: express.Request): string | undefined {
+  const authHeader = req.headers.authorization;
+  if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    return token || undefined;
+  }
+  return undefined;
+}
+
 app.use(
   bodyParser.json({
     verify: (req: any, _res, buf) => {
@@ -1417,11 +1426,12 @@ app.post("/checkPasscodeAvailability", async (req, res) => {
 
 app.post("/createRoom", async (req, res) => {
   // Authentication is required to create a room
-  if (!req.body?.token || !req.body?.uid) {
+  const token = extractBearerToken(req);
+  if (!token) {
     res.status(401).json({ error: "Authentication is required to create a room." });
     return;
   }
-  const decoded = await validateUserToken(req.body.uid, req.body.token);
+  const decoded = await validateUserToken("", token);
   if (!decoded) {
     res.status(401).json({ error: "Invalid authentication token." });
     return;
@@ -1622,8 +1632,12 @@ app.post("/createRoom", async (req, res) => {
 });
 
 app.post("/updateRoomCover", async (req, res) => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
-  const decoded = await validateUserToken("", String(token), false);
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: { code: "FORBIDDEN", message: "Authentication required" } });
+    return;
+  }
+  const decoded = await validateUserToken("", token, false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
@@ -1685,8 +1699,12 @@ app.post("/updateRoomCover", async (req, res) => {
 });
 
 app.post("/updateRoomSettings", async (req, res) => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
-  const decoded = await validateUserToken("", String(token), false);
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  const decoded = await validateUserToken("", token, false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
     return;
@@ -1825,8 +1843,12 @@ app.post("/updateRoomSettings", async (req, res) => {
 });
 
 app.delete("/deleteAccount", async (req, res) => {
-  // TODO pass this in req.query instead
-  const decoded = await validateUserToken(req.body?.uid, req.body?.token, false);
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "invalid user token" });
+    return;
+  }
+  const decoded = await validateUserToken("", token, false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
     res.status(400).json({ error: "invalid user token" });
     return;
@@ -1858,13 +1880,17 @@ app.delete("/deleteAccount", async (req, res) => {
 });
 
 app.get("/metadata", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  if (decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
-    return;
+  const token = extractBearerToken(req);
+  let decoded: { uid: string; email?: string; email_verified?: boolean } | undefined;
+  if (token) {
+    const valResult = await validateUserToken("", token);
+    if (valResult === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+      return;
+    }
+    if (valResult) {
+      decoded = valResult;
+    }
   }
   let isFreePoolFull = false;
   if (config.VM_MANAGER_CONFIG) {
@@ -1982,18 +2008,14 @@ app.get("/announcements", async (_req, res) => {
 
 app.get("/roomData/:roomId", async (req, res) => {
   const cleanRoomId = sanitizeRoomId(req.params.roomId);
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : (req.query?.token as string | undefined);
-  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+  const token = extractBearerToken(req);
 
-  if (!uid || !token) {
+  if (!token) {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
 
-  const decoded = await validateUserToken(String(uid), String(token), false);
+  const decoded = await validateUserToken("", token, false);
   if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: "Unauthorized or unverified email" });
     return;
@@ -2025,17 +2047,13 @@ app.get("/roomInfo/:roomId", async (req, res) => {
   }
   const cleanRoomId = sanitizeRoomId(rawRoomId);
 
-  // Attempt to decode caller token if provided (via Authorization header or query params)
+  // Attempt to decode caller token if provided strictly via Authorization header
   let callerUid: string | undefined;
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : (req.query?.token as string | undefined);
-  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+  const token = extractBearerToken(req);
 
   if (token) {
     try {
-      const decoded = await validateUserToken(String(uid || ""), String(token));
+      const decoded = await validateUserToken("", token);
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
@@ -2129,15 +2147,11 @@ app.post("/verifyPasscode", async (req, res) => {
 
   // Authenticate caller strictly from Supabase token
   let callerUid: string | undefined;
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : (req.query?.token as string | undefined);
-  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+  const token = extractBearerToken(req);
 
-  if (token && uid) {
+  if (token) {
     try {
-      const decoded = await validateUserToken(String(uid), String(token));
+      const decoded = await validateUserToken("", token);
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
@@ -2284,16 +2298,12 @@ app.post("/room-admission/restore", async (req, res) => {
 
   const cleanRoomId = sanitizeRoomId(roomId);
 
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : (req.query?.token as string | undefined);
-  const uid = (req.query?.uid as string | undefined) || (req.headers["x-user-id"] as string | undefined);
+  const token = extractBearerToken(req);
 
   let callerUid: string | undefined;
-  if (token && uid) {
+  if (token) {
     try {
-      const decoded = await validateUserToken(String(uid), String(token));
+      const decoded = await validateUserToken("", token);
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
@@ -2421,10 +2431,12 @@ app.get("/resolveShard/:roomId", async (req, res) => {
 
 app.get("/listRooms", async (req, res) => {
   try {
-    const decoded = await validateUserToken(
-      String(req.query?.uid),
-      String(req.query?.token),
-    );
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const decoded = await validateUserToken("", token);
     if (decoded === "EMAIL_NOT_VERIFIED") {
       res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
       return;
@@ -2585,10 +2597,12 @@ app.get("/listRooms", async (req, res) => {
 });
 
 app.get("/roomDetails", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  const decoded = await validateUserToken("", token);
   if (decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
     return;
@@ -2682,8 +2696,12 @@ app.get("/roomDetails", async (req, res) => {
 });
 
 app.post("/extendRoom", async (req, res) => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
-  const decoded = await validateUserToken("", String(token));
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: { code: "FORBIDDEN", message: "Authentication required" } });
+    return;
+  }
+  const decoded = await validateUserToken("", token);
   if (decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
     return;
@@ -2760,8 +2778,12 @@ app.post("/extendRoom", async (req, res) => {
 });
 
 app.post("/startRoom", async (req, res) => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
-  const decoded = await validateUserToken("", String(token));
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: { code: "FORBIDDEN", message: "Authentication required" } });
+    return;
+  }
+  const decoded = await validateUserToken("", token);
   if (decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
     return;
@@ -2852,8 +2874,12 @@ app.post("/startRoom", async (req, res) => {
 });
 
 app.post("/endRoom", async (req, res) => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.body?.token;
-  const decoded = await validateUserToken("", String(token));
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: { code: "FORBIDDEN", message: "Authentication required" } });
+    return;
+  }
+  const decoded = await validateUserToken("", token);
   if (decoded === "EMAIL_NOT_VERIFIED") {
     res.status(403).json({ error: { code: "FORBIDDEN", message: "Email verification is required." } });
     return;
@@ -2945,10 +2971,12 @@ app.post("/endRoom", async (req, res) => {
 
 app.delete("/deleteRoom", async (req, res) => {
   try {
-    const decoded = await validateUserToken(
-      String(req.query?.uid),
-      String(req.query?.token),
-    );
+    const token = extractBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const decoded = await validateUserToken("", token);
     if (decoded === "EMAIL_NOT_VERIFIED") {
       res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
       return;

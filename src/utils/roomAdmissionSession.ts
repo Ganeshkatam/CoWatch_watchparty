@@ -168,7 +168,6 @@ export async function restoreAdmissionSession(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-user-id": uid,
         },
         body: JSON.stringify({ roomId }),
       });

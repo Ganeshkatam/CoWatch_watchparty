@@ -115,16 +115,14 @@ export async function createRoom(
     noRedirect?: boolean;
   }
 ) {
-  const uid = user?.id;
   const token = await getAccessToken();
   const response = await fetch(serverPath + "/createRoom", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      uid,
-      token,
       video,
       ...options,
     }),

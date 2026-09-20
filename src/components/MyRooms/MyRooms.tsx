@@ -69,8 +69,6 @@ const useRooms = (
     try {
       const token = await getAccessToken();
       const params = new URLSearchParams({
-        uid: user.id,
-        token: token || "",
         page: String(page),
         limit: String(pageSize),
         sort: sortOption,
@@ -88,7 +86,9 @@ const useRooms = (
       for (let i = 0; i < candidatesToTry.length; i++) {
         const candidate = candidatesToTry[i];
         try {
-          const res = await fetch(`${candidate}/listRooms?${params.toString()}`);
+          const res = await fetch(`${candidate}/listRooms?${params.toString()}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
           if (res.ok) {
             response = res;
             if (candidate !== serverPath) {
@@ -113,23 +113,33 @@ const useRooms = (
           (response ? `Failed to fetch rooms (${response.status})` : "Failed to fetch rooms");
         throw new Error(errMsg);
       }
+
       const data = await response.json();
-      if (data && Array.isArray(data.rooms)) {
-        setRooms(data.rooms);
-        setTotalCount(data.total ?? data.rooms.length);
-        if (data.stats) setStats(data.stats);
-      } else if (Array.isArray(data)) {
-        setRooms(data);
-        setTotalCount(data.length);
-      }
+      const roomsList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.rooms)
+          ? data.rooms
+          : [];
+      const total = data?.total !== undefined ? Number(data.total) || 0 : roomsList.length;
+      const parsedStats = data?.stats || { total: 0, active: 0, expiring: 0, finished: 0 };
+
+      setRooms(roomsList);
+      setTotalCount(total);
+      setStats(parsedStats);
       setError(null);
     } catch (err: any) {
-      setError(sanitizeServerErrorMessage(err));
+      if (!silent) {
+        setError(sanitizeServerErrorMessage(err));
+      }
     } finally {
       isFetchingRef.current = false;
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
-  }, [user, page, pageSize, searchQuery, sortOption, filterOption]);
+  }, [user, page, pageSize, sortOption, filterOption, searchQuery, serverPath, serverCandidates]);
 
   useEffect(() => {
     fetchRooms(false);
@@ -142,7 +152,7 @@ const useRooms = (
           if (document.visibilityState === "visible") {
             fetchRooms(true);
           }
-        }, 15000);
+        }, 10000);
       }
     };
 
@@ -179,8 +189,9 @@ const useRooms = (
   const deleteRoom = async (roomId: string) => {
     try {
       const token = await getAccessToken();
-      const response = await fetch(`${serverPath}/deleteRoom?uid=${user.id}&token=${token}&roomId=${roomId}`, {
+      const response = await fetch(`${serverPath}/deleteRoom?roomId=${encodeURIComponent(roomId)}`, {
         method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (response.ok) {
         setRooms(prev => prev.filter(r => r.roomId !== roomId));
@@ -221,12 +232,12 @@ export const MyRooms = () => {
   const { user } = useContext(MetadataContext);
   const history = useHistory();
   const location = useLocation();
-  
+
   useDocumentMetadata({
     title: "My Rooms",
     description: "Manage your active and permanent CoWatch watch party rooms.",
   });
-  
+
   const parsedParams = useMemo(() => parseMyRoomsParams(location.search), [location.search]);
   const filterOption = parsedParams.status;
   const viewMode = parsedParams.view;
@@ -267,7 +278,7 @@ export const MyRooms = () => {
     history.replace(getMyRoomsUrl({ status: filterOption, view: mode, page: currentPage }));
     try {
       localStorage.setItem('cowatch-room-view-mode', mode);
-    } catch (e) {}
+    } catch (e) { }
   }, [history, filterOption, currentPage]);
 
   const setFilterOption = useCallback((status: string) => {
@@ -395,7 +406,7 @@ export const MyRooms = () => {
                 </Center>
               )}
 
-              <RoomPagination 
+              <RoomPagination
                 currentPage={currentPage}
                 pageSize={PAGE_SIZE}
                 totalItems={totalCount}
@@ -408,3 +419,7 @@ export const MyRooms = () => {
     </div>
   );
 };
+function setIsRefreshing(arg0: boolean) {
+  throw new Error("Function not implemented.");
+}
+

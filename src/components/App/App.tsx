@@ -834,7 +834,6 @@ export class App extends React.Component<AppProps, AppState> {
       try {
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (user?.id) headers["x-user-id"] = user.id;
 
         const infoResp = await fetch(`${serverPath}/roomInfo/${encodeURIComponent(roomId)}`, {
           headers,

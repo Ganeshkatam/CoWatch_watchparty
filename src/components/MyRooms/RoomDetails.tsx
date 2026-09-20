@@ -183,7 +183,9 @@ export const RoomDetails = () => {
       const user = await supabase.auth.getUser();
       if (!user.data.user) throw new Error("Not authenticated");
 
-      const response = await fetch(`${serverPath}/roomDetails?uid=${user.data.user.id}&token=${token}&roomId=${roomId}`);
+      const response = await fetch(`${serverPath}/roomDetails?roomId=${encodeURIComponent(roomId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!response.ok) {
         if (response.status === 404) throw new Error("Room not found or unauthorized");
         throw new Error("Failed to fetch room details");
@@ -284,8 +286,9 @@ export const RoomDetails = () => {
     try {
       const token = await getAccessToken();
       const user = await supabase.auth.getUser();
-      const response = await fetch(`${serverPath}/deleteRoom?uid=${user.data.user?.id}&token=${token}&roomId=${room.roomId}`, {
+      const response = await fetch(`${serverPath}/deleteRoom?roomId=${encodeURIComponent(room.roomId)}`, {
         method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (response.ok) {
         history.push("/myrooms");

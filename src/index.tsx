@@ -295,7 +295,8 @@ class CoWatch extends React.Component {
             this.setState({ user });
 
             const fetchMetadataPromise = window
-              .fetch(serverPath + `/metadata?uid=${user.id}&token=${token}`, {
+              .fetch(serverPath + "/metadata", {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
                 signal: AbortSignal.timeout(1500),
               })
               .then((res) => (res.ok ? res.json() : {}))
