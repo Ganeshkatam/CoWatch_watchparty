@@ -2494,6 +2494,7 @@ export class Room {
       };
 
       this.io.of(this.roomId).emit("REC:editMessage", updatedMsg);
+      this.io.of(this.roomId).emit("ROOM_MESSAGE_EDITED", updatedMsg);
     } catch (e) {
       console.error("Failed to edit message in postgres:", e);
       socket.emit("CMD:error", { code: "FORBIDDEN" });

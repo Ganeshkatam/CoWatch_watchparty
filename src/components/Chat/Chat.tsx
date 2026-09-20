@@ -24,6 +24,9 @@ export interface RoomMessage {
   videoTS?: number;
   dbId?: string;
   name?: string;
+  picture?: string;
+  userId?: string;
+  updatedAt?: string;
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
@@ -78,17 +81,33 @@ export function useRoomMessages(socket: Socket | undefined) {
       );
     };
 
+    const handleMessageEdited = (data: RoomMessage) => {
+      if (!data) return;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          (msg.dbId && data.dbId && msg.dbId === data.dbId) ||
+          (msg.timestamp === data.timestamp && msg.id === data.id)
+            ? { ...msg, ...data, msg: data.msg, updatedAt: data.updatedAt || new Date().toISOString() }
+            : msg
+        )
+      );
+    };
+
     socket.on("ROOM_MESSAGES", handleRoomMessages);
     socket.on("ROOM_MESSAGE", handleRoomMessage);
+    socket.on("ROOM_MESSAGE_EDITED", handleMessageEdited);
     socket.on("chatinit", handleChatInit);
     socket.on("REC:chat", handleRoomMessage);
+    socket.on("REC:editMessage", handleMessageEdited);
     socket.on("REC:chatMessagesDeleted", handleMessagesDeleted);
 
     return () => {
       socket.off("ROOM_MESSAGES", handleRoomMessages);
       socket.off("ROOM_MESSAGE", handleRoomMessage);
+      socket.off("ROOM_MESSAGE_EDITED", handleMessageEdited);
       socket.off("chatinit", handleChatInit);
       socket.off("REC:chat", handleRoomMessage);
+      socket.off("REC:editMessage", handleMessageEdited);
       socket.off("REC:chatMessagesDeleted", handleMessagesDeleted);
     };
   }, [socket]);
@@ -747,6 +766,10 @@ const ChatMessage = ({
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
 
+  useEffect(() => {
+    setEditMsg(msg || "");
+  }, [msg]);
+
   const isDeleted = Boolean(
     message.isDeleted ||
     msg === "This message was deleted." ||
@@ -903,7 +926,7 @@ const ChatMessage = ({
         )}
         </div>
         <div className={styles.commentMenu}>
-          {userId === user?.id && !isEditing && (
+          {isMe && !isEditing && (
             <ActionIcon
               onClick={() => { setIsEditing(true); setEditMsg(msg || ""); }}
               disabled={isChatDisabled}
