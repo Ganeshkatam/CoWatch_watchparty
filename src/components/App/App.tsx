@@ -1664,15 +1664,16 @@ export class App extends React.Component<AppProps, AppState> {
             const leftVideo = this.HTMLInterface.getVideoEl();
 
             const localMedia = isLocalMedia(currentMedia);
+            const isWebRTCStream = isScreenShare(currentMedia) || isFileShare(currentMedia) || isVBrowser(currentMedia);
 
             // Stop all players
-            // Unless the user is sharing a file or local media, because we play it in leftVideo
-            if (!this.isLocalStreamAFile && !localMedia) {
+            // Unless the user is sharing a file, screen, or local media, because we play it in leftVideo
+            if (!this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
               this.HTMLInterface.pauseVideo();
             }
             this.YouTubeInterface.stopVideo();
 
-            if (!this.isLocalStreamAFile && !localMedia) {
+            if (!this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
               this.Player().clearState();
             }
             if (data.subtitle) {
@@ -1706,6 +1707,8 @@ export class App extends React.Component<AppProps, AppState> {
                 // Remove the loader unless we're waiting for a vbrowser
                 this.setLoadingFalse();
               }
+              this.setState({ nonPlayableMedia: false });
+              this.setupRTCConnections();
               return;
             }
             if (this.usingYoutube() && !this.YouTubeInterface.isReady()) {
@@ -2126,8 +2129,14 @@ export class App extends React.Component<AppProps, AppState> {
           const pc = (
             data.sharer ? this.consumerConn : this.publisherConns[from]
           ) as RTCPeerConnection;
+          if (!pc) {
+            console.warn("Received signalSS but RTCPeerConnection not ready for:", from);
+            return;
+          }
           if (msg.ice !== undefined) {
-            pc.addIceCandidate(new RTCIceCandidate(msg.ice));
+            pc.addIceCandidate(new RTCIceCandidate(msg.ice)).catch((err) => {
+              console.warn("Error adding ICE candidate for screen share:", err);
+            });
           } else if (msg.sdp && msg.sdp.type === "offer") {
             // console.log('offer');
             // TODO Currently ios/Safari cannot handle this property, so remove it from the offer
@@ -2160,7 +2169,7 @@ export class App extends React.Component<AppProps, AppState> {
             await pc.setLocalDescription(answer);
             this.sendSignalSS(from, { sdp: pc.localDescription }, !data.sharer);
           } else if (msg.sdp && msg.sdp.type === "answer") {
-            pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
           }
         },
       );
@@ -2658,24 +2667,36 @@ export class App extends React.Component<AppProps, AppState> {
 
   startScreenShare = async (useMediaSoup: boolean) => {
     if (navigator.mediaDevices.getDisplayMedia) {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        //@ts-expect-error
-        video: { height: 720, logicalSurface: true },
-        audio: {
-          autoGainControl: false,
-          channelCount: 2,
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate: 48000,
-          sampleSize: 16,
-        },
-      });
-      this.localStreamToPublish = stream;
-      this.isLocalStreamAFile = false;
-      this.socket.emit("CMD:joinScreenShare", {
-        file: false,
-        mediasoup: useMediaSoup,
-      });
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          //@ts-expect-error
+          video: { height: 720, logicalSurface: true },
+          audio: {
+            autoGainControl: false,
+            channelCount: 2,
+            echoCancellation: false,
+            noiseSuppression: false,
+            sampleRate: 48000,
+            sampleSize: 16,
+          },
+        });
+        this.localStreamToPublish = stream;
+        this.isLocalStreamAFile = false;
+        const leftVideo = this.HTMLInterface.getVideoEl();
+        if (leftVideo) {
+          leftVideo.src = "";
+          leftVideo.srcObject = stream;
+          leftVideo.muted = true;
+          leftVideo.play().catch(console.warn);
+        }
+        this.socket.emit("CMD:joinScreenShare", {
+          file: false,
+          mediasoup: useMediaSoup,
+        });
+        this.setState({ loading: false, nonPlayableMedia: false });
+      } catch (err) {
+        console.warn("Screen share cancelled or failed:", err);
+      }
     }
   };
 
@@ -3094,6 +3115,19 @@ export class App extends React.Component<AppProps, AppState> {
 
     // We're the sharer, create a connection to each other member
     if (sharer?.id === selfId) {
+      if (this.localStreamToPublish) {
+        const leftVideo = this.HTMLInterface.getVideoEl();
+        if (leftVideo && leftVideo.srcObject !== this.localStreamToPublish) {
+          leftVideo.src = "";
+          leftVideo.srcObject = this.localStreamToPublish;
+          leftVideo.muted = true;
+          leftVideo.play().catch(console.warn);
+        }
+        if (this.state.nonPlayableMedia || this.state.loading) {
+          this.setState({ nonPlayableMedia: false, loading: false });
+        }
+      }
+
       // Delete and close any connections that aren't in the current member list (maybe someone disconnected)
       // This allows them to rejoin later
       const clientIds = new Set(this.state.participants.map((p) => p.id));
@@ -3106,8 +3140,8 @@ export class App extends React.Component<AppProps, AppState> {
 
       this.state.participants.forEach((user) => {
         const id = user.id;
-        if (id === selfId && this.isLocalStreamAFile) {
-          // Don't set up a connection to ourselves if sharing file
+        if (id === selfId) {
+          // Do not establish WebRTC connection to ourselves
           return;
         }
         if (!this.publisherConns[id]) {
@@ -3135,9 +3169,8 @@ export class App extends React.Component<AppProps, AppState> {
       });
     }
     // We're a watcher, establish connection to sharer
-    // If screensharing, sharer also does this
     // If filesharing, sharer does not do this since we use leftVideo
-    if (sharer && !this.consumerConn && !this.isLocalStreamAFile) {
+    if (sharer && sharer.id !== selfId && !this.consumerConn && !this.isLocalStreamAFile) {
       const pc = new RTCPeerConnection({ iceServers: iceServers() });
       this.consumerConn = pc;
       pc.onicecandidate = (event) => {
@@ -3148,13 +3181,14 @@ export class App extends React.Component<AppProps, AppState> {
       };
       pc.ontrack = (event: RTCTrackEvent) => {
         // Mount the stream from sharer
-        // console.log(stream);
         const leftVideo = this.HTMLInterface.getVideoEl();
         if (leftVideo) {
           leftVideo.src = "";
           leftVideo.srcObject = event.streams[0];
-          this.localPlay();
+          leftVideo.muted = false;
+          leftVideo.play().catch(console.warn);
         }
+        this.setState({ loading: false, nonPlayableMedia: false });
       };
     }
   };
@@ -3259,7 +3293,9 @@ export class App extends React.Component<AppProps, AppState> {
           if (
             e.name === "NotSupportedError" &&
             this.usingNative() &&
-            !isLocalMedia(this.state.roomMedia)
+            !isLocalMedia(this.state.roomMedia) &&
+            !this.playingScreenShare() &&
+            !this.playingFileShare()
           ) {
             this.setState({ loading: false, nonPlayableMedia: true });
           }
