@@ -1,22 +1,23 @@
 /* ==========================================================================
    CIRCULAR NAVIGATION WHEEL — MOBILE CORNER DIAL (FROSTED GLASS, NO NEON)
+   Strictly hidden on laptop/desktop viewports (> 768px).
    ========================================================================== */
 
 .wheelRoot {
-  display: block;
-  position: fixed;
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  right: 24px;
-  left: auto;
-  transform: none;
-  z-index: 850;
-  user-select: none;
-  -webkit-user-select: none;
+  display: none !important;
 }
 
 @media (max-width: 768px) {
   .wheelRoot {
+    display: block !important;
+    position: fixed;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     right: 20px;
+    left: auto;
+    transform: none;
+    z-index: 850;
+    user-select: none;
+    -webkit-user-select: none;
     touch-action: none;
   }
 }

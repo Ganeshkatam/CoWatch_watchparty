@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import {
   IconHome,
@@ -20,6 +20,25 @@ import {
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 768px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 768px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobileViewport(e.matches);
+
+    setIsMobileViewport(mql.matches);
+    if (mql.addEventListener) {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    } else {
+      mql.addListener(onChange);
+      return () => mql.removeListener(onChange);
+    }
+  }, []);
 
   const isVisible = isBottomNavVisible(location.pathname);
 
@@ -115,9 +134,9 @@ export const MobileBottomNav: React.FC = () => {
         ariaLabel: "Join a Watch Party Room",
       },
     ];
-  }, [user, location.pathname]);
+  }, [user, location.pathname, isMobileViewport]);
 
-  if (!isVisible) {
+  if (!isVisible || !isMobileViewport) {
     return null;
   }
 
