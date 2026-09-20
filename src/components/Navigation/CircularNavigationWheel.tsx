@@ -37,7 +37,7 @@ type WheelInteractionState = 'CLOSED' | 'OPENING' | 'OPEN' | 'SELECTING' | 'NAVI
 function getResponsiveRadius(): number {
   if (typeof window === 'undefined') return DEFAULT_RADIUS;
   const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-  const calculated = Math.round(viewportMin * 0.28);
+  const calculated = Math.round(viewportMin * 0.24);
   return Math.max(MIN_RADIUS, Math.min(calculated, MAX_RADIUS));
 }
 
@@ -345,11 +345,12 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
 
   const CenterIcon = activeItem.icon;
 
-  // Geometric parameters for flush corner quadrant plate (with balanced outer coverage and breathing room)
-  const rightOffset = 51;
-  const bottomOffset = 51;
-  const outerR = radius + 78;
-  const arcRadius = outerR + rightOffset;
+  // Mathematical 90-degree circular quadrant anchored at the screen corner (rightOffset, bottomOffset)
+  const rightOffset = 53;
+  const bottomOffset = 53;
+  const cornerRadius = radius + 108;
+  const topY = bottomOffset - cornerRadius;
+  const leftX = rightOffset - cornerRadius;
 
   return (
     <nav
@@ -403,19 +404,19 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
             {/* Concentric SVG Quadrant Plate seamlessly enclosing main nav hub */}
             <svg
               className={styles.arcGuideSvg}
-              viewBox="-310 -310 620 620"
+              viewBox="-240 -240 480 480"
               aria-hidden="true"
             >
-              {/* Unified Quadrant Backdrop Plate (Encloses Hub and Destinations) */}
+              {/* Corner-Anchored Strict Circular Quadrant Sector Plate */}
               <path
                 className={styles.sectorPlatePath}
-                d={`M ${rightOffset} -${outerR} A ${arcRadius} ${arcRadius} 0 0 0 -${outerR} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`}
+                d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`}
               />
 
-              {/* Outer Circular Quadrant Rim */}
+              {/* Circular Quadrant Outer Curved Rim */}
               <path
                 className={styles.outerRimPath}
-                d={`M ${rightOffset} -${outerR} A ${arcRadius} ${arcRadius} 0 0 0 -${outerR} ${bottomOffset}`}
+                d={`M ${rightOffset} ${topY} A ${cornerRadius} ${cornerRadius} 0 0 0 ${leftX} ${bottomOffset}`}
               />
 
               {/* Inner Hub Guide Ring */}

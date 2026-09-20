@@ -139,8 +139,8 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 620px;
-    height: 620px;
+    width: 480px;
+    height: 480px;
     transform: translate(-50%, -50%);
     pointer-events: none;
     overflow: visible;
