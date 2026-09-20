@@ -125,14 +125,21 @@ export const TopBarSearch: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        const { data, error } = await supabase
-          .from("rooms")
-          .select("roomId, roomTitle, roomDescription, status")
-          .or(`roomTitle.ilike.%${clean}%,roomId.ilike.%${clean}%`)
-          .limit(5);
-
-        if (!error && data) {
-          setPublicRooms(data);
+        const token = await getAccessToken();
+        const res = await fetch(
+          `${serverPath}/listRooms?search=${encodeURIComponent(clean)}&limit=5`,
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const roomsList = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.rooms)
+            ? data.rooms
+            : [];
+          setPublicRooms(roomsList);
         }
       } catch {
         // Silent fallback for room lookup
