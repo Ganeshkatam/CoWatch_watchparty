@@ -2821,7 +2821,7 @@ export class Room {
     let plainPasscode = undefined;
     const isOwnerSocket = Boolean(socket.uid && first?.owner_id && socket.uid === first.owner_id);
     const isHostSocket = this.isHost(socket);
-    if ((isHostSocket || isOwnerSocket) && first) {
+    if (isOwnerSocket && first) {
       if (first.owner_passcode) {
         plainPasscode = decryptPasscodeForOwner(first.owner_passcode) || undefined;
       } else if (first.passcode && !isBcryptHash(first.passcode)) {

@@ -2778,18 +2778,39 @@ app.post("/startRoom", async (req, res) => {
   const roomId = sanitizeRoomId(rawRoomId);
 
   try {
+    if (!postgres) {
+      res.status(503).json({ error: { code: "FORBIDDEN", message: "Database unavailable" } });
+      return;
+    }
+
     let memoryRoom = rooms.get(roomId);
     if (!memoryRoom) {
       memoryRoom = (await getOrCreateRoom(roomId)) || undefined;
     }
-    if (memoryRoom && !memoryRoom.isHostUid(decoded.uid) && memoryRoom.owner_id !== decoded.uid) {
-      res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can start this room" } });
-      return;
-    }
 
-    if (!postgres) {
-      res.status(503).json({ error: { code: "FORBIDDEN", message: "Database unavailable" } });
-      return;
+    if (memoryRoom) {
+      if (!memoryRoom.isHostUid(decoded.uid) && memoryRoom.owner_id !== decoded.uid) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can start this room" } });
+        return;
+      }
+    } else {
+      // Non-resident room: verify owner authorization authoritatively from database
+      const roomRow = (
+        await postgres.query<{ owner_id: string }>(
+          `SELECT owner_id FROM public.rooms WHERE "roomId" = $1 LIMIT 1`,
+          [roomId]
+        )
+      )?.rows?.[0];
+
+      if (!roomRow) {
+        res.status(404).json({ error: { code: "NOT_FOUND", message: "Room not found" } });
+        return;
+      }
+
+      if (roomRow.owner_id !== decoded.uid) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room owner can start this room" } });
+        return;
+      }
     }
 
     const activateResult = await postgres.query(

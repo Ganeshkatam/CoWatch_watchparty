@@ -1765,6 +1765,18 @@ BEGIN
     RETURN jsonb_build_object('roomId', p_room_id, 'status', v_room.status, 'unchanged', true);
   END IF;
 
+  -- Authorization enforcement for user-initiated state transitions:
+  IF p_status = 'active' THEN
+    IF p_actor_id IS NULL OR p_actor_id != v_room.owner_id THEN
+      RAISE EXCEPTION 'FORBIDDEN_NOT_ROOM_OWNER';
+    END IF;
+  ELSIF p_status = 'inactive' THEN
+    -- If an actor is explicitly provided, verify they own the room; system inactivity timeouts pass NULL.
+    IF p_actor_id IS NOT NULL AND p_actor_id != v_room.owner_id THEN
+      RAISE EXCEPTION 'FORBIDDEN_NOT_ROOM_OWNER';
+    END IF;
+  END IF;
+
   -- Canonical lifecycle check: if temporary room has passed its canonical expiresAt, transition to expired
   IF v_room."isPermanent" = false AND v_room."expiresAt" IS NOT NULL AND v_room."expiresAt" <= v_now THEN
     UPDATE public.rooms
