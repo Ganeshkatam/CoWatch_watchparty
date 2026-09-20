@@ -4,6 +4,7 @@ export interface TimelineSnapshot {
   paused: boolean;
   playbackRate: number;
   mediaSource: string;
+  revision: number;
 }
 
 export interface PlaybackSyncPayload {
@@ -12,6 +13,7 @@ export interface PlaybackSyncPayload {
   playbackRate: number;
   serverTime: number;
   mediaSource: string;
+  revision: number;
   epoch?: number;
   operationId?: string;
 }
@@ -22,6 +24,7 @@ export class TimelineAuthority {
   private paused: boolean;
   private playbackRate: number;
   private mediaSource: string;
+  private revision: number;
 
   constructor(initialSnapshot?: Partial<TimelineSnapshot>) {
     this.anchorTime = initialSnapshot?.anchorTime ?? 0;
@@ -29,6 +32,7 @@ export class TimelineAuthority {
     this.paused = initialSnapshot?.paused ?? true;
     this.playbackRate = initialSnapshot?.playbackRate ?? 1.0;
     this.mediaSource = initialSnapshot?.mediaSource ?? "";
+    this.revision = initialSnapshot?.revision ?? 1;
   }
 
   public getCanonicalTime(now: number = Date.now()): number {
@@ -44,6 +48,7 @@ export class TimelineAuthority {
     if (!this.paused) return;
     this.anchorWallClock = now;
     this.paused = false;
+    this.revision += 1;
   }
 
   public pause(now: number = Date.now()): void {
@@ -51,12 +56,14 @@ export class TimelineAuthority {
     this.anchorTime = this.getCanonicalTime(now);
     this.anchorWallClock = now;
     this.paused = true;
+    this.revision += 1;
   }
 
   public seek(targetSeconds: number, now: number = Date.now()): void {
     const clampedTarget = Math.max(0, targetSeconds);
     this.anchorTime = clampedTarget;
     this.anchorWallClock = now;
+    this.revision += 1;
   }
 
   public setPlaybackRate(rate: number, now: number = Date.now()): void {
@@ -65,6 +72,7 @@ export class TimelineAuthority {
     this.anchorTime = current;
     this.anchorWallClock = now;
     this.playbackRate = rate;
+    this.revision += 1;
   }
 
   public setMediaSource(source: string, now: number = Date.now()): void {
@@ -73,6 +81,7 @@ export class TimelineAuthority {
     this.anchorWallClock = now;
     this.paused = false;
     this.playbackRate = 1.0;
+    this.revision += 1;
   }
 
   public getSnapshot(): TimelineSnapshot {
@@ -82,6 +91,7 @@ export class TimelineAuthority {
       paused: this.paused,
       playbackRate: this.playbackRate,
       mediaSource: this.mediaSource,
+      revision: this.revision,
     };
   }
 
@@ -96,6 +106,7 @@ export class TimelineAuthority {
       playbackRate: this.playbackRate,
       serverTime: now,
       mediaSource: this.mediaSource,
+      revision: this.revision,
       epoch,
       operationId,
     };
@@ -111,5 +122,9 @@ export class TimelineAuthority {
 
   public getMediaSource(): string {
     return this.mediaSource;
+  }
+
+  public getRevision(): number {
+    return this.revision;
   }
 }

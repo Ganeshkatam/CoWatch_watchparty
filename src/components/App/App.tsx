@@ -650,14 +650,14 @@ export class App extends React.Component<AppProps, AppState> {
     const actions: MediaSessionActions = {
       play: () => {
         if (this.haveLock() && !this.isPauseDisabled()) {
-          this.socket?.emit("CMD:play");
-          this.localPlay();
+          const operationId = operationCoordinator.createOperationId("media-playback", "play");
+          this.socket?.emit("CMD:play", { operationId });
         }
       },
       pause: () => {
         if (this.haveLock() && !this.isPauseDisabled()) {
-          this.socket?.emit("CMD:pause");
-          this.localPause();
+          const operationId = operationCoordinator.createOperationId("media-playback", "pause");
+          this.socket?.emit("CMD:pause", { operationId });
         }
       },
       seek: (seconds: number) => {
@@ -1558,7 +1558,24 @@ export class App extends React.Component<AppProps, AppState> {
         if (data.serverTime) {
           clockSynchronizer.recordSample(data.serverTime, Date.now() - 50, Date.now());
         }
-        this.playbackSyncController.onPlaybackSyncReceived(data);
+        const accepted = this.playbackSyncController.onPlaybackSyncReceived(data);
+        if (!accepted) return;
+
+        if (typeof data.paused === "boolean") {
+          this.setState({ roomPaused: data.paused });
+          if (data.paused) {
+            this.localPause();
+            if (typeof data.canonicalTime === "number") {
+              this.localSeek(data.canonicalTime);
+            }
+          } else {
+            this.localPlay();
+          }
+        }
+        if (typeof data.playbackRate === "number" && data.playbackRate > 0) {
+          this.setState({ roomPlaybackRate: data.playbackRate });
+          this.Player().setPlaybackRate(data.playbackRate);
+        }
       });
       socket.on("REC:seek", (data: any) => {
         if (!isCurrentGeneration()) return;
@@ -2175,7 +2192,8 @@ export class App extends React.Component<AppProps, AppState> {
         if (this.socket && this.state.roomMedia) {
           const currentTime = this.Player().getCurrentTime();
           const toSend = this.getRoomTSToSet(currentTime);
-          this.socket.emit("CMD:ts", toSend);
+          const sanitizedTs = Math.max(0, Math.round(toSend * 100) / 100);
+          this.socket.emit("CMD:ts", sanitizedTs);
           if (isLocalMedia(this.state.roomMedia)) {
             this.localMediaCoordinator?.notifyTimelineTick(currentTime);
           }
@@ -2343,12 +2361,12 @@ export class App extends React.Component<AppProps, AppState> {
                   !this.state.roomPaused))
             ) {
               this.ytDebounce = false;
-              if (e.data === window.YT?.PlayerState?.PLAYING) {
-                this.socket.emit("CMD:play");
-                this.localPlay();
+              const isPlaying = e.data === window.YT?.PlayerState?.PLAYING;
+              const operationId = operationCoordinator.createOperationId("media-playback", isPlaying ? "play" : "pause");
+              if (isPlaying) {
+                this.socket.emit("CMD:play", { operationId });
               } else {
-                this.socket.emit("CMD:pause");
-                this.localPause();
+                this.socket.emit("CMD:pause", { operationId });
               }
               window.setTimeout(() => (this.ytDebounce = true), 500);
             }
@@ -3288,8 +3306,8 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   roomSetPlaybackRate = (rate: number) => {
-    // emit an event to the server
-    this.socket.emit("CMD:playbackRate", rate);
+    const operationId = operationCoordinator.createOperationId("media-playback", "playbackRate");
+    this.socket.emit("CMD:playbackRate", { rate, operationId });
   };
 
   roomSetLoop = (loop: boolean) => {
@@ -3304,21 +3322,19 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
     const shouldPlay = this.Player().shouldPlay();
+    const operationId = operationCoordinator.createOperationId("media-playback", shouldPlay ? "play" : "pause");
     if (shouldPlay) {
-      this.socket.emit("CMD:play");
-      this.localPlay();
+      this.socket.emit("CMD:play", { operationId });
     } else {
-      this.socket.emit("CMD:pause");
-      this.localPause();
+      this.socket.emit("CMD:pause", { operationId });
     }
   };
 
   roomSeek = (time: number) => {
-    let target = time;
-    target = Math.max(target, 0);
-    this.Player().seekVideo(target);
+    const target = Math.max(time, 0);
     const toSend = this.getRoomTSToSet(target);
-    this.socket.emit("CMD:seek", toSend);
+    const operationId = operationCoordinator.createOperationId("media-playback", "seek");
+    this.socket.emit("CMD:seek", { time: toSend, operationId });
   };
 
   getRoomTSToSet = (time: number) => {

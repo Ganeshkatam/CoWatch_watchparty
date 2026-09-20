@@ -1,5 +1,5 @@
-import { PlaybackAdapter } from "./playback/adapters";
-import { ClockSynchronizer, clockSynchronizer } from "./playback/clockSync";
+import type { PlaybackAdapter } from "./playback/adapters.js";
+import { ClockSynchronizer, clockSynchronizer } from "./playback/clockSync.js";
 
 export type DriftCorrectionTier = "TIER_0_DEADBAND" | "TIER_1_RATE_ADJUST" | "TIER_2_HARD_SEEK";
 
@@ -20,6 +20,8 @@ export interface PlaybackSyncState {
   serverTime: number;
   mediaSource?: string;
   epoch?: number;
+  revision?: number;
+  operationId?: string;
 }
 
 export class PlaybackSyncController {
@@ -28,6 +30,7 @@ export class PlaybackSyncController {
   private lastSeekTimestamp: number = 0;
   private seekCooldownMs: number = 1000;
   private latestServerState: PlaybackSyncState | null = null;
+  private latestRevision: number = 0;
 
   constructor(adapter?: PlaybackAdapter | null, clockSync: ClockSynchronizer = clockSynchronizer) {
     this.adapter = adapter || null;
@@ -42,8 +45,24 @@ export class PlaybackSyncController {
     this.seekCooldownMs = ms;
   }
 
-  public onPlaybackSyncReceived(state: PlaybackSyncState): void {
+  public onPlaybackSyncReceived(state: PlaybackSyncState): boolean {
+    if (state.revision !== undefined) {
+      if (state.revision <= this.latestRevision) {
+        // Stale or duplicate revision; drop to prevent backwards ordering
+        return false;
+      }
+      this.latestRevision = state.revision;
+    }
     this.latestServerState = state;
+    return true;
+  }
+
+  public getLatestRevision(): number {
+    return this.latestRevision;
+  }
+
+  public getLatestState(): PlaybackSyncState | null {
+    return this.latestServerState;
   }
 
   public calculateCanonicalTime(nowClient: number = Date.now()): number {
@@ -163,5 +182,6 @@ export class PlaybackSyncController {
   public reset(): void {
     this.lastSeekTimestamp = 0;
     this.latestServerState = null;
+    this.latestRevision = 0;
   }
 }

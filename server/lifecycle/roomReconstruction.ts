@@ -47,7 +47,6 @@ export class RoomReconstructor {
       room.paused = snapshot.timeline.paused;
       room.playbackRate = snapshot.timeline.playbackRate;
       room.video = snapshot.timeline.mediaSource || snapshot.video || "";
-      room.videoTS = room.timeline.getCanonicalTime();
     } else if (snapshot) {
       room.timeline = new TimelineAuthority({
         anchorTime: snapshot.videoTS || 0,
@@ -59,7 +58,6 @@ export class RoomReconstructor {
       room.paused = room.timeline.isPaused();
       room.playbackRate = room.timeline.getPlaybackRate();
       room.video = room.timeline.getMediaSource();
-      room.videoTS = room.timeline.getCanonicalTime();
     }
 
     // Hydrate L1 Ban Cache from PostgreSQL

@@ -183,7 +183,9 @@ export class Room {
   }
   // Serialized state
   public video: string | null = "";
-  public videoTS = 0;
+  public get videoTS(): number {
+    return this.timeline.getCanonicalTime();
+  }
   public subtitle = "";
   public playbackRate = 1;
   public paused = false;
@@ -230,10 +232,31 @@ export class Room {
   public maxParticipants: number = 10;
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
   private bannedIdentities: Set<string> = new Set();
-  private processedOperationIds: Set<string> = new Set();
+  private processedOperations: Map<string, { operationId: string; timestamp: number }[]> = new Map();
   public timeline: TimelineAuthority = new TimelineAuthority();
   private localMediaSignaling: LocalMediaSignaling;
   public localMediaAuthority: LocalMediaAuthority;
+
+  public hasProcessedOperation = (clientId: string, operationId?: string): boolean => {
+    if (!operationId || !clientId) return false;
+    const ops = this.processedOperations.get(clientId);
+    if (!ops) return false;
+    return ops.some((op) => op.operationId === operationId);
+  };
+
+  public recordProcessedOperation = (clientId: string, operationId?: string): void => {
+    if (!operationId || !clientId) return;
+    let ops = this.processedOperations.get(clientId);
+    if (!ops) {
+      ops = [];
+      this.processedOperations.set(clientId, ops);
+    }
+    const now = Date.now();
+    ops = ops.filter((op) => now - op.timestamp < 30000);
+    ops.push({ operationId, timestamp: now });
+    if (ops.length > 50) ops.shift();
+    this.processedOperations.set(clientId, ops);
+  };
 
   public isBanned = (clientId?: string, uid?: string): boolean => {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
@@ -616,7 +639,6 @@ export class Room {
         }
       });
       if (this.video) {
-        this.videoTS = this.timeline.getCanonicalTime();
         this.lastTsMap = Date.now();
         io.of(roomId).emit("REC:tsMap", this.tsMap);
         io.of(roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
@@ -1498,7 +1520,6 @@ export class Room {
   private deserialize = (roomData: string) => {
     const roomObj = JSON.parse(roomData);
     this.video = roomObj.video;
-    this.videoTS = roomObj.videoTS;
     if (roomObj.subtitle) {
       this.subtitle = roomObj.subtitle;
     }
@@ -1530,7 +1551,7 @@ export class Room {
       this.loop = roomObj.loop;
     }
     this.timeline = new TimelineAuthority({
-      anchorTime: this.videoTS || 0,
+      anchorTime: roomObj.videoTS || 0,
       anchorWallClock: Date.now(),
       paused: this.paused !== undefined ? this.paused : true,
       playbackRate: this.playbackRate || 1.0,
@@ -1811,7 +1832,6 @@ export class Room {
       this.localMediaAuthority.terminateSession(this.roomId);
     }
     this.video = data;
-    this.videoTS = 0;
     this.paused = false;
     this.subtitle = "";
     this.loop = false;
@@ -2124,16 +2144,13 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    if (operationId && this.processedOperationIds.has(operationId)) {
+    if (this.hasProcessedOperation(socket.clientId, operationId)) {
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       return;
     }
-    if (operationId) {
-      this.processedOperationIds.add(operationId);
-    }
+    this.recordProcessedOperation(socket.clientId, operationId);
     this.timeline.play();
     this.paused = false;
-    this.videoTS = this.timeline.getCanonicalTime();
     socket.broadcast.emit("REC:play", this.video);
     this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
@@ -2149,16 +2166,13 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    if (operationId && this.processedOperationIds.has(operationId)) {
+    if (this.hasProcessedOperation(socket.clientId, operationId)) {
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       return;
     }
-    if (operationId) {
-      this.processedOperationIds.add(operationId);
-    }
+    this.recordProcessedOperation(socket.clientId, operationId);
     this.timeline.pause();
     this.paused = true;
-    this.videoTS = this.timeline.getCanonicalTime();
     socket.broadcast.emit("REC:pause");
     this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
@@ -2236,20 +2250,18 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    const targetTime = typeof data === "object" ? Number(data?.time) : Number(data);
+    const rawTarget = typeof data === "object" ? Number(data?.time) : Number(data);
     const operationId = typeof data === "object" ? data?.operationId : undefined;
-    if (String(targetTime).length > 100 || isNaN(targetTime)) {
+    if (String(rawTarget).length > 100 || !Number.isFinite(rawTarget)) {
       return;
     }
-    if (operationId && this.processedOperationIds.has(operationId)) {
+    if (this.hasProcessedOperation(socket.clientId, operationId)) {
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       return;
     }
-    if (operationId) {
-      this.processedOperationIds.add(operationId);
-    }
+    this.recordProcessedOperation(socket.clientId, operationId);
+    const targetTime = Math.max(0, rawTarget);
     this.timeline.seek(targetTime);
-    this.videoTS = targetTime;
     socket.broadcast.emit("REC:seek", targetTime);
     this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: targetTime?.toString() };
@@ -2261,26 +2273,24 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    const rate = typeof data === "object" ? Number(data?.rate) : Number(data);
+    const rawRate = typeof data === "object" ? Number(data?.rate) : Number(data);
     const operationId = typeof data === "object" ? data?.operationId : undefined;
-    if (String(rate).length > 100 || isNaN(rate) || rate <= 0) {
+    if (String(rawRate).length > 100 || !Number.isFinite(rawRate) || rawRate <= 0 || rawRate > 16) {
       return;
     }
-    if (operationId && this.processedOperationIds.has(operationId)) {
+    if (this.hasProcessedOperation(socket.clientId, operationId)) {
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       return;
     }
-    if (operationId) {
-      this.processedOperationIds.add(operationId);
-    }
-    this.timeline.setPlaybackRate(rate);
-    this.playbackRate = rate;
-    this.io.of(this.roomId).emit("REC:playbackRate", rate);
+    this.recordProcessedOperation(socket.clientId, operationId);
+    this.timeline.setPlaybackRate(rawRate);
+    this.playbackRate = rawRate;
+    this.io.of(this.roomId).emit("REC:playbackRate", rawRate);
     this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
     const chatMsg = {
       id: socket.clientId,
       cmd: "playbackRate",
-      msg: rate?.toString(),
+      msg: rawRate?.toString(),
     };
     this.addChatMessage(socket, chatMsg);
   };
@@ -2294,24 +2304,18 @@ export class Room {
   };
 
   private setTimestamp = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+    if (String(data).length > 100 || typeof data !== "number" || !Number.isFinite(data)) {
       return;
     }
     // Prevent lagging TS updates from the old video from messing up our timestamps
     if (this.preventTSUpdate) {
       return;
     }
-    // This is negative for live streams, so allow overwriting
-    // Otherwise, only increment this value to prevent a lagging viewer from holding up the room state
-    if (data < 0 || data > this.videoTS) {
-      this.videoTS = data;
-    }
-    // Normalize the received TS based on how long since the last tsMap emit
-    // Later sends will have higher values so subtract the difference
-    // Add 1 as we will emit 1 second from the last one
+    // AUD-006: CMD:ts is strictly non-authoritative client telemetry for presence / roster display.
+    // It NEVER mutates this.videoTS or this.timeline.
+    const sanitizedTs = Math.max(0, Math.round(data * 100) / 100);
     const timeSinceTsMap = Date.now() - this.lastTsMap;
-    // console.log(socket.clientId, 'offset', offset, 'ms');
-    this.tsMap[socket.clientId] = data - timeSinceTsMap / 1000 + 1;
+    this.tsMap[socket.clientId] = sanitizedTs - timeSinceTsMap / 1000 + 1;
   };
 
   private isValidChatMessage = (msg: string | undefined) => {
@@ -3062,12 +3066,10 @@ export class Room {
     }
     if (!targetIdentity) return;
 
-    if (operationId) {
-      if (this.processedOperationIds.has(operationId)) {
-        return;
-      }
-      this.processedOperationIds.add(operationId);
+    if (this.hasProcessedOperation(actorSocket.clientId, operationId)) {
+      return;
     }
+    this.recordProcessedOperation(actorSocket.clientId, operationId);
 
     this.admittedParticipants.delete(targetIdentity);
 
@@ -3143,12 +3145,10 @@ export class Room {
     }
     if (!targetIdentity) return;
 
-    if (operationId) {
-      if (this.processedOperationIds.has(operationId)) {
-        return;
-      }
-      this.processedOperationIds.add(operationId);
+    if (this.hasProcessedOperation(actorSocket.clientId, operationId)) {
+      return;
     }
+    this.recordProcessedOperation(actorSocket.clientId, operationId);
 
     // Record in L1 cache
     this.bannedIdentities.add(targetIdentity);
@@ -3247,12 +3247,10 @@ export class Room {
     };
     if (!data) return;
 
-    if (data.operationId) {
-      if (this.processedOperationIds.has(data.operationId)) {
-        return;
-      }
-      this.processedOperationIds.add(data.operationId);
+    if (this.hasProcessedOperation(actorSocket.clientId, data.operationId)) {
+      return;
     }
+    this.recordProcessedOperation(actorSocket.clientId, data.operationId);
 
     if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
       const context = this.buildAuthorizationContext(actorSocket);

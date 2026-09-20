@@ -371,6 +371,10 @@ export class OperationCoordinator {
     return this.peerRtcStates.get(peerId) || "idle";
   }
 
+  public createOperationId(domain: OperationDomain = "media-playback", type: string = "cmd"): string {
+    return `${domain}:${type}:${Date.now()}:${Math.random().toString(36).substring(2, 9)}`;
+  }
+
   public startOperation(
     domain: OperationDomain,
     type: string,

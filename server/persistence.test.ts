@@ -428,7 +428,7 @@ async function runPersistenceTests() {
     const snapshot: RoomSnapshot = {
       schemaVersion: 1,
       lifecycleRevision: 3,
-      timeline: { anchorTime: 12.0, anchorWallClock: 50000, paused: true, playbackRate: 1.0, mediaSource: "" },
+      timeline: { anchorTime: 12.0, anchorWallClock: 50000, paused: true, playbackRate: 1.0, mediaSource: "", revision: 1 },
       settings: {},
       locks: {},
     };
