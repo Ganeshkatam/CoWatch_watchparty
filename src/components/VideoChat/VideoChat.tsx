@@ -798,7 +798,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
                     }}
                     autoPlay
                     playsInline
-                    muted={isSelf} // Mute self to prevent acoustic feedback
+                    muted={true} // Audio is exclusively and clearly routed through PeerAudioBooster to eliminate echo
                     className={styles.videoElement}
                   />
                   {/* Subtle audio indicator if unmuted */}
