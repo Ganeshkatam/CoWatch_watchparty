@@ -129,4 +129,10 @@ export class LocalMediaScheduler {
   public getInFlightCount(): number {
     return this.inFlightRequests.size;
   }
+
+  public reset(): void {
+    this.peers.clear();
+    this.peerAvailability.clear();
+    this.inFlightRequests.clear();
+  }
 }

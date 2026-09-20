@@ -232,6 +232,7 @@ export class LocalMediaCoordinator {
   private manifest: LocalMediaManifest | null = null;
   private objectUrl: string | null = null;
   private scheduleTimer: any = null;
+  private heartbeatTimer: any = null;
   private lastKnownTime: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
 
@@ -269,11 +270,13 @@ export class LocalMediaCoordinator {
               // Promoted to HOST_SEED via failover election
               this.role = "HOST_SEED";
               this.manifest = normalized;
-              // Reset peer connections to accept incoming connections from peers
+              // Reset peer connections and scheduler to accept incoming connections from peers
               for (const peer of this.peers.values()) {
                 peer.close();
               }
               this.peers.clear();
+              this.scheduler?.reset();
+              this.startHeartbeatLoop();
               this.notifyState();
 
               // Report full availability to server
@@ -288,12 +291,13 @@ export class LocalMediaCoordinator {
             } else {
               // Participant role
               if (this.manifest && this.manifest.mediaId === normalized.mediaId && this.mediaSource) {
-                // Ongoing session epoch transition: clear stale peers and connect to new seed
+                // Ongoing session epoch transition: clear stale peers, reset scheduler, and connect to new seed
                 this.manifest = normalized;
                 for (const peer of this.peers.values()) {
                   peer.close();
                 }
                 this.peers.clear();
+                this.scheduler?.reset();
                 if (normalized.ownerId && normalized.ownerId !== this.userId) {
                   const peer = this.createPeer(normalized.ownerId, true);
                   await peer.startNegotiation();
@@ -397,6 +401,7 @@ export class LocalMediaCoordinator {
       manifest: this.manifest,
     });
 
+    this.startHeartbeatLoop();
     this.notifyState();
     return this.objectUrl;
   }
@@ -423,8 +428,9 @@ export class LocalMediaCoordinator {
       },
     });
 
-    // 3. Start periodic scheduler loop (every 250ms)
+    // 3. Start periodic scheduler loop (every 250ms) & heartbeat loop (every 5s)
     this.startSchedulerLoop();
+    this.startHeartbeatLoop();
 
     // 4. Connect to host seed
     if (manifest.ownerId && manifest.ownerId !== this.userId) {
@@ -555,6 +561,23 @@ export class LocalMediaCoordinator {
     }, 250);
   }
 
+  private startHeartbeatLoop(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      if (this.manifest) {
+        const available = this.cache?.getAvailableChunks() || [];
+        const contiguous = this.cache?.getContiguousCoverageFromStart() || 0;
+        const total = this.manifest.totalChunks;
+        this.socket.emit("CMD_LOCAL_MEDIA_AVAILABILITY", {
+          mediaId: this.manifest.mediaId,
+          epoch: this.manifest.epoch,
+          availableChunksCount: this.role === "HOST_SEED" ? total : available.length,
+          contiguousThrough: this.role === "HOST_SEED" ? total - 1 : contiguous - 1,
+        });
+      }
+    }, 5000);
+  }
+
   public notifyTimelineTick(currentSeconds: number): void {
     this.lastKnownTime = currentSeconds;
     if (this.scheduler && this.role === "PARTICIPANT_PEER") {
@@ -595,6 +618,10 @@ export class LocalMediaCoordinator {
     if (this.scheduleTimer) {
       clearInterval(this.scheduleTimer);
       this.scheduleTimer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
 
     for (const peer of this.peers.values()) {
