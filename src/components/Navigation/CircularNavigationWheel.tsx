@@ -37,7 +37,7 @@ type WheelInteractionState = 'CLOSED' | 'OPENING' | 'OPEN' | 'SELECTING' | 'NAVI
 function getResponsiveRadius(): number {
   if (typeof window === 'undefined') return DEFAULT_RADIUS;
   const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-  const calculated = Math.round(viewportMin * 0.25);
+  const calculated = Math.round(viewportMin * 0.28);
   return Math.max(MIN_RADIUS, Math.min(calculated, MAX_RADIUS));
 }
 
@@ -54,6 +54,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   const dockRef = useRef<HTMLButtonElement | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const closingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const dockCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isGestureActiveRef = useRef<boolean>(false);
@@ -79,8 +80,40 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     return () => {
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (closingTimerRef.current) clearTimeout(closingTimerRef.current);
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
   }, []);
+
+  const closeWheel = useCallback(() => {
+    if (wheelState === 'CLOSED' || wheelState === 'CLOSING') return;
+    setWheelState('CLOSING');
+    closingTimerRef.current = setTimeout(() => {
+      setWheelState('CLOSED');
+      setSelectedItemId(null);
+    }, 180);
+  }, [wheelState]);
+
+  // Hover handlers for laptop/desktop users
+  const handleMouseEnter = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (closingTimerRef.current) clearTimeout(closingTimerRef.current);
+      if (wheelState === 'CLOSED' || wheelState === 'CLOSING') {
+        setWheelState('OPEN');
+      }
+    }
+  }, [wheelState]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = setTimeout(() => {
+        if (wheelState === 'OPEN' || wheelState === 'SELECTING') {
+          closeWheel();
+        }
+      }, 260);
+    }
+  }, [wheelState, closeWheel]);
 
   // Determine current active item as center anchor
   const activeItem = items.find((item) => item.isActive) || items[0];
@@ -109,15 +142,6 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     },
     [history, onNavigate]
   );
-
-  const closeWheel = useCallback(() => {
-    if (wheelState === 'CLOSED' || wheelState === 'CLOSING') return;
-    setWheelState('CLOSING');
-    closingTimerRef.current = setTimeout(() => {
-      setWheelState('CLOSED');
-      setSelectedItemId(null);
-    }, 180);
-  }, [wheelState]);
 
   // Pointer event handlers on the Center Dock
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -321,17 +345,19 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
 
   const CenterIcon = activeItem.icon;
 
-  // Arc path geometry for the subtle background guide
-  const startArcX = Math.round(Math.cos((-82 * Math.PI) / 180) * radius);
-  const startArcY = Math.round(Math.sin((-82 * Math.PI) / 180) * radius);
-  const endArcX = Math.round(Math.cos((-182 * Math.PI) / 180) * radius);
-  const endArcY = Math.round(Math.sin((-182 * Math.PI) / 180) * radius);
+  // Geometric parameters for flush corner quadrant plate (with balanced outer coverage and breathing room)
+  const rightOffset = 51;
+  const bottomOffset = 51;
+  const outerR = radius + 78;
+  const arcRadius = outerR + rightOffset;
 
   return (
     <nav
       className={styles.wheelRoot}
       role="toolbar"
-      aria-label="Mobile Circular Navigation Wheel"
+      aria-label="Circular Navigation Dial"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Capture layer for clean dismissal on outside tap */}
       {isOpen && (
@@ -343,12 +369,15 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
       )}
 
       {/* Center Dock Container */}
-      <div className={styles.centerDockContainer}>
+      <div
+        className={styles.centerDockContainer}
+        onMouseEnter={handleMouseEnter}
+      >
         <button
           ref={dockRef}
           type="button"
           className={`${styles.centerDockButton} ${isOpen ? styles.centerDockOpen : ''}`}
-          aria-label={`${activeItem.label}, current page. Tap or drag to open navigation dial.`}
+          aria-label={`${activeItem.label}, current page. Hover, tap, or drag to open navigation dial.`}
           aria-expanded={isOpen}
           aria-current="page"
           onPointerDown={handlePointerDown}
@@ -364,31 +393,61 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           <span className={styles.centerDockLabel}>{activeItem.label}</span>
         </button>
 
-        {/* Orbiting destinations and subtle guide arcs */}
+        {/* Orbiting destinations and unified quadrant dial plate */}
         {isOpen && (
-          <div className={styles.orbitArea} aria-hidden={!isOpen}>
-            {/* Subtle hairline orbital guide arc and radial rays */}
+          <div
+            className={styles.orbitArea}
+            aria-hidden={!isOpen}
+            onMouseEnter={handleMouseEnter}
+          >
+            {/* Concentric SVG Quadrant Plate seamlessly enclosing main nav hub */}
             <svg
               className={styles.arcGuideSvg}
-              viewBox="-200 -200 400 400"
+              viewBox="-310 -310 620 620"
               aria-hidden="true"
             >
+              {/* Unified Quadrant Backdrop Plate (Encloses Hub and Destinations) */}
+              <path
+                className={styles.sectorPlatePath}
+                d={`M ${rightOffset} -${outerR} A ${arcRadius} ${arcRadius} 0 0 0 -${outerR} ${bottomOffset} L ${rightOffset} ${bottomOffset} Z`}
+              />
+
+              {/* Outer Circular Quadrant Rim */}
+              <path
+                className={styles.outerRimPath}
+                d={`M ${rightOffset} -${outerR} A ${arcRadius} ${arcRadius} 0 0 0 -${outerR} ${bottomOffset}`}
+              />
+
+              {/* Inner Hub Guide Ring */}
+              <circle
+                className={styles.innerDockGuideRing}
+                cx="0"
+                cy="0"
+                r="36"
+                fill="none"
+              />
+
+              {/* Inner Orbit Track Arc */}
               <path
                 className={styles.arcGuidePath}
-                d={`M ${startArcX} ${startArcY} A ${radius} ${radius} 0 0 0 ${endArcX} ${endArcY}`}
+                d={`M 0 -${radius} A ${radius} ${radius} 0 0 0 -${radius} 0`}
               />
+
+              {/* Subtle Radial Sector Rays connecting dock to each destination */}
               {orbitingItems.map((_, idx) => {
                 const angle = getOrbitItemAngle(idx, orbitingItems.length);
-                const rayX = Math.round(Math.cos(angle) * (radius - 22));
-                const rayY = Math.round(Math.sin(angle) * (radius - 22));
+                const rayStartX = Math.round(Math.cos(angle) * 34);
+                const rayStartY = Math.round(Math.sin(angle) * 34);
+                const rayEndX = Math.round(Math.cos(angle) * (radius - 22));
+                const rayEndY = Math.round(Math.sin(angle) * (radius - 22));
                 return (
                   <line
                     key={`ray-${idx}`}
                     className={styles.radialGuideLine}
-                    x1={0}
-                    y1={0}
-                    x2={rayX}
-                    y2={rayY}
+                    x1={rayStartX}
+                    y1={rayStartY}
+                    x2={rayEndX}
+                    y2={rayEndY}
                   />
                 );
               })}
@@ -420,6 +479,14 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
                   onClick={(e) => {
                     e.stopPropagation();
                     triggerNavigation(item);
+                  }}
+                  onMouseEnter={() => {
+                    setSelectedItemId(item.id);
+                  }}
+                  onMouseLeave={() => {
+                    if (selectedItemId === item.id) {
+                      setSelectedItemId(null);
+                    }
                   }}
                 >
                   <div className={styles.orbitItemIconWrapper}>
