@@ -48,9 +48,9 @@ export function isRouteActive(
 
 export const HOLD_THRESHOLD_MS = 180;
 export const MOVE_JITTER_TOLERANCE_PX = 8;
-export const MIN_RADIUS = 72;
-export const MAX_RADIUS = 100;
-export const DEFAULT_RADIUS = 82;
+export const MIN_RADIUS = 84;
+export const MAX_RADIUS = 118;
+export const DEFAULT_RADIUS = 96;
 
 export interface WheelNavigationItem {
   id: string;

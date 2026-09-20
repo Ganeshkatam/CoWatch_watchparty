@@ -37,7 +37,7 @@ type WheelInteractionState = 'CLOSED' | 'OPENING' | 'OPEN' | 'SELECTING' | 'NAVI
 function getResponsiveRadius(): number {
   if (typeof window === 'undefined') return DEFAULT_RADIUS;
   const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-  const calculated = Math.round(viewportMin * 0.19);
+  const calculated = Math.round(viewportMin * 0.25);
   return Math.max(MIN_RADIUS, Math.min(calculated, MAX_RADIUS));
 }
 
@@ -320,7 +320,12 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   if (!activeItem) return null;
 
   const CenterIcon = activeItem.icon;
-  const angleStep = orbitingItems.length > 0 ? (2 * Math.PI) / orbitingItems.length : 0;
+
+  // Arc path geometry for the subtle background guide
+  const startArcX = Math.round(Math.cos((-82 * Math.PI) / 180) * radius);
+  const startArcY = Math.round(Math.sin((-82 * Math.PI) / 180) * radius);
+  const endArcX = Math.round(Math.cos((-182 * Math.PI) / 180) * radius);
+  const endArcY = Math.round(Math.sin((-182 * Math.PI) / 180) * radius);
 
   return (
     <nav
@@ -343,7 +348,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           ref={dockRef}
           type="button"
           className={`${styles.centerDockButton} ${isOpen ? styles.centerDockOpen : ''}`}
-          aria-label={`${activeItem.label}, current page. Press and hold or tap to open navigation wheel.`}
+          aria-label={`${activeItem.label}, current page. Tap or drag to open navigation dial.`}
           aria-expanded={isOpen}
           aria-current="page"
           onPointerDown={handlePointerDown}
@@ -359,15 +364,42 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
           <span className={styles.centerDockLabel}>{activeItem.label}</span>
         </button>
 
-        {/* Orbiting destinations */}
+        {/* Orbiting destinations and subtle guide arcs */}
         {isOpen && (
           <div className={styles.orbitArea} aria-hidden={!isOpen}>
+            {/* Subtle hairline orbital guide arc and radial rays */}
+            <svg
+              className={styles.arcGuideSvg}
+              viewBox="-200 -200 400 400"
+              aria-hidden="true"
+            >
+              <path
+                className={styles.arcGuidePath}
+                d={`M ${startArcX} ${startArcY} A ${radius} ${radius} 0 0 0 ${endArcX} ${endArcY}`}
+              />
+              {orbitingItems.map((_, idx) => {
+                const angle = getOrbitItemAngle(idx, orbitingItems.length);
+                const rayX = Math.round(Math.cos(angle) * (radius - 22));
+                const rayY = Math.round(Math.sin(angle) * (radius - 22));
+                return (
+                  <line
+                    key={`ray-${idx}`}
+                    className={styles.radialGuideLine}
+                    x1={0}
+                    y1={0}
+                    x2={rayX}
+                    y2={rayY}
+                  />
+                );
+              })}
+            </svg>
+
             {orbitingItems.map((item, index) => {
               const ItemIcon = item.icon;
               const isSelected = selectedItemId === item.id;
               const isNavigating = navigatingItemId === item.id;
 
-              // Calculate stationary polar coordinates in bottom-right arc (options do not rotate)
+              // Stationary polar coordinates in bottom-right corner arc
               const itemBaseAngle = getOrbitItemAngle(index, orbitingItems.length);
               const x = Math.round(Math.cos(itemBaseAngle) * radius);
               const y = Math.round(Math.sin(itemBaseAngle) * radius);
@@ -382,7 +414,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
                   style={{
                     transform: isNavigating
                       ? 'translate(0, 0)'
-                      : `translate(${x}px, ${y}px) ${isSelected ? 'scale(1.18)' : 'scale(1)'}`,
+                      : `translate(${x}px, ${y}px) ${isSelected ? 'scale(1.12)' : 'scale(1)'}`,
                   }}
                   aria-label={item.ariaLabel || item.label}
                   onClick={(e) => {
@@ -390,14 +422,19 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
                     triggerNavigation(item);
                   }}
                 >
-                  <ItemIcon size={20} stroke={isSelected ? 2.4 : 1.8} />
+                  <div className={styles.orbitItemIconWrapper}>
+                    <ItemIcon size={19} stroke={isSelected ? 2.2 : 1.8} />
+                  </div>
 
-                  {/* Selection-driven label: only shown when item is selected */}
-                  {isSelected && (
-                    <span className={styles.selectedLabelBadge} aria-hidden="true">
-                      {item.label}
-                    </span>
-                  )}
+                  {/* Permanent visible label badge beneath each icon */}
+                  <span
+                    className={`${styles.orbitItemLabel} ${
+                      isSelected ? styles.orbitItemLabelSelected : ''
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {item.label}
+                  </span>
                 </button>
               );
             })}
