@@ -455,19 +455,25 @@ export class App extends React.Component<AppProps, AppState> {
         return;
       }
       try {
-        // Query ONLY status field during polling as required
-        const { data } = await supabase
-          .from("rooms")
-          .select("status")
-          .eq("roomId", cleanId)
-          .maybeSingle();
+        const session = await safeGetSession(1200);
+        const token = session?.data?.session?.access_token || getCachedSupabaseToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
 
-        if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
-          this.stopWaitingPoll();
-          this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
-            this.teardownSocket();
-            this.join(cleanId);
-          });
+        const res = await fetch(`${serverPath}/roomInfo/${encodeURIComponent(cleanId)}`, {
+          headers,
+          signal: AbortSignal.timeout(2500),
+        });
+
+        if (res.ok) {
+          const info = await res.json();
+          if (info.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
+            this.stopWaitingPoll();
+            this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+              this.teardownSocket();
+              this.join(cleanId);
+            });
+          }
         }
       } catch (e) {
         console.warn("Waiting poll check error:", e);
@@ -486,18 +492,25 @@ export class App extends React.Component<AppProps, AppState> {
     const cleanId = (this.state.roomId || "").trim();
     if (!cleanId) return;
     try {
-      const { data } = await supabase
-        .from("rooms")
-        .select("status")
-        .eq("roomId", cleanId)
-        .maybeSingle();
+      const session = await safeGetSession(1200);
+      const token = session?.data?.session?.access_token || getCachedSupabaseToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      if (data?.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
-        this.stopWaitingPoll();
-        this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
-          this.teardownSocket();
-          this.join(cleanId);
-        });
+      const res = await fetch(`${serverPath}/roomInfo/${encodeURIComponent(cleanId)}`, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (res.ok) {
+        const info = await res.json();
+        if (info.status === "active" && this.state.roomId === cleanId && !this.socketConnecting) {
+          this.stopWaitingPoll();
+          this.setState({ isWaitingForHost: false, overlayMsg: "" }, () => {
+            this.teardownSocket();
+            this.join(cleanId);
+          });
+        }
       }
     } catch (e) {
       console.warn("Manual status check error:", e);
@@ -852,6 +865,9 @@ export class App extends React.Component<AppProps, AppState> {
           if (isOwner) {
             this.setState({ isOwner: true });
           }
+          if (info.owner_id) {
+            this.resolveHostName(info.owner_id);
+          }
           const requiresPasscode = Boolean(info.requiresPasscode);
           const isHostPresent = Boolean(info.isHostPresent);
           const isWaiting = info.status !== "active";
@@ -859,41 +875,10 @@ export class App extends React.Component<AppProps, AppState> {
           return { isOwner, requiresPasscode, owner_id, isWaiting, isHostPresent };
         }
       } catch (e) {
-        console.warn("/roomInfo fetch failed, falling back to Supabase client:", e);
+        console.warn("/roomInfo fetch failed:", e);
       }
 
-      // Fallback check: Direct Supabase client query
-      const roomPromise = supabase
-        .from("rooms")
-        .select("passcode, owner_id, status, roomTitle, isPermanent")
-        .eq("roomId", roomId)
-        .maybeSingle();
-
-      const timeoutPromise = new Promise<{ data: null }>((resolve) =>
-        setTimeout(() => resolve({ data: null }), 1200)
-      );
-
-      const { data } = await Promise.race([roomPromise, timeoutPromise]);
-      if (!data) return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
-
-      if (data.owner_id) {
-        this.resolveHostName(data.owner_id);
-      }
-      if (data.roomTitle) {
-        this.setState({ roomTitle: data.roomTitle });
-      }
-      if ((data as any).isPermanent !== undefined) {
-        this.setState({ isPermanentRoom: Boolean((data as any).isPermanent) });
-      }
-
-      const isOwner = Boolean(user && data.owner_id === user.id);
-      if (isOwner) {
-        this.setState({ isOwner: true });
-      }
-      const requiresPasscode = Boolean(data.passcode);
-      const isWaiting = data.status !== "active";
-
-      return { isOwner, requiresPasscode, owner_id: isOwner ? (data.owner_id as string | null) : null, isWaiting };
+      return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
     } catch (e) {
       console.warn("checkRoomAccess error:", e);
       return { isOwner: false, requiresPasscode: false, owner_id: null as string | null, isWaiting: false };
