@@ -831,7 +831,8 @@ export class Room {
       }
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
-      this.localMediaAuthority.registerPeer(this.roomId, clientId, socket.id);
+      const effectiveUserId = socket.uid || clientId;
+      this.localMediaAuthority.registerPeer(this.roomId, effectiveUserId, clientId, socket.id);
       const initialName = this.nameMap[clientId] || (socket.uid ? this.uidToNameMap[socket.uid] : undefined);
       const initialPicture = this.pictureMap[clientId] || (socket.uid ? this.uidToPictureMap[socket.uid] : undefined);
       const existingUser = this.roster.find(user => user.id === clientId);
@@ -1293,10 +1294,10 @@ export class Room {
           socket.emit("CMD:error", { code: "FORBIDDEN" });
           return;
         }
-        const actorId = socket.uid || socket.clientId || "";
+        const userId = socket.uid || clientId;
         const session = await this.localMediaAuthority.announceSession(
           this.roomId,
-          actorId,
+          userId,
           auth.allowed,
           data?.manifest
         );
@@ -1307,10 +1308,52 @@ export class Room {
 
       socket.on("CMD_LOCAL_MEDIA_SIGNAL", (data: any) => {
         if (!validateNotExpired()) return;
-        const targetSocketId = this.socketIdMap[data?.toPeerId];
-        if (targetSocketId) {
-          this.localMediaAuthority.handleSignalRelay(socket, targetSocketId, data);
-        }
+        if (!data || typeof data !== "object") return;
+
+        // 1. Authoritative sender identity: sender's registered peerId (clientId) in this room
+        const senderPeerId = clientId;
+        const targetPeerId = data.toPeerId;
+        if (!targetPeerId || typeof targetPeerId !== "string") return;
+
+        // 2. Validate target socket belongs to this room
+        const targetSocketId = this.socketIdMap[targetPeerId];
+        if (!targetSocketId) return;
+
+        // Ensure target is still connected in this room's namespace
+        const targetSocket = this.io.of(this.roomId).sockets.get(targetSocketId);
+        if (!targetSocket) return;
+
+        // 3. Construct authoritative relay payload
+        const relayPayload = {
+          roomId: this.roomId,
+          fromPeerId: senderPeerId, // Server enforced, ignoring data.fromPeerId
+          toPeerId: targetPeerId,
+          signal: data.signal,
+          epoch: typeof data.epoch === "number" ? data.epoch : 1,
+        };
+
+        this.localMediaAuthority.handleSignalRelay(
+          socket,
+          targetSocketId,
+          relayPayload,
+          data.mediaId
+        );
+      });
+
+      socket.on("CMD_LOCAL_MEDIA_AVAILABILITY", (data: any) => {
+        if (!validateNotExpired()) return;
+        if (!data || typeof data !== "object") return;
+        const { mediaId, epoch, availableChunksCount, contiguousThrough } = data;
+        if (!mediaId || typeof mediaId !== "string" || typeof epoch !== "number") return;
+
+        this.localMediaAuthority.updatePeerAvailability(
+          this.roomId,
+          clientId,
+          mediaId,
+          epoch,
+          availableChunksCount,
+          contiguousThrough
+        );
       });
 
       // Resolve profile for authenticated socket
@@ -2936,7 +2979,7 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
-      this.localMediaAuthority.unregisterPeer(this.roomId, clientId);
+      this.localMediaAuthority.unregisterPeer(this.roomId, clientId, socket.id);
 
       // Transition admitted participant to disconnected state with timestamp for grace period
       const admittedRecord = this.admittedParticipants.get(clientId);

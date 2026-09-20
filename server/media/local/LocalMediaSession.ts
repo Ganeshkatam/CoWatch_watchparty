@@ -39,6 +39,14 @@ export class LocalMediaSession {
     this.createdAt = Date.now();
   }
 
+  public promoteFailoverSeed(newOwnerUserId: string): number {
+    this.ownerId = newOwnerUserId;
+    this.epoch += 1;
+    this.manifest.ownerId = newOwnerUserId;
+    this.manifest.epoch = this.epoch;
+    return this.epoch;
+  }
+
   public updateOwner(newOwnerId: string): void {
     this.ownerId = newOwnerId;
     this.manifest.ownerId = newOwnerId;

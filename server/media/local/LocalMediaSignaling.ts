@@ -38,15 +38,27 @@ export class LocalMediaSignaling {
   }
 
   public broadcastSession(roomId: string, manifest: any): void {
-    this.io.emit("LOCAL_MEDIA_ANNOUNCE", {
-      manifest,
-    });
+    if (typeof (this.io as any).to === "function") {
+      this.io.to(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
+        manifest,
+      });
+    } else {
+      this.io.emit("LOCAL_MEDIA_ANNOUNCE", {
+        manifest,
+      });
+    }
   }
 
   public broadcastUnavailable(roomId: string, mediaId: string): void {
-    this.io.emit("LOCAL_MEDIA_UNAVAILABLE", {
-      mediaId,
-    });
+    if (typeof (this.io as any).to === "function") {
+      this.io.to(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
+        mediaId,
+      });
+    } else {
+      this.io.emit("LOCAL_MEDIA_UNAVAILABLE", {
+        mediaId,
+      });
+    }
   }
 
   public sendSessionToSocket(targetSocketId: string, manifest: any): void {

@@ -253,17 +253,56 @@ export class LocalMediaCoordinator {
     // 1. Session announcement received from server
     this.socket.on(
       "LOCAL_MEDIA_ANNOUNCE",
-      (data: { manifest: unknown }) => {
+      async (data: { manifest: unknown }) => {
         const normalized = normalizeLocalMediaManifest(data?.manifest);
         console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
           mediaId: normalized?.mediaId,
           myRole: this.role,
           myUserId: this.userId,
           ownerId: normalized?.ownerId,
+          epoch: normalized?.epoch,
         });
         if (normalized && normalized.roomId === this.roomId) {
-          if (this.role !== "HOST_SEED") {
-            this.handleParticipantManifest(normalized);
+          const currentEpoch = this.manifest?.epoch ?? 0;
+          if (normalized.epoch > currentEpoch || !this.manifest) {
+            if (this.userId === normalized.ownerId) {
+              // Promoted to HOST_SEED via failover election
+              this.role = "HOST_SEED";
+              this.manifest = normalized;
+              // Reset peer connections to accept incoming connections from peers
+              for (const peer of this.peers.values()) {
+                peer.close();
+              }
+              this.peers.clear();
+              this.notifyState();
+
+              // Report full availability to server
+              const available = this.cache?.getAvailableChunks() || [];
+              const contiguous = this.cache?.getContiguousCoverageFromStart() || 0;
+              this.socket.emit("CMD_LOCAL_MEDIA_AVAILABILITY", {
+                mediaId: normalized.mediaId,
+                epoch: normalized.epoch,
+                availableChunksCount: available.length,
+                contiguousThrough: contiguous - 1,
+              });
+            } else {
+              // Participant role
+              if (this.manifest && this.manifest.mediaId === normalized.mediaId && this.mediaSource) {
+                // Ongoing session epoch transition: clear stale peers and connect to new seed
+                this.manifest = normalized;
+                for (const peer of this.peers.values()) {
+                  peer.close();
+                }
+                this.peers.clear();
+                if (normalized.ownerId && normalized.ownerId !== this.userId) {
+                  const peer = this.createPeer(normalized.ownerId, true);
+                  await peer.startNegotiation();
+                }
+                this.notifyState();
+              } else {
+                await this.handleParticipantManifest(normalized);
+              }
+            }
           }
         }
       },
@@ -285,7 +324,18 @@ export class LocalMediaCoordinator {
           signalType:
             data.signal?.sdp?.type ||
             (data.signal?.candidate ? "candidate" : "unknown"),
+          epoch: data.epoch,
         });
+
+        // Drop signals from mismatched epochs
+        if (this.manifest && typeof data.epoch === "number" && data.epoch !== this.manifest.epoch) {
+          console.warn("[LOCAL_MEDIA] Dropping signal from stale epoch", {
+            signalEpoch: data.epoch,
+            activeEpoch: this.manifest.epoch,
+          });
+          return;
+        }
+
         if (data.toPeerId === this.userId) {
           let peer = this.peers.get(data.fromPeerId);
           if (!peer) {
@@ -395,8 +445,7 @@ export class LocalMediaCoordinator {
       isInitiator,
       (signalData) => {
         this.socket.emit("CMD_LOCAL_MEDIA_SIGNAL", {
-          roomId: this.roomId,
-          fromPeerId: this.userId,
+          mediaId: this.manifest?.mediaId,
           toPeerId: targetPeerId,
           signal: signalData,
           epoch: this.manifest?.epoch ?? 1,
@@ -447,6 +496,15 @@ export class LocalMediaCoordinator {
         available,
       );
     }
+
+    // Report live availability to the server for failover election tracking
+    const contiguous = this.cache.getContiguousCoverageFromStart();
+    this.socket.emit("CMD_LOCAL_MEDIA_AVAILABILITY", {
+      mediaId: this.manifest.mediaId,
+      epoch: this.manifest.epoch,
+      availableChunksCount: available.length,
+      contiguousThrough: contiguous - 1,
+    });
 
     this.notifyState();
   }

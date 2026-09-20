@@ -41,12 +41,12 @@ export class LocalMediaAuthority {
 
   public async announceSession(
     roomId: string,
-    actorId: string,
+    userId: string,
     isHost: boolean,
     manifest: ServerLocalMediaManifest
   ): Promise<LocalMediaSession | null> {
     if (!isHost) {
-      console.warn(`Non-host ${actorId} attempted to announce local media session in room ${roomId}`);
+      console.warn(`Non-host ${userId} attempted to announce local media session in room ${roomId}`);
       return null;
     }
 
@@ -55,6 +55,7 @@ export class LocalMediaAuthority {
       (typeof (manifest as any).contentHash === "string" ? (manifest as any).contentHash.trim() : "") ||
       "";
     manifest.contentFingerprint = contentFingerprint;
+    manifest.ownerId = userId;
     delete (manifest as any).contentHash;
 
     const session = new LocalMediaSession(manifest);
@@ -70,7 +71,7 @@ export class LocalMediaAuthority {
     if (this.db) {
       try {
         const validMediaId = toUuid(manifest.mediaId);
-        const validOwnerId = toUuid(actorId || manifest.ownerId);
+        const validOwnerId = toUuid(userId || manifest.ownerId);
 
         await (this.db as any).query(
           `INSERT INTO public.room_media_sessions (
@@ -107,59 +108,126 @@ export class LocalMediaAuthority {
   public handleSignalRelay(
     socket: any,
     targetSocketId: string,
-    payload: SignalMessagePayload
+    payload: SignalMessagePayload,
+    mediaId?: string
   ): boolean {
     const session = this.sessions.get(payload.roomId);
     if (!session || session.status !== "ACTIVE") {
       return false;
     }
+
+    // Media and epoch integrity validation
+    if (mediaId && mediaId !== session.mediaId) {
+      return false;
+    }
+    if (payload.epoch !== session.epoch) {
+      return false;
+    }
+
     return this.signaling.relaySignal(socket, targetSocketId, payload);
   }
 
-  public registerPeer(roomId: string, peerId: string, socketId: string): void {
+  public registerPeer(roomId: string, userId: string, peerId: string, socketId: string): void {
     let registry = this.registries.get(roomId);
     if (!registry) {
       registry = new LocalMediaPeerRegistry();
       this.registries.set(roomId, registry);
     }
-    registry.registerPeer(peerId, socketId);
+    registry.registerPeer(roomId, userId, peerId, socketId);
 
     const session = this.sessions.get(roomId);
-    if (session && session.isActive() && session.ownerId !== peerId) {
+    if (session && session.isActive() && session.ownerId !== userId) {
       this.signaling.sendSessionToSocket(socketId, session.manifest);
     }
   }
 
-  public unregisterPeer(roomId: string, peerId: string): void {
+  public unregisterPeer(roomId: string, peerId: string, socketId?: string): void {
     const registry = this.registries.get(roomId);
-    if (registry) {
-      registry.unregisterPeer(peerId);
-    }
+    if (!registry) return;
+
+    const existingPeer = registry.getPeer(peerId);
+    if (!existingPeer) return;
+
+    const wasRemoved = registry.unregisterPeer(peerId, socketId);
+    if (!wasRemoved) return; // Stale socket disconnect ignored
 
     const session = this.sessions.get(roomId);
-    if (session && session.ownerId === peerId) {
+    if (session && session.isActive() && session.ownerId === existingPeer.userId) {
       this.handleHostDisconnect(roomId);
     }
   }
 
-  private handleHostDisconnect(roomId: string): void {
+  public updatePeerAvailability(
+    roomId: string,
+    peerId: string,
+    mediaId: string,
+    epoch: number,
+    availableChunksCount: number,
+    contiguousThrough: number
+  ): boolean {
+    const session = this.sessions.get(roomId);
+    if (!session || !session.isActive()) {
+      return false;
+    }
+
+    // Must match active session media and epoch
+    if (session.mediaId !== mediaId || session.epoch !== epoch) {
+      return false;
+    }
+
+    // Structural counter bounds validation
+    const total = session.manifest.totalChunks;
+    if (
+      !Number.isSafeInteger(availableChunksCount) ||
+      availableChunksCount < 0 ||
+      availableChunksCount > total
+    ) {
+      return false;
+    }
+
+    if (
+      !Number.isSafeInteger(contiguousThrough) ||
+      contiguousThrough < -1 ||
+      contiguousThrough >= total
+    ) {
+      return false;
+    }
+
+    const registry = this.registries.get(roomId);
+    if (!registry) return false;
+
+    return registry.updateAvailability(peerId, mediaId, epoch, availableChunksCount, contiguousThrough);
+  }
+
+  public handleHostDisconnect(roomId: string): boolean {
     const session = this.sessions.get(roomId);
     const registry = this.registries.get(roomId);
-    if (!session || !registry) return;
+    if (!session || !registry || !session.isActive()) return false;
 
-    const newSeedId = registry.electFailoverSeed(session.ownerId);
-    if (newSeedId) {
-      session.updateOwner(newSeedId);
-      session.incrementEpoch();
+    const candidate = registry.electFailoverSeed({
+      excludeUserId: session.ownerId,
+      targetRoomId: roomId,
+      targetMediaId: session.mediaId,
+      targetEpoch: session.epoch,
+    });
+
+    if (candidate) {
+      session.promoteFailoverSeed(candidate.userId);
       this.signaling.broadcastSession(roomId, session.manifest);
+      return true;
     } else {
       session.terminate();
       this.signaling.broadcastUnavailable(roomId, session.mediaId);
+      return false;
     }
   }
 
   public getSession(roomId: string): LocalMediaSession | null {
     return this.sessions.get(roomId) || null;
+  }
+
+  public getRegistry(roomId: string): LocalMediaPeerRegistry | null {
+    return this.registries.get(roomId) || null;
   }
 
   public terminateSession(roomId: string): void {
