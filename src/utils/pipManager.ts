@@ -113,14 +113,32 @@ class PiPManager {
   };
 
   /**
-   * Checks whether standard HTML5 video Picture-in-Picture is supported.
+   * Checks whether standard HTML5 video Picture-in-Picture or iOS WebKit Presentation Mode is supported.
    */
   public isNativePiPSupported = (video?: HTMLVideoElement | null): boolean => {
-    if (typeof document === "undefined" || !document.pictureInPictureEnabled) {
-      return false;
+    if (video) {
+      if (
+        (video as any).webkitSupportsPresentationMode &&
+        typeof (video as any).webkitSetPresentationMode === "function" &&
+        (video as any).webkitSupportsPresentationMode("picture-in-picture")
+      ) {
+        return true;
+      }
+      if (typeof video.requestPictureInPicture === "function" && !video.disablePictureInPicture) {
+        return true;
+      }
     }
-    if (!video) return true;
-    return !video.disablePictureInPicture;
+    if (typeof document !== "undefined" && document.pictureInPictureEnabled) {
+      return !video || !video.disablePictureInPicture;
+    }
+    if (
+      typeof HTMLVideoElement !== "undefined" &&
+      HTMLVideoElement.prototype &&
+      "webkitSetPresentationMode" in HTMLVideoElement.prototype
+    ) {
+      return true;
+    }
+    return false;
   };
 
   /**
@@ -336,36 +354,61 @@ class PiPManager {
   }
 
   /**
-   * Toggles native video Picture-in-Picture with enter/leave event bindings.
+   * Toggles native video Picture-in-Picture with enter/leave event bindings for W3C PiP and iOS WebKit Presentation Mode.
    */
   private toggleNativePiP = async (
     video: HTMLVideoElement,
     autoTriggered: boolean = false
   ): Promise<void> => {
     try {
-      if (document.pictureInPictureElement === video) {
+      const isWebKit =
+        typeof (video as any).webkitSetPresentationMode === "function" &&
+        typeof (video as any).webkitSupportsPresentationMode === "function" &&
+        (video as any).webkitSupportsPresentationMode("picture-in-picture");
+
+      const isCurrentlyInPiP =
+        (typeof document !== "undefined" && document.pictureInPictureElement === video) ||
+        (video as any).webkitPresentationMode === "picture-in-picture";
+
+      if (isCurrentlyInPiP) {
         if (this.nativeSession) {
           this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+          this.nativeSession.video.removeEventListener("webkitpresentationmodechanged", this.nativeSession.leaveHandler);
           this.nativeSession = null;
         }
-        await document.exitPictureInPicture();
+        if (isWebKit) {
+          (video as any).webkitSetPresentationMode("inline");
+        } else if (typeof document !== "undefined" && document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        }
         this.autoTriggered = false;
         this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
       } else {
         if (this.nativeSession) {
           this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+          this.nativeSession.video.removeEventListener("webkitpresentationmodechanged", this.nativeSession.leaveHandler);
           this.nativeSession = null;
         }
         this.autoTriggered = autoTriggered;
         this.setState({ stage: "opening", active: false, mode: "native", target: video, autoTriggered });
         const leaveHandler = () => {
+          if ((video as any).webkitPresentationMode && (video as any).webkitPresentationMode === "picture-in-picture") {
+            return;
+          }
           video.removeEventListener("leavepictureinpicture", leaveHandler);
+          video.removeEventListener("webkitpresentationmodechanged", leaveHandler);
           this.nativeSession = null;
           this.autoTriggered = false;
           this.setState({ stage: "idle", active: false, mode: null, target: null, autoTriggered: false });
         };
         video.addEventListener("leavepictureinpicture", leaveHandler);
-        await video.requestPictureInPicture();
+        video.addEventListener("webkitpresentationmodechanged", leaveHandler);
+
+        if (isWebKit) {
+          (video as any).webkitSetPresentationMode("picture-in-picture");
+        } else if (typeof video.requestPictureInPicture === "function") {
+          await video.requestPictureInPicture();
+        }
         this.nativeSession = { video, leaveHandler };
         this.setState({ stage: "active", active: true, mode: "native", target: video, autoTriggered });
       }
@@ -373,6 +416,7 @@ class PiPManager {
       console.warn("Failed to toggle native Picture-in-Picture:", e);
       if (this.nativeSession) {
         this.nativeSession.video.removeEventListener("leavepictureinpicture", this.nativeSession.leaveHandler);
+        this.nativeSession.video.removeEventListener("webkitpresentationmodechanged", this.nativeSession.leaveHandler);
         this.nativeSession = null;
       }
       this.autoTriggered = false;
@@ -497,10 +541,13 @@ class PiPManager {
       const { video, leaveHandler } = this.nativeSession;
       try {
         video.removeEventListener("leavepictureinpicture", leaveHandler);
+        video.removeEventListener("webkitpresentationmodechanged", leaveHandler);
       } catch (_) {}
       this.nativeSession = null;
       try {
-        if (
+        if (typeof (video as any).webkitSetPresentationMode === "function") {
+          (video as any).webkitSetPresentationMode("inline");
+        } else if (
           typeof document !== "undefined" &&
           document.pictureInPictureElement &&
           document.pictureInPictureElement === video
@@ -540,10 +587,13 @@ class PiPManager {
       const { video, leaveHandler } = this.nativeSession;
       try {
         video.removeEventListener("leavepictureinpicture", leaveHandler);
+        video.removeEventListener("webkitpresentationmodechanged", leaveHandler);
       } catch (_) {}
       this.nativeSession = null;
       try {
-        if (document.pictureInPictureElement) {
+        if (typeof (video as any).webkitSetPresentationMode === "function") {
+          (video as any).webkitSetPresentationMode("inline");
+        } else if (document.pictureInPictureElement) {
           document.exitPictureInPicture().catch(() => {});
         }
       } catch (e) {

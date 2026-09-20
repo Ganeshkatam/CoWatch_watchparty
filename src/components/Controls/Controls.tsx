@@ -391,7 +391,7 @@ export const Controls = (props: ControlsProps) => {
         >
           <IconPictureInPicture
             onClick={props.togglePiP}
-            className={`${styles.action} ${styles.desktopOnly}`}
+            className={styles.action}
             style={props.isPiPActive ? { color: "var(--color-violet, #8B5CF6)" } : undefined}
             title={
               props.isYouTube
