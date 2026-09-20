@@ -37,7 +37,7 @@ type WheelInteractionState = 'CLOSED' | 'OPENING' | 'OPEN' | 'SELECTING' | 'NAVI
 function getResponsiveRadius(): number {
   if (typeof window === 'undefined') return DEFAULT_RADIUS;
   const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-  const calculated = Math.round(viewportMin * 0.24);
+  const calculated = Math.round(viewportMin * 0.22);
   return Math.max(MIN_RADIUS, Math.min(calculated, MAX_RADIUS));
 }
 
@@ -348,7 +348,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   // Mathematical 90-degree circular quadrant anchored at the screen corner (rightOffset, bottomOffset)
   const rightOffset = 53;
   const bottomOffset = 53;
-  const cornerRadius = radius + 108;
+  const cornerRadius = radius + 104;
   const topY = bottomOffset - cornerRadius;
   const leftX = rightOffset - cornerRadius;
 
@@ -401,10 +401,10 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
             aria-hidden={!isOpen}
             onMouseEnter={handleMouseEnter}
           >
-            {/* Concentric SVG Quadrant Plate seamlessly enclosing main nav hub */}
+            {/* Concentric SVG Quadrant Plate */}
             <svg
               className={styles.arcGuideSvg}
-              viewBox="-240 -240 480 480"
+              viewBox="-250 -250 500 500"
               aria-hidden="true"
             >
               {/* Corner-Anchored Strict Circular Quadrant Sector Plate */}

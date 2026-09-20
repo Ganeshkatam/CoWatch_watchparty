@@ -48,9 +48,9 @@ export function isRouteActive(
 
 export const HOLD_THRESHOLD_MS = 180;
 export const MOVE_JITTER_TOLERANCE_PX = 8;
-export const MIN_RADIUS = 124;
-export const MAX_RADIUS = 148;
-export const DEFAULT_RADIUS = 136;
+export const MIN_RADIUS = 120;
+export const MAX_RADIUS = 144;
+export const DEFAULT_RADIUS = 132;
 
 export interface WheelNavigationItem {
   id: string;
@@ -76,12 +76,12 @@ export function angularDistance(a: number, b: number): number {
 
 /**
  * Calculates the stationary radial angle for an orbiting item.
- * Fans out upward and leftward evenly within the 90-degree quadrant (-90deg to -180deg).
+ * Evenly distributes items across the symmetrical 90-degree quadrant (-90deg to -180deg).
  */
 export function getOrbitItemAngle(index: number, total: number): number {
   if (total <= 1) return (-135 * Math.PI) / 180;
-  const startAngle = (-96 * Math.PI) / 180;
-  const endAngle = (-174 * Math.PI) / 180;
+  const startAngle = (-90 * Math.PI) / 180;
+  const endAngle = (-180 * Math.PI) / 180;
   return startAngle + (index / (total - 1)) * (endAngle - startAngle);
 }
 
