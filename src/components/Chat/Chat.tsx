@@ -597,139 +597,145 @@ export class ChatComponent extends React.Component<
             </Button>
           )}
         </div>
-        {this.state.isPickerOpen && (
-          <div style={{ position: "absolute", bottom: "60px" }}>
-            <Picker
-              theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
-              previewPosition="none"
-              maxFrequentRows={1}
-              onEmojiSelect={this.addEmoji}
-              onClickOutside={() => this.setState({ isPickerOpen: false })}
-            />
-          </div>
-        )}
-        <CSSTransition
-          in={this.state.reactionMenu.isOpen}
-          timeout={300}
-          classNames={{
-            enter: styles["reactionMenu-enter"],
-            enterActive: styles["reactionMenu-enter-active"],
-            exit: styles["reactionMenu-exit"],
-            exitActive: styles["reactionMenu-exit-active"],
-          }}
-          unmountOnExit
-        >
-          <div
-            style={{
-              position: "fixed",
-              top: Math.min(
-                (this.state.reactionMenu.yPosition ?? 0) - 150,
-                window.innerHeight - 450,
-              ),
-              left: (this.state.reactionMenu.xPosition ?? 0) - 240,
-            }}
-          >
-            <Picker
-              theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
-              previewPosition="none"
-              maxFrequentRows={1}
-              perLine={6}
-              onClickOutside={() => this.setReactionMenu(false)}
-              onEmojiSelect={(emoji: any) => {
-                this.handleReactionClick(emoji.native);
-                this.setReactionMenu(false);
-              }}
-            />
-          </div>
-        </CSSTransition>
-        {this.state.replyTo && (
-          <div
-            className={styles.replyComposer}
-            style={{
-              marginTop: 10,
-              padding: "6px 8px",
-              borderLeft: "2px solid var(--color-blue)",
-              borderRadius: "4px",
-              background: "var(--surface-active)",
-              border: "1px solid var(--border-subtle)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <div className={styles.small + " " + styles.light}>
-              Replying to {this.props.nameMap[this.state.replyTo.id] || "Unknown"}
-              {this.state.replyTo.msg ? (
-                <div
-                  style={{
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: 260,
-                  }}
-                >
-                  {this.state.replyTo.msg}
-                </div>
-              ) : null}
+        <div className={styles.inputArea}>
+          {this.state.isPickerOpen && (
+            <div className={styles.emojiPickerContainer}>
+              <Picker
+                theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
+                previewPosition="none"
+                maxFrequentRows={1}
+                onEmojiSelect={this.addEmoji}
+                onClickOutside={() => this.setState({ isPickerOpen: false })}
+              />
             </div>
-            <Button size="xs" variant="subtle" onClick={this.clearReplyTo}>
-              Cancel
-            </Button>
-          </div>
-        )}
-        <TextInput
-          ref={this.chatInputRef}
-          style={{ marginTop: "10px" }}
-          onKeyDown={(e: any) => e.key === "Enter" && this.sendChatMsg()}
-          onChange={this.updateChatMsg}
-          value={this.state.chatMsg}
-          error={this.chatTooLong()}
-          disabled={this.props.isChatDisabled}
-          placeholder={
-            this.props.isChatDisabled
-              ? "The chat was disabled by the room owner."
-              : "Enter a message..."
-          }
-          rightSection={
+          )}
+          <CSSTransition
+            in={this.state.reactionMenu.isOpen}
+            timeout={300}
+            classNames={{
+              enter: styles["reactionMenu-enter"],
+              enterActive: styles["reactionMenu-enter-active"],
+              exit: styles["reactionMenu-exit"],
+              exitActive: styles["reactionMenu-exit-active"],
+            }}
+            unmountOnExit
+          >
             <div
+              className={styles.reactionPickerContainer}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "2px",
-                marginRight: "4px",
+                position: "fixed",
+                top: Math.max(12, Math.min(
+                  (this.state.reactionMenu.yPosition ?? 0) - 160,
+                  (typeof window !== "undefined" ? window.innerHeight : 800) - 440,
+                )),
+                left: Math.max(12, Math.min(
+                  (this.state.reactionMenu.xPosition ?? 0) - 220,
+                  (typeof window !== "undefined" ? window.innerWidth : 600) - 340,
+                )),
               }}
             >
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                onClick={() => {
-                  const curr = this.state.isPickerOpen;
-                  setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
+              <Picker
+                theme={typeof document !== "undefined" && document.documentElement.getAttribute("data-color-scheme") === "dark" ? "dark" : "light"}
+                previewPosition="none"
+                maxFrequentRows={1}
+                perLine={6}
+                onClickOutside={() => this.setReactionMenu(false)}
+                onEmojiSelect={(emoji: any) => {
+                  this.handleReactionClick(emoji.native);
+                  this.setReactionMenu(false);
                 }}
-                disabled={this.props.isChatDisabled}
-                title="Select emoji"
-              >
-                <IconMoodSmile size={18} />
-              </ActionIcon>
-              {Boolean(this.state.chatMsg.trim()) && (
-                <ActionIcon
-                  variant="filled"
-                  color="violet"
-                  size="sm"
-                  onClick={this.sendChatMsg}
-                  disabled={this.props.isChatDisabled || this.chatTooLong()}
-                  title="Send message"
-                >
-                  <IconSend size={14} />
-                </ActionIcon>
-              )}
+              />
             </div>
-          }
-          rightSectionWidth={this.state.chatMsg.trim() ? 64 : 36}
-        >
-          {/* <Icon onClick={this.sendChatMsg} name="send" inverted circular link /> */}
-        </TextInput>
+          </CSSTransition>
+          {this.state.replyTo && (
+            <div
+              className={styles.replyComposer}
+              style={{
+                marginBottom: 6,
+                padding: "6px 8px",
+                borderLeft: "2px solid var(--color-violet)",
+                borderRadius: "6px",
+                background: "var(--surface-hover)",
+                border: "1px solid var(--border-subtle)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <div className={styles.small + " " + styles.light}>
+                Replying to {this.props.nameMap[this.state.replyTo.id] || "Unknown"}
+                {this.state.replyTo.msg ? (
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: 260,
+                      color: "var(--text-muted)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {this.state.replyTo.msg}
+                  </div>
+                ) : null}
+              </div>
+              <Button size="xs" variant="subtle" color="gray" onClick={this.clearReplyTo}>
+                Cancel
+              </Button>
+            </div>
+          )}
+          <TextInput
+            ref={this.chatInputRef}
+            onKeyDown={(e: any) => e.key === "Enter" && this.sendChatMsg()}
+            onChange={this.updateChatMsg}
+            value={this.state.chatMsg}
+            error={this.chatTooLong()}
+            disabled={this.props.isChatDisabled}
+            placeholder={
+              this.props.isChatDisabled
+                ? "The chat was disabled by the room owner."
+                : "Enter a message..."
+            }
+            rightSection={
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "2px",
+                  marginRight: "4px",
+                }}
+              >
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={() => {
+                    const curr = this.state.isPickerOpen;
+                    setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
+                  }}
+                  disabled={this.props.isChatDisabled}
+                  title="Select emoji"
+                >
+                  <IconMoodSmile size={18} />
+                </ActionIcon>
+                {Boolean(this.state.chatMsg.trim()) && (
+                  <ActionIcon
+                    variant="filled"
+                    color="violet"
+                    size="sm"
+                    onClick={this.sendChatMsg}
+                    disabled={this.props.isChatDisabled || this.chatTooLong()}
+                    title="Send message"
+                  >
+                    <IconSend size={14} />
+                  </ActionIcon>
+                )}
+              </div>
+            }
+            rightSectionWidth={this.state.chatMsg.trim() ? 64 : 36}
+          />
+        </div>
       </div>
     );
   }
@@ -943,63 +949,51 @@ const ChatMessage = ({
         <div className={styles.commentMenu}>
           {isMe && !isEditing && (
             <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="xs"
+              className={styles.menuActionIcon}
               onClick={() => { setIsEditing(true); setEditMsg(msg || ""); }}
               disabled={isChatDisabled}
-              style={{
-                opacity: 1,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: 0,
-                margin: 0,
-                marginRight: 4,
-              }}
+              title="Edit message"
             >
-              <IconPencil size={16} />
+              <IconPencil size={13} />
             </ActionIcon>
           )}
           {id && id !== myId && (
             <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="xs"
+              className={styles.menuActionIcon}
               onClick={() => onReply(id, timestamp, msg)}
               disabled={isChatDisabled}
-              style={{
-                opacity: 1,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: 0,
-                margin: 0,
-                marginRight: 4,
-              }}
+              title="Reply"
             >
-              <IconArrowBackUp size={16} />
+              <IconArrowBackUp size={13} />
             </ActionIcon>
           )}
           <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="xs"
+            className={styles.menuActionIcon}
             onClick={(e) => {
-              //@ts-expect-error
-              const viewportOffset = e.target.getBoundingClientRect();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               setTimeout(() => {
                 setReactionMenu(
                   true,
                   id,
                   timestamp,
-                  viewportOffset.top,
-                  viewportOffset.right,
+                  rect.top,
+                  rect.right,
                 );
-              }, 100);
+              }, 50);
             }}
             disabled={isChatDisabled}
-            style={{
-              opacity: 1,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              padding: 0,
-              margin: 0,
-            }}
+            title="Add reaction"
           >
-            <IconMoodSmile size={18} />
+            <IconMoodSmile size={14} />
           </ActionIcon>
         </div>
         <TransitionGroup>

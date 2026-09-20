@@ -4,26 +4,28 @@
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 4px 2px;
 }
 
 .hoverEffect:hover {
-  filter: brightness(0.8);
+  filter: brightness(0.85);
+  cursor: pointer;
 }
 
 .light {
-  color: var(--text-primary, #f5f5f5);
+  color: var(--text-primary);
   font-size: 13.5px;
-  line-height: 1.45;
+  line-height: 1.5;
   word-break: break-word;
 }
 
 .light.emoji {
-  font-size: 24px;
-  line-height: 1.2;
+  font-size: 26px;
+  line-height: 1.25;
 }
 
 .dark {
-  color: var(--text-muted, #8a8a8a);
+  color: var(--text-muted);
 }
 
 .small {
@@ -36,32 +38,38 @@
   letter-spacing: 0.8px;
 }
 
-.comment .commentMenu {
-  display: none;
-  align-items: center;
-  gap: 3px;
-  position: absolute;
-  right: 8px;
-  top: -12px;
-  padding: 3px 6px !important;
-  border-radius: 8px;
-  background: var(--bg-surface, #1e1e24);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-  z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.comment .commentMenu:hover,
-.comment.selected .commentMenu {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+.comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  position: relative;
+  overflow-wrap: anywhere;
+  padding: 4px 6px;
+  border-radius: 12px;
+  transition: background-color 0.15s ease;
+  animation: messageSlideIn 180ms cubic-bezier(0.22, 0.8, 0.25, 1);
 }
 
 .comment:hover,
 .comment.selected {
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
+}
+
+.comment .commentMenu {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  position: absolute;
+  right: 8px;
+  top: -10px;
+  padding: 2px 4px !important;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .comment:hover .commentMenu,
@@ -69,16 +77,30 @@
   display: flex;
 }
 
+.menuActionIcon {
+  color: var(--text-secondary);
+  border-radius: 999px;
+  transition: all 0.15s ease;
+}
+
+.menuActionIcon:hover {
+  color: var(--color-violet);
+  background: var(--surface-hover);
+}
+
 .replyMessage {
-  background: radial-gradient(at top right,
-      rgba(255, 176, 96, 0.22),
-      transparent 70%);
+  background: color-mix(in srgb, var(--color-violet) 12%, transparent);
 }
 
 .replyInfo {
-  color: rgba(180, 200, 220, 0.95);
-  font-size: 12px;
-  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border-left: 2px solid var(--color-violet);
+  background: var(--surface-hover);
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .replyTooltip {
@@ -99,17 +121,19 @@
 .reactionMenuContainer {
   display: flex;
   flex-wrap: nowrap;
-  border-radius: 5px;
+  border-radius: 8px;
   position: fixed;
   font-size: 24px;
   overflow: hidden;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .reactionMenuContainer div {
   line-height: 30px;
   padding: 5px;
+  cursor: pointer;
 }
 
 .reactionMenuContainer div:hover {
@@ -120,24 +144,26 @@
 .reactionContainer {
   display: inline-flex;
   align-items: center;
-  padding: 3px;
-  border-radius: 5px;
+  padding: 2px 6px;
+  border-radius: 999px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  margin-right: 3px;
-  margin-top: 1px;
-  min-width: 39px;
+  margin-right: 4px;
+  margin-top: 3px;
+  min-width: 32px;
   cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
 }
 
 .reactionContainer.highlighted {
   background: var(--surface-active);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-accent);
 }
 
 .reactionContainer:hover {
   background-color: var(--surface-hover);
-  transition: background-color 0.2s ease-in-out;
+  border-color: var(--border-strong);
 }
 
 .reaction-enter {
@@ -160,7 +186,7 @@
 
 .reactionCounter-enter {
   transform: scale(0);
-  color: rgb(255, 136, 0) !important;
+  color: var(--color-violet) !important;
 }
 
 .reactionCounter-enter-active {
@@ -170,7 +196,7 @@
 
 .reactionCounter-exit {
   transform: scale(1);
-  color: rgb(255, 136, 0) !important;
+  color: var(--color-violet) !important;
 }
 
 .reactionCounter-exit-active {
@@ -180,19 +206,23 @@
 
 .reactionMenu-enter {
   transform: scale(0);
+  opacity: 0;
 }
 
 .reactionMenu-enter-active {
   transform: scale(1);
-  transition: all 100ms ease-out !important;
+  opacity: 1;
+  transition: all 120ms cubic-bezier(0.2, 0.8, 0.25, 1) !important;
 }
 
 .reactionMenu-exit {
   transform: scale(1);
+  opacity: 1;
 }
 
 .reactionMenu-exit-active {
   transform: scale(0);
+  opacity: 0;
   transition: all 100ms ease-out !important;
 }
 
@@ -224,29 +254,36 @@
 }
 
 .messageAvatar {
-  flex: 0 0 auto;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   align-self: flex-start;
   margin-top: 2px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .messageBody {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .messageHeader {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 22px;
+  gap: 6px;
+  min-height: 20px;
   margin-bottom: 3px;
   padding: 0 2px;
 }
 
 .messageAuthor {
-  color: var(--text-primary, #f5f5f5);
+  color: var(--text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -255,7 +292,7 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 2px 6px;
+  padding: 1.5px 6px;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -264,61 +301,90 @@
 }
 
 .selfBadge {
-  color: #8b5cf6;
-  background: rgba(124, 58, 237, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.25);
+  color: var(--color-violet, #7048e8);
+  background: rgba(112, 72, 232, 0.10);
+  border: 1px solid rgba(112, 72, 232, 0.24);
 }
 
 .hostBadge {
-  color: #b7791f;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.10);
+  border: 1px solid rgba(217, 119, 6, 0.28);
 }
 
 .messageTime {
   margin-left: auto;
-  color: var(--text-muted, #8a8a8a);
-  font-size: 10px;
+  color: var(--text-muted);
+  font-size: 10.5px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .messageBubble {
-  padding: 8px 12px;
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 7px 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 13px;
   background: var(--bg-surface);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow-wrap: anywhere;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .selfMessage .messageBubble {
-  background: linear-gradient(
-    135deg,
-    rgba(124, 58, 237, 0.12),
-    rgba(139, 92, 246, 0.08)
-  );
-  border-color: rgba(139, 92, 246, 0.25);
+  background: color-mix(in srgb, var(--color-violet, #7048e8) 8%, var(--bg-surface));
+  border-color: rgba(112, 72, 232, 0.22);
+  border-top-left-radius: 13px;
+  border-top-right-radius: 3px;
 }
 
 .otherMessage .messageBubble {
   background: var(--bg-surface);
   border-color: var(--border-subtle);
+  border-top-left-radius: 3px;
+  border-top-right-radius: 13px;
 }
 
-.comment {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+.inputArea {
   position: relative;
-  overflow-wrap: anywhere;
-  padding: 3px 2px;
-  animation: messageSlideIn 180ms cubic-bezier(0.22, 0.8, 0.25, 1);
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
-.comment:hover,
-.comment.selected {
-  border-radius: 10px;
-  background: radial-gradient(at top right, #7eaee02a, transparent 70%) !important;
+.emojiPickerContainer {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 1000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  max-width: calc(100vw - 24px);
+}
+
+.reactionPickerContainer {
+  position: fixed;
+  z-index: 1000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  max-width: calc(100vw - 24px);
+}
+
+.emojiPickerContainer em-emoji-picker,
+.reactionPickerContainer em-emoji-picker {
+  --rgb-accent: 112, 72, 232;
+  --font-family: inherit;
+  --border-radius: 12px;
+  max-width: 100% !important;
+  max-height: 380px !important;
 }
 
 .systemMessage {
@@ -342,11 +408,11 @@
   width: fit-content;
   max-width: 100%;
   margin: 3px auto;
-  padding: 6px 10px;
+  padding: 5px 10px;
   border: 1px dashed var(--border-subtle);
   border-radius: 999px;
-  color: var(--text-secondary, #a0a0a0);
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-surface) 75%, transparent);
   font-size: 11px;
   line-height: 1.35;
   text-align: center;
@@ -377,7 +443,7 @@
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg-surface) 50%, transparent);
   border: 1px dashed var(--border-subtle);
-  color: var(--text-muted, #8a8a8a);
+  color: var(--text-muted);
   font-size: 12px;
   font-style: italic;
   line-height: 1.35;
@@ -388,7 +454,7 @@
 .deletedIcon {
   flex-shrink: 0;
   opacity: 0.55;
-  color: var(--text-muted, #8a8a8a);
+  color: var(--text-muted);
 }
 
 .deletedText {
@@ -401,7 +467,7 @@
   margin-left: 4px;
   font-size: 10px;
   font-style: normal;
-  color: var(--text-muted, #71717a);
+  color: var(--text-muted);
   opacity: 0.75;
   flex-shrink: 0;
 }
@@ -411,7 +477,7 @@
   align-items: center;
   gap: 10px;
   margin: 10px 0 4px;
-  color: #8b5cf6;
+  color: var(--color-violet);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.7px;
@@ -423,7 +489,7 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.45), transparent);
+  background: linear-gradient(90deg, transparent, rgba(112, 72, 232, 0.45), transparent);
 }
 
 .unreadJumpButton {
@@ -432,7 +498,7 @@
   display: flex !important;
   width: fit-content;
   margin: 8px auto 0;
-  border: 1px solid rgba(139, 92, 246, 0.28);
+  border: 1px solid rgba(112, 72, 232, 0.28);
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.16);
 }
 
