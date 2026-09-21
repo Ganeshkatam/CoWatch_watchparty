@@ -127,9 +127,32 @@ export async function createRoom(
       ...options,
     }),
   });
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(data.error);
+  let data: any = {};
+  try {
+    data = await response.json();
+  } catch (parseErr) {
+    data = {};
+  }
+
+  if (!response.ok || data.error) {
+    const errorObj = data.error;
+    let message = "Failed to create room.";
+    let code: string | undefined;
+
+    if (typeof errorObj === "string") {
+      message = errorObj;
+    } else if (errorObj && typeof errorObj === "object") {
+      message = errorObj.message || errorObj.code || message;
+      code = errorObj.code;
+    } else if (response.statusText) {
+      message = `Server error (${response.status}): ${response.statusText}`;
+    }
+
+    const err: any = new Error(message);
+    err.code = code;
+    err.status = response.status;
+    err.error = errorObj;
+    throw err;
   }
   const { name } = data;
 

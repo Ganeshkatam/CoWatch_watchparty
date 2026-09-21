@@ -13,6 +13,7 @@ import {
   Tooltip,
   Textarea,
   Select,
+  Badge,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -68,6 +69,34 @@ export const Create = () => {
   const [lock, setLock] = useState(false);
   const [isPermanent, setIsPermanent] = useState(false);
   const [durationHours, setDurationHours] = useState<string>("3");
+  const [permanentRoomCount, setPermanentRoomCount] = useState<number | null>(null);
+  const maxPermanentRooms = 2;
+
+  useEffect(() => {
+    if (!user) {
+      setPermanentRoomCount(null);
+      return;
+    }
+    let isCancelled = false;
+    supabase
+      .from("rooms")
+      .select("roomId", { count: "exact", head: true })
+      .eq("owner_id", user.id)
+      .eq("isPermanent", true)
+      .in("status", ["scheduled", "active", "inactive"])
+      .then(
+        ({ count, error }: any) => {
+          if (!isCancelled && !error && typeof count === "number") {
+            setPermanentRoomCount(count);
+          }
+        },
+        () => {}
+      );
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
 
   const DURATION_OPTIONS = [
     { value: "1", label: "1 hour" },
@@ -180,6 +209,10 @@ export const Create = () => {
       setError(passcodeError);
       return;
     }
+    if (isPermanent && permanentRoomCount !== null && permanentRoomCount >= maxPermanentRooms) {
+      setError(`You have reached your permanent room limit (${permanentRoomCount}/${maxPermanentRooms}). Free plans allow up to 2 permanent rooms. Delete an existing permanent room in My Rooms, or switch to a temporary room.`);
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -243,7 +276,18 @@ export const Create = () => {
       window.location.assign(`/watch/${finalRoomId}`);
     } catch (err: any) {
       console.error("Room creation error:", err);
-      const msg = err.message || "Failed to create room.";
+      let msg = "Failed to create room.";
+      if (typeof err === "string") {
+        msg = err;
+      } else if (typeof err?.message === "string" && err.message !== "[object Object]") {
+        msg = err.message;
+      } else if (err?.error) {
+        if (typeof err.error === "string") {
+          msg = err.error;
+        } else if (typeof err.error === "object") {
+          msg = err.error.message || err.error.code || JSON.stringify(err.error);
+        }
+      }
       setError(msg);
       if (msg.toLowerCase().includes("passcode") || msg.toLowerCase().includes("taken")) {
         setPasscodeError(msg);
@@ -318,6 +362,31 @@ export const Create = () => {
                 >
                   Create an account
                 </Button>
+              </div>
+            )}
+            {(error.toLowerCase().includes("limit") || error.toLowerCase().includes("permanent")) && (
+              <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <Button
+                  component={Link}
+                  to="/myrooms"
+                  size="xs"
+                  variant="filled"
+                  color="violet"
+                >
+                  Manage My Rooms
+                </Button>
+                {isPermanent && (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    onClick={() => {
+                      setIsPermanent(false);
+                      setError("");
+                    }}
+                  >
+                    Switch to Temporary Room
+                  </Button>
+                )}
               </div>
             )}
           </Alert>
@@ -452,14 +521,38 @@ export const Create = () => {
 
               <div className={styles.settingCard}>
                 <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Keep room permanent</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span className={styles.settingLabel}>Keep room permanent</span>
+                    {permanentRoomCount !== null && (
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color={permanentRoomCount >= maxPermanentRooms ? "orange" : "gray"}
+                      >
+                        {permanentRoomCount}/{maxPermanentRooms} used
+                      </Badge>
+                    )}
+                  </div>
                   <span className={styles.settingDescription}>
                     Keep this room open indefinitely without automatic expiration.
+                    {permanentRoomCount !== null && permanentRoomCount >= maxPermanentRooms && (
+                      <span style={{ display: "block", color: "var(--mantine-color-orange-6)", marginTop: "4px" }}>
+                        You have reached your permanent room limit ({permanentRoomCount}/{maxPermanentRooms}). Free plans allow up to 2 permanent rooms.
+                      </span>
+                    )}
                   </span>
                 </div>
                 <Switch
                   checked={isPermanent}
-                  onChange={(e) => setIsPermanent(e.currentTarget.checked)}
+                  onChange={(e) => {
+                    const nextVal = e.currentTarget.checked;
+                    setIsPermanent(nextVal);
+                    if (nextVal && permanentRoomCount !== null && permanentRoomCount >= maxPermanentRooms) {
+                      setError(`You have reached your permanent room limit (${permanentRoomCount}/${maxPermanentRooms}). Free plans allow up to 2 permanent rooms. Delete an existing permanent room in My Rooms, or switch to a temporary room.`);
+                    } else if (error.toLowerCase().includes("permanent")) {
+                      setError("");
+                    }
+                  }}
                   size="md"
                   color="violet"
                   withThumbIndicator={false}
