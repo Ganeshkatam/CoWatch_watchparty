@@ -81,7 +81,7 @@ async function runProductionSmokeTests() {
 
   const action = resolveNotificationAction(invitationNotification);
   assert(action.action === 'join_room', 'Invitation notification must resolve to join_room action');
-  assert(action.url === `/room/${roomConfig.id}`, 'Join action must link directly to /room/:id');
+  assert(action.url === `/join/${roomConfig.id}`, 'Join action must link directly to /join/:id');
   console.log('  PASS: Invitation cleanly mapped through delivery profile to frontend action contract');
 
   // ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ async function runProductionSmokeTests() {
 
   const endingAction = resolveNotificationAction(endingNotification);
   assert(endingAction.action === 'open_room', '15-minute warning notification action must be open_room');
-  assert(endingAction.url === `/room/${roomConfig.id}`, 'Open room action must route to /room/:id');
+  assert(endingAction.url === `/watch/${roomConfig.id}`, 'Open room action must route to /watch/:id');
   console.log('  PASS: 15-minute expiration warning lifecycle verified with atomic eventId');
 
   console.log('\nAll NOTIFY-004 Production Smoke Certification tests PASSED successfully!\n');

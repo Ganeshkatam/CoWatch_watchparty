@@ -13,6 +13,7 @@ import {
   Badge,
 } from "@mantine/core";
 import { supabase } from "../../utils/supabaseClient";
+import { updateUserProfile } from "../../api/profile";
 import { serverPath, openFileSelector } from "../../utils/utils";
 import { parseAccountParams } from "../../utils/routeParams";
 import { MetadataContext } from "../../MetadataContext";
@@ -207,14 +208,8 @@ export const Profile: React.FC = () => {
       const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
 
-      // Update public.profiles
-      const { error: dbError } = await supabase.from("profiles").upsert({
-        id: user.id,
-        avatar_url: publicUrl,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (dbError) throw dbError;
+      // Authoritative backend profile update
+      await updateUserProfile({ avatar_url: publicUrl });
 
       // Update auth.users metadata
       await supabase.auth.updateUser({
@@ -251,19 +246,8 @@ export const Profile: React.FC = () => {
     setIsEditingName(false);
     context.setMetadata({ displayName: finalDisplayName });
 
-    const { error } = await supabase.from("profiles").upsert({
-      id: context.user.id,
-      display_name: finalDisplayName,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error("Failed to save display name:", error);
-      setDisplayName(prevName || "");
-      setOriginalDisplayName(prevName || "");
-      setIsEditingName(true);
-      context.setMetadata({ displayName: prevName });
-    } else {
+    try {
+      await updateUserProfile({ display_name: finalDisplayName });
       try {
         await supabase.auth.updateUser({
           data: { display_name: finalDisplayName },
@@ -271,6 +255,12 @@ export const Profile: React.FC = () => {
       } catch (authErr) {
         console.warn("Failed to sync auth display name:", authErr);
       }
+    } catch (error) {
+      console.error("Failed to save display name:", error);
+      setDisplayName(prevName || "");
+      setOriginalDisplayName(prevName || "");
+      setIsEditingName(true);
+      context.setMetadata({ displayName: prevName });
     }
   };
 
@@ -283,11 +273,11 @@ export const Profile: React.FC = () => {
 
     if (!context.user) return;
 
-    await supabase.from("profiles").upsert({
-      id: context.user.id,
-      [key]: value,
-      updated_at: new Date().toISOString(),
-    });
+    try {
+      await updateUserProfile({ [key]: value });
+    } catch (err) {
+      console.warn("Failed to persist preference to backend:", err);
+    }
 
     if (key === "pref_show_chat_column") {
       window.localStorage.setItem("cowatch-showchatcolumn", value ? "1" : "0");

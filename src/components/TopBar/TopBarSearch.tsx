@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { useHistory } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
-import { getAccessToken, supabase } from "../../utils/supabaseClient";
+import { getAccessToken } from "../../utils/supabaseClient";
 import { serverPath } from "../../utils/utils";
 import { useAppearance } from "../../theme/ThemeProvider";
 import {
@@ -64,7 +64,7 @@ export const TopBarSearch: React.FC = () => {
 
   const isDark = resolvedColorScheme === "dark";
 
-  // Fetch user rooms with Supabase direct fallback
+  // Fetch user rooms authoritatively from backend
   const fetchUserRooms = useCallback(async () => {
     if (!context.user) return;
     try {
@@ -82,29 +82,11 @@ export const TopBarSearch: React.FC = () => {
           : Array.isArray(data?.rooms)
           ? data.rooms
           : [];
-        if (roomsList.length > 0) {
-          setRooms(roomsList);
-          setFetchedRooms(true);
-          return;
-        }
-      }
-    } catch {
-      // Backend unreachable (e.g. static preview); fallback to direct Supabase query
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("roomId, roomTitle, roomDescription, status, coverPhoto")
-        .eq("owner_id", context.user.id)
-        .order("creationTime", { ascending: false })
-        .limit(20);
-      if (!error && data) {
-        setRooms(data);
+        setRooms(roomsList);
         setFetchedRooms(true);
       }
     } catch (e) {
-      console.warn("Supabase fetchUserRooms error:", e);
+      console.warn("fetchUserRooms error:", e);
     }
   }, [context.user]);
 

@@ -49,7 +49,7 @@ async function runActionTests() {
     }),
   );
   assert(explicitOpenRoom.action === 'open_room', 'Explicit action must be open_room');
-  assert(explicitOpenRoom.url === '/room/alpha-room', 'Explicit url must resolve room path');
+  assert(explicitOpenRoom.url === '/watch/alpha-room', 'Explicit url must resolve room path');
   assert(explicitOpenRoom.label === 'Open Room', 'Explicit label must be Open Room');
 
   const explicitDismiss = resolveNotificationAction(
@@ -88,7 +88,7 @@ async function runActionTests() {
     }),
   );
   assert(legacyInvite.action === 'join_room', 'ROOM_INVITATION must fallback to join_room');
-  assert(legacyInvite.url === '/room/party-777', 'ROOM_INVITATION must route to room');
+  assert(legacyInvite.url === '/join/party-777', 'ROOM_INVITATION must route to room');
   assert(legacyInvite.label === 'Join Room', 'ROOM_INVITATION label must be Join Room');
 
   const legacyVBrowser = resolveNotificationAction(
@@ -98,7 +98,7 @@ async function runActionTests() {
     }),
   );
   assert(legacyVBrowser.action === 'open_room', 'VBROWSER_FAILURE must fallback to open_room');
-  assert(legacyVBrowser.url === '/room/room-vb', 'VBROWSER_FAILURE must route to room');
+  assert(legacyVBrowser.url === '/watch/room-vb', 'VBROWSER_FAILURE must route to room');
   console.log('  PASS: Safety fallbacks prevent navigating to dead or banned rooms');
 
   // 3. Fallback when roomId is completely missing

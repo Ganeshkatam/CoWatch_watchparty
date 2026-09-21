@@ -53,6 +53,8 @@
     "test:admission": "tsx server/participantAdmissionE2E.test.ts",
     "test:room-data-boundaries": "tsx server/roomDataBoundaries.test.ts",
     "test:integration-certification": "tsx server/integrationCertification.test.ts",
+    "test:profile-contract": "tsx server/profile.contract.test.ts",
+    "test:zero-client-db": "tsx src/utils/zeroClientDatabase.test.ts",
     "test:release-matrix": "tsx server/releaseValidationMatrix.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },

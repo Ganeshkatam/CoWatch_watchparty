@@ -10,7 +10,7 @@ import {
 import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { Socket } from "socket.io-client";
 import { MetadataContext } from "../../MetadataContext";
-import { supabase } from "../../utils/supabaseClient";
+import { updateUserProfile } from "../../api/profile";
 import { pipManager } from "../../utils/pipManager";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { operationCoordinator } from "../../utils/operationState";
@@ -104,15 +104,10 @@ export const SettingsModal = ({
       );
       pipManager.setSmartPiPEnabled(draftSmartPiP);
       
-      const { error: prefError } = await supabase
-        .from("profiles")
-        .update({
-          pref_camera_on: draftCamera,
-          pref_mic_on: draftMic,
-        })
-        .eq("id", user.id);
-      
-      if (prefError) throw prefError;
+      await updateUserProfile({
+        pref_camera_on: draftCamera,
+        pref_mic_on: draftMic,
+      });
 
       operationCoordinator.resolveOperation(opId);
       setModalOpen(false);

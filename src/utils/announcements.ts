@@ -1,5 +1,4 @@
 import { serverPath } from "./utils";
-import { supabase } from "./supabaseClient";
 
 export type AnnouncementLevel = "info" | "success" | "warning" | "critical";
 
@@ -120,36 +119,8 @@ export const fetchAnnouncements = async (): Promise<AppAnnouncement[]> => {
         }));
       }
     }
-  } catch {
-    // Server API failed or timed out, attempt Supabase fallback
-  }
-
-  // 2. Direct Supabase query fallback
-  try {
-    const { data, error } = await supabase
-      .from("announcements")
-      .select("id, title, body, level, action_label, action_url, published_at, updated_at")
-      .eq("is_active", true)
-      .lte("published_at", new Date().toISOString())
-      .order("published_at", { ascending: false })
-      .limit(10);
-
-    if (!error && Array.isArray(data)) {
-      return data.map((item: any) => ({
-        id: String(item.id),
-        title: String(item.title || ""),
-        body: String(item.body || ""),
-        level: (["info", "success", "warning", "critical"].includes(item.level)
-          ? item.level
-          : "info") as AnnouncementLevel,
-        action_label: item.action_label ? String(item.action_label) : null,
-        action_url: isValidActionUrl(item.action_url) ? item.action_url : null,
-        published_at: String(item.published_at || new Date().toISOString()),
-        updated_at: String(item.updated_at || new Date().toISOString()),
-      }));
-    }
-  } catch {
-    // Both failed
+  } catch (e) {
+    console.warn("Failed to fetch announcements from server:", e);
   }
 
   return [];

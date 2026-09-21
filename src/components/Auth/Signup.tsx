@@ -16,6 +16,7 @@ import {
 } from "@mantine/core";
 import { IconPhoto, IconX, IconBrandGoogleFilled } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
+import { updateUserProfile } from "../../api/profile";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
@@ -393,7 +394,7 @@ export const Signup = () => {
               if (!uploadError) {
                 const { data: pubData } = supabase.storage.from("avatars").getPublicUrl(filePath);
                 if (pubData?.publicUrl) {
-                  await supabase.from("profiles").update({ avatar_url: pubData.publicUrl }).eq("id", data.session.user.id);
+                  await updateUserProfile({ avatar_url: pubData.publicUrl });
                   window.localStorage.removeItem("cowatch-pending-avatar");
                   window.localStorage.removeItem("cowatch-pending-avatar-type");
                 }

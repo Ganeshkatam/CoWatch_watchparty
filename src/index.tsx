@@ -21,6 +21,7 @@ import { RequireVerifiedEmail } from "./components/Auth/RequireVerifiedEmail";
 import config from "./config";
 import { DEFAULT_STATE, MetadataContext } from "./MetadataContext";
 import { AuthContext } from "./context/AuthContext";
+import { fetchUserProfile, updateUserProfile } from "./api/profile";
 import { AppShell } from "./components/Layout/AppShell";
 import { RootErrorBoundary } from "./components/Layout/RootErrorBoundary";
 import { ErrorScreen } from "./components/Layout/RootErrorBoundary";
@@ -244,12 +245,9 @@ class CoWatch extends React.Component {
     const { user } = this.state;
     if (user) {
       try {
-        await supabase
-          .from("profiles")
-          .update({ pref_appearance_mode: appearance })
-          .eq("id", user.id);
+        await updateUserProfile({ pref_appearance_mode: appearance });
       } catch (err) {
-        console.warn("Failed to persist appearance preference to Supabase:", err);
+        console.warn("Failed to persist appearance preference to backend:", err);
       }
     }
   };
@@ -307,20 +305,7 @@ class CoWatch extends React.Component {
 
             const fetchProfilePromise = (async () => {
               try {
-                const profilePromise = supabase
-                  .from("profiles")
-                  .select(
-                    "display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode"
-                  )
-                  .eq("id", user.id)
-                  .maybeSingle();
-
-                const timeoutPromise = new Promise<{ data: null }>((resolve) =>
-                  setTimeout(() => resolve({ data: null }), 1500)
-                );
-
-                const { data } = await Promise.race([profilePromise, timeoutPromise]);
-                return data;
+                return await fetchUserProfile();
               } catch (err) {
                 console.warn("Profile fetch error:", err);
                 return null;
@@ -334,52 +319,6 @@ class CoWatch extends React.Component {
 
             const metadata: any = metadataResult.status === "fulfilled" ? metadataResult.value : {};
             let profile: any = profileResult.status === "fulfilled" ? profileResult.value : null;
-
-            // Self-heal: if profile does not exist in DB, create one
-            if (!profile && user) {
-              const defaultName =
-                user.user_metadata?.display_name?.trim() ||
-                user.user_metadata?.username?.trim() ||
-                user.user_metadata?.full_name?.trim() ||
-                user.user_metadata?.name?.trim() ||
-                user.email?.split("@")[0] ||
-                "User";
-              const defaultAvatar =
-                user.user_metadata?.avatar_url ||
-                user.user_metadata?.picture ||
-                null;
-
-              try {
-                const upsertPromise = supabase
-                  .from("profiles")
-                  .upsert(
-                    {
-                      id: user.id,
-                      display_name: defaultName,
-                      username:
-                        user.user_metadata?.username?.trim() ||
-                        autoCreateUsername(defaultName, user.email),
-                      avatar_url: defaultAvatar,
-                    },
-                    { onConflict: "id" }
-                  )
-                  .select(
-                    "display_name, username, avatar_url, pref_show_chat_column, pref_show_people_column, pref_disable_chat_sound, pref_camera_on, pref_mic_on, pref_appearance_mode"
-                  )
-                  .maybeSingle();
-
-                const timeoutPromise = new Promise<{ data: null }>((resolve) =>
-                  setTimeout(() => resolve({ data: null }), 1500)
-                );
-
-                const { data: newProfile } = await Promise.race([upsertPromise, timeoutPromise]);
-                if (newProfile) {
-                  profile = newProfile;
-                }
-              } catch (upsertErr) {
-                console.warn("Profile auto-creation failed:", upsertErr);
-              }
-            }
 
             const resolved = resolveProfile(profile, user);
             const displayName = resolved.displayName;
@@ -415,7 +354,7 @@ class CoWatch extends React.Component {
                     if (!uploadError) {
                       const { data: pubData } = supabase.storage.from("avatars").getPublicUrl(filePath);
                       if (pubData?.publicUrl) {
-                        await supabase.from("profiles").update({ avatar_url: pubData.publicUrl }).eq("id", user.id);
+                        await updateUserProfile({ avatar_url: pubData.publicUrl });
                         window.localStorage.removeItem("cowatch-pending-avatar");
                         window.localStorage.removeItem("cowatch-pending-avatar-type");
                         this.setState({ avatarUrl: pubData.publicUrl });
@@ -454,12 +393,9 @@ class CoWatch extends React.Component {
             } catch (e) { }
 
             if (profile && user && activeAppearance && profile.pref_appearance_mode !== activeAppearance) {
-              Promise.resolve(
-                supabase
-                  .from("profiles")
-                  .update({ pref_appearance_mode: activeAppearance })
-                  .eq("id", user.id)
-              ).catch((e: any) => console.warn("Could not sync appearance to DB:", e));
+              updateUserProfile({ pref_appearance_mode: activeAppearance }).catch((e: any) =>
+                console.warn("Could not sync appearance to backend:", e)
+              );
             }
 
             this.setState({

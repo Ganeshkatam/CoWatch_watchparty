@@ -45,6 +45,7 @@ import { PasscodeModal } from "../Modal/PasscodeModal";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
 import { supabase, safeGetSession, getAccessToken, getCachedSupabaseToken, getCachedSupabaseUser } from "../../utils/supabaseClient";
+import { fetchPublicProfile } from "../../api/profile";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -866,7 +867,7 @@ export class App extends React.Component<AppProps, AppState> {
             this.setState({ isOwner: true });
           }
           if (info.owner_id) {
-            this.resolveHostName(info.owner_id);
+            this.resolveHostName(info.owner_id, info.hostName);
           }
           const requiresPasscode = Boolean(info.requiresPasscode);
           const isHostPresent = Boolean(info.isHostPresent);
@@ -2447,11 +2448,7 @@ export class App extends React.Component<AppProps, AppState> {
       return;
     }
     try {
-      const { data: profile } = await supabase
-        .from("public_profiles")
-        .select("display_name, username")
-        .eq("id", ownerId)
-        .maybeSingle();
+      const profile = await fetchPublicProfile(ownerId);
       if (profile) {
         this.setState({ hostName: profile.display_name || profile.username || "Host" });
       }
