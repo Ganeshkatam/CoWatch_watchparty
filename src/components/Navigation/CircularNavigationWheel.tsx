@@ -67,6 +67,7 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
   const dockCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isGestureActiveRef = useRef<boolean>(false);
   const prevSelectedIdRef = useRef<string | null>(null);
+  const closeWheelRef = useRef<() => void>(() => {});
 
   const isOpen = wheelState !== 'CLOSED' && wheelState !== 'CLOSING';
 
@@ -94,12 +95,18 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
 
   const closeWheel = useCallback(() => {
     if (wheelState === 'CLOSED' || wheelState === 'CLOSING') return;
+    if (closingTimerRef.current) clearTimeout(closingTimerRef.current);
     setWheelState('CLOSING');
     closingTimerRef.current = setTimeout(() => {
       setWheelState('CLOSED');
       setSelectedItemId(null);
     }, 180);
   }, [wheelState]);
+
+  // Keep a stable ref to closeWheel so the mousemove effect never goes stale
+  useEffect(() => {
+    closeWheelRef.current = closeWheel;
+  }, [closeWheel]);
 
   const getDockCenter = useCallback((): { x: number; y: number } | null => {
     if (!dockRef.current) return null;
@@ -137,7 +144,9 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     [getDockCenter, wheelState]
   );
 
-  // Active radial hover boundary tracker: checks mouse Euclidean distance while wheel is open
+  // Active radial hover boundary tracker: checks mouse Euclidean distance while wheel is open.
+  // Uses closeWheelRef (stable) so this effect only re-runs when isOpen/radius change,
+  // preventing cleanup from cancelling pending close timers on every wheelState transition.
   useEffect(() => {
     if (!isOpen) return;
     if (typeof window === 'undefined' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
@@ -160,7 +169,8 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
       } else {
         if (!hoverTimerRef.current) {
           hoverTimerRef.current = setTimeout(() => {
-            closeWheel();
+            hoverTimerRef.current = null;
+            closeWheelRef.current();
           }, 140);
         }
       }
@@ -169,7 +179,8 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     const handleWindowMouseLeave = () => {
       if (!hoverTimerRef.current) {
         hoverTimerRef.current = setTimeout(() => {
-          closeWheel();
+          hoverTimerRef.current = null;
+          closeWheelRef.current();
         }, 100);
       }
     };
@@ -180,12 +191,8 @@ export const CircularNavigationWheel: React.FC<CircularNavigationWheelProps> = (
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       document.removeEventListener('mouseleave', handleWindowMouseLeave);
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-        hoverTimerRef.current = null;
-      }
     };
-  }, [isOpen, getDockCenter, radius, closeWheel]);
+  }, [isOpen, getDockCenter, radius]);
 
   // Determine current active item as center anchor
   const activeItem = items.find((item) => item.isActive) || items[0];
