@@ -1003,6 +1003,7 @@ export const RoomDetails = () => {
           startedAt: room.startedAt,
           endedAt: room.endedAt,
           expiresAt: room.expiresAt,
+          isPermanent: room.isPermanent,
         }}
         opened={editModalOpened}
         onClose={() => setEditModalOpened(false)}
