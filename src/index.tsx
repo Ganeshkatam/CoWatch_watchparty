@@ -606,6 +606,27 @@ class CoWatch extends React.Component {
             this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });
           }
         });
+
+      // Reconnect and reconcile session upon returning from BFCache or regaining network connection
+      const handleNetworkOrBFCache = (e?: any) => {
+        if (e && e.type === "pageshow" && !e.persisted) {
+          return;
+        }
+        if (hasCachedSupabaseToken()) {
+          safeGetSession(3000)
+            .then(({ data }: any) => {
+              if (data?.session) {
+                setTimeout(() => {
+                  handleSession(data.session);
+                }, 0);
+              }
+            })
+            .catch(() => {});
+        }
+      };
+
+      window.addEventListener("pageshow", handleNetworkOrBFCache);
+      window.addEventListener("online", handleNetworkOrBFCache);
     } else {
       // Authentication is optional; allow the app to render guest routes without it.
       this.setState({ user: null, profile: null, displayName: "Guest", avatarUrl: null });

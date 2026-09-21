@@ -252,12 +252,16 @@ export const Create = () => {
             const { data: publicUrlData } = supabase.storage
               .from("room_covers")
               .getPublicUrl(filePath);
+            const token = await getAccessToken();
             await fetch(`${serverPath}/updateRoomCover`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify({
                 uid: user.id,
-                token: await getAccessToken(),
+                token,
                 roomId: roomName,
                 coverPhoto: publicUrlData.publicUrl,
               }),

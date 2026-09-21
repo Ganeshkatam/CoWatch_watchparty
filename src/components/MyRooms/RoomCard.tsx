@@ -282,7 +282,10 @@ export const EditRoomModal = ({
 
       const response = await fetch(`${serverPath}/updateRoomSettings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           uid: user.id,
           token,
@@ -297,7 +300,7 @@ export const EditRoomModal = ({
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to save room settings");
+      if (!response.ok) throw new Error(result.error?.message || result.error || "Failed to save room settings");
 
       if (removeProtection) {
         setCurrentPassword("");
@@ -308,13 +311,19 @@ export const EditRoomModal = ({
       if (removeCover) {
         await fetch(`${serverPath}/updateRoomCover`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: null }),
         });
       } else if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
         await fetch(`${serverPath}/updateRoomCover`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: finalCoverUrl }),
         });
       }
@@ -801,7 +810,10 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
 
       const response = await fetch(`${serverPath}/endRoom`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           uid: user.id,
           token,

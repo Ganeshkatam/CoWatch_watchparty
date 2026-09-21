@@ -211,8 +211,11 @@ const useRooms = (
       const token = await getAccessToken();
       const response = await fetch(`${serverPath}/updateRoomCover`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: user?.id, token, roomId, coverPhoto })
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ uid: user?.id, roomId, coverPhoto })
       });
       if (response.ok) {
         setRooms(prev => prev.map(r => r.roomId === roomId ? { ...r, coverPhoto } : r));
