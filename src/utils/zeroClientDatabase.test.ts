@@ -95,7 +95,13 @@ export function runZeroClientDatabaseAudit(): { passed: boolean; violations: Vio
   };
 }
 
+import { supabase } from "./supabaseClient";
+import assert from "node:assert";
+
 // CLI test runner
+console.log("=== Zero Client Database Invariant Certification ===");
+
+// 1. Static Scan Verification
 const result = runZeroClientDatabaseAudit();
 
 if (!result.passed) {
@@ -106,6 +112,52 @@ if (!result.passed) {
   }
   process.exit(1);
 } else {
-  console.log("PASS: Zero Client Database Invariant Verified (0 direct DB calls found across src/)");
-  process.exit(0);
+  console.log("PASS [Static Audit]: Zero PostgREST database calls detected across client source (src/)");
 }
+
+// 2. Runtime Proxy Boundary Verification
+console.log("\nTesting runtime client database boundary guard...");
+
+// Verify supabase.from throws hard error
+let fromThrew = false;
+try {
+  (supabase as any).from("profiles");
+} catch (e: any) {
+  if (e.message.includes("CLIENT_DATABASE_ACCESS_FORBIDDEN")) {
+    fromThrew = true;
+  }
+}
+assert.strictEqual(fromThrew, true, "supabase.from() must throw CLIENT_DATABASE_ACCESS_FORBIDDEN");
+console.log("PASS [Runtime Guard 1]: supabase.from('profiles') strictly blocked by runtime proxy");
+
+// Verify supabase.rpc throws hard error
+let rpcThrew = false;
+try {
+  (supabase as any).rpc("get_user");
+} catch (e: any) {
+  if (e.message.includes("CLIENT_DATABASE_ACCESS_FORBIDDEN")) {
+    rpcThrew = true;
+  }
+}
+assert.strictEqual(rpcThrew, true, "supabase.rpc() must throw CLIENT_DATABASE_ACCESS_FORBIDDEN");
+console.log("PASS [Runtime Guard 2]: supabase.rpc(...) strictly blocked by runtime proxy");
+
+// Verify supabase.schema throws hard error
+let schemaThrew = false;
+try {
+  (supabase as any).schema("public");
+} catch (e: any) {
+  if (e.message.includes("CLIENT_DATABASE_ACCESS_FORBIDDEN")) {
+    schemaThrew = true;
+  }
+}
+assert.strictEqual(schemaThrew, true, "supabase.schema() must throw CLIENT_DATABASE_ACCESS_FORBIDDEN");
+console.log("PASS [Runtime Guard 3]: supabase.schema(...) strictly blocked by runtime proxy");
+
+// Verify permitted channels are untouched
+assert.ok(supabase.auth, "supabase.auth must remain accessible for session tokens");
+assert.ok(supabase.storage, "supabase.storage must remain accessible for file uploads");
+console.log("PASS [Permitted Channels]: supabase.auth and supabase.storage accessible without DB leakage");
+
+console.log("\nALL ZERO CLIENT DATABASE INVARIANT TESTS PASSED WITH ZERO FAILURES.\n");
+process.exit(0);

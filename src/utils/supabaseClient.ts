@@ -11,14 +11,26 @@ if (!supabaseUrl || !supabaseKey) {
 // Singleton: survive Vite HMR reloads so only one GoTrueClient exists per browser tab
 const globalForSupabase = globalThis as unknown as { __supabase?: SupabaseClient };
 
-export const supabase: SupabaseClient =
+const rawSupabase: SupabaseClient =
   globalForSupabase.__supabase ??
   createClient(
     supabaseUrl || "https://placeholder.supabase.co",
     supabaseKey || "placeholder-anon-key"
   );
 
-globalForSupabase.__supabase = supabase;
+// Runtime guard: strictly prohibit PostgREST database access from the client
+export const supabase: SupabaseClient = new Proxy(rawSupabase, {
+  get(target, prop, receiver) {
+    if (prop === "from" || prop === "rpc" || prop === "schema") {
+      throw new Error(
+        `CLIENT_DATABASE_ACCESS_FORBIDDEN: Direct database method supabase.${String(prop)}() is strictly prohibited on the client. Use CoWatch server APIs instead.`
+      );
+    }
+    return Reflect.get(target, prop, receiver);
+  },
+});
+
+globalForSupabase.__supabase = rawSupabase;
 
 export function getCachedSupabaseUser(): User | null {
   if (typeof window === "undefined" || !window.localStorage) return null;
