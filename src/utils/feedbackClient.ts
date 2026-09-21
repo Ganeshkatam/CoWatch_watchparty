@@ -14,14 +14,21 @@ import {
   type FeedbackPayload,
   type UserMessage,
 } from "./userMessages";
-import { safeGetSession } from "./supabaseClient";
-import { createUuid } from "./utils";
+import { createUuid, apiFetch, ApiError } from "./utils";
 
 export interface FeedbackSubmissionResult {
   success: boolean;
   userMessage: UserMessage;
   feedbackId?: string;
   deduped?: boolean;
+}
+
+export interface FeedbackApiResponse {
+  success?: boolean;
+  id?: string;
+  created_at?: string;
+  deduped?: boolean;
+  error?: string;
 }
 
 export async function submitUserFeedback(
@@ -42,20 +49,9 @@ export async function submitUserFeedback(
   });
 
   try {
-    const sessionData = await safeGetSession();
-    const token = sessionData?.data?.session?.access_token;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch("/api/feedback", {
+    const data = await apiFetch<FeedbackApiResponse>("/api/feedback", {
       method: "POST",
-      headers,
-      body: JSON.stringify({
+      body: {
         type: payload.type || "bug",
         context: payload.context || "room",
         rating: payload.rating,
@@ -63,63 +59,53 @@ export async function submitUserFeedback(
         app_version: payload.app_version || "1.0.3",
         platform: payload.platform || "web",
         idempotency_key: idempotencyKey,
-      }),
+      },
     });
 
-    if (response.status === 429) {
-      operationCoordinator.rejectOperation(
-        opId,
-        USER_MESSAGES.FEEDBACK_RATE_LIMITED.message
-      );
-      return {
-        success: false,
-        userMessage: USER_MESSAGES.FEEDBACK_RATE_LIMITED,
-      };
-    }
-
-    if (response.status === 400) {
-      operationCoordinator.rejectOperation(
-        opId,
-        USER_MESSAGES.FEEDBACK_VALIDATION_FAILED.message
-      );
-      return {
-        success: false,
-        userMessage: USER_MESSAGES.FEEDBACK_VALIDATION_FAILED,
-      };
-    }
-
-    if (response.status === 503 || response.status === 500) {
-      operationCoordinator.rejectOperation(
-        opId,
-        USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE.message
-      );
-      return {
-        success: false,
-        userMessage: USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE,
-      };
-    }
-
-    if (!response.ok) {
-      operationCoordinator.rejectOperation(
-        opId,
-        USER_MESSAGES.FEEDBACK_SUBMIT_FAILED.message
-      );
-      return {
-        success: false,
-        userMessage: USER_MESSAGES.FEEDBACK_SUBMIT_FAILED,
-      };
-    }
-
-    const data = await response.json();
     operationCoordinator.resolveOperation(opId);
 
     return {
       success: true,
       userMessage: USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS,
-      feedbackId: data.id,
-      deduped: Boolean(data.deduped),
+      feedbackId: data?.id,
+      deduped: Boolean(data?.deduped),
     };
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof ApiError) {
+      if (err.status === 429) {
+        operationCoordinator.rejectOperation(
+          opId,
+          USER_MESSAGES.FEEDBACK_RATE_LIMITED.message
+        );
+        return {
+          success: false,
+          userMessage: USER_MESSAGES.FEEDBACK_RATE_LIMITED,
+        };
+      }
+
+      if (err.status === 400) {
+        operationCoordinator.rejectOperation(
+          opId,
+          USER_MESSAGES.FEEDBACK_VALIDATION_FAILED.message
+        );
+        return {
+          success: false,
+          userMessage: USER_MESSAGES.FEEDBACK_VALIDATION_FAILED,
+        };
+      }
+
+      if (err.status === 503 || err.status === 500) {
+        operationCoordinator.rejectOperation(
+          opId,
+          USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE.message
+        );
+        return {
+          success: false,
+          userMessage: USER_MESSAGES.FEEDBACK_SERVICE_UNAVAILABLE,
+        };
+      }
+    }
+
     console.warn("Feedback HTTP request failure:", err);
     operationCoordinator.rejectOperation(
       opId,

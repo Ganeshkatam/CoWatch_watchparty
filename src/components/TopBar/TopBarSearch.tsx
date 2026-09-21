@@ -8,8 +8,8 @@ import React, {
 } from "react";
 import { useHistory } from "react-router-dom";
 import { MetadataContext } from "../../MetadataContext";
-import { getAccessToken } from "../../utils/supabaseClient";
-import { serverPath } from "../../utils/utils";
+import { apiFetch } from "../../utils/utils";
+import { RoomSummary, ListRoomsResult } from "../MyRooms/MyRooms";
 import { useAppearance } from "../../theme/ThemeProvider";
 import {
   IconSearch,
@@ -50,8 +50,8 @@ export const TopBarSearch: React.FC = () => {
   const [isFocused, setIsFocused] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [publicRooms, setPublicRooms] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [publicRooms, setPublicRooms] = useState<RoomSummary[]>([]);
   const [fetchedRooms, setFetchedRooms] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,23 +68,16 @@ export const TopBarSearch: React.FC = () => {
   const fetchUserRooms = useCallback(async () => {
     if (!context.user) return;
     try {
-      const token = await getAccessToken();
-      const res = await fetch(
-        `${serverPath}/listRooms?limit=20`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const roomsList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.rooms)
+      const data = await apiFetch<ListRoomsResult>("/listRooms?limit=20", {
+        timeoutMs: 5000,
+      });
+      const roomsList: RoomSummary[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.rooms)
           ? data.rooms
           : [];
-        setRooms(roomsList);
-        setFetchedRooms(true);
-      }
+      setRooms(roomsList);
+      setFetchedRooms(true);
     } catch (e) {
       console.warn("fetchUserRooms error:", e);
     }
@@ -107,24 +100,18 @@ export const TopBarSearch: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        const token = await getAccessToken();
-        const res = await fetch(
-          `${serverPath}/listRooms?search=${encodeURIComponent(clean)}&limit=5`,
-          {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          }
+        const data = await apiFetch<ListRoomsResult>(
+          `/listRooms?search=${encodeURIComponent(clean)}&limit=5`,
+          { timeoutMs: 4000 }
         );
-        if (res.ok) {
-          const data = await res.json();
-          const roomsList = Array.isArray(data)
-            ? data
-            : Array.isArray(data?.rooms)
+        const roomsList: RoomSummary[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.rooms)
             ? data.rooms
             : [];
-          setPublicRooms(roomsList);
-        }
-      } catch {
-        // Silent fallback for room lookup
+        setPublicRooms(roomsList);
+      } catch (e) {
+        console.warn("searchPublicRooms error:", e);
       }
     }, 200);
 
@@ -340,7 +327,7 @@ export const TopBarSearch: React.FC = () => {
     }
 
     // 2. Rooms (User rooms + Public rooms)
-    const combinedRoomsMap = new Map<string, any>();
+    const combinedRoomsMap = new Map<string, RoomSummary>();
     rooms.forEach((r) => combinedRoomsMap.set(r.roomId, r));
     publicRooms.forEach((r) => {
       if (!combinedRoomsMap.has(r.roomId)) {
@@ -479,9 +466,8 @@ export const TopBarSearch: React.FC = () => {
 
       {/* Expandable Input Bar */}
       <div
-        className={`${styles.searchWrapper} ${
-          isExpanded ? styles.searchWrapperExpanded : ""
-        } ${mobileOpen ? styles.searchWrapperMobileOpen : ""}`}
+        className={`${styles.searchWrapper} ${isExpanded ? styles.searchWrapperExpanded : ""
+          } ${mobileOpen ? styles.searchWrapperMobileOpen : ""}`}
       >
         <div className={styles.inputInner}>
           <span className={styles.searchIcon}>
@@ -559,9 +545,8 @@ export const TopBarSearch: React.FC = () => {
                   )}
                   <button
                     type="button"
-                    className={`${styles.resultItem} ${
-                      isSelected ? styles.resultItemActive : ""
-                    }`}
+                    className={`${styles.resultItem} ${isSelected ? styles.resultItemActive : ""
+                      }`}
                     onClick={() => handleSelect(item)}
                     onMouseEnter={() => setSelectedIndex(index)}
                   >

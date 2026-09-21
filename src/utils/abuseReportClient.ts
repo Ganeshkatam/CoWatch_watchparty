@@ -7,7 +7,7 @@
  * 3. Sanitized error handling.
  */
 
-import { safeGetSession } from "./supabaseClient";
+import { apiFetch, ApiError } from "./utils.js";
 
 export type AbuseReportCategory =
   | "harassment"
@@ -29,6 +29,13 @@ export interface AbuseReportResult {
   success: boolean;
   error?: string;
   reportId?: string;
+}
+
+export interface AbuseReportApiResponse {
+  success: boolean;
+  reportId?: string;
+  createdAt?: string;
+  error?: string;
 }
 
 export async function submitAbuseReport(
@@ -57,45 +64,35 @@ export async function submitAbuseReport(
   }
 
   try {
-    const sessionData = await safeGetSession();
-    const token = sessionData?.data?.session?.access_token;
-
-    if (!token) {
-      return {
-        success: false,
-        error: "You must be signed in to submit an abuse report.",
-      };
-    }
-
-    const response = await fetch("/api/reports/abuse", {
+    const data = await apiFetch<AbuseReportApiResponse>("/api/reports/abuse", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      requireAuth: true,
+      body: {
         category: payload.category,
         reason: reasonText,
         targetUserId: payload.targetUserId || undefined,
         targetRoomId: payload.targetRoomId || undefined,
         context: payload.context || {},
-      }),
+      },
     });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.error || `Failed to submit report (status: ${response.status})`,
-      };
-    }
 
     return {
       success: true,
-      reportId: data.reportId,
+      reportId: data?.reportId,
     };
   } catch (err: any) {
+    if (err instanceof ApiError) {
+      if (err.status === 401) {
+        return {
+          success: false,
+          error: "You must be signed in to submit an abuse report.",
+        };
+      }
+      return {
+        success: false,
+        error: err.message || `Failed to submit report (status: ${err.status})`,
+      };
+    }
     return {
       success: false,
       error: err?.message || "Network error while submitting report.",

@@ -88,9 +88,6 @@ async function runDeliveryProfileTests() {
 
   const brevoProvider = EmailProviderRegistry.getProvider('brevo');
   assert(brevoProvider.capabilities.nativeIdempotency === false, 'Brevo must declare nativeIdempotency: false');
-
-  const resendProvider = EmailProviderRegistry.getProvider('resend');
-  assert(resendProvider.capabilities.nativeIdempotency === true, 'Resend must declare nativeIdempotency: true');
   console.log('  PASS: Provider idempotency declared and decoupled from application idempotency');
 
   console.log('\nAll NOTIFY-004 Delivery Profile tests PASSED successfully!\n');

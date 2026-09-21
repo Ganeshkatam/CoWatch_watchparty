@@ -3,6 +3,7 @@ import canAutoplay from "can-autoplay";
 import type { User } from "@supabase/supabase-js";
 import config from "../config";
 import { cyrb53 } from "./hash";
+import { supabase, getAccessToken } from "./supabaseClient";
 
 export function formatTimestamp(input: any, zeroTime?: number): string {
   if (
@@ -312,6 +313,182 @@ export async function resolveFastestServer(): Promise<string> {
 // Automatically race and connect to the fastest available backend
 if (typeof window !== "undefined" && serverCandidates.length > 1) {
   resolveFastestServer().catch(() => {});
+}
+
+export class ApiError extends Error {
+  public readonly code: string;
+  public readonly status: number;
+  public readonly retryAfter?: number;
+
+  constructor(code: string, message: string, status = 400, retryAfter?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
+export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
+  body?: any;
+  requireAuth?: boolean;
+  timeoutMs?: number;
+  retryOn401?: boolean;
+}
+
+/**
+ * Authoritative client-to-server HTTP connection layer.
+ *
+ * Guarantees:
+ * 1. Automatic active backend origin routing via serverPath.
+ * 2. Automatic Bearer JWT authentication header injection.
+ * 3. Transparent token refresh and single retry upon 401 Unauthorized.
+ * 4. Deterministic request timeout protection (default 10s).
+ * 5. Safe non-JSON proxy/gateway error handling.
+ * 6. Structured ApiError parsing with Retry-After support.
+ */
+export async function apiFetch<T = unknown>(
+  endpoint: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
+  const {
+    body,
+    requireAuth = false,
+    timeoutMs = 10000,
+    retryOn401 = true,
+    headers: customHeaders = {},
+    signal: callerSignal,
+    ...fetchOptions
+  } = options;
+
+  const url =
+    endpoint.startsWith("http://") || endpoint.startsWith("https://")
+      ? endpoint
+      : `${serverPath}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const abortController = new AbortController();
+  let timedOut = false;
+  const timeoutTimer = setTimeout(() => {
+    timedOut = true;
+    abortController.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  if (callerSignal) {
+    callerSignal.addEventListener("abort", () => {
+      abortController.abort(callerSignal.reason);
+    });
+  }
+
+  const executeRequest = async (token?: string): Promise<Response> => {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(customHeaders as Record<string, string>),
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    let serializedBody: BodyInit | null | undefined = undefined;
+    if (body !== undefined && body !== null) {
+      if (
+        typeof body === "string" ||
+        body instanceof FormData ||
+        body instanceof URLSearchParams ||
+        body instanceof Blob
+      ) {
+        serializedBody = body as BodyInit;
+      } else {
+        headers["Content-Type"] = "application/json";
+        serializedBody = JSON.stringify(body);
+      }
+    }
+
+    return await fetch(url, {
+      ...fetchOptions,
+      headers,
+      body: serializedBody,
+      signal: abortController.signal,
+    });
+  };
+
+  try {
+    const providedAuth = (customHeaders as Record<string, string>)?.["Authorization"];
+    let token = await getAccessToken(2000);
+    if (requireAuth && !token && !providedAuth) {
+      throw new ApiError("UNAUTHENTICATED", "Active authentication session is required", 401);
+    }
+
+    let res = await executeRequest(token);
+
+    // Transparent token refresh and single replay upon 401
+    if (res.status === 401 && retryOn401) {
+      try {
+        const { data } = await supabase.auth.refreshSession();
+        const refreshedToken = data.session?.access_token;
+        if (refreshedToken && refreshedToken !== token) {
+          token = refreshedToken;
+          res = await executeRequest(token);
+        }
+      } catch (_) {
+        // Fall through to error handling
+      }
+    }
+
+    if (!res.ok) {
+      let code = `HTTP_${res.status}`;
+      let message = res.statusText || `Request failed with status ${res.status}`;
+      let retryAfter: number | undefined = undefined;
+
+      const retryAfterHeader = res.headers.get("Retry-After");
+      if (retryAfterHeader) {
+        const parsed = parseInt(retryAfterHeader, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          retryAfter = parsed;
+        }
+      }
+
+      try {
+        const json = await res.json();
+        if (json?.error) {
+          code = json.error.code || code;
+          message = json.error.message || message;
+          if (json.error.retryAfter) {
+            retryAfter = json.error.retryAfter;
+          }
+        } else if (json?.message) {
+          message = json.message;
+        }
+      } catch {
+        // Non-JSON response (e.g. 502/503 HTML from proxy)
+      }
+
+      throw new ApiError(code, message, res.status, retryAfter);
+    }
+
+    if (res.status === 204) {
+      return undefined as unknown as T;
+    }
+
+    const contentType = res.headers.get("Content-Type") || "";
+    if (contentType.includes("application/json")) {
+      return (await res.json()) as T;
+    }
+    return (await res.text()) as unknown as T;
+  } catch (err: any) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    if (timedOut) {
+      throw new ApiError("REQUEST_TIMEOUT", `Request to ${endpoint} timed out after ${timeoutMs}ms`, 408);
+    }
+    if (err.name === "AbortError" && callerSignal?.aborted) {
+      throw err;
+    }
+    throw new ApiError("NETWORK_ERROR", err.message || "Network connection failure", 0);
+  } finally {
+    clearTimeout(timeoutTimer);
+  }
 }
 
 export function getRoomUrl(roomId: string): string {

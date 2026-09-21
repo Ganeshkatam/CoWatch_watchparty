@@ -7,12 +7,23 @@ import {
   IconLock,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
-import { serverPath } from "../../utils/utils";
-import { getAccessToken, supabase } from "../../utils/supabaseClient";
+import { apiFetch } from "../../utils/utils";
+import { supabase } from "../../utils/supabaseClient";
 import { QRShare } from "./QRShare";
 import { DirectInviteForm } from "./DirectInviteForm";
 import { ShareActions } from "./ShareActions";
 import styles from "./InviteModal.module.css";
+
+interface RoomDetailsResponse {
+  currentPasscode?: string | null;
+  roomTitle?: string | null;
+}
+
+interface CreateInvitationResponse {
+  invitationUrl?: string;
+  token?: string;
+  invitationId?: string;
+}
 
 interface InviteModalProps {
   roomId?: string;
@@ -38,20 +49,18 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   const pathParts = window.location.pathname.split("/");
   const roomIdOrVanity = roomId || pathParts[pathParts.length - 1] || "";
-  const cleanId = roomIdOrVanity.replace(/^\//, "");
+  const cleanId = roomIdOrVanity.replace(/[^a-zA-Z0-9_-]/g, "");
 
   // Non-hosts are strictly forbidden from inviting users
   if (!canManageCredentials) {
     return null;
   }
 
-  // Fetch host identity, room details, and generate reusable invitation token
   useEffect(() => {
     let isCancelled = false;
     if (canManageCredentials && cleanId) {
       (async () => {
         try {
-          const token = await getAccessToken();
           const { data } = await supabase.auth.getUser();
           const user = data.user;
           if (user && !isCancelled) {
@@ -63,44 +72,33 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             );
           }
 
-          if (user && token && serverPath) {
+          if (user) {
             // 1. Fetch room details
-            const detailsRes = await fetch(
-              `${serverPath}/roomDetails?roomId=${encodeURIComponent(cleanId)}`,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-              }
+            const freshData = await apiFetch<RoomDetailsResponse>(
+              `/roomDetails?roomId=${encodeURIComponent(cleanId)}`,
+              { requireAuth: true }
             );
-            if (detailsRes.ok) {
-              const freshData = await detailsRes.json();
-              if (!isCancelled) {
-                if (freshData?.currentPasscode && !propPasscode) {
-                  setFetchedPasscode(freshData.currentPasscode.trim());
-                }
-                if (freshData?.roomTitle) {
-                  setRoomTitle(freshData.roomTitle.trim());
-                }
+            if (!isCancelled && freshData) {
+              if (freshData?.currentPasscode && !propPasscode) {
+                setFetchedPasscode(freshData.currentPasscode.trim());
+              }
+              if (freshData?.roomTitle) {
+                setRoomTitle(freshData.roomTitle.trim());
               }
             }
 
             // 2. Generate or fetch reusable room invitation token
-            const inviteRes = await fetch(`${serverPath}/api/invitations`, {
+            const inviteData = await apiFetch<CreateInvitationResponse>(`/api/invitations`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
+              requireAuth: true,
+              body: {
                 roomId: cleanId,
                 isReusable: true,
-              }),
+              },
             });
 
-            if (inviteRes.ok) {
-              const inviteData = await inviteRes.json();
-              if (!isCancelled && inviteData?.invitationUrl) {
-                setInvitationUrl(inviteData.invitationUrl);
-              }
+            if (!isCancelled && inviteData?.invitationUrl) {
+              setInvitationUrl(inviteData.invitationUrl);
             }
           }
         } catch {

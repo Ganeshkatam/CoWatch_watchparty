@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { TextInput, Button, Text } from "@mantine/core";
 import { IconAt, IconSend, IconCheck, IconAlertCircle } from "@tabler/icons-react";
-import { serverPath } from "../../utils/utils";
-import { getAccessToken } from "../../utils/supabaseClient";
+import { apiFetch } from "../../utils/utils";
 import styles from "./DirectInviteForm.module.css";
 
 interface DirectInviteFormProps {
@@ -25,62 +24,41 @@ export const DirectInviteForm: React.FC<DirectInviteFormProps> = ({
 
   const handleSendInvite = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const targetUsername = username.trim();
-    if (!targetUsername || isSubmitting) return;
+    const targetUsername = username.replace(/^@/, "").trim();
+
+    if (!targetUsername) return;
 
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setFeedback({
-          type: "error",
-          message: "Please sign in to send invitations.",
-        });
-        return;
-      }
-
-      const response = await fetch(`${serverPath}/api/notifications/invite`, {
+      await apiFetch("/api/notifications/invite", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+        requireAuth: true,
+        body: {
           roomId: cleanRoomId,
           targetUsername,
-        }),
+        },
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        let msg = data?.error || "Failed to send invitation";
-        if (response.status === 403) {
-          msg = "Only the room host or owner can send invitations.";
-        } else if (response.status === 429) {
-          msg = "Invitation rate limit reached. Please wait a moment.";
-        } else if (response.status === 404) {
-          msg = "Room not found.";
-        }
-        setFeedback({ type: "error", message: msg });
-        return;
-      }
 
       setFeedback({
         type: "success",
-        message: data?.message || "Invitation sent successfully!",
+        message: `Invitation successfully sent to @${targetUsername}!`,
       });
       setUsername("");
       if (onSuccess) {
         onSuccess(targetUsername);
       }
-    } catch {
-      setFeedback({
-        type: "error",
-        message: "Network error sending invitation. Please try again.",
-      });
+    } catch (err: any) {
+      let msg = err.message || "Failed to send invitation";
+      if (err.status === 403) {
+        msg = "Only the room host or owner can send invitations.";
+      } else if (err.status === 429) {
+        msg = "Invitation rate limit reached. Please wait a moment.";
+      } else if (err.status === 404) {
+        msg = "Room not found.";
+      }
+      setFeedback({ type: "error", message: msg });
     } finally {
       setIsSubmitting(false);
     }

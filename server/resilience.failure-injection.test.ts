@@ -43,20 +43,19 @@ async function runFailureInjectionTests() {
   // ---------------------------------------------------------------------------
   console.log('Case 2: Upstream provider 429 (Rate Limit) and 500 (Server Error)...');
   const brevo = EmailProviderRegistry.getProvider('brevo');
-  const resend = EmailProviderRegistry.getProvider('resend');
 
   // Brevo 429
   const brevo429 = brevo.classifyError({ response: { status: 429, data: { message: 'Too many requests' } } });
   assert(brevo429.isRetryable === true, 'Brevo 429 must be classified as retryable');
   assert(brevo429.category === 'RATE_LIMITED', 'Brevo 429 category must be RATE_LIMITED');
 
-  // Resend 500
-  const resend500 = resend.classifyError({ response: { status: 500, data: { message: 'Internal Server Error' } } });
-  assert(resend500.isRetryable === true, 'Resend 500 must be classified as retryable');
-  assert(resend500.category === 'TRANSIENT', 'Resend 500 category must be TRANSIENT');
+  // Brevo 500
+  const brevo500 = brevo.classifyError({ response: { status: 500, data: { message: 'Internal Server Error' } } });
+  assert(brevo500.isRetryable === true, 'Brevo 500 must be classified as retryable');
+  assert(brevo500.category === 'TRANSIENT', 'Brevo 500 category must be TRANSIENT');
 
   // Network Timeout / Connection Reset
-  const timeoutErr = resend.classifyError({ code: 'ECONNRESET', message: 'Connection reset by peer' });
+  const timeoutErr = brevo.classifyError({ code: 'ECONNRESET', message: 'Connection reset by peer' });
   assert(timeoutErr.isRetryable === true, 'Network connection reset must be retryable');
   assert(timeoutErr.category === 'TRANSIENT', 'Connection reset category must be TRANSIENT');
   console.log('  PASS: 429, 500, and network dropouts correctly classified as transient and retryable');
@@ -65,9 +64,9 @@ async function runFailureInjectionTests() {
   // Case 3: Permanent Rejection (4xx) - Immediate Failure Guard
   // ---------------------------------------------------------------------------
   console.log('Case 3: Upstream permanent rejection (400 / 401 / 403)...');
-  const resend403 = resend.classifyError({ response: { status: 403, data: { message: 'Domain not verified' } } });
-  assert(resend403.isRetryable === false, '403 Domain not verified must NOT be retryable');
-  assert(resend403.category === 'AUTHENTICATION', '403 category must be AUTHENTICATION');
+  const brevo403 = brevo.classifyError({ response: { status: 403, data: { message: 'Domain not verified' } } });
+  assert(brevo403.isRetryable === false, '403 Domain not verified must NOT be retryable');
+  assert(brevo403.category === 'AUTHENTICATION', '403 category must be AUTHENTICATION');
 
   const brevo400 = brevo.classifyError({ response: { status: 400, data: { message: 'Invalid recipient format' } } });
   assert(brevo400.isRetryable === false, '400 Invalid format must NOT be retryable');
@@ -80,7 +79,7 @@ async function runFailureInjectionTests() {
   // Verify that provider capability correctly flags whether in-flight retries are natively safe
   const smtp = EmailProviderRegistry.getProvider('smtp');
   assert(smtp.capabilities.nativeIdempotency === false, 'SMTP cannot guarantee upstream request deduplication');
-  assert(resend.capabilities.nativeIdempotency === true, 'Resend supports native Idempotency-Key headers');
+  assert(brevo.capabilities.nativeIdempotency === false, 'Brevo requires worker-level application deduplication');
 
   console.log('  PASS: In-flight worker crash recovery guards distinguish native vs non-idempotent upstream providers');
 
@@ -98,12 +97,13 @@ async function runFailureInjectionTests() {
     return true; // Accepted
   }
 
-  assert(processWebhookIdempotent('resend', 'evt_100') === true, 'First webhook delivery must be accepted');
-  assert(processWebhookIdempotent('resend', 'evt_100') === false, 'Duplicate delivery of same webhook must be dropped');
-  assert(processWebhookIdempotent('brevo', 'evt_100') === true, 'Different provider with same eventId must be isolated');
+  assert(processWebhookIdempotent('brevo', 'evt_100') === true, 'First webhook delivery must be accepted');
+  assert(processWebhookIdempotent('brevo', 'evt_100') === false, 'Duplicate delivery of same webhook must be dropped');
+  assert(processWebhookIdempotent('smtp_custom', 'evt_100') === true, 'Different provider with same eventId must be isolated');
   console.log('  PASS: Webhook deduplication operates strictly on composite provider and eventId');
 
   console.log('\nAll NOTIFY-004 Failure Injection & Resilience tests PASSED successfully!\n');
+  process.exit(0);
 }
 
 runFailureInjectionTests().catch((err) => {

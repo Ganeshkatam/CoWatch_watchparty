@@ -28,7 +28,6 @@
     "test:state-matrix": "tsx src/utils/operationState.test.ts",
     "test:notifications": "tsx server/notifications/notificationConsistency.test.ts",
     "test:worker-adversarial": "tsx server/notifications/emailWorker.adversarial.test.ts",
-    "test:webhook-adversarial": "tsx server/notifications/resendWebhook.adversarial.test.ts",
     "test:provider-contract": "tsx server/notifications/emailProvider.contract.test.ts",
     "test:provider-leakage": "tsx server/notifications/providerLeakage.test.ts",
     "test:provider-webhooks": "tsx server/notifications/webhooks/providerWebhooks.test.ts",

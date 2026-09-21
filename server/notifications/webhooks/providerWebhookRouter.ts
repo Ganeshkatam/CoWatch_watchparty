@@ -10,14 +10,8 @@
 
 import type { Request, Response } from 'express';
 import type { ProviderWebhookAdapter } from './providerWebhookAdapter.ts';
-import { ResendWebhookAdapter } from './resendWebhookAdapter.ts';
 import { BrevoWebhookAdapter } from './brevoWebhookAdapter.ts';
 import { deliveryStateService } from '../deliveryStateService.ts';
-import {
-  type WebhookVerifier,
-  SvixWebhookVerifier,
-  MockWebhookVerifier,
-} from '../webhookVerifier.ts';
 import config from '../../config.ts';
 
 export class ProviderWebhookRouter {
@@ -28,16 +22,7 @@ export class ProviderWebhookRouter {
   }
 
   private registerDefaultAdapters(): void {
-    // 1. Resend adapter
-    let resendVerifier: WebhookVerifier;
-    if (config.RESEND_WEBHOOK_SECRET) {
-      resendVerifier = new SvixWebhookVerifier(config.RESEND_WEBHOOK_SECRET);
-    } else {
-      resendVerifier = new MockWebhookVerifier(process.env.NODE_ENV !== 'production');
-    }
-    this.registerAdapter(new ResendWebhookAdapter(resendVerifier));
-
-    // 2. Brevo adapter
+    // 1. Brevo adapter
     this.registerAdapter(new BrevoWebhookAdapter());
   }
 
@@ -46,7 +31,7 @@ export class ProviderWebhookRouter {
   }
 
   async handleWebhook(req: Request, res: Response): Promise<void> {
-    const rawProvider = req.params?.provider || 'resend';
+    const rawProvider = req.params?.provider || 'brevo';
     const providerKey = rawProvider.toLowerCase();
     const adapter = this.adapters.get(providerKey);
 

@@ -61,12 +61,7 @@ import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
 import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
-import {
-  type WebhookVerifier,
-  SvixWebhookVerifier,
-  MockWebhookVerifier,
-} from "./notifications/webhookVerifier.ts";
-import { ResendWebhookHandler } from "./notifications/resendWebhook.ts";
+
 import { getNotificationHealthReport } from "./notifications/notificationTelemetry.ts";
 import {
   purgeReadNotificationsExpired,
@@ -291,28 +286,6 @@ EmailProviderRegistry.validateActiveProvider()
 
 startEmailWorker();
 
-// NOTIFY-001A: Webhook verification with zero dev/test bypasses in Svix logic.
-// Production requires RESEND_WEBHOOK_SECRET when Resend is the active provider; non-production rejects requests if secret is unset.
-const isResendActive =
-  config.EMAIL_PROVIDER === "resend" ||
-  Boolean(config.RESEND_API_KEY) ||
-  config.EMAIL_PROFILE_DEFAULT_BINDING === "resend" ||
-  config.EMAIL_BINDING_DEFAULT_PROVIDER === "resend";
-
-let webhookVerifier: WebhookVerifier;
-if (config.RESEND_WEBHOOK_SECRET) {
-  webhookVerifier = new SvixWebhookVerifier(config.RESEND_WEBHOOK_SECRET);
-} else if (process.env.NODE_ENV === "production" && isResendActive) {
-  throw new Error("FATAL: RESEND_WEBHOOK_SECRET is required in production environment when Resend is active");
-} else {
-  if (isResendActive) {
-    console.warn(
-      "[Webhook] RESEND_WEBHOOK_SECRET not configured; rejecting incoming webhooks in non-production mode.",
-    );
-  }
-  webhookVerifier = new MockWebhookVerifier(false);
-}
-const resendWebhookHandler = new ResendWebhookHandler(webhookVerifier);
 
 // NOTIFY-001A: Authoritative retention maintenance (every 1 hour)
 // Invariant: UNREAD notifications are NEVER purged; only expired READ notifications and aged outbox records.
@@ -417,10 +390,6 @@ app.post("/internal/webhooks/email/:provider", async (req, res) => {
   await providerWebhookRouter.handleWebhook(req, res);
 });
 
-// NOTIFY-001A / NOTIFY-002: Resend delivery webhook compatibility endpoint
-app.post("/internal/webhooks/resend", async (req, res) => {
-  await resendWebhookHandler.handleRequest(req, res);
-});
 
 // NOTIFY-001A & NOTIFY-004: Database-derived Notification Health Probe (locked behind internal boundary)
 app.get("/internal/health/notifications", requireInternalAuth, async (_req, res) => {

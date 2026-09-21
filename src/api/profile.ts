@@ -1,5 +1,6 @@
-import { getAccessToken } from "../utils/supabaseClient";
-import { serverPath } from "../utils/utils";
+import { apiFetch, ApiError } from "../utils/utils";
+
+export { ApiError };
 
 export interface ProfileData {
   id: string;
@@ -24,50 +25,15 @@ export interface PublicProfileData {
   avatar_url: string | null;
 }
 
-export class ApiError extends Error {
-  public readonly code: string;
-  public readonly status: number;
-
-  constructor(code: string, message: string, status = 400) {
-    super(message);
-    this.name = "ApiError";
-    this.code = code;
-    this.status = status;
-  }
-}
-
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const token = await getAccessToken();
-  if (!token) {
-    throw new ApiError("UNAUTHENTICATED", "Active authentication session is required", 401);
-  }
-  return {
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 /**
  * Fetches canonical profile for the authenticated user from CoWatch backend.
  * Automatically self-heals in PostgreSQL if this is the user's first login.
  */
 export async function fetchUserProfile(signal?: AbortSignal): Promise<ProfileData> {
-  const authHeaders = await getAuthHeader();
-  const res = await fetch(`${serverPath}/api/profile`, {
-    headers: {
-      ...authHeaders,
-      Accept: "application/json",
-    },
+  const data = await apiFetch<{ profile: ProfileData }>("/api/profile", {
+    requireAuth: true,
     signal,
   });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const code = errorData?.error?.code || `HTTP_${res.status}`;
-    const message = errorData?.error?.message || "Failed to load user profile";
-    throw new ApiError(code, message, res.status);
-  }
-
-  const data = await res.json();
   if (!data?.profile) {
     throw new ApiError("INVALID_RESPONSE", "Server response missing profile data", 500);
   }
@@ -82,26 +48,12 @@ export async function updateUserProfile(
   updates: Partial<Omit<ProfileData, "id" | "created_at" | "terms_agreed_at" | "age_verified_at">>,
   signal?: AbortSignal
 ): Promise<ProfileData> {
-  const authHeaders = await getAuthHeader();
-  const res = await fetch(`${serverPath}/api/profile`, {
+  const data = await apiFetch<{ profile: ProfileData }>("/api/profile", {
     method: "PATCH",
-    headers: {
-      ...authHeaders,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(updates),
+    body: updates,
+    requireAuth: true,
     signal,
   });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const code = errorData?.error?.code || `HTTP_${res.status}`;
-    const message = errorData?.error?.message || "Failed to update profile";
-    throw new ApiError(code, message, res.status);
-  }
-
-  const data = await res.json();
   if (!data?.profile) {
     throw new ApiError("INVALID_RESPONSE", "Server response missing updated profile data", 500);
   }
@@ -115,25 +67,16 @@ export async function fetchPublicProfile(
   userId: string,
   signal?: AbortSignal
 ): Promise<PublicProfileData> {
-  const authHeaders = await getAuthHeader();
-  const res = await fetch(`${serverPath}/api/users/${encodeURIComponent(userId)}/public-profile`, {
-    headers: {
-      ...authHeaders,
-      Accept: "application/json",
-    },
-    signal,
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const code = errorData?.error?.code || `HTTP_${res.status}`;
-    const message = errorData?.error?.message || "Failed to load public profile";
-    throw new ApiError(code, message, res.status);
-  }
-
-  const data = await res.json();
+  const data = await apiFetch<{ profile: PublicProfileData }>(
+    `/api/users/${encodeURIComponent(userId)}/public-profile`,
+    {
+      requireAuth: true,
+      signal,
+    }
+  );
   if (!data?.profile) {
     throw new ApiError("INVALID_RESPONSE", "Server response missing public profile data", 500);
   }
   return data.profile;
 }
+

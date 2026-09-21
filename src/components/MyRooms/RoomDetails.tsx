@@ -39,7 +39,7 @@ import {
   IconUserPlus,
   IconRefresh,
 } from "@tabler/icons-react";
-import { serverPath, getRoomUrl, isTerminalRoom } from "../../utils/utils";
+import { serverPath, getRoomUrl, isTerminalRoom, apiFetch } from "../../utils/utils";
 import { getAccessToken, supabase } from "../../utils/supabaseClient";
 import styles from "./RoomDetails.module.css";
 import { EditRoomModal } from "./RoomCard";
@@ -58,7 +58,7 @@ interface LifecycleEvent {
   timestamp: string;
 }
 
-interface RoomDetailsData {
+export interface RoomDetailsData {
   roomId: string;
   isPasscodeProtected: boolean;
   currentPasscode?: string | null;
@@ -179,18 +179,12 @@ export const RoomDetails = () => {
       setIsRefreshing(true);
     }
     try {
-      const token = await getAccessToken();
       const user = await supabase.auth.getUser();
       if (!user.data.user) throw new Error("Not authenticated");
 
-      const response = await fetch(`${serverPath}/roomDetails?roomId=${encodeURIComponent(roomId)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const data = await apiFetch<RoomDetailsData>(`/roomDetails?roomId=${encodeURIComponent(roomId)}`, {
+        requireAuth: true,
       });
-      if (!response.ok) {
-        if (response.status === 404) throw new Error("Room not found or unauthorized");
-        throw new Error("Failed to fetch room details");
-      }
-      const data = await response.json();
       setRoom(data);
       setError(null);
     } catch (err: any) {
@@ -284,17 +278,11 @@ export const RoomDetails = () => {
     if (!room) return;
     setIsDeleting(true);
     try {
-      const token = await getAccessToken();
-      const user = await supabase.auth.getUser();
-      const response = await fetch(`${serverPath}/deleteRoom?roomId=${encodeURIComponent(room.roomId)}`, {
+      await apiFetch(`/deleteRoom?roomId=${encodeURIComponent(room.roomId)}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        requireAuth: true,
       });
-      if (response.ok) {
-        history.push("/myrooms");
-      } else {
-        throw new Error("Failed to delete room");
-      }
+      history.push("/myrooms");
     } catch (e) {
       console.error(e);
       setIsDeleting(false);

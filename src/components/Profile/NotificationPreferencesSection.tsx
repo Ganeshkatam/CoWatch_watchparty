@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Switch, Loader, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconX } from "@tabler/icons-react";
-import { serverPath } from "../../utils/utils";
-import { getAccessToken } from "../../utils/supabaseClient";
+import { apiFetch } from "../../utils/utils";
 import type { NotificationPreferences } from "../Notifications/notificationTypes";
 import styles from "./Profile.module.css";
 
@@ -14,18 +13,11 @@ export const NotificationPreferencesSection: React.FC = () => {
 
   const fetchPreferences = useCallback(async () => {
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      const res = await fetch(`${serverPath}/api/notifications/preferences`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiFetch<{ preferences: NotificationPreferences }>("/api/notifications/preferences", {
+        requireAuth: true,
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (data?.preferences) {
         setPreferences(data.preferences);
       }
     } catch (err) {
@@ -48,20 +40,13 @@ export const NotificationPreferencesSection: React.FC = () => {
     setSavingKey(key);
 
     try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("No session token");
-
-      const res = await fetch(`${serverPath}/api/notifications/preferences`, {
+      const data = await apiFetch<{ preferences: NotificationPreferences }>("/api/notifications/preferences", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ [key]: value }),
+        requireAuth: true,
+        body: { [key]: value },
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (data?.preferences) {
         setPreferences(data.preferences);
         notifications.show({
           title: "Preference Saved",

@@ -148,6 +148,7 @@ async function runProductionSmokeTests() {
   console.log('  PASS: 15-minute expiration warning lifecycle verified with atomic eventId');
 
   console.log('\nAll NOTIFY-004 Production Smoke Certification tests PASSED successfully!\n');
+  process.exit(0);
 }
 
 runProductionSmokeTests().catch((err) => {

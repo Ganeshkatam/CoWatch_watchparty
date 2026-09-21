@@ -10,7 +10,6 @@ import config from '../config.ts';
 import type { EmailProvider, EmailMessage, EmailSendResult } from './emailProvider.ts';
 import { EmailProviderError } from './emailErrors.ts';
 import { BrevoEmailProvider } from './providers/brevoEmailProvider.ts';
-import { ResendEmailProvider } from './providers/resendEmailProvider.ts';
 import { SMTPEmailProvider } from './providers/smtpEmailProvider.ts';
 import type { DeliveryProfileId } from './deliveryProfiles.ts';
 
@@ -20,7 +19,6 @@ export class EmailProviderRegistry {
   static {
     this.register(new SMTPEmailProvider());
     this.register(new BrevoEmailProvider());
-    this.register(new ResendEmailProvider());
   }
 
   static register(provider: EmailProvider): void {

@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
-import config from "../config";
+import config from "../config.js";
 
 const supabaseUrl = config.VITE_SUPABASE_URL;
 const supabaseKey = config.VITE_SUPABASE_PUBLISHABLE_KEY;

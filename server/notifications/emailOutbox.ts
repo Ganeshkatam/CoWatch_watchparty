@@ -214,7 +214,7 @@ export async function checkEmailSuppression(emailHash: string): Promise<boolean>
 export async function recordEmailSuppression(
   emailHash: string,
   reason: 'bounced' | 'complained' | 'manual',
-  source = 'resend_webhook',
+  source = 'provider_webhook',
 ): Promise<void> {
   if (!postgres || !emailHash) return;
 
@@ -227,11 +227,11 @@ export async function recordEmailSuppression(
 }
 
 // ---------------------------------------------------------------------------
-// Resend Webhook Delivery Matching & State Updates
+// Provider Webhook Delivery Matching & State Updates
 // ---------------------------------------------------------------------------
 
 /**
- * Route Resend webhook strictly via provider_message_id, never by email alone.
+ * Route provider webhook strictly via provider_message_id, never by email alone.
  */
 export async function updateDeliveryStatusByProviderMessageId(
   providerMessageId: string,

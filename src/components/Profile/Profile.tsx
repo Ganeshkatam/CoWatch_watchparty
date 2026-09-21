@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { supabase } from "../../utils/supabaseClient";
 import { updateUserProfile } from "../../api/profile";
-import { serverPath, openFileSelector } from "../../utils/utils";
+import { serverPath, openFileSelector, apiFetch } from "../../utils/utils";
 import { parseAccountParams } from "../../utils/routeParams";
 import { MetadataContext } from "../../MetadataContext";
 import { MODAL_SIZES } from "../../utils/designSystem";
@@ -296,15 +296,14 @@ export const Profile: React.FC = () => {
   };
 
   const deleteAccount = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    await fetch(serverPath + "/api/account/delete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    try {
+      await apiFetch("/api/account/delete", {
+        method: "POST",
+        requireAuth: true,
+      });
+    } catch (e) {
+      console.warn("Failed to delete account on server:", e);
+    }
     await supabase.auth.signOut({ scope: "local" });
     window.location.href = "/";
   };

@@ -1,4 +1,4 @@
-import { serverPath } from "./utils";
+import { apiFetch } from "./utils";
 
 export type AnnouncementLevel = "info" | "success" | "warning" | "critical";
 
@@ -13,7 +13,33 @@ export interface AppAnnouncement {
   updated_at: string;
 }
 
-const DISMISS_PREFIX = "announcement-dismiss:";
+const STORAGE_KEY = "cowatch_dismissed_announcements";
+
+interface DismissedEntry {
+  dismissed_at: string;
+  updated_at: string;
+}
+
+type DismissedMap = Record<string, DismissedEntry>;
+
+const getDismissedMap = (): DismissedMap => {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveDismissedMap = (map: DismissedMap): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
+};
 
 /**
  * Validates action URLs to prevent javascript:, data:, or malformed protocols.
@@ -42,82 +68,83 @@ export const isValidActionUrl = (url?: string | null): boolean => {
   }
 };
 
-/**
- * Checks whether an announcement has been dismissed for its current version.
- * If the announcement is edited (newer updated_at), it automatically re-appears.
- */
 export const isAnnouncementDismissed = (announcement: AppAnnouncement): boolean => {
-  try {
-    const dismissedVersion = localStorage.getItem(`${DISMISS_PREFIX}${announcement.id}`);
-    if (!dismissedVersion) {
-      return false;
-    }
-    // Dismissed if the stored version matches the announcement's updated_at timestamp
-    return dismissedVersion === announcement.updated_at;
-  } catch {
+  const map = getDismissedMap();
+  const entry = map[announcement.id];
+  if (!entry) return false;
+
+  const entryTime = new Date(entry.updated_at).getTime();
+  const annTime = new Date(announcement.updated_at).getTime();
+
+  if (isNaN(entryTime) || isNaN(annTime)) {
     return false;
   }
+
+  return annTime <= entryTime;
 };
 
-/**
- * Persists versioned dismissal to localStorage.
- */
 export const dismissAnnouncement = (announcement: AppAnnouncement): void => {
-  try {
-    localStorage.setItem(`${DISMISS_PREFIX}${announcement.id}`, announcement.updated_at);
-  } catch (err) {
-    console.warn("Could not persist announcement dismissal:", err);
-  }
+  const map = getDismissedMap();
+  map[announcement.id] = {
+    dismissed_at: new Date().toISOString(),
+    updated_at: announcement.updated_at,
+  };
+  saveDismissedMap(map);
 };
 
 const LEVEL_PRIORITY: Record<AnnouncementLevel, number> = {
   critical: 4,
   warning: 3,
-  success: 2,
-  info: 1,
+  info: 2,
+  success: 1,
 };
 
-/**
- * Sorts announcements by priority level first, then by published_at descending.
- */
 export const sortAnnouncements = (items: AppAnnouncement[]): AppAnnouncement[] => {
   return [...items].sort((a, b) => {
-    const prioA = LEVEL_PRIORITY[a.level] || 1;
-    const prioB = LEVEL_PRIORITY[b.level] || 1;
-    if (prioB !== prioA) {
-      return prioB - prioA;
+    const pA = LEVEL_PRIORITY[a.level] || 0;
+    const pB = LEVEL_PRIORITY[b.level] || 0;
+    if (pB !== pA) {
+      return pB - pA;
     }
-    return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+    const tA = new Date(a.published_at).getTime();
+    const tB = new Date(b.published_at).getTime();
+    return tB - tA;
   });
 };
 
-/**
- * Asynchronously fetches active announcements.
- * First tries the CoWatch server API (/announcements), with a fallback to direct Supabase query.
- * If both are unavailable or empty, returns an empty array.
- */
+export interface RawAnnouncementItem {
+  id: string | number;
+  title?: string;
+  body?: string;
+  level?: string;
+  action_label?: string | null;
+  action_url?: string | null;
+  published_at?: string;
+  updated_at?: string;
+}
+
+export interface AnnouncementsApiResponse {
+  announcements: RawAnnouncementItem[];
+}
+
 export const fetchAnnouncements = async (): Promise<AppAnnouncement[]> => {
-  // 1. Try server API
   try {
-    const response = await fetch(`${serverPath}/announcements`, {
-      signal: AbortSignal.timeout(3500),
+    const data = await apiFetch<AnnouncementsApiResponse>("/announcements", {
+      timeoutMs: 3500,
     });
-    if (response.ok) {
-      const data = await response.json();
-      if (Array.isArray(data?.announcements)) {
-        return data.announcements.map((item: any) => ({
-          id: String(item.id),
-          title: String(item.title || ""),
-          body: String(item.body || ""),
-          level: (["info", "success", "warning", "critical"].includes(item.level)
-            ? item.level
-            : "info") as AnnouncementLevel,
-          action_label: item.action_label ? String(item.action_label) : null,
-          action_url: isValidActionUrl(item.action_url) ? item.action_url : null,
-          published_at: String(item.published_at || new Date().toISOString()),
-          updated_at: String(item.updated_at || new Date().toISOString()),
-        }));
-      }
+    if (Array.isArray(data?.announcements)) {
+      return data.announcements.map((item) => ({
+        id: String(item.id),
+        title: String(item.title || ""),
+        body: String(item.body || ""),
+        level: (["info", "success", "warning", "critical"].includes(item.level || "")
+          ? item.level
+          : "info") as AnnouncementLevel,
+        action_label: item.action_label ? String(item.action_label) : null,
+        action_url: isValidActionUrl(item.action_url) ? item.action_url : null,
+        published_at: String(item.published_at || new Date().toISOString()),
+        updated_at: String(item.updated_at || new Date().toISOString()),
+      }));
     }
   } catch (e) {
     console.warn("Failed to fetch announcements from server:", e);

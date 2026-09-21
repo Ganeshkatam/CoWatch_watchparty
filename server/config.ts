@@ -89,7 +89,7 @@ const defaults = {
   // ==========================================
   // NOTIFY-001, NOTIFY-002 & NOTIFY-004: Transactional Email Architecture
   // ==========================================
-  EMAIL_PROVIDER: "smtp",          // Global default email provider adapter: "brevo" | "resend" | "smtp"
+  EMAIL_PROVIDER: "smtp",          // Global default email provider adapter: "brevo" | "smtp"
   EMAIL_FROM_ADDRESS: "noreply@cowatch.tv", // Default sender email address
   EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
 
@@ -116,11 +116,6 @@ const defaults = {
   BREVO_API_KEY_SECURITY: "",      // Optional Brevo account API key for security alerts
   BREVO_API_KEY_SYSTEM: "",        // Optional Brevo account API key for system mail
   BREVO_WEBHOOK_SECRET: "",        // Brevo webhook authentication token/secret
-
-  // Resend API Configuration
-  RESEND_API_KEY: "",              // Resend API key; leave blank for dry-run
-  RESEND_FROM_EMAIL: "CoWatch <noreply@cowatch.tv>", // Legacy Resend from-address
-  RESEND_WEBHOOK_SECRET: "",       // Resend Svix webhook signing secret (whsec_...)
 
   // Generic SMTP Configuration (Works with Brevo SMTP, Amazon SES, Postmark, etc.)
   EMAIL_SMTP_HOST: "",             // SMTP server hostname (e.g. smtp-relay.brevo.com)

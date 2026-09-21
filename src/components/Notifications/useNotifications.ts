@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { serverPath } from '../../utils/utils';
+import { serverPath, apiFetch } from '../../utils/utils';
 import { getAccessToken } from '../../utils/supabaseClient';
 import type { User } from '@supabase/supabase-js';
 import type {
@@ -44,28 +44,15 @@ export function useNotifications(user: User | null | undefined) {
     setIsLoading(true);
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setIsLoading(false);
-        isFetchingRef.current = false;
-        return;
-      }
-
-      const [inboxRes, unreadRes] = await Promise.all([
-        fetch(`${serverPath}/api/notifications?limit=30`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${serverPath}/api/notifications/unread-count`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const [inboxData, unreadData] = await Promise.all([
+        apiFetch<NotificationListResponse>('/api/notifications?limit=30', { requireAuth: true }),
+        apiFetch<UnreadCountResponse>('/api/notifications/unread-count', { requireAuth: true }),
       ]);
 
-      if (inboxRes.ok) {
-        const inboxData: NotificationListResponse = await inboxRes.json();
+      if (inboxData) {
         setNotifications(inboxData.notifications || []);
       }
-      if (unreadRes.ok) {
-        const unreadData: UnreadCountResponse = await unreadRes.json();
+      if (unreadData) {
         setUnreadCount(unreadData.count ?? 0);
       }
       setError(null);
@@ -81,14 +68,8 @@ export function useNotifications(user: User | null | undefined) {
   const fetchPreferences = useCallback(async () => {
     if (!user) return;
     try {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      const res = await fetch(`${serverPath}/api/notifications/preferences`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data: PreferencesResponse = await res.json();
+      const data = await apiFetch<PreferencesResponse>('/api/notifications/preferences', { requireAuth: true });
+      if (data?.preferences) {
         setPreferences(data.preferences);
       }
     } catch (err) {
@@ -100,20 +81,13 @@ export function useNotifications(user: User | null | undefined) {
     async (patch: Partial<NotificationPreferences>): Promise<boolean> => {
       if (!user) return false;
       try {
-        const token = await getAccessToken();
-        if (!token) return false;
-
-        const res = await fetch(`${serverPath}/api/notifications/preferences`, {
+        const data = await apiFetch<PreferencesResponse>('/api/notifications/preferences', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(patch),
+          requireAuth: true,
+          body: patch,
         });
 
-        if (res.ok) {
-          const data: PreferencesResponse = await res.json();
+        if (data?.preferences) {
           setPreferences(data.preferences);
           return true;
         }
@@ -136,12 +110,9 @@ export function useNotifications(user: User | null | undefined) {
       setUnreadCount((c) => Math.max(0, c - 1));
 
       try {
-        const token = await getAccessToken();
-        if (!token) return;
-
-        await fetch(`${serverPath}/api/notifications/${encodeURIComponent(notificationId)}/read`, {
+        await apiFetch(`/api/notifications/${encodeURIComponent(notificationId)}/read`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          requireAuth: true,
         });
       } catch (err) {
         console.warn('[useNotifications] Failed to mark notification read:', err);
@@ -160,12 +131,9 @@ export function useNotifications(user: User | null | undefined) {
     setUnreadCount(0);
 
     try {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      await fetch(`${serverPath}/api/notifications/read-all`, {
+      await apiFetch('/api/notifications/read-all', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        requireAuth: true,
       });
     } catch (err) {
       console.warn('[useNotifications] Failed to mark all notifications read:', err);
@@ -186,12 +154,9 @@ export function useNotifications(user: User | null | undefined) {
       });
 
       try {
-        const token = await getAccessToken();
-        if (!token) return;
-
-        await fetch(`${serverPath}/api/notifications/${encodeURIComponent(notificationId)}`, {
+        await apiFetch(`/api/notifications/${encodeURIComponent(notificationId)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
+          requireAuth: true,
         });
       } catch (err) {
         console.warn('[useNotifications] Failed to delete notification:', err);
@@ -208,12 +173,9 @@ export function useNotifications(user: User | null | undefined) {
     setUnreadCount(0);
 
     try {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      await fetch(`${serverPath}/api/notifications/clear-all`, {
+      await apiFetch('/api/notifications/clear-all', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        requireAuth: true,
       });
     } catch (err) {
       console.warn('[useNotifications] Failed to clear notifications:', err);

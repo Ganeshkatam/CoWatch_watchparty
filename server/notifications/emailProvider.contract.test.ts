@@ -8,7 +8,6 @@
 import type { EmailProvider, EmailMessage } from './emailProvider.ts';
 import { EmailProviderError } from './emailErrors.ts';
 import { BrevoEmailProvider } from './providers/brevoEmailProvider.ts';
-import { ResendEmailProvider } from './providers/resendEmailProvider.ts';
 import { SMTPEmailProvider } from './providers/smtpEmailProvider.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -59,62 +58,79 @@ async function runContractSuite(provider: EmailProvider): Promise<void> {
   );
   assert(
     classifiedRateLimit.isRetryable === true,
-    `${provider.name}: RATE_LIMITED errors must be retryable`,
+    `${provider.name}: RATE_LIMITED error must be marked retryable`,
   );
-  console.log(`  PASS: Rate limiting correctly classified as retryable RATE_LIMITED`);
+  console.log(`  PASS: Rate limit error correctly classified as RATE_LIMITED (retryable)`);
 
-  // 3. Error classification: Authentication failure
+  // 3. Error classification: Authentication failure (Permanent)
   const authErr = {
     isAxiosError: true,
-    response: { status: 401, data: { message: 'Bad API key' } },
+    response: { status: 401, data: { message: 'Invalid API Key' } },
     responseCode: 535,
   };
   const classifiedAuth = provider.classifyError(authErr);
+  assert(
+    classifiedAuth instanceof EmailProviderError,
+    `${provider.name}: Must return EmailProviderError instance`,
+  );
   assert(
     classifiedAuth.category === 'AUTHENTICATION',
     `${provider.name}: 401/535 must be classified as AUTHENTICATION`,
   );
   assert(
     classifiedAuth.isRetryable === false,
-    `${provider.name}: AUTHENTICATION errors must be non-retryable`,
+    `${provider.name}: AUTHENTICATION error must NOT be retryable`,
   );
-  console.log(`  PASS: Credential failure correctly classified as non-retryable AUTHENTICATION`);
+  console.log(`  PASS: Authentication error correctly classified as AUTHENTICATION (permanent)`);
 
-  // 4. Error classification: Invalid recipient
-  const recipientErr = {
+  // 4. Error classification: Invalid recipient / Payload error (Permanent)
+  const payloadErr = {
     isAxiosError: true,
-    response: { status: 400, data: { message: 'Invalid email address' } },
-    responseCode: 550,
+    response: { status: 400, data: { message: 'Invalid email address format' } },
+    responseCode: 501,
   };
-  const classifiedRecipient = provider.classifyError(recipientErr);
+  const classifiedPayload = provider.classifyError(payloadErr);
   assert(
-    classifiedRecipient.category === 'INVALID_RECIPIENT',
-    `${provider.name}: 400/550 must be classified as INVALID_RECIPIENT`,
+    classifiedPayload instanceof EmailProviderError,
+    `${provider.name}: Must return EmailProviderError instance`,
   );
   assert(
-    classifiedRecipient.isRetryable === false,
-    `${provider.name}: INVALID_RECIPIENT errors must be non-retryable`,
+    classifiedPayload.category === 'INVALID_RECIPIENT',
+    `${provider.name}: 400/501 must be classified as INVALID_RECIPIENT`,
   );
-  console.log(`  PASS: Malformed/invalid recipient correctly classified as INVALID_RECIPIENT`);
+  assert(
+    classifiedPayload.isRetryable === false,
+    `${provider.name}: INVALID_RECIPIENT error must NOT be retryable`,
+  );
+  console.log(`  PASS: Invalid payload error correctly classified as INVALID_RECIPIENT (permanent)`);
 
-  // 5. Error classification: Transient / Network timeout
-  const timeoutErr = {
+  // 5. Error classification: Transient network / upstream server error
+  const transientErr = {
     isAxiosError: true,
-    code: 'ETIMEDOUT',
-    responseCode: 451,
+    response: { status: 500, data: { message: 'Internal Server Error' } },
+    code: 'ECONNRESET',
   };
-  const classifiedTimeout = provider.classifyError(timeoutErr);
+  const classifiedTransient = provider.classifyError(transientErr);
   assert(
-    classifiedTimeout.category === 'TRANSIENT',
-    `${provider.name}: ETIMEDOUT/451 must be classified as TRANSIENT`,
+    classifiedTransient instanceof EmailProviderError,
+    `${provider.name}: Must return EmailProviderError instance`,
   );
   assert(
-    classifiedTimeout.isRetryable === true,
-    `${provider.name}: TRANSIENT errors must be retryable`,
+    classifiedTransient.category === 'TRANSIENT',
+    `${provider.name}: 500/ECONNRESET must be classified as TRANSIENT`,
   );
-  console.log(`  PASS: Timeout failure correctly classified as retryable TRANSIENT`);
+  assert(
+    classifiedTransient.isRetryable === true,
+    `${provider.name}: TRANSIENT error must be marked retryable`,
+  );
+  console.log(`  PASS: Upstream 500/ECONNRESET correctly classified as TRANSIENT (retryable)`);
 
-  // 6. Capability contract consistency
+  // 6. Capability inspection
+  assert(provider.capabilities !== undefined, `${provider.name}: Must declare capabilities`);
+  assert(
+    typeof provider.capabilities.nativeIdempotency === 'boolean',
+    `${provider.name}: capabilities.nativeIdempotency must be boolean`,
+  );
   assert(
     typeof provider.capabilities.transactionalSending === 'boolean',
     `${provider.name}: capabilities.transactionalSending must be boolean`,
@@ -135,7 +151,6 @@ async function runAllContractTests(): Promise<void> {
 
   const adapters: EmailProvider[] = [
     new BrevoEmailProvider(),
-    new ResendEmailProvider(),
     new SMTPEmailProvider(),
   ];
 

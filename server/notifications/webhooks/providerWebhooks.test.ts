@@ -8,8 +8,6 @@
  */
 
 import { BrevoWebhookAdapter } from './brevoWebhookAdapter.ts';
-import { ResendWebhookAdapter } from './resendWebhookAdapter.ts';
-import { MockWebhookVerifier } from '../webhookVerifier.ts';
 import { DeliveryStateService } from '../deliveryStateService.ts';
 import { computeEmailHash } from '../suppression.ts';
 
@@ -67,32 +65,8 @@ async function runProviderWebhookTests(): Promise<void> {
   assert(brevoEvents[2].normalizedStatus === 'COMPLAINED', 'spam must map to COMPLAINED');
   console.log('  PASS: Brevo webhook events successfully normalized to canonical DTOs');
 
-  // 2. Resend Webhook Adapter Normalization
-  console.log('Case 2: Testing Resend webhook adapter normalization...');
-  const mockVerifier = new MockWebhookVerifier(true);
-  const resendAdapter = new ResendWebhookAdapter(mockVerifier);
-
-  const mockResendReq: any = {
-    headers: { 'svix-id': 'evt_resend_1001' },
-    body: {
-      type: 'email.bounced',
-      created_at: '2026-09-12T18:15:00.000Z',
-      data: {
-        email_id: 'msg_resend_outbox_555',
-        to: ['bounced@cowatch.tv'],
-      },
-    },
-  };
-
-  const resendEvents = resendAdapter.normalizePayload(mockResendReq);
-  assert(resendEvents.length === 1, 'Resend adapter must normalize 1 event');
-  assert(resendEvents[0].normalizedStatus === 'BOUNCED', 'email.bounced must map to BOUNCED');
-  assert(resendEvents[0].providerMessageId === 'msg_resend_outbox_555', 'providerMessageId must match');
-  assert(resendEvents[0].recipientEmail === 'bounced@cowatch.tv', 'recipientEmail must match');
-  console.log('  PASS: Resend webhook events successfully normalized to canonical DTOs');
-
-  // 3. DeliveryStateService Processing & Automated Suppression
-  console.log('Case 3: Testing DeliveryStateService processing and SHA-256 suppression trigger...');
+  // 2. DeliveryStateService Processing & Automated Suppression
+  console.log('Case 2: Testing DeliveryStateService processing and SHA-256 suppression trigger...');
   const service = new DeliveryStateService();
 
   const bounceEvent = brevoEvents[1];

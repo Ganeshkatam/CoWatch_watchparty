@@ -45,10 +45,12 @@ import {
 import { MODAL_SIZES } from "../../utils/designSystem";
 import { InviteModal } from "../Modal/InviteModal";
 import { type RoomSummary } from "./MyRooms";
+import { type RoomDetailsData } from "./RoomDetails";
 import {
   getRoomUrl,
   serverPath,
   isTerminalRoom,
+  apiFetch,
 } from "../../utils/utils";
 import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
@@ -175,22 +177,18 @@ export const EditRoomModal = ({
         setIsLoadingDetails(true);
         (async () => {
           try {
-            const token = await getAccessToken();
-            if (token) {
-              const res = await fetch(`${serverPath}/roomDetails?roomId=${encodeURIComponent(room.roomId)}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              if (res.ok) {
-                const freshData = await res.json();
-                if (freshData.currentPasscode) {
-                  setCurrentPassword(freshData.currentPasscode);
-                }
-                if (freshData.roomTitle) setTitle(freshData.roomTitle);
-                if (freshData.roomDescription !== undefined) setDescription(freshData.roomDescription || "");
-                if (freshData.isPermanent !== undefined) setIsPermanent(Boolean(freshData.isPermanent));
-                if (freshData.isChatDisabled !== undefined) setIsChatDisabled(Boolean(freshData.isChatDisabled));
-                if (freshData.coverPhoto !== undefined) setCoverPreview(freshData.coverPhoto || null);
+            const freshData = await apiFetch<RoomDetailsData>(`/roomDetails?roomId=${encodeURIComponent(room.roomId)}`, {
+              requireAuth: true,
+            });
+            if (freshData) {
+              if (freshData.currentPasscode) {
+                setCurrentPassword(freshData.currentPasscode);
               }
+              if (freshData.roomTitle) setTitle(freshData.roomTitle);
+              if (freshData.roomDescription !== undefined) setDescription(freshData.roomDescription || "");
+              if (freshData.isPermanent !== undefined) setIsPermanent(Boolean(freshData.isPermanent));
+              if (freshData.isChatDisabled !== undefined) setIsChatDisabled(Boolean(freshData.isChatDisabled));
+              if (freshData.coverPhoto !== undefined) setCoverPreview(freshData.coverPhoto || null);
             }
           } catch (e) {
             console.warn("Could not fetch latest room details:", e);
@@ -280,15 +278,11 @@ export const EditRoomModal = ({
 
       const payloadPassword = removeProtection ? "" : (password ? password.trim() : undefined);
 
-      const response = await fetch(`${serverPath}/updateRoomSettings`, {
+      await apiFetch('/updateRoomSettings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
+        requireAuth: true,
+        body: {
           uid: user.id,
-          token,
           roomId: room.roomId,
           roomTitle: trimmedTitle,
           roomDescription: description,
@@ -296,11 +290,8 @@ export const EditRoomModal = ({
           isChatDisabled,
           removePassword: removeProtection,
           password: payloadPassword,
-        }),
+        },
       });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || result.error || "Failed to save room settings");
 
       if (removeProtection) {
         setCurrentPassword("");
@@ -309,22 +300,16 @@ export const EditRoomModal = ({
       }
 
       if (removeCover) {
-        await fetch(`${serverPath}/updateRoomCover`, {
+        await apiFetch('/updateRoomCover', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: null }),
+          requireAuth: true,
+          body: { uid: user.id, roomId: room.roomId, coverPhoto: null },
         });
       } else if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
-        await fetch(`${serverPath}/updateRoomCover`, {
+        await apiFetch('/updateRoomCover', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ uid: user.id, token, roomId: room.roomId, coverPhoto: finalCoverUrl }),
+          requireAuth: true,
+          body: { uid: user.id, roomId: room.roomId, coverPhoto: finalCoverUrl },
         });
       }
 
@@ -805,26 +790,16 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     setIsStopping(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const token = await getAccessToken();
       if (!user) throw new Error("Not logged in");
 
-      const response = await fetch(`${serverPath}/endRoom`, {
+      await apiFetch('/endRoom', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
+        requireAuth: true,
+        body: {
           uid: user.id,
-          token,
           roomId: room.roomId,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to stop room session");
-      }
 
       setStopModalOpened(false);
       if (onRefresh) {

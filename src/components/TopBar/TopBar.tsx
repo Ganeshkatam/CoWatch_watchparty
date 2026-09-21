@@ -1,7 +1,7 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Link, useHistory, useLocation } from "react-router-dom";
-import { serverPath } from "../../utils/utils";
-import { getAccessToken, supabase } from "../../utils/supabaseClient";
+import { apiFetch } from "../../utils/utils";
+import { supabase } from "../../utils/supabaseClient";
 import { Avatar, Burger, Button, Drawer, Menu, Text, Tooltip } from "@mantine/core";
 import type { User } from "@supabase/supabase-js";
 import styles from "./TopBar.module.css";
@@ -99,6 +99,10 @@ export const ThemeToggleQuickButton = () => {
   );
 };
 
+export interface CreateRoomResponse {
+  name: string;
+}
+
 export async function createRoom(
   user: User | null | undefined,
   openNewTab: boolean | undefined,
@@ -115,44 +119,33 @@ export async function createRoom(
     noRedirect?: boolean;
   }
 ) {
-  const token = await getAccessToken();
-  const response = await fetch(serverPath + "/createRoom", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      video,
-      ...options,
-    }),
-  });
-  let data: any = {};
+  let data: CreateRoomResponse;
   try {
-    data = await response.json();
-  } catch (parseErr) {
-    data = {};
-  }
-
-  if (!response.ok || data.error) {
-    const errorObj = data.error;
-    let message = "Failed to create room.";
-    let code: string | undefined;
+    data = await apiFetch<CreateRoomResponse>("/createRoom", {
+      method: "POST",
+      requireAuth: true,
+      body: {
+        video,
+        ...options,
+      },
+    });
+  } catch (err: any) {
+    const errorObj = err.error || err;
+    let message = err.message || "Failed to create room.";
+    let code: string | undefined = err.code;
 
     if (typeof errorObj === "string") {
       message = errorObj;
     } else if (errorObj && typeof errorObj === "object") {
       message = errorObj.message || errorObj.code || message;
       code = errorObj.code;
-    } else if (response.statusText) {
-      message = `Server error (${response.status}): ${response.statusText}`;
     }
 
-    const err: any = new Error(message);
-    err.code = code;
-    err.status = response.status;
-    err.error = errorObj;
-    throw err;
+    const formattedErr: any = new Error(message);
+    formattedErr.code = code;
+    formattedErr.status = err.status;
+    formattedErr.error = errorObj;
+    throw formattedErr;
   }
   const { name } = data;
 

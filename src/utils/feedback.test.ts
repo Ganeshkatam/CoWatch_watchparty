@@ -37,6 +37,7 @@ import {
 import {
   feedbackTelemetry,
 } from "../../server/utils/feedbackTelemetry.js";
+import { submitUserFeedback } from "./feedbackClient.js";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -377,6 +378,46 @@ resetFeedbackRateLimitsForTesting();
 assert(checkFeedbackRateLimit(testIp, testUser).allowed, "Allowed after reset");
 console.log("✓ PASS: In-memory sliding window rate limiter protects against abuse.");
 
+// 12. Client Transport Invariant: submitUserFeedback with idempotency and OperationCoordinator
+async function testClientSubmission() {
+  operationCoordinator.resetAll();
+  const emptyRes = await submitUserFeedback({ type: "bug", message: "   " });
+  assert(!emptyRes.success, "Empty feedback should fail");
+  assertEqual(emptyRes.userMessage, USER_MESSAGES.FEEDBACK_MESSAGE_EMPTY, "Returns FEEDBACK_MESSAGE_EMPTY");
+  assertEqual(operationCoordinator.getDomainStatus("feedback"), "idle", "Coordinator remains idle on empty input");
+
+  const originalFetch = globalThis.fetch;
+  let interceptedUrl = "";
+  let interceptedBody: any = null;
+
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    interceptedUrl = String(url);
+    interceptedBody = JSON.parse(String(init?.body || "{}"));
+    return new Response(
+      JSON.stringify({ id: "fb_test_123", deduped: false }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as any;
+
+  try {
+    const successRes = await submitUserFeedback({
+      message: "Great experience watching together!",
+      type: "experience",
+      idempotency_key: "idem_custom_key_999",
+    });
+
+    assert(successRes.success, "Feedback submission must succeed");
+    assertEqual(successRes.feedbackId, "fb_test_123", "Feedback ID matches response");
+    assertEqual(interceptedBody.idempotency_key, "idem_custom_key_999", "Idempotency key preserved across transport");
+    assert(interceptedUrl.includes("/api/feedback"), "Routes to /api/feedback");
+    assertEqual(operationCoordinator.getDomainStatus("feedback"), "success", "Coordinator transitions to success");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  console.log("✓ PASS: submitUserFeedback preserves idempotency key, routes correctly, and manages OperationCoordinator.");
+}
+await testClientSubmission();
+
 console.log("----------------------------------------------------------------");
-console.log("FEEDBACK-004 Verification Complete: ALL 11 TESTS PASSED.");
+console.log("FEEDBACK-004 Verification Complete: ALL 12 TESTS PASSED.");
 console.log("----------------------------------------------------------------");

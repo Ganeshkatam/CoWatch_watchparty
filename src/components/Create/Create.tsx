@@ -200,6 +200,10 @@ export const Create = () => {
         }
       );
 
+      if (!roomName) {
+        throw new Error("Room creation did not return a valid room name.");
+      }
+
       if (coverPhotoFile && user) {
         if (coverPhotoFile.size >= 1 * 1024 * 1024) {
           setError("Room picture must be less than 1MB.");

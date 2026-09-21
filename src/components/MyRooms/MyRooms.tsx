@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { Title, Text, Button, Loader, Center } from "@mantine/core";
-import { serverPath, serverCandidates, setServerPath } from "../../utils/utils";
-import { getAccessToken } from "../../utils/supabaseClient";
+import { apiFetch } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import styles from "./MyRooms.module.css";
 import { Hero } from "./Hero";
@@ -38,6 +37,17 @@ interface RoomStatsData {
   finished: number;
 }
 
+export interface ListRoomsResponse {
+  rooms: RoomSummary[];
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+  stats?: RoomStatsData;
+}
+
+export type ListRoomsResult = RoomSummary[] | ListRoomsResponse;
+
 const useRooms = (
   user: any,
   page: number,
@@ -67,7 +77,6 @@ const useRooms = (
       setLoading(true);
     }
     try {
-      const token = await getAccessToken();
       const params = new URLSearchParams({
         page: String(page),
         limit: String(pageSize),
@@ -80,48 +89,24 @@ const useRooms = (
         params.append("status", filterOption);
       }
 
-      let response: Response | undefined;
-      const candidatesToTry = [serverPath, ...serverCandidates.filter((c: string) => c !== serverPath)];
+      const data = await apiFetch<ListRoomsResult>(`/listRooms?${params.toString()}`, {
+        requireAuth: true,
+      });
 
-      for (let i = 0; i < candidatesToTry.length; i++) {
-        const candidate = candidatesToTry[i];
-        try {
-          const res = await fetch(`${candidate}/listRooms?${params.toString()}`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          });
-          if (res.ok) {
-            response = res;
-            if (candidate !== serverPath) {
-              setServerPath(candidate);
-            }
-            break;
-          } else {
-            response = res;
-          }
-        } catch (fetchErr) {
-          if (i === candidatesToTry.length - 1 && !response) {
-            throw fetchErr;
-          }
+      let roomsList: RoomSummary[] = [];
+      let total = 0;
+      let parsedStats: RoomStatsData = { total: 0, active: 0, expiring: 0, finished: 0 };
+
+      if (Array.isArray(data)) {
+        roomsList = data;
+        total = data.length;
+      } else if (data && typeof data === "object") {
+        roomsList = Array.isArray(data.rooms) ? data.rooms : [];
+        total = data.total !== undefined ? Number(data.total) || 0 : roomsList.length;
+        if (data.stats) {
+          parsedStats = data.stats;
         }
       }
-
-      if (!response || !response.ok) {
-        const errData = await response?.json().catch(() => null);
-        const errMsg =
-          errData?.error?.message ||
-          errData?.error ||
-          (response ? `Failed to fetch rooms (${response.status})` : "Failed to fetch rooms");
-        throw new Error(errMsg);
-      }
-
-      const data = await response.json();
-      const roomsList = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.rooms)
-          ? data.rooms
-          : [];
-      const total = data?.total !== undefined ? Number(data.total) || 0 : roomsList.length;
-      const parsedStats = data?.stats || { total: 0, active: 0, expiring: 0, finished: 0 };
 
       setRooms(roomsList);
       setTotalCount(total);
@@ -135,11 +120,9 @@ const useRooms = (
       isFetchingRef.current = false;
       if (!silent) {
         setLoading(false);
-      } else {
-        setIsRefreshing(false);
       }
     }
-  }, [user, page, pageSize, sortOption, filterOption, searchQuery, serverPath, serverCandidates]);
+  }, [user, page, pageSize, sortOption, filterOption, searchQuery]);
 
   useEffect(() => {
     fetchRooms(false);
@@ -188,18 +171,14 @@ const useRooms = (
 
   const deleteRoom = async (roomId: string) => {
     try {
-      const token = await getAccessToken();
-      const response = await fetch(`${serverPath}/deleteRoom?roomId=${encodeURIComponent(roomId)}`, {
+      await apiFetch(`/deleteRoom?roomId=${encodeURIComponent(roomId)}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        requireAuth: true,
       });
-      if (response.ok) {
-        setRooms(prev => prev.filter(r => r.roomId !== roomId));
-        setTotalCount(prev => Math.max(0, prev - 1));
-        fetchRooms(true);
-        return true;
-      }
-      return false;
+      setRooms(prev => prev.filter(r => r.roomId !== roomId));
+      setTotalCount(prev => Math.max(0, prev - 1));
+      fetchRooms(true);
+      return true;
     } catch (e) {
       console.error(e);
       return false;
@@ -208,20 +187,13 @@ const useRooms = (
 
   const updateRoomCover = async (roomId: string, coverPhoto: string) => {
     try {
-      const token = await getAccessToken();
-      const response = await fetch(`${serverPath}/updateRoomCover`, {
+      await apiFetch(`/updateRoomCover`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ uid: user?.id, roomId, coverPhoto })
+        requireAuth: true,
+        body: { uid: user?.id, roomId, coverPhoto },
       });
-      if (response.ok) {
-        setRooms(prev => prev.map(r => r.roomId === roomId ? { ...r, coverPhoto } : r));
-        return true;
-      }
-      return false;
+      setRooms(prev => prev.map(r => r.roomId === roomId ? { ...r, coverPhoto } : r));
+      return true;
     } catch (e) {
       console.error(e);
       return false;

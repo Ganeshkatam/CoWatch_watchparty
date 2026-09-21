@@ -1,3 +1,5 @@
+import { apiFetch, ApiError } from "./utils";
+
 export interface StoredRoomAdmission {
   roomId: string;
   admissionToken: string;
@@ -141,12 +143,20 @@ const inFlightRestorations = new Map<
  * Authoritatively restores an active room admission for an authenticated user.
  * Single-flight: concurrent calls for the same room await the existing request.
  */
+export interface RestoreAdmissionApiResponse {
+  valid: boolean;
+  admissionToken?: string;
+  sessionId?: string;
+  error?: string;
+  code?: string;
+}
+
 export async function restoreAdmissionSession(
   roomId: string,
-  serverPath: string,
+  serverPath?: string,
   token?: string,
   uid?: string
-): Promise<{ valid: boolean; admissionToken?: string; sessionId?: string; error?: string; code?: string }> {
+): Promise<RestoreAdmissionApiResponse> {
   const cleanRoomId = (roomId || "").trim().toLowerCase();
   if (!cleanRoomId) {
     return { valid: false, error: "Missing roomId", code: "INVALID_ROOM" };
@@ -159,42 +169,33 @@ export async function restoreAdmissionSession(
 
   const restorationPromise = (async () => {
     try {
-      if (!token || !uid) {
-        return { valid: false, error: "Authentication required", code: "AUTH_REQUIRED" };
-      }
-
-      const resp = await fetch(`${serverPath}/room-admission/restore`, {
+      const data = await apiFetch<RestoreAdmissionApiResponse>("/room-admission/restore", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ roomId }),
+        requireAuth: true,
+        body: { roomId },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.valid && data.admissionToken && data.sessionId) {
-          saveAdmissionSession(roomId, data.admissionToken, data.sessionId);
-          return {
-            valid: true,
-            admissionToken: data.admissionToken,
-            sessionId: data.sessionId,
-          };
-        }
-        return { valid: false, error: data.error, code: data.code };
+      if (data?.valid && data.admissionToken && data.sessionId) {
+        saveAdmissionSession(roomId, data.admissionToken, data.sessionId);
+        return {
+          valid: true,
+          admissionToken: data.admissionToken,
+          sessionId: data.sessionId,
+        };
       }
-
-      const errData = await resp.json().catch(() => ({}));
-      if (resp.status === 401 || resp.status === 403) {
-        clearAdmissionSession(roomId);
-      }
-      return {
-        valid: false,
-        error: errData.error || "Admission restoration failed",
-        code: errData.code,
-      };
+      return { valid: false, error: data?.error, code: data?.code };
     } catch (err: any) {
+      if (err instanceof ApiError) {
+        if (err.status === 401 || err.status === 403) {
+          clearAdmissionSession(roomId);
+        }
+        return {
+          valid: false,
+          error: err.message || "Admission restoration failed",
+          code: err.code,
+        };
+      }
       return {
         valid: false,
         error: err?.message || "Network error",

@@ -161,11 +161,20 @@ function createRoomDataServer() {
     const callerUid = decoded.uid;
 
     const search = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
     const limit = Math.max(1, parseInt(String(req.query.limit || "20"), 10) || 20);
+    const status = typeof req.query.status === "string" ? req.query.status.trim().toLowerCase() : "";
+    const access = typeof req.query.access === "string" ? req.query.access.trim().toLowerCase() : "";
 
     const userRooms: any[] = [];
     for (const room of mockRoomsDb.values()) {
       if (room.owner_id === callerUid) {
+        if (status && room.status.toLowerCase() !== status) {
+          continue;
+        }
+        if (access === "protected" && !room.passcode) {
+          continue;
+        }
         if (
           !search ||
           room.roomTitle.toLowerCase().includes(search) ||
@@ -184,7 +193,8 @@ function createRoomDataServer() {
       }
     }
 
-    res.json(userRooms.slice(0, limit));
+    const startIndex = (page - 1) * limit;
+    res.json(userRooms.slice(startIndex, startIndex + limit));
   });
 
   return app;
@@ -402,13 +412,40 @@ async function runRoomDataBoundariesTests() {
         "Non-owner direct SELECT strictly blocked by RLS returning null"
       );
     }
+
+    // Test 13: Unauthenticated /listRooms strictly returns 401
+    {
+      const res = await fetch(`${baseUrl}/listRooms`);
+      assert(
+        res.status === 401,
+        13,
+        "Unauthenticated /listRooms request strictly returns 401"
+      );
+    }
+
+    // Test 14: Authenticated /listRooms supports pagination and status filtering
+    {
+      const res = await fetch(`${baseUrl}/listRooms?page=1&limit=10&status=active`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      const data = await res.json();
+      assert(
+        res.status === 200 &&
+        Array.isArray(data) &&
+        data.length === 1 &&
+        data[0].status === "active" &&
+        data[0].roomId === "room_protected_2",
+        14,
+        "Authenticated /listRooms returns correct status-filtered pagination result"
+      );
+    }
   } finally {
     server.close();
   }
 
   console.log("================================================================");
   if (failed === 0) {
-    console.log(`ALL 12 ROOM-DATA-001 TESTS PASSED WITH ZERO FAILURES.`);
+    console.log(`ALL 14 ROOM-DATA-001 TESTS PASSED WITH ZERO FAILURES.`);
   } else {
     console.error(`TEST SUITE FAILED: ${passed} passed, ${failed} failed.`);
     process.exit(1);
