@@ -47,22 +47,22 @@ interface CoverPreset {
 const COVER_PRESETS: CoverPreset[] = [
   {
     id: "cinema",
-    name: "Cinema Lounge",
+    name: "Movie Night",
     url: "/presets/cinema.jpg",
   },
   {
     id: "cyberpunk",
-    name: "Cyberpunk",
+    name: "Neon City",
     url: "/presets/cyberpunk.jpg",
   },
   {
     id: "lofi",
-    name: "Lo-Fi Chill",
+    name: "Chill & Study",
     url: "/presets/lofi.jpg",
   },
   {
     id: "cosmic",
-    name: "Cosmic Nebula",
+    name: "Space Voyage",
     url: "/presets/cosmic.jpg",
   },
 ];
