@@ -116,11 +116,16 @@ export class AdmissionCoordinator {
       // 4. Inactive state check
       if (status === "inactive") {
         if (isActorOwner) {
-          // Owner is admitted but room stays inactive until explicit CMD:startSession
+          // Transactional activation on cold start by room owner inside row lock
+          await client.query(
+            `UPDATE rooms SET status = 'active', "lastUpdateTime" = NOW() WHERE "roomId" = $1`,
+            [roomId]
+          );
           return {
             allowed: true,
-            status: "inactive",
-            roomRow: row,
+            status: "active",
+            isColdStart: true,
+            roomRow: { ...row, status: "active" },
           };
         } else {
           return {

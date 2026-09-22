@@ -7,8 +7,8 @@ import type { DatabasePool } from "./admissionCoordinator.ts";
 export class RoomReconstructor {
   private db: DatabasePool | null;
 
-  constructor(db: DatabasePool | null) {
-    this.db = db;
+  constructor(db: DatabasePool | null | undefined) {
+    this.db = db ?? null;
   }
 
   public async reconstructRoom(

@@ -12,10 +12,10 @@ export class RoomLifecycleManager {
   private inMemoryRooms: Map<string, Room>;
 
   constructor(
-    db: DatabasePool | null,
+    db: DatabasePool | null | undefined,
     inMemoryRooms: Map<string, Room>
   ) {
-    this.db = db;
+    this.db = db ?? null;
     this.inMemoryRooms = inMemoryRooms;
   }
 

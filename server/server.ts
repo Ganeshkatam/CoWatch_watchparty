@@ -29,6 +29,8 @@ import {
 } from "./utils/roomPasscode.ts";
 import { issueRoomAdmissionToken } from "./utils/admissionToken.ts";
 import { isTerminalRoom } from "./lifecycle/types.ts";
+import { RoomReconstructor } from "./lifecycle/roomReconstruction.ts";
+import { RoomLifecycleManager } from "./lifecycle/roomManager.ts";
 import {
   checkPasscodeRateLimits,
   recordPasscodeFailure,
@@ -86,7 +88,6 @@ if (process.env.NODE_ENV === "development") {
   );
 }
 
-const releaseInterval = 5 * 60 * 1000;
 const app = express();
 let server = null as https.Server | http.Server | null;
 if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
@@ -169,6 +170,8 @@ const io = new Server(server, {
 registerNotificationNamespace(io);
 notificationService.setIo(io);
 const rooms = new Map<string, Room>();
+const roomReconstructor = new RoomReconstructor(postgres ?? null);
+const roomLifecycleManager = new RoomLifecycleManager(postgres ?? null, rooms);
 
 export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
   const cleanId = sanitizeRoomId(rawRoomId);
@@ -193,17 +196,7 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
 
     if (rooms.has(cleanId)) return rooms.get(cleanId)!;
 
-    const data = persistedRoom.data
-      ? JSON.stringify(persistedRoom.data)
-      : undefined;
-    const room = new Room(io, cleanId, data);
-    room.status = persistedRoom.status || 'inactive';
-    room.expiresAt = persistedRoom.expiresAt ? new Date(persistedRoom.expiresAt as string) : undefined;
-    room.owner_id = persistedRoom.owner_id;
-    room.isPermanent = persistedRoom.isPermanent || false;
-    room.participantsLocked = Boolean(persistedRoom.participants_locked);
-    room.maxParticipants = persistedRoom.max_participants || 10;
-    room.roomTitle = persistedRoom.roomTitle || undefined;
+    const { room } = await roomReconstructor.reconstructRoom(persistedRoom, io);
     rooms.set(cleanId, room);
     console.log(
       "loading room %s into memory on shard %s",
@@ -263,8 +256,8 @@ dynamicRoomNsp.use(async (socket, next) => {
 });
 // Following functions iterate over in-memory rooms
 setInterval(minuteMetrics, 60 * 1000);
-setInterval(release, releaseInterval);
-setInterval(saveRooms, 1000);
+setInterval(checkIdleRooms, 30 * 1000);
+setInterval(saveRooms, 15 * 1000);
 setInterval(expireRooms, 60 * 1000);
 setInterval(checkEndingSoonRooms, 60 * 1000);
 // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
@@ -3031,31 +3024,28 @@ app.get("/proxy/*splat", async (req, res) => {
   }
 });
 
+async function checkIdleRooms() {
+  const roomKeys = Array.from(rooms.keys());
+  for (const roomId of roomKeys) {
+    try {
+      const res = await roomLifecycleManager.unloadIfIdle(roomId);
+      if (res.evacuated) {
+        unregisterRoomNamespace(roomId);
+        console.log(`[Lifecycle] Room ${roomId} evacuated to inactive status via CAS`);
+      }
+    } catch (err) {
+      console.warn(`[Lifecycle] Idle evacuation check failed for ${roomId}:`, err);
+    }
+  }
+}
+
 async function saveRooms() {
-  // Unload rooms that are empty and idle
-  // Frees up some JS memory space when process is long-running
-  // On reconnect, we'll attempt to reload the room
   let saveCount = 0;
   let skipCount = 0;
   const start = Date.now();
   await Promise.all(
     Array.from(rooms.entries()).map(async ([key, room]) => {
-      if (
-        room.roster.length === 0 &&
-        Number(room.lastUpdateTime) < Date.now() - 8 * 60 * 60 * 1000
-      ) {
-        console.log(
-          "freeing room %s from memory on shard %s",
-          key,
-          config.SHARD,
-        );
-        await room.saveRoom();
-        room.destroy();
-        rooms.delete(key);
-        saveCount += 1;
-        // Unregister the namespace to avoid dupes on reload
-        unregisterRoomNamespace(key);
-      } else if (room.roster.length) {
+      if (room.roster.length > 0) {
         room.lastUpdateTime = new Date();
         await room.saveRoom();
         saveCount += 1;
@@ -3065,12 +3055,14 @@ async function saveRooms() {
     }),
   );
   const end = Date.now();
-  console.log(
-    "[SAVEROOMS] %s saved in %sms, %s skipped",
-    saveCount,
-    end - start,
-    skipCount,
-  );
+  if (saveCount > 0) {
+    console.log(
+      "[SAVEROOMS] %s active rooms saved in %sms, %s skipped",
+      saveCount,
+      end - start,
+      skipCount,
+    );
+  }
 }
 
 async function expireRooms() {
@@ -3201,21 +3193,6 @@ async function checkEndingSoonRooms() {
     }
   } catch (e: any) {
     console.warn("Error checking ending soon rooms:", e?.message || e);
-  }
-}
-
-async function release() {
-  // Reset VMs in rooms that are:
-  // older than the session limit
-  // assigned to a room with no users
-  const roomArr = Array.from(rooms.values());
-  console.log("[RELEASE] %s rooms in batch", roomArr.length);
-  for (let room of roomArr) {
-
-    // We want to spread out the jobs over about half the release interval
-    // This gives other jobs some CPU time
-    const waitTime = releaseInterval / 2 / roomArr.length;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
   }
 }
 
