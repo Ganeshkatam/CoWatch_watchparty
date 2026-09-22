@@ -644,18 +644,6 @@ export const Home: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-
-                  <td className={styles.highlightColumn}>
-                    <IconCheck size={18} className={styles.checkIcon} /> Yes (Remote VM)
-                  </td>
-                  <td>
-                    <IconX size={18} className={styles.crossIcon} /> Often restricted
-                  </td>
-                  <td>
-                    <IconX size={18} className={styles.crossIcon} /> Extension dependent
-                  </td>
-                </tr>
-                <tr>
                   <td>Mobile Web Browser Support</td>
                   <td className={styles.highlightColumn}>
                     <IconCheck size={18} className={styles.checkIcon} /> Yes (Direct in browser)
