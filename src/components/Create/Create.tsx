@@ -95,7 +95,7 @@ export const Create = () => {
   };
   const [passcode, setPasscode] = useState(generatePasscode());
   const [passcodeError, setPasscodeError] = useState("");
-  const [checkingPasscode, setCheckingPasscode] = useState(false);
+  const [, setCheckingPasscode] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [copiedPasscode, setCopiedPasscode] = useState(false);
 
@@ -213,8 +213,8 @@ export const Create = () => {
   const activeCoverUrl = coverPreview
     ? coverPreview
     : selectedPreset
-    ? COVER_PRESETS.find((p) => p.id === selectedPreset)?.url || null
-    : null;
+      ? COVER_PRESETS.find((p) => p.id === selectedPreset)?.url || null
+      : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -738,9 +738,8 @@ export const Create = () => {
                             key={preset.id}
                             type="button"
                             onClick={() => handleSelectPreset(preset.id)}
-                            className={`${styles.presetTile} ${
-                              isSelected ? styles.presetTileActive : ""
-                            }`}
+                            className={`${styles.presetTile} ${isSelected ? styles.presetTileActive : ""
+                              }`}
                             aria-label={`Select ${preset.name} cover preset`}
                           >
                             <div
