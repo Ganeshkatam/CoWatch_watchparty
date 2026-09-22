@@ -12,36 +12,56 @@ async function runGate3ConcurrencyQuotaTests() {
   // --------------------------------------------------------------------------
   // Area 1: Capacity Ceiling & Participant Boundaries (MEMBER-001 Invariant)
   // --------------------------------------------------------------------------
-  console.log('Area 1: Authoritative Participant Capacity Ceiling (2 - 10)...');
+  // Capacity ceiling is plan-derived (2–500).
+  // The free plan ceiling is 10 (a plan entitlement, not the platform maximum).
+  // The domain minimum is 2 — enforced at DB, SQL function, and server layers independently.
+  // --------------------------------------------------------------------------
+  console.log('Area 1: Authoritative Participant Capacity Ceiling (plan-derived, min=2)...');
   {
-    // Test 1.1: Platform default capacity is 10
-    const defaultCapacity = 10;
-    assert.strictEqual(defaultCapacity, 10, 'Default participant capacity must be exactly 10');
-
-    // Test 1.2: Boundary rejection for invalid capacities (< 2 or > 10)
-    const validateCapacity = (capacity: any): { valid: boolean; error?: string } => {
-      let maxParticipants = 10;
+    // Test 1.1: Parametric validator — matches the updated server pre-check logic.
+    // planCeiling is injected so the test is not coupled to a specific plan value.
+    const validateCapacity = (
+      capacity: unknown,
+      planCeiling: number,
+    ): { valid: boolean; error?: string } => {
       if (capacity !== undefined && capacity !== null) {
         const parsedCapacity = Number(capacity);
-        if (!Number.isInteger(parsedCapacity) || parsedCapacity < 2 || parsedCapacity > 10) {
+        if (!Number.isInteger(parsedCapacity) || parsedCapacity < 2 || parsedCapacity > planCeiling) {
           return {
             valid: false,
-            error: 'Participant capacity must be an integer between 2 and 10.',
+            error: `Participant capacity must be an integer between 2 and ${planCeiling}.`,
           };
         }
-        maxParticipants = parsedCapacity;
       }
       return { valid: true };
     };
 
-    assert.strictEqual(validateCapacity(undefined).valid, true, 'Default undefined capacity should be valid');
-    assert.strictEqual(validateCapacity(null).valid, true, 'Default null capacity should be valid');
-    assert.strictEqual(validateCapacity(2).valid, true, 'Minimum capacity (2) must be valid');
-    assert.strictEqual(validateCapacity(10).valid, true, 'Maximum capacity (10) must be valid');
-    assert.strictEqual(validateCapacity(1).valid, false, 'Capacity of 1 must be rejected');
-    assert.strictEqual(validateCapacity(11).valid, false, 'Capacity > 10 must be rejected');
-    assert.strictEqual(validateCapacity(5.5).valid, false, 'Non-integer capacity must be rejected');
-    assert.strictEqual(validateCapacity('abc').valid, false, 'Non-numeric capacity must be rejected');
+    // Domain invariant: min=2 is universal — always rejected below 2.
+    assert.strictEqual(validateCapacity(1, 10).valid,   false, 'capacity 1 rejected universally (below domain min)');
+    assert.strictEqual(validateCapacity(1, 500).valid,  false, 'capacity 1 rejected even at platform max plan');
+    assert.strictEqual(validateCapacity(2, 10).valid,   true,  'capacity 2 valid (domain min)');
+
+    // Undefined/null use plan default — no validation triggered.
+    assert.strictEqual(validateCapacity(undefined, 10).valid, true, 'undefined capacity defaults to plan ceiling, no rejection');
+    assert.strictEqual(validateCapacity(null, 10).valid,      true, 'null capacity defaults to plan ceiling, no rejection');
+
+    // Plan-ceiling boundary: value AT ceiling is valid, value ABOVE is rejected.
+    assert.strictEqual(validateCapacity(10, 10).valid,  true,  'plan=10, request=10 → permit (at ceiling)');
+    assert.strictEqual(validateCapacity(11, 10).valid,  false, 'plan=10, request=11 → reject (above ceiling)');
+
+    // Higher-ceiling plans permit values the free plan would reject.
+    assert.strictEqual(validateCapacity(11, 20).valid,  true,  'plan=20, request=11 → permit');
+    assert.strictEqual(validateCapacity(20, 20).valid,  true,  'plan=20, request=20 → permit (at ceiling)');
+    assert.strictEqual(validateCapacity(21, 20).valid,  false, 'plan=20, request=21 → reject (above ceiling)');
+
+    // Platform maximum.
+    assert.strictEqual(validateCapacity(500, 500).valid,  true,  'plan=500, request=500 → permit (platform max)');
+    assert.strictEqual(validateCapacity(501, 500).valid,  false, 'plan=500, request=501 → reject (above platform max)');
+
+    // Non-integer and non-numeric always rejected regardless of ceiling.
+    assert.strictEqual(validateCapacity(5.5, 10).valid,   false, 'non-integer always rejected');
+    assert.strictEqual(validateCapacity('abc', 10).valid, false, 'non-numeric always rejected');
+
 
     // Test 1.3: Room fullness logic with active participants and disconnect grace period
     class SimulatedRoomCapacityAuthority {

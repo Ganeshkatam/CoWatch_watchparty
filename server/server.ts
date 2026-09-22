@@ -1348,6 +1348,104 @@ app.get("/youtubePlaylist/:playlistId", async (req, res) => {
   }
 });
 
+// Response shape for GET /roomEntitlements.
+// Numeric fields are narrowed with Number() — never bare "as number" casts.
+interface RoomEntitlementResponse {
+  planId: string;
+  planDisplayName: string;
+  enabled: boolean;
+  maxTotalRooms: number;
+  maxWatchRooms: number;
+  maxPermanentRooms: number;
+  // DOMAIN PLATFORM MAX = 500 | FREE PLAN MAX = 10 | CURRENT USER = this field
+  maxParticipantCapacity: number;
+  // Arbitrary integer 1–720; no discrete set at any layer
+  maxRoomDurationHours: number;
+  hasOverrides: boolean;
+  usageTotalRooms: number;
+  usageWatchRooms: number;
+  usagePermanentRooms: number;
+}
+
+app.get("/roomEntitlements", async (req, res) => {
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Authentication required." });
+    return;
+  }
+  const decoded = await validateUserToken("", token);
+  if (decoded === "EMAIL_NOT_VERIFIED") {
+    res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+    return;
+  }
+  if (!decoded) {
+    res.status(401).json({ error: "Invalid authentication token." });
+    return;
+  }
+
+  if (!postgres) {
+    res.status(503).json({ error: "Database unavailable." });
+    return;
+  }
+
+  try {
+    const result = await postgres.query(
+      `SELECT
+         e.plan_id            AS "planId",
+         e.plan_display_name  AS "planDisplayName",
+         e.enabled,
+         e.max_total_rooms    AS "maxTotalRooms",
+         e.max_watch_rooms    AS "maxWatchRooms",
+         e.max_permanent_rooms AS "maxPermanentRooms",
+         e.max_participant_capacity AS "maxParticipantCapacity",
+         e.max_room_duration_hours  AS "maxRoomDurationHours",
+         e.has_overrides      AS "hasOverrides",
+         COALESCE(u.total_rooms,     0) AS "usageTotalRooms",
+         COALESCE(u.watch_rooms,     0) AS "usageWatchRooms",
+         COALESCE(u.permanent_rooms, 0) AS "usagePermanentRooms"
+       FROM public.resolve_account_entitlement($1) e
+       LEFT JOIN public.account_room_usage u ON u.account_id = $1`,
+      [decoded.uid]
+    );
+
+    if (result.rows.length === 0) {
+      // resolve_account_entitlement returned no row — account not provisioned.
+      // Distinct 404 semantics; contrast with the 500 catch block below.
+      res.status(404).json({
+        error: { code: "ACCOUNT_ENTITLEMENT_NOT_FOUND", message: "No subscription plan found for this account." },
+      });
+      return;
+    }
+
+    const row = result.rows[0];
+    const response: RoomEntitlementResponse = {
+      planId: String(row.planId ?? ""),
+      planDisplayName: String(row.planDisplayName ?? ""),
+      enabled: Boolean(row.enabled),
+      maxTotalRooms: Number(row.maxTotalRooms),
+      maxWatchRooms: Number(row.maxWatchRooms),
+      maxPermanentRooms: Number(row.maxPermanentRooms),
+      maxParticipantCapacity: Number(row.maxParticipantCapacity),
+      maxRoomDurationHours: Number(row.maxRoomDurationHours),
+      hasOverrides: Boolean(row.hasOverrides),
+      usageTotalRooms: Number(row.usageTotalRooms),
+      usageWatchRooms: Number(row.usageWatchRooms),
+      usagePermanentRooms: Number(row.usagePermanentRooms),
+    };
+    res.json(response);
+  } catch (err: any) {
+    const msg: string = err?.message ?? "";
+    if (msg.includes("ACCOUNT_ENTITLEMENT_NOT_FOUND")) {
+      res.status(404).json({
+        error: { code: "ACCOUNT_ENTITLEMENT_NOT_FOUND", message: "No subscription plan found for this account." },
+      });
+      return;
+    }
+    console.error("GET /roomEntitlements error:", err);
+    res.status(500).json({ error: "Failed to load entitlement data." });
+  }
+});
+
 app.post("/checkPasscodeAvailability", async (req, res) => {
   const passcode = req.body?.passcode;
   if (typeof passcode !== "string" || passcode.length !== 8) {
@@ -1418,14 +1516,42 @@ app.post("/createRoom", async (req, res) => {
     });
     return;
   }
+  // Capacity range validation.
+  // DOMAIN PLATFORM MAX = 500 (rooms_max_participants_check DB constraint)
+  // FREE PLAN MAX = 10 (entitlement — fetched below via preliminary STABLE read)
+  // The authoritative enforcement boundary remains inside create_room_authoritative().
+  if (!postgres) {
+    res.status(503).json({ error: "Database unavailable." });
+    return;
+  }
+  const entRow = await postgres.query(
+    `SELECT max_participant_capacity, max_room_duration_hours
+     FROM public.resolve_account_entitlement($1)`,
+    [decoded.uid]
+  );
+  if (entRow.rows.length === 0) {
+    res.status(403).json({
+      error: {
+        code: "ACCOUNT_ENTITLEMENT_NOT_FOUND",
+        message: "No active subscription plan found for this account.",
+      },
+    });
+    return;
+  }
+  const planCapacityCeiling = Number(entRow.rows[0].max_participant_capacity);
+  const planDurationCeiling = Number(entRow.rows[0].max_room_duration_hours);
+  if (!Number.isFinite(planCapacityCeiling) || !Number.isFinite(planDurationCeiling)) {
+    console.error("createRoom: malformed entitlement row for uid:", decoded.uid, entRow.rows[0]);
+    res.status(503).json({ error: "Malformed entitlement data." });
+    return;
+  }
 
-  // MEMBER-001 Invariant: Capacity range validation (2 - 10, default 10 platform ceiling)
-  let maxParticipants = 10;
+  let maxParticipants = planCapacityCeiling;
   if (req.body?.maxParticipants !== undefined && req.body?.maxParticipants !== null) {
     const parsedCapacity = Number(req.body.maxParticipants);
-    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 2 || parsedCapacity > 10) {
+    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 2 || parsedCapacity > planCapacityCeiling) {
       res.status(400).json({
-        error: "Participant capacity must be an integer between 2 and 10.",
+        error: `Participant capacity must be an integer between 2 and ${planCapacityCeiling}.`,
       });
       return;
     }
@@ -1454,11 +1580,11 @@ app.post("/createRoom", async (req, res) => {
   const isPermanent = Boolean(req.body?.isPermanent);
   const roomKind = isPermanent ? "permanent" : "watch";
   const now = new Date();
-  let requestedDurationHours = 3;
+  let requestedDurationHours = Math.min(3, planDurationCeiling);
   if (typeof req.body?.durationHours === "number" && req.body.durationHours > 0) {
-    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.durationHours)), 6);
+    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.durationHours)), planDurationCeiling);
   } else if (typeof req.body?.sessionTimeHours === "number" && req.body.sessionTimeHours > 0) {
-    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.sessionTimeHours)), 6);
+    requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.sessionTimeHours)), planDurationCeiling);
   }
   const expiresAt = isPermanent ? null : new Date(now.getTime() + requestedDurationHours * 60 * 60 * 1000);
 

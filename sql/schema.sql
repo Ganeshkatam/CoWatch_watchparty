@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   CONSTRAINT room_title_not_empty CHECK (btrim("roomTitle") <> ''::text),
   CONSTRAINT rooms_expiration_policy_check CHECK ("isPermanent" = true AND "expiresAt" IS NULL OR "isPermanent" = false AND "expiresAt" IS NOT NULL),
   CONSTRAINT rooms_kind_permanent_check CHECK (room_kind = 'permanent'::text AND "isPermanent" = true AND "expiresAt" IS NULL OR room_kind = 'watch'::text AND "isPermanent" = false AND "expiresAt" IS NOT NULL),
-  CONSTRAINT rooms_max_participants_check CHECK (max_participants >= 2 AND max_participants <= 10),
+  CONSTRAINT rooms_max_participants_check CHECK (max_participants >= 2 AND max_participants <= 500),
   CONSTRAINT room_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES profiles(id) ON DELETE CASCADE,
   CONSTRAINT room_pkey PRIMARY KEY ("roomId"),
   CONSTRAINT rooms_passcode_fingerprint_key UNIQUE (passcode_fingerprint)

@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useMemo } from "react";
 import { useHistory, Link } from "react-router-dom";
 import {
   TextInput,
@@ -12,7 +12,7 @@ import {
   ActionIcon,
   Tooltip,
   Textarea,
-  Select,
+  NumberInput,
   Slider,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -43,6 +43,30 @@ interface CoverPreset {
   name: string;
   url: string;
 }
+
+interface RoomEntitlement {
+  planId: string;
+  planDisplayName: string;
+  enabled: boolean;
+  maxTotalRooms: number;
+  maxWatchRooms: number;
+  maxPermanentRooms: number;
+  // DOMAIN PLATFORM MAX = 500 | FREE PLAN MAX = 10 | CURRENT USER = this field
+  maxParticipantCapacity: number;
+  // Arbitrary integer 1–720; no discrete set at any layer
+  maxRoomDurationHours: number;
+  hasOverrides: boolean;
+  usageTotalRooms: number;
+  usageWatchRooms: number;
+  usagePermanentRooms: number;
+}
+
+// Conservative UI fallbacks when the entitlement fetch fails.
+// These match the free plan ceiling so the form remains usable.
+// The server enforces the real limits independently.
+const DOMAIN_CAPACITY_MIN = 2;
+const FALLBACK_CAPACITY_MAX = 10;
+const FALLBACK_DURATION_MAX = 6;
 
 const COVER_PRESETS: CoverPreset[] = [
   {
@@ -85,6 +109,14 @@ export const Create = () => {
   const [showDescription, setShowDescription] = useState(false);
   const [maxParticipants, setMaxParticipants] = useState<number>(10);
 
+  // Entitlement state — three-state model:
+  //   loading=true, data=null     => fetching
+  //   loading=false, data={...}   => success
+  //   loading=false, data=null, error=true => fetch failed, show warning
+  const [entitlement, setEntitlement] = useState<RoomEntitlement | null>(null);
+  const [entitlementLoading, setEntitlementLoading] = useState(true);
+  const [entitlementError, setEntitlementError] = useState(false);
+
   const generatePasscode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
@@ -102,16 +134,9 @@ export const Create = () => {
   const [isChatDisabled, setIsChatDisabled] = useState(false);
   const [lock, setLock] = useState(false);
   const [isPermanent, setIsPermanent] = useState(false);
-  const [durationHours, setDurationHours] = useState<string>("3");
-
-  const DURATION_OPTIONS = [
-    { value: "1", label: "1 hour" },
-    { value: "2", label: "2 hours" },
-    { value: "3", label: "3 hours (Standard)" },
-    { value: "4", label: "4 hours" },
-    { value: "5", label: "5 hours" },
-    { value: "6", label: "6 hours (Maximum)" },
-  ];
+  // Duration is a plain integer (1..maxRoomDurationHours).
+  // No discrete option set — the domain accepts any integer in that range.
+  const [durationHours, setDurationHours] = useState<number>(3);
 
   // Cover picture states
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
@@ -128,7 +153,82 @@ export const Create = () => {
     return () => URL.revokeObjectURL(objectUrl);
   }, [coverPhotoFile]);
 
+  // Fetch entitlement for the current user on mount and user change.
+  // Uses existing getAccessToken + serverPath transport — no direct Supabase client access.
   useEffect(() => {
+    if (!user) {
+      setEntitlementLoading(false);
+      return;
+    }
+    setEntitlementLoading(true);
+    setEntitlementError(false);
+
+    const token = getAccessToken();
+    let cancelled = false;
+    fetch(`${serverPath}/roomEntitlements`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<RoomEntitlement>;
+      })
+      .then((data) => {
+        if (!cancelled) setEntitlement(data);
+      })
+      .catch(() => {
+        if (!cancelled) setEntitlementError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setEntitlementLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // All UI constraints derived from a single memo — no scattered fallback literals.
+  // When entitlement === null (loading or failed), totalAvailable is true so the
+  // form does not block creation during the fetch. Server remains authoritative.
+  const uiConstraints = useMemo(() => {
+    const capacityMax = entitlement?.maxParticipantCapacity ?? FALLBACK_CAPACITY_MAX;
+    const durationMax = entitlement?.maxRoomDurationHours ?? FALLBACK_DURATION_MAX;
+
+    const totalAvailable =
+      entitlement === null ||
+      entitlement.usageTotalRooms < entitlement.maxTotalRooms;
+
+    const watchAvailable =
+      totalAvailable &&
+      (entitlement === null || entitlement.usageWatchRooms < entitlement.maxWatchRooms);
+
+    const permanentAvailable =
+      totalAvailable &&
+      entitlement !== null &&
+      entitlement.usagePermanentRooms < entitlement.maxPermanentRooms;
+
+    const planLabel = entitlement?.planDisplayName
+      ? `${entitlement.planDisplayName} plan`
+      : "";
+
+    return { capacityMax, durationMax, totalAvailable, watchAvailable, permanentAvailable, planLabel };
+  }, [entitlement]);
+
+  // Clamp form state when entitlement arrives or tightens.
+  // Also corrects isPermanent if permanent rooms become unavailable.
+  useEffect(() => {
+    if (!entitlement) return;
+    if (maxParticipants > entitlement.maxParticipantCapacity) {
+      setMaxParticipants(entitlement.maxParticipantCapacity);
+    }
+    if (durationHours > entitlement.maxRoomDurationHours) {
+      setDurationHours(entitlement.maxRoomDurationHours);
+    }
+    if (isPermanent && entitlement.usagePermanentRooms >= entitlement.maxPermanentRooms) {
+      setIsPermanent(false);
+    }
+  }, [entitlement]);
+
+  useEffect(() => {
+
     if (passcode.length !== 8) {
       setPasscodeError("Passcode must be strictly 8 characters long.");
       return;
@@ -253,7 +353,7 @@ export const Create = () => {
           coverPhoto: selectedPresetUrl,
           passcode: passcode || undefined,
           isPermanent,
-          durationHours: isPermanent ? undefined : parseInt(durationHours, 10) || 3,
+          durationHours: isPermanent ? undefined : durationHours,
           isChatDisabled,
           lock,
           maxParticipants,
@@ -435,6 +535,20 @@ export const Create = () => {
           </Alert>
         )}
 
+        {/* Plan-disabled banner: server remains authoritative, this is UI context only */}
+        {entitlement?.enabled === false && (
+          <Alert color="red" variant="light" mb="md" id="entitlement-plan-disabled-alert">
+            Room creation is not available on your current plan.
+          </Alert>
+        )}
+
+        {/* Fetch-error banner: form uses conservative fallback limits */}
+        {entitlementError && (
+          <Alert color="yellow" variant="light" mb="md" id="entitlement-fetch-error-alert">
+            Plan limits could not be loaded. Showing default limits. The server will enforce your actual plan limits.
+          </Alert>
+        )}
+
         <form onSubmit={handleSubmit} id="create-room-form" className={styles.form}>
           <div className={styles.mainGrid}>
             {/* Left Column: Room Configuration */}
@@ -507,15 +621,20 @@ export const Create = () => {
                     </div>
                   )}
 
-                  {/* Participant Capacity Slider (2 - 10, default 10) */}
+                  {/* Participant Capacity Slider (2 - plan ceiling, default = plan ceiling) */}
                   <div className={styles.capacityContainer}>
                     <div className={styles.capacityHeader}>
                       <div>
                         <Text size="sm" fw={500} c="var(--text-primary)">
                           Participant Capacity
+                          {uiConstraints.planLabel ? (
+                            <Text span size="xs" c="dimmed" ml={6}>
+                              ({uiConstraints.planLabel})
+                            </Text>
+                          ) : null}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          Maximum simultaneous members allowed in this room (2 to 10).
+                          Maximum simultaneous members allowed in this room ({DOMAIN_CAPACITY_MIN} to {uiConstraints.capacityMax}).
                         </Text>
                       </div>
                       <span className={styles.capacityValueBadge}>
@@ -525,18 +644,18 @@ export const Create = () => {
                     <Slider
                       value={maxParticipants}
                       onChange={setMaxParticipants}
-                      min={2}
-                      max={10}
+                      min={DOMAIN_CAPACITY_MIN}
+                      max={uiConstraints.capacityMax}
                       step={1}
                       marks={[
-                        { value: 2, label: "2" },
-                        { value: 5, label: "5" },
-                        { value: 8, label: "8" },
-                        { value: 10, label: "10 (Max)" },
+                        { value: DOMAIN_CAPACITY_MIN, label: String(DOMAIN_CAPACITY_MIN) },
+                        ...(uiConstraints.capacityMax > 5 ? [{ value: Math.round(uiConstraints.capacityMax / 2), label: String(Math.round(uiConstraints.capacityMax / 2)) }] : []),
+                        { value: uiConstraints.capacityMax, label: `${uiConstraints.capacityMax} (Max)` },
                       ]}
                       color="violet"
                       size="md"
                       mb="xs"
+                      disabled={entitlementLoading}
                       aria-label="Room participant capacity"
                     />
                   </div>
@@ -548,19 +667,25 @@ export const Create = () => {
                         Keep this room open indefinitely without automatic expiration.
                       </span>
                     </div>
-                    <Switch
-                      checked={isPermanent}
-                      onChange={(e) => {
-                        setIsPermanent(e.currentTarget.checked);
-                        if (error.toLowerCase().includes("permanent")) {
-                          setError("");
-                        }
-                      }}
-                      size="md"
-                      color="violet"
-                      withThumbIndicator={false}
-                      aria-label="Keep room permanent"
-                    />
+                    <Tooltip
+                      label="Your plan has no remaining permanent room slots."
+                      disabled={uiConstraints.permanentAvailable}
+                    >
+                      <Switch
+                        checked={isPermanent}
+                        onChange={(e) => {
+                          setIsPermanent(e.currentTarget.checked);
+                          if (error.toLowerCase().includes("permanent")) {
+                            setError("");
+                          }
+                        }}
+                        disabled={!uiConstraints.permanentAvailable}
+                        size="md"
+                        color="violet"
+                        withThumbIndicator={false}
+                        aria-label="Keep room permanent"
+                      />
+                    </Tooltip>
                   </div>
 
                   {!isPermanent && (
@@ -568,27 +693,29 @@ export const Create = () => {
                       <div className={styles.settingMeta}>
                         <span className={styles.settingLabel}>Session duration</span>
                         <span className={styles.settingDescription}>
-                          Choose how long this temporary watch room remains active before closing (max 6 hours).
+                          How long this temporary watch room stays active (1 to {uiConstraints.durationMax} hours).
                         </span>
                       </div>
-                      <Select
+                      <NumberInput
                         value={durationHours}
-                        onChange={(val) => {
-                          if (val) {
-                            setDurationHours(val);
-                          }
-                        }}
+                        onChange={(val) => setDurationHours(typeof val === "number" && val >= 1 ? val : 1)}
+                        min={1}
+                        max={uiConstraints.durationMax}
+                        allowDecimal={false}
+                        clampBehavior="strict"
                         leftSection={<IconClock size={16} />}
-                        data={DURATION_OPTIONS}
+                        suffix=" hours"
                         size="sm"
+                        disabled={entitlementLoading}
                         styles={{
-                          root: { minWidth: 190, maxWidth: 220 },
+                          root: { minWidth: 160, maxWidth: 200 },
                           input: { fontWeight: 500 },
                         }}
-                        aria-label="Select session duration"
+                        aria-label="Session duration in hours"
                       />
                     </div>
                   )}
+
                 </div>
               </div>
 
@@ -895,7 +1022,7 @@ export const Create = () => {
                 type="submit"
                 size="md"
                 color="violet"
-                disabled={loading}
+                disabled={loading || entitlement?.enabled === false}
                 loading={loading}
                 leftSection={
                   loading ? (
