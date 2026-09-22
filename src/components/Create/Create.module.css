@@ -8,7 +8,7 @@
 
 .container {
   width: 100%;
-  max-width: 720px;
+  max-width: 1040px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -47,12 +47,54 @@
   font-weight: 600;
 }
 
+/* Header Area */
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pageHeading {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.pageSubheading {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
 
 /* Form Layout */
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+}
+
+/* Two-Column Main Grid */
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.configColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.appearanceColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 96px;
 }
 
 /* Flat Clean Card */
@@ -64,7 +106,7 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .card:hover {
@@ -169,24 +211,96 @@
   color: #ef4444;
 }
 
-/* Cover Photo & Avatar Selector */
+/* Participant Capacity Slider */
+.capacityContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capacityHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.capacityValueBadge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-violet, #8b5cf6);
+  background: rgba(139, 92, 246, 0.1);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  letter-spacing: 0.2px;
+}
+
+/* Preset Themes Grid */
+.presetsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.presetTile {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-app);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  padding: 0;
+}
+
+.presetTile:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.presetTileActive {
+  border-color: var(--color-violet, #8b5cf6);
+  box-shadow: 0 0 0 1px var(--color-violet, #8b5cf6), 0 4px 16px rgba(139, 92, 246, 0.25);
+}
+
+.presetBanner {
+  height: 60px;
+  width: 100%;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.presetLabelRow {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Cover Photo & Custom Upload */
 .coverContainer {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-top: 6px;
 }
 
 .coverHeaderRow {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .coverPreview {
-  width: 120px;
-  height: 68px;
-  border-radius: 10px;
+  width: 110px;
+  height: 64px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--bg-app);
   border: 1px solid var(--border-subtle);
@@ -224,6 +338,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;
 }
 
 .coverButtonRow {
@@ -253,6 +368,89 @@
   height: 28px;
 }
 
+/* Live Room Card Preview */
+.livePreviewWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.livePreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.previewCard {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+}
+
+.previewBanner {
+  height: 120px;
+  width: 100%;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  background-color: var(--bg-app);
+}
+
+.previewBody {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.previewTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewDesc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.previewBadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.previewBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
 /* Passcode Row */
 .passcodeRow {
   display: flex;
@@ -262,6 +460,12 @@
 
 .passcodeField {
   flex: 1;
+}
+
+.passcodeMonospaceInput input {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  letter-spacing: 2px;
+  font-weight: 600;
 }
 
 .passcodeControls {
@@ -326,7 +530,7 @@
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 40px);
-  max-width: 720px;
+  max-width: 1040px;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -359,6 +563,18 @@
   font-weight: 600;
   font-size: 13.5px;
   border-radius: 8px;
+}
+
+/* Responsive Media Queries */
+@media (max-width: 860px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .appearanceColumn {
+    position: static;
+  }
 }
 
 @media (max-width: 768px) {
@@ -461,5 +677,9 @@
 
   .actionsRowButtons button {
     width: 100%;
+  }
+
+  .presetsGrid {
+    grid-template-columns: 1fr;
   }
 }

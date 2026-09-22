@@ -13,6 +13,7 @@ import {
   Tooltip,
   Textarea,
   Select,
+  Slider,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -26,6 +27,9 @@ import {
   IconSettings,
   IconPlus,
   IconClock,
+  IconUsers,
+  IconLock,
+  IconSparkles,
 } from "@tabler/icons-react";
 import { createRoom } from "../TopBar/TopBar";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
@@ -33,6 +37,35 @@ import { serverPath } from "../../utils/utils";
 import { MetadataContext } from "../../MetadataContext";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
 import styles from "./Create.module.css";
+
+interface CoverPreset {
+  id: string;
+  name: string;
+  url: string;
+}
+
+const COVER_PRESETS: CoverPreset[] = [
+  {
+    id: "cinema",
+    name: "Cinema Lounge",
+    url: "/presets/cinema.jpg",
+  },
+  {
+    id: "cyberpunk",
+    name: "Cyberpunk",
+    url: "/presets/cyberpunk.jpg",
+  },
+  {
+    id: "lofi",
+    name: "Lo-Fi Chill",
+    url: "/presets/lofi.jpg",
+  },
+  {
+    id: "cosmic",
+    name: "Cosmic Nebula",
+    url: "/presets/cosmic.jpg",
+  },
+];
 
 export const Create = () => {
   const { user } = useContext(MetadataContext);
@@ -50,6 +83,8 @@ export const Create = () => {
   const [roomTitle, setRoomTitle] = useState("My Watch Party");
   const [roomDescription, setRoomDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
+  const [maxParticipants, setMaxParticipants] = useState<number>(10);
+
   const generatePasscode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
@@ -79,6 +114,7 @@ export const Create = () => {
   ];
 
   // Cover picture states
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [coverPhotoFile, setCoverPhotoFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
@@ -127,6 +163,16 @@ export const Create = () => {
     };
   }, [passcode]);
 
+  const handleSelectPreset = (presetId: string) => {
+    if (selectedPreset === presetId && !coverPhotoFile) {
+      setSelectedPreset(null);
+    } else {
+      setSelectedPreset(presetId);
+      setCoverPhotoFile(null);
+      setCoverPreview(null);
+    }
+  };
+
   const handleCoverPhotoChange = (file: File | null) => {
     if (!file) {
       setCoverPhotoFile(null);
@@ -142,12 +188,14 @@ export const Create = () => {
       });
       return;
     }
+    setSelectedPreset(null);
     setCoverPhotoFile(file);
   };
 
   const handleClearAvatar = () => {
     setCoverPhotoFile(null);
     setCoverPreview(null);
+    setSelectedPreset(null);
   };
 
   const handleRegeneratePasscode = () => {
@@ -161,6 +209,12 @@ export const Create = () => {
     setCopiedPasscode(true);
     setTimeout(() => setCopiedPasscode(false), 2000);
   };
+
+  const activeCoverUrl = coverPreview
+    ? coverPreview
+    : selectedPreset
+    ? COVER_PRESETS.find((p) => p.id === selectedPreset)?.url || null
+    : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,6 +238,11 @@ export const Create = () => {
     setError("");
 
     try {
+      const selectedPresetUrl =
+        !coverPhotoFile && selectedPreset
+          ? COVER_PRESETS.find((p) => p.id === selectedPreset)?.url
+          : undefined;
+
       const roomName = await createRoom(
         user,
         false,
@@ -191,11 +250,13 @@ export const Create = () => {
         {
           roomTitle: roomTitle.trim(),
           roomDescription: roomDescription || undefined,
+          coverPhoto: selectedPresetUrl,
           passcode: passcode || undefined,
           isPermanent,
           durationHours: isPermanent ? undefined : parseInt(durationHours, 10) || 3,
           isChatDisabled,
           lock,
+          maxParticipants,
           noRedirect: true,
         }
       );
@@ -284,6 +345,13 @@ export const Create = () => {
           <span className={styles.breadcrumbCurrent}>Create Room</span>
         </nav>
 
+        {/* Page Header */}
+        <div className={styles.pageHeader}>
+          <h1 className={styles.pageHeading}>Create Watch Party</h1>
+          <p className={styles.pageSubheading}>
+            Configure your private room, choose attendee capacity, and select custom cover artwork.
+          </p>
+        </div>
 
         {!user && (
           <Alert
@@ -368,299 +436,446 @@ export const Create = () => {
         )}
 
         <form onSubmit={handleSubmit} id="create-room-form" className={styles.form}>
-          {/* Card 1: Room Details */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div className={styles.cardIconBadge}>
-                <IconPhoto size={18} />
-              </div>
-              <div className={styles.cardHeaderMeta}>
-                <span className={styles.cardTitle}>Room Details</span>
-                <span className={styles.cardSubtitle}>
-                  Enter a room name, optional description, cover picture, and session duration.
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.fieldsStack}>
-              <TextInput
-                label="Room name"
-                required
-                withAsterisk
-                placeholder="e.g. My Watch Party"
-                value={roomTitle}
-                onChange={(e) => setRoomTitle(e.target.value)}
-                maxLength={50}
-                size="md"
-              />
-
-              {!showDescription && !roomDescription ? (
-                <div className={styles.addDescriptionRow}>
-                  <button
-                    type="button"
-                    className={styles.addDescriptionBtn}
-                    onClick={() => setShowDescription(true)}
-                  >
-                    <IconPlus size={14} />
-                    <span>Add room description (optional)</span>
-                  </button>
-                </div>
-              ) : (
-                <div className={styles.descriptionContainer}>
-                  <div className={styles.descriptionHeader}>
-                    <Text size="sm" fw={500} c="var(--text-primary)">
-                      Description
-                    </Text>
-                    <button
-                      type="button"
-                      className={styles.removeDescriptionBtn}
-                      onClick={() => {
-                        setRoomDescription("");
-                        setShowDescription(false);
-                      }}
-                    >
-                      Remove
-                    </button>
+          <div className={styles.mainGrid}>
+            {/* Left Column: Room Configuration */}
+            <div className={styles.configColumn}>
+              {/* Card 1: Room Details & Capacity */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <div className={styles.cardIconBadge}>
+                    <IconSettings size={18} />
                   </div>
-                  <Textarea
-                    placeholder="e.g. Watching movies, videos, and music together"
-                    value={roomDescription}
-                    onChange={(e) => setRoomDescription(e.target.value)}
-                    maxLength={500}
-                    size="md"
-                    minRows={2}
-                    maxRows={4}
-                    autosize
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              <div>
-                <Text size="sm" fw={500} mb={6}>
-                  Room Picture (optional)
-                </Text>
-                <div className={styles.coverContainer}>
-                  <div className={styles.coverHeaderRow}>
-                    <div className={styles.coverPreview}>
-                      {coverPreview ? (
-                        <img
-                          src={coverPreview}
-                          alt="Cover preview"
-                          className={styles.coverImg}
-                        />
-                      ) : (
-                        <div className={styles.coverPlaceholder}>
-                          <IconPhoto size={20} />
-                          <span>Preview</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className={styles.coverMeta}>
-                      <div className={styles.coverButtonRow}>
-                        <FileButton
-                          onChange={handleCoverPhotoChange}
-                          accept="image/jpeg,image/png,image/webp"
-                        >
-                          {(props) => (
-                            <Button
-                              {...props}
-                              variant="default"
-                              size="sm"
-                              leftSection={<IconPhoto size={16} />}
-                              className={styles.uploadBtn}
-                            >
-                              {coverPreview ? "Change picture" : "Upload picture"}
-                            </Button>
-                          )}
-                        </FileButton>
-                        {coverPreview && (
-                          <Button
-                            variant="subtle"
-                            color="red"
-                            size="sm"
-                            onClick={handleClearAvatar}
-                            className={styles.removeCoverBtn}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                      <Text size="xs" c="dimmed">
-                        {coverPhotoFile ? coverPhotoFile.name : "Recommended: JPG, PNG, or WebP (less than 1MB)"}
-                      </Text>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.settingCard}>
-                <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Keep room permanent</span>
-                  <span className={styles.settingDescription}>
-                    Keep this room open indefinitely without automatic expiration.
-                  </span>
-                </div>
-                <Switch
-                  checked={isPermanent}
-                  onChange={(e) => {
-                    setIsPermanent(e.currentTarget.checked);
-                    if (error.toLowerCase().includes("permanent")) {
-                      setError("");
-                    }
-                  }}
-                  size="md"
-                  color="violet"
-                  withThumbIndicator={false}
-                  aria-label="Keep room permanent"
-                />
-              </div>
-
-              {!isPermanent && (
-                <div className={styles.settingCard}>
-                  <div className={styles.settingMeta}>
-                    <span className={styles.settingLabel}>Session duration</span>
-                    <span className={styles.settingDescription}>
-                      Choose how long this temporary watch room remains active before closing (max 6 hours).
+                  <div className={styles.cardHeaderMeta}>
+                    <span className={styles.cardTitle}>Room Configuration</span>
+                    <span className={styles.cardSubtitle}>
+                      Room identity, maximum participant capacity, and session lifespan.
                     </span>
                   </div>
-                  <Select
-                    value={durationHours}
-                    onChange={(val) => {
-                      if (val) {
-                        setDurationHours(val);
-                      }
-                    }}
-                    leftSection={<IconClock size={16} />}
-                    data={DURATION_OPTIONS}
-                    size="sm"
-                    styles={{
-                      root: { minWidth: 190, maxWidth: 220 },
-                      input: { fontWeight: 500 },
-                    }}
-                    aria-label="Select session duration"
+                </div>
+
+                <div className={styles.fieldsStack}>
+                  <TextInput
+                    label="Room name"
+                    required
+                    withAsterisk
+                    placeholder="e.g. My Watch Party"
+                    value={roomTitle}
+                    onChange={(e) => setRoomTitle(e.target.value)}
+                    maxLength={50}
+                    size="md"
                   />
+
+                  {!showDescription && !roomDescription ? (
+                    <div className={styles.addDescriptionRow}>
+                      <button
+                        type="button"
+                        className={styles.addDescriptionBtn}
+                        onClick={() => setShowDescription(true)}
+                      >
+                        <IconPlus size={14} />
+                        <span>Add room description (optional)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className={styles.descriptionContainer}>
+                      <div className={styles.descriptionHeader}>
+                        <Text size="sm" fw={500} c="var(--text-primary)">
+                          Description
+                        </Text>
+                        <button
+                          type="button"
+                          className={styles.removeDescriptionBtn}
+                          onClick={() => {
+                            setRoomDescription("");
+                            setShowDescription(false);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <Textarea
+                        placeholder="e.g. Watching movies, videos, and music together"
+                        value={roomDescription}
+                        onChange={(e) => setRoomDescription(e.target.value)}
+                        maxLength={500}
+                        size="md"
+                        minRows={2}
+                        maxRows={4}
+                        autosize
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  {/* Participant Capacity Slider (2 - 10, default 10) */}
+                  <div className={styles.capacityContainer}>
+                    <div className={styles.capacityHeader}>
+                      <div>
+                        <Text size="sm" fw={500} c="var(--text-primary)">
+                          Participant Capacity
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Maximum simultaneous members allowed in this room (2 to 10).
+                        </Text>
+                      </div>
+                      <span className={styles.capacityValueBadge}>
+                        {maxParticipants} {maxParticipants === 1 ? "member" : "members"}
+                      </span>
+                    </div>
+                    <Slider
+                      value={maxParticipants}
+                      onChange={setMaxParticipants}
+                      min={2}
+                      max={10}
+                      step={1}
+                      marks={[
+                        { value: 2, label: "2" },
+                        { value: 5, label: "5" },
+                        { value: 8, label: "8" },
+                        { value: 10, label: "10 (Max)" },
+                      ]}
+                      color="violet"
+                      size="md"
+                      mb="xs"
+                      aria-label="Room participant capacity"
+                    />
+                  </div>
+
+                  <div className={styles.settingCard}>
+                    <div className={styles.settingMeta}>
+                      <span className={styles.settingLabel}>Keep room permanent</span>
+                      <span className={styles.settingDescription}>
+                        Keep this room open indefinitely without automatic expiration.
+                      </span>
+                    </div>
+                    <Switch
+                      checked={isPermanent}
+                      onChange={(e) => {
+                        setIsPermanent(e.currentTarget.checked);
+                        if (error.toLowerCase().includes("permanent")) {
+                          setError("");
+                        }
+                      }}
+                      size="md"
+                      color="violet"
+                      withThumbIndicator={false}
+                      aria-label="Keep room permanent"
+                    />
+                  </div>
+
+                  {!isPermanent && (
+                    <div className={styles.settingCard}>
+                      <div className={styles.settingMeta}>
+                        <span className={styles.settingLabel}>Session duration</span>
+                        <span className={styles.settingDescription}>
+                          Choose how long this temporary watch room remains active before closing (max 6 hours).
+                        </span>
+                      </div>
+                      <Select
+                        value={durationHours}
+                        onChange={(val) => {
+                          if (val) {
+                            setDurationHours(val);
+                          }
+                        }}
+                        leftSection={<IconClock size={16} />}
+                        data={DURATION_OPTIONS}
+                        size="sm"
+                        styles={{
+                          root: { minWidth: 190, maxWidth: 220 },
+                          input: { fontWeight: 500 },
+                        }}
+                        aria-label="Select session duration"
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Card 2: Passcode & Access */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <div className={styles.cardIconBadge}>
+                    <IconShieldCheck size={18} />
+                  </div>
+                  <div className={styles.cardHeaderMeta}>
+                    <span className={styles.cardTitle}>Access & Passcode</span>
+                    <span className={styles.cardSubtitle}>
+                      Set a private passcode to restrict room entry to invited members.
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.passcodeRow}>
+                  <div className={`${styles.passcodeField} ${styles.passcodeMonospaceInput}`}>
+                    <PasswordInput
+                      label="Room passcode"
+                      description="Strictly 8 characters, must be unique across active rooms"
+                      placeholder="8-character passcode"
+                      value={passcode}
+                      required
+                      withAsterisk
+                      minLength={8}
+                      maxLength={8}
+                      error={passcodeError || undefined}
+                      onChange={(e) => {
+                        setPasscode(e.target.value.slice(0, 8));
+                        if (error) setError("");
+                      }}
+                      size="md"
+                      visible={showPasscode}
+                      onVisibilityChange={setShowPasscode}
+                    />
+                  </div>
+                  <div className={styles.passcodeControls}>
+                    <Tooltip label={copiedPasscode ? "Copied!" : "Copy passcode"}>
+                      <ActionIcon
+                        size={38}
+                        variant="default"
+                        onClick={handleCopyPasscode}
+                        aria-label="Copy passcode"
+                      >
+                        {copiedPasscode ? (
+                          <IconCheck size={16} color="var(--mantine-color-teal-5)" />
+                        ) : (
+                          <IconCopy size={16} />
+                        )}
+                      </ActionIcon>
+                    </Tooltip>
+                    <Button
+                      type="button"
+                      variant="default"
+                      onClick={handleRegeneratePasscode}
+                      leftSection={<IconRefresh size={15} />}
+                      className={styles.regenerateButton}
+                      title="Make a new random passcode"
+                    >
+                      New passcode
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Room Settings & Permissions */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <div className={styles.cardIconBadge}>
+                    <IconLock size={18} />
+                  </div>
+                  <div className={styles.cardHeaderMeta}>
+                    <span className={styles.cardTitle}>Room Controls</span>
+                    <span className={styles.cardSubtitle}>
+                      Configure playback synchronization lock and communication settings.
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.togglesList}>
+                  <div className={styles.settingCard}>
+                    <div className={styles.settingMeta}>
+                      <span className={styles.settingLabel}>Lock video controls</span>
+                      <span className={styles.settingDescription}>
+                        Only room hosts can play, pause, seek, or change video sources.
+                      </span>
+                    </div>
+                    <Switch
+                      checked={lock}
+                      onChange={(e) => setLock(e.currentTarget.checked)}
+                      size="md"
+                      color="violet"
+                      withThumbIndicator={false}
+                      aria-label="Lock video controls"
+                    />
+                  </div>
+
+                  <div className={styles.settingCard}>
+                    <div className={styles.settingMeta}>
+                      <span className={styles.settingLabel}>Turn off chat</span>
+                      <span className={styles.settingDescription}>
+                        Disable the text chat sidebar for all participants in this room.
+                      </span>
+                    </div>
+                    <Switch
+                      checked={isChatDisabled}
+                      onChange={(e) => setIsChatDisabled(e.currentTarget.checked)}
+                      size="md"
+                      color="violet"
+                      withThumbIndicator={false}
+                      aria-label="Turn off chat"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Appearance / Cover & Live Preview */}
+            <div className={styles.appearanceColumn}>
+              {/* Card: Cover Art & Presets */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <div className={styles.cardIconBadge}>
+                    <IconSparkles size={18} />
+                  </div>
+                  <div className={styles.cardHeaderMeta}>
+                    <span className={styles.cardTitle}>Appearance & Cover</span>
+                    <span className={styles.cardSubtitle}>
+                      Select a themed cover preset or upload your own custom picture.
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.fieldsStack}>
+                  {/* Preset Themes */}
+                  <div>
+                    <Text size="sm" fw={500} mb={8} c="var(--text-primary)">
+                      Cover Presets
+                    </Text>
+                    <div className={styles.presetsGrid}>
+                      {COVER_PRESETS.map((preset) => {
+                        const isSelected = selectedPreset === preset.id && !coverPhotoFile;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => handleSelectPreset(preset.id)}
+                            className={`${styles.presetTile} ${
+                              isSelected ? styles.presetTileActive : ""
+                            }`}
+                            aria-label={`Select ${preset.name} cover preset`}
+                          >
+                            <div
+                              className={styles.presetBanner}
+                              style={{ backgroundImage: `url(${preset.url})` }}
+                            />
+                            <div className={styles.presetLabelRow}>
+                              <span>{preset.name}</span>
+                              {isSelected && (
+                                <IconCheck size={14} color="var(--color-violet, #8b5cf6)" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Upload */}
+                  <div>
+                    <Text size="sm" fw={500} mb={6} c="var(--text-primary)">
+                      Custom Picture (optional)
+                    </Text>
+                    <div className={styles.coverContainer}>
+                      <div className={styles.coverHeaderRow}>
+                        <div className={styles.coverPreview}>
+                          {coverPreview ? (
+                            <img
+                              src={coverPreview}
+                              alt="Cover preview"
+                              className={styles.coverImg}
+                            />
+                          ) : (
+                            <div className={styles.coverPlaceholder}>
+                              <IconPhoto size={20} />
+                              <span>Custom file</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={styles.coverMeta}>
+                          <div className={styles.coverButtonRow}>
+                            <FileButton
+                              onChange={handleCoverPhotoChange}
+                              accept="image/jpeg,image/png,image/webp"
+                            >
+                              {(props) => (
+                                <Button
+                                  {...props}
+                                  variant="default"
+                                  size="sm"
+                                  leftSection={<IconPhoto size={16} />}
+                                  className={styles.uploadBtn}
+                                >
+                                  {coverPhotoFile ? "Change picture" : "Upload picture"}
+                                </Button>
+                              )}
+                            </FileButton>
+                            {(coverPhotoFile || selectedPreset) && (
+                              <Button
+                                variant="subtle"
+                                color="red"
+                                size="sm"
+                                onClick={handleClearAvatar}
+                                className={styles.removeCoverBtn}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                          <Text size="xs" c="dimmed">
+                            {coverPhotoFile
+                              ? coverPhotoFile.name
+                              : "Recommended: JPG, PNG, or WebP (less than 1MB)"}
+                          </Text>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Room Card Preview */}
+                  <div className={styles.livePreviewWrapper}>
+                    <div className={styles.livePreviewHeader}>
+                      <span>Live Card Preview</span>
+                      <Text size="xs" c="dimmed">
+                        As seen on home and room directory
+                      </Text>
+                    </div>
+                    <div className={styles.previewCard}>
+                      <div
+                        className={styles.previewBanner}
+                        style={
+                          activeCoverUrl
+                            ? { backgroundImage: `url(${activeCoverUrl})` }
+                            : undefined
+                        }
+                      >
+                        {!activeCoverUrl && (
+                          <div className={styles.coverPlaceholder}>
+                            <IconPhoto size={24} />
+                            <span>CoWatch Default Cover</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className={styles.previewBody}>
+                        <div className={styles.previewTitle}>
+                          {roomTitle.trim() || "My Watch Party"}
+                        </div>
+                        <div className={styles.previewDesc}>
+                          {roomDescription.trim() || "Watching movies, videos, and music together."}
+                        </div>
+                        <div className={styles.previewBadges}>
+                          <span className={styles.previewBadge}>
+                            <IconUsers size={12} /> {maxParticipants} max
+                          </span>
+                          <span className={styles.previewBadge}>
+                            <IconClock size={12} /> {isPermanent ? "Permanent" : `${durationHours}h session`}
+                          </span>
+                          <span className={styles.previewBadge}>
+                            <IconShieldCheck size={12} /> Protected
+                          </span>
+                          {lock && (
+                            <span className={styles.previewBadge}>
+                              <IconLock size={12} /> Locked
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Card 2: Passcode & Access */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div className={styles.cardIconBadge}>
-                <IconShieldCheck size={18} />
-              </div>
-              <div className={styles.cardHeaderMeta}>
-                <span className={styles.cardTitle}>Passcode & Access</span>
-                <span className={styles.cardSubtitle}>
-                  Set a passcode to keep your room private for invited friends.
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.passcodeRow}>
-              <div className={styles.passcodeField}>
-                <PasswordInput
-                  label="Room passcode"
-                  description="Friends enter this passcode to join (strictly 8 characters, must be unique)"
-                  placeholder="8-character passcode"
-                  value={passcode}
-                  required
-                  withAsterisk
-                  minLength={8}
-                  maxLength={8}
-                  error={passcodeError || undefined}
-                  onChange={(e) => {
-                    setPasscode(e.target.value.slice(0, 8));
-                    if (error) setError("");
-                  }}
-                  size="md"
-                  visible={showPasscode}
-                  onVisibilityChange={setShowPasscode}
-                />
-              </div>
-              <div className={styles.passcodeControls}>
-                <Tooltip label={copiedPasscode ? "Copied!" : "Copy passcode"}>
-                  <ActionIcon
-                    size={38}
-                    variant="default"
-                    onClick={handleCopyPasscode}
-                    aria-label="Copy passcode"
-                  >
-                    {copiedPasscode ? (
-                      <IconCheck size={16} color="var(--mantine-color-teal-5)" />
-                    ) : (
-                      <IconCopy size={16} />
-                    )}
-                  </ActionIcon>
-                </Tooltip>
-                <Button
-                  type="button"
-                  variant="default"
-                  onClick={handleRegeneratePasscode}
-                  leftSection={<IconRefresh size={15} />}
-                  className={styles.regenerateButton}
-                  title="Make a new random passcode"
-                >
-                  New passcode
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Room Settings */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div className={styles.cardIconBadge}>
-                <IconSettings size={18} />
-              </div>
-              <div className={styles.cardHeaderMeta}>
-                <span className={styles.cardTitle}>Room Settings</span>
-                <span className={styles.cardSubtitle}>
-                  Choose who can control videos and text chat.
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.togglesList}>
-              <div className={styles.settingCard}>
-                <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Lock video controls</span>
-                  <span className={styles.settingDescription}>
-                    Only room hosts can play, pause, or change videos.
-                  </span>
-                </div>
-                <Switch
-                  checked={lock}
-                  onChange={(e) => setLock(e.currentTarget.checked)}
-                  size="md"
-                  color="violet"
-                  withThumbIndicator={false}
-                  aria-label="Lock video controls"
-                />
-              </div>
-
-              <div className={styles.settingCard}>
-                <div className={styles.settingMeta}>
-                  <span className={styles.settingLabel}>Turn off chat</span>
-                  <span className={styles.settingDescription}>
-                    Turn off the text chat sidebar for everyone in this room.
-                  </span>
-                </div>
-                <Switch
-                  checked={isChatDisabled}
-                  onChange={(e) => setIsChatDisabled(e.currentTarget.checked)}
-                  size="md"
-                  color="violet"
-                  withThumbIndicator={false}
-                  aria-label="Turn off chat"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Sticky Actions Bar - Always accessible while scrolling */}
+          {/* Action Row */}
           <div className={styles.actionsRow}>
             <div className={styles.actionsRowMeta}>
               <Text size="xs" c="dimmed">
@@ -701,3 +916,4 @@ export const Create = () => {
     </div>
   );
 };
+

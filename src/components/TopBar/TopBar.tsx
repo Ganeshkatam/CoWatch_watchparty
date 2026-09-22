@@ -117,6 +117,7 @@ export async function createRoom(
     isChatDisabled?: boolean;
     lock?: boolean;
     noRedirect?: boolean;
+    maxParticipants?: number;
   }
 ) {
   let data: CreateRoomResponse;
