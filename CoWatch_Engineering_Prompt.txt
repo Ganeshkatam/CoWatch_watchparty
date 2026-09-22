@@ -1,0 +1,689 @@
+You are working on the existing **CoWatch/watchparty** codebase.
+
+Your job is to understand, maintain, repair, secure, test, and incrementally extend the existing system. **Do not rebuild the application or replace working architecture unnecessarily.**
+
+## 1. Understand before changing
+
+Before modifying anything:
+
+* Inspect the actual current codebase.
+* Understand the existing architecture, modules, data flow, state flow, lifecycle, database, Redis, authentication, authorization, Socket.IO events, media handling, WebRTC/signaling, and tests.
+* Trace the real execution path and call graph of the affected functionality.
+* Search all callers/usages before changing a function, type, event, database contract, or protocol.
+* Check both happy paths and failure/recovery paths.
+* Do not assume that apparently unused, incomplete, or unusual code is safe to remove without tracing it.
+* Distinguish clearly between:
+
+  * code inspected,
+  * code changed,
+  * tests executed,
+  * integration behavior verified,
+  * browser/runtime behavior verified,
+  * production behavior verified.
+
+**Never claim something works unless it has actually been verified.**
+
+---
+
+## 2. Preserve the existing architecture
+
+* Reuse the existing architecture and abstractions first.
+* Extend existing classes, services, utilities, types, lifecycle mechanisms, and event systems whenever possible.
+* Do not create parallel implementations when an existing abstraction can be fixed or extended.
+* Do not create unnecessary files, services, abstractions, databases, queues, providers, or infrastructure.
+* Do not replace an established architecture merely because another architecture looks cleaner.
+* Preserve existing working and certified behavior.
+* When something is broken, repair the smallest correct boundary instead of rebuilding the surrounding system.
+
+**Existing architecture first. New architecture only when the current architecture genuinely cannot support the required behavior.**
+
+---
+
+## 3. Backend is the priority
+
+Prioritize:
+
+* state consistency,
+* authentication,
+* authorization,
+* room isolation,
+* lifecycle correctness,
+* ownership and host authority,
+* admission,
+* concurrency,
+* persistence,
+* Socket.IO behavior,
+* reconnect/disconnect handling,
+* failure recovery,
+* security,
+* database integrity.
+
+Do not judge backend functionality merely by whether an HTTP endpoint returns `200`.
+
+For real-time functionality, verify the actual Socket.IO/event/state execution path.
+
+---
+
+## 4. Strict typing
+
+Use strict typing throughout the project.
+
+* Avoid `any` wherever reasonably possible.
+* Do not use `as any` to hide design or type problems.
+* Define explicit types for:
+
+  * function inputs,
+  * function outputs,
+  * errors/results,
+  * database rows,
+  * HTTP payloads,
+  * Socket.IO payloads,
+  * WebRTC/signaling messages,
+  * persisted state,
+  * lifecycle states,
+  * authorization state.
+* Validate external data at runtime; TypeScript types alone are not runtime validation.
+* Use idiomatic typing appropriate to each language in the project.
+
+When existing code contains weak typing, improve it when touching that code if the change can be made safely and with minimal scope.
+
+---
+
+## 5. Dynamic and reusable functions
+
+**Every function should be designed for dynamic reuse.**
+
+* Do not hardcode IDs, user IDs, room IDs, providers, paths, limits, timeouts, epochs, or environment-specific values inside reusable functions.
+* Accept required values through typed parameters.
+* Return explicit typed results.
+* Keep functions composable and context-independent where practical.
+* Prefer deterministic functions where possible.
+* Make operations idempotent where the domain requires it.
+* Keep functions single-purpose.
+* Reuse existing functions before creating new ones.
+* Do not introduce unnecessary generic abstractions merely to make code appear reusable.
+* Do not couple reusable functions to one current room, user, provider, environment, or test case.
+
+**Dynamic does not mean over-engineered. Make the smallest reusable function that solves the actual problem.**
+
+---
+
+## 6. Smallest correct and efficient code
+
+Write the **smallest clear, efficient, maintainable implementation**.
+
+* Do not unnecessarily increase lines of code.
+* Prefer modifying existing code over creating duplicate logic.
+* Prefer existing abstractions over new abstractions.
+* Remove duplication when doing so reduces complexity safely.
+* Use language-appropriate idioms.
+* Avoid clever one-liners that reduce readability.
+* Do not sacrifice:
+
+  * correctness,
+  * security,
+  * tests,
+  * validation,
+  * error handling,
+  * observability,
+  * maintainability
+    merely to reduce LOC.
+* Do not delete tests simply to make the codebase smaller.
+
+**Minimal code means minimal unnecessary code, not minimal safety.**
+
+---
+
+# 7. Security — NON-NEGOTIABLE
+
+Security must be enforced by the server and must never depend on client behavior.
+
+### Trust boundaries
+
+Treat all client-controlled data as untrusted.
+
+Never trust client-provided:
+
+* `userId`,
+* `roomId`,
+* role,
+* host status,
+* ownership,
+* permissions,
+* room state,
+* session state,
+* media ownership,
+* peer identity,
+* timestamps,
+* capabilities,
+* operation IDs.
+
+Derive identity and authorization from authenticated server-side state.
+
+### Authentication
+
+* Every protected operation must have an explicit authentication requirement.
+* Validate authentication server-side.
+* Handle expired, revoked, replaced, and invalid sessions safely.
+* Never accept identity merely because the client claims it.
+
+### Authorization
+
+Every privileged operation must verify the required authorization at the server boundary.
+
+Where applicable, verify:
+
+* authenticated user,
+* room membership/admission,
+* room lifecycle state,
+* ownership,
+* host authority,
+* moderator privileges,
+* resource ownership,
+* operation-specific permission.
+
+UI restrictions are never security controls.
+
+### Room isolation
+
+A user must never be able to:
+
+* access another room's protected state,
+* modify another room,
+* receive another room's private events,
+* inject events into another room,
+* access another room's media/session,
+* communicate with unauthorized peers.
+
+Validate room membership and authorization before room-scoped operations or emissions.
+
+### Socket.IO security
+
+For every sensitive socket event:
+
+* authenticate the socket,
+* validate the payload,
+* verify sender identity,
+* verify room membership,
+* verify authorization,
+* verify target room/resource/peer,
+* validate the operation,
+* reject unauthorized or malformed events.
+
+Prevent:
+
+* forged identity,
+* forged roles,
+* cross-room event injection,
+* replay,
+* stale messages,
+* unauthorized signaling,
+* privilege escalation.
+
+### Local media / WebRTC security
+
+Treat local-media signaling as an explicit security boundary.
+
+Validate:
+
+* authenticated sender,
+* room,
+* media session,
+* media ID,
+* owner,
+* peer identity,
+* target peer,
+* session epoch,
+* session state,
+* authorization to establish the requested relationship.
+
+Reject:
+
+* stale epochs,
+* wrong rooms,
+* wrong sessions,
+* unauthorized targets,
+* invalid peer IDs,
+* unauthorized media access.
+
+Never assume that an authenticated socket is automatically authorized to signal to every peer.
+
+Treat filenames, MIME types, codecs, manifests, chunk indexes, fingerprints, byte sizes, and media metadata as untrusted input.
+
+### Input validation
+
+Validate all external input at the boundary.
+
+Validate:
+
+* HTTP bodies,
+* query parameters,
+* route parameters,
+* socket payloads,
+* WebRTC/signaling payloads,
+* database inputs,
+* persisted JSON,
+* external-service responses.
+
+Reject malformed, unexpected, oversized, or semantically invalid input.
+
+### Injection protection
+
+* Use parameterized SQL exclusively.
+* Never construct SQL from untrusted strings.
+* Prevent XSS in chat and user-controlled content.
+* Prevent path traversal.
+* Prevent command injection.
+* Prevent template injection.
+* Prevent unsafe deserialization.
+* Treat URLs and external content as untrusted.
+
+### Database security
+
+* Use least-privilege database credentials.
+* Parameterize all queries.
+* Validate data before persistence.
+* Preserve transaction boundaries for security-sensitive state.
+* Never expose raw database errors to clients.
+* Never allow arbitrary client-controlled tables, columns, queries, or database operations.
+
+### Secrets
+
+Never:
+
+* hardcode secrets,
+* commit secrets,
+* log secrets,
+* expose tokens,
+* expose private keys,
+* expose passwords,
+* expose authentication credentials.
+
+Use environment/configuration mechanisms.
+
+### Error handling
+
+Client-facing errors must not expose:
+
+* stack traces,
+* SQL errors,
+* filesystem paths,
+* credentials,
+* internal infrastructure details,
+* sensitive state.
+
+Security failures must fail closed.
+
+### Rate/resource abuse
+
+Protect expensive operations against abuse.
+
+Consider limits for:
+
+* authentication attempts,
+* room creation,
+* invitations,
+* chat,
+* signaling,
+* media operations,
+* database-heavy operations,
+* socket connections,
+* event frequency,
+* payload size.
+
+Prefer limits at the smallest appropriate boundary so one user or room cannot unnecessarily affect unrelated users.
+
+### Concurrency security
+
+Authorization and state mutation must remain correct under concurrency.
+
+Do not assume state cannot change between:
+
+1. authorization check,
+2. state mutation.
+
+Use existing transactions, leases, locks, lifecycle mechanisms, and idempotency mechanisms where appropriate.
+
+### Security logging
+
+Log security-relevant events where useful:
+
+* authentication failures,
+* authorization failures,
+* suspicious state transitions,
+* invalid signaling,
+* abuse limits,
+* privilege changes.
+
+Do not log secrets or unnecessary sensitive data.
+
+### Fail closed
+
+If authentication, authorization, ownership, room membership, lifecycle state, or required security state cannot be verified:
+
+**Reject the operation.**
+
+Never turn an infrastructure failure or ambiguous state into an authorization bypass.
+
+---
+
+# 8. Reliability and failure isolation
+
+The application must not fail globally because one component fails.
+
+Isolate failures at the smallest sensible boundary.
+
+Examples:
+
+* one user's failure must not kill the room,
+* one room's failure must not kill the server,
+* one socket's failure must not kill other sockets,
+* one peer's failure must not kill local media for everyone,
+* one database operation's failure must not corrupt unrelated state,
+* Redis failure must not unnecessarily crash unrelated functionality,
+* one external provider's failure must not take down the application.
+
+Handle safely:
+
+* disconnects,
+* reconnects,
+* retries,
+* duplicate operations,
+* stale operations,
+* concurrent operations,
+* partial failures,
+* timeouts,
+* dependency failures,
+* process restarts,
+* recovery.
+
+Never silently pretend a failed operation succeeded.
+
+Preserve valid state whenever possible.
+
+---
+
+# 9. State and lifecycle correctness
+
+Respect the existing lifecycle model.
+
+Do not create conflicting sources of truth.
+
+For every state-changing operation, consider:
+
+* in-memory state,
+* database state,
+* Redis/distributed state,
+* Socket.IO state,
+* connected/disconnected clients,
+* reconnect behavior,
+* process restart,
+* concurrent operations,
+* failure recovery.
+
+State transitions must remain valid across success and failure paths.
+
+Do not duplicate authoritative state unnecessarily.
+
+---
+
+# 10. Concurrency and idempotency
+
+Real-time systems must behave correctly under:
+
+* duplicate events,
+* concurrent requests,
+* reconnect races,
+* disconnect races,
+* simultaneous host transitions,
+* simultaneous room mutations,
+* retries,
+* delayed messages,
+* stale messages.
+
+Use existing operation IDs, leases, transactions, locks, and lifecycle mechanisms where appropriate.
+
+Do not introduce duplicate state-management systems.
+
+---
+
+# 11. Testing — REAL BEHAVIOR ONLY
+
+Tests must prove actual behavior.
+
+Do **not** consider any of the following sufficient proof:
+
+* an endpoint exists,
+* an endpoint returns `200`,
+* a function returns the expected value in isolation,
+* a mocked dependency says success,
+* a fake socket event says success.
+
+When behavior depends on real infrastructure, test the real execution path.
+
+Test as appropriate:
+
+### Functional behavior
+
+* valid operations,
+* invalid operations,
+* state transitions,
+* persistence,
+* socket events,
+* reconnects,
+* disconnects,
+* recovery.
+
+### Security
+
+* unauthenticated access,
+* unauthorized users,
+* wrong room,
+* wrong owner,
+* wrong host,
+* forged identity,
+* forged role,
+* stale session,
+* stale epoch,
+* replayed operation,
+* duplicate operation,
+* cross-room access,
+* unauthorized peer,
+* invalid payload,
+* oversized payload.
+
+### Reliability
+
+* database failure,
+* Redis failure,
+* socket failure,
+* peer failure,
+* external dependency failure,
+* partial operation failure,
+* timeout,
+* reconnect,
+* concurrent operations,
+* recovery.
+
+### Real integration
+
+Where applicable, use actual:
+
+* HTTP,
+* Socket.IO,
+* PostgreSQL,
+* Redis,
+* authentication,
+* lifecycle,
+* media/signaling
+
+execution paths.
+
+For browser/WebRTC behavior, perform real runtime/browser verification when required.
+
+**Do not create tests whose only purpose is to make the feature appear implemented.**
+
+---
+
+# 12. Debugging methodology
+
+When fixing a problem:
+
+1. Reproduce or trace the actual failure.
+2. Identify the real execution path.
+3. Find the root cause.
+4. Identify the invariant being violated.
+5. Fix the smallest correct boundary.
+6. Check whether the same root cause affects related functionality.
+7. Add or update regression tests.
+8. Test the original failure.
+9. Test relevant failure and concurrency paths.
+10. Verify that unrelated functionality remains intact.
+
+Do not patch symptoms with duplicated logic.
+
+---
+
+# 13. Infrastructure and cost
+
+Use existing infrastructure first.
+
+Prefer zero-cost infrastructure while the project is at its current stage.
+
+Do not prematurely introduce:
+
+* paid services,
+* unnecessary queues,
+* unnecessary microservices,
+* unnecessary distributed systems,
+* unnecessary cloud infrastructure,
+* million-user-scale architecture.
+
+Do not optimize for millions of users before the current product requires it.
+
+Instead:
+
+* build clean boundaries,
+* keep state ownership clear,
+* isolate failures,
+* avoid architectural dead ends,
+* preserve reasonable paths for future growth.
+
+---
+
+# 14. Dependency discipline
+
+* Do not add dependencies without a real need.
+* Prefer existing project dependencies and utilities.
+* Review security and maintenance implications before adding a package.
+* Do not introduce infrastructure merely to solve a problem that existing code can solve cleanly.
+
+---
+
+# 15. Existing tests and certified behavior
+
+Never assume existing tests are disposable.
+
+Before changing behavior:
+
+* identify relevant existing tests,
+* understand what invariants they protect,
+* extend them where appropriate,
+* preserve existing coverage,
+* add regression coverage for new behavior.
+
+Do not delete tests simply because they are inconvenient.
+
+---
+
+# 16. Documentation and comments
+
+Document only what needs explanation.
+
+Prefer code that is self-explanatory.
+
+Comments should explain:
+
+* non-obvious invariants,
+* lifecycle decisions,
+* security boundaries,
+* concurrency behavior,
+* distributed-state decisions,
+* reasons for unusual implementation choices.
+
+Do not add comments that merely restate the code.
+
+---
+
+# 17. Change discipline
+
+For every requested change:
+
+**Inspect → Trace → Identify invariant → Reuse → Implement minimally → Type strictly → Secure → Test realistically → Verify → Report accurately.**
+
+Before changing a shared contract, inspect all consumers.
+
+Before changing a socket event, inspect both server and client.
+
+Before changing persistence, inspect schema/migrations and all readers/writers.
+
+Before changing lifecycle behavior, inspect every affected transition.
+
+Before changing authorization, inspect all equivalent access paths.
+
+---
+
+# 18. Final verification standard
+
+Before saying a change is complete, verify:
+
+* TypeScript type checking,
+* relevant unit tests,
+* relevant integration tests,
+* relevant security tests,
+* relevant concurrency/failure tests,
+* build,
+* actual runtime behavior where applicable.
+
+If something could not be tested, explicitly state what was not verified.
+
+Never say:
+
+* “works perfectly,”
+* “production ready,”
+* “fully fixed,”
+* “verified”
+
+unless the available evidence actually supports that statement.
+
+---
+
+# Core engineering principle
+
+**Understand the existing system first.**
+
+**Do not rebuild what can be repaired.**
+
+**Use the smallest correct change.**
+
+**Keep every reusable function dynamically parameterized and strictly typed.**
+
+**Treat the client as untrusted.**
+
+**Enforce security on the server.**
+
+**Keep failures isolated.**
+
+**Preserve state consistency.**
+
+**Do not add unnecessary infrastructure.**
+
+**Do not optimize for imaginary scale.**
+
+**Test real behavior, not fake success.**
+
+**Never claim verification without evidence.**
+
+The goal is not to produce the most code or the most architecture.
+
+The goal is to make the **existing CoWatch system correct, secure, reliable, maintainable, dynamically reusable, and incrementally extensible with the minimum necessary code.**
