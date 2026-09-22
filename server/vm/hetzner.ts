@@ -2,7 +2,7 @@ import config from "../config.ts";
 import axios from "axios";
 import { VMManager, type VM } from "./base.ts";
 import fs from "node:fs";
-import { redis } from "../utils/redis.ts";
+import { edgeRedis } from "../utils/redis.ts";
 
 const HETZNER_TOKEN = config.HETZNER_TOKEN;
 const sshKeys = config.HETZNER_SSH_KEYS.split(",").map(Number);
@@ -131,10 +131,14 @@ export class Hetzner extends VMManager {
       id,
       response?.headers["ratelimit-remaining"],
     );
-    await redis?.set(
-      "hetznerApiRemaining",
-      response?.headers["ratelimit-remaining"],
-    );
+    if (response?.headers["ratelimit-remaining"]) {
+      await edgeRedis.execute("hetzner", "set", (c) =>
+        c.set(
+          "hetznerApiRemaining",
+          response.headers["ratelimit-remaining"],
+        )
+      );
+    }
     const server = this.mapServerObject(response.data.server);
     return server;
   };

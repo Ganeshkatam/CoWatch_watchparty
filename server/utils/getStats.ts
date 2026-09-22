@@ -1,7 +1,7 @@
 import type { AssignedVM } from "../vm/base.ts";
 import { postgres } from "./postgres.ts";
 import os from "node:os";
-import { getRedisCountDay, getRedisCountDayDistinct, redis, redisEdge, RedisMetrics } from "./redis.ts";
+import { getRedisCountDay, getRedisCountDayDistinct, edgeRedis, metricsRedis, redisEdge, RedisMetrics } from "./redis.ts";
 import config from "../config.ts";
 import { apps } from "../ecosystem.config.js";
 
@@ -16,7 +16,7 @@ export async function getStats() {
     apps.map((app) => `shardMetrics:${app.env?.SHARD ?? 0}`),
   );
   for (let key of shardKeys) {
-    const resp2 = await redis?.get(key);
+    const resp2 = await edgeRedis.execute("stats", "get", (c) => c.get(key));
     if (resp2) {
       shardMetrics[key] = JSON.parse(resp2);
       currentUsers += shardMetrics[key].users;
@@ -79,11 +79,11 @@ export async function getStats() {
         } catch {
           rosterLength = Number(batchData) || 0;
         }
-      } else if (redis) {
+      } else if (edgeRedis.client) {
         // Fallback to legacy keys if batch presence entry not found
-        rosterLength = Number(await redis.get(`roomCounts:${dbRoom.roomId}`)) || 0;
-        if (rosterLength) {
-          const resp = await redis.get(`roomRosters:${dbRoom.roomId}`);
+        rosterLength = Number(await edgeRedis.execute("presence", "get", (c) => c.get(`roomCounts:${dbRoom.roomId}`))) || 0;
+        if (rosterLength > 0) {
+          const resp = await edgeRedis.execute("presence", "get", (c) => c.get(`roomRosters:${dbRoom.roomId}`));
           if (resp) {
             try { roster = JSON.parse(resp); } catch {}
           }
@@ -130,9 +130,9 @@ export async function getStats() {
   const currentVideoChat = 0;
   const cpuUsage = os.loadavg()[1] * 100;
   const redisUsage = Number(
-    (await redis?.info())
+    (await metricsRedis.execute("metrics", "info", (c) => c.info()))
       ?.split("\n")
-      .find((line) => line.startsWith("used_memory:"))
+      .find((line: string) => line.startsWith("used_memory:"))
       ?.split(":")[1]
       .trim(),
   );
@@ -155,7 +155,7 @@ export async function getStats() {
   const deleteAccounts = await getRedisCountDay("deleteAccount");
   const chatMessages = await getRedisCountDay("chatMessages");
   const addReactions = await getRedisCountDay("addReaction");
-  const hetznerApiRemaining = Number(await redis?.get("hetznerApiRemaining"));
+  const hetznerApiRemaining = Number(await edgeRedis.execute("hetzner", "get", (c) => c.get("hetznerApiRemaining")));
   const vBrowserStarts = await getRedisCountDay("vBrowserStarts");
   const vBrowserLaunches = await getRedisCountDay("vBrowserLaunches");
   const vBrowserFails = await getRedisCountDay("vBrowserFails");
@@ -167,15 +167,11 @@ export async function getStats() {
   );
   const vBrowserStopEmpty = await getRedisCountDay("vBrowserTerminateEmpty");
   const vBrowserStopManual = await getRedisCountDay("vBrowserTerminateManual");
-  const vBrowserStartMS = await redis?.lrange("vBrowserStartMS", 0, -1);
-  const vBrowserStageRetries = await redis?.lrange(
-    "vBrowserStageRetries",
-    0,
-    -1,
-  );
-  const vBrowserStageFails = await redis?.lrange("vBrowserStageFails", 0, -1);
-  const vBrowserSessionMS = await redis?.lrange("vBrowserSessionMS", 0, -1);
-  // const vBrowserVMLifetime = await redis?.lrange('vBrowserVMLifetime', 0, -1);
+  const vBrowserStartMS = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange("vBrowserStartMS", 0, -1));
+  const vBrowserStageRetries = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange("vBrowserStageRetries", 0, -1));
+  const vBrowserStageFails = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange("vBrowserStageFails", 0, -1));
+  const vBrowserSessionMS = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange("vBrowserSessionMS", 0, -1));
+  // const vBrowserVMLifetime = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange('vBrowserVMLifetime', 0, -1));
   const proxyReqs = await getRedisCountDay("proxyReqs");
   const urlStarts = await getRedisCountDay("urlStarts");
   const streamStarts = await getRedisCountDay("streamStarts");
@@ -193,34 +189,34 @@ export async function getStats() {
   const subDownloadsOS = await getRedisCountDay("subDownloadsOS");
   const subSearchesOS = await getRedisCountDay("subSearchesOS");
   const youtubeSearch = await getRedisCountDay("youtubeSearch");
-  const vBrowserClientIDsCard = await redis?.zcard("vBrowserClientIDs");
-  const vBrowserUIDsCard = await redis?.zcard("vBrowserUIDs");
+  const vBrowserClientIDsCard = await metricsRedis.execute("analytics", "zcard", (c) => c.zcard("vBrowserClientIDs"));
+  const vBrowserUIDsCard = await metricsRedis.execute("analytics", "zcard", (c) => c.zcard("vBrowserUIDs"));
   const createRoomPreloads = await getRedisCountDay("createRoomPreload");
 
   const vBrowserClientIDs = altArrayToObject(
-    await redis?.zrevrangebyscore(
+    await metricsRedis.execute("analytics", "zrevrangebyscore", (c) => c.zrevrangebyscore(
       "vBrowserClientIDs",
       "+inf",
-      "0",
+      "-inf",
       "WITHSCORES",
       "LIMIT",
       0,
       20,
-    ),
+    )),
   );
   const vBrowserUIDs = altArrayToObject(
-    await redis?.zrevrangebyscore(
+    await metricsRedis.execute("analytics", "zrevrangebyscore", (c) => c.zrevrangebyscore(
       "vBrowserUIDs",
       "+inf",
-      "0",
+      "-inf",
       "WITHSCORES",
       "LIMIT",
       0,
       20,
-    ),
+    )),
   );
   const vBrowserClientIDMinutes = altArrayToObject(
-    await redis?.zrevrangebyscore(
+    await metricsRedis.execute("analytics", "zrevrangebyscore", (c) => c.zrevrangebyscore(
       "vBrowserClientIDMinutes",
       "+inf",
       "0",
@@ -228,10 +224,10 @@ export async function getStats() {
       "LIMIT",
       0,
       20,
-    ),
+    )),
   );
   const vBrowserUIDMinutes = altArrayToObject(
-    await redis?.zrevrangebyscore(
+    await metricsRedis.execute("analytics", "zrevrangebyscore", (c) => c.zrevrangebyscore(
       "vBrowserUIDMinutes",
       "+inf",
       "0",
@@ -239,7 +235,7 @@ export async function getStats() {
       "LIMIT",
       0,
       20,
-    ),
+    )),
   );
 
   // Fetch VM stats from vmworker

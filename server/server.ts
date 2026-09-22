@@ -9,7 +9,7 @@ import http from "node:http";
 import { Server } from "socket.io";
 import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
-import { redis, redisCount, redisEdge, RedisMetrics } from "./utils/redis.ts";
+import { metricsRedis, edgeRedis, redisCount, redisEdge, RedisMetrics } from "./utils/redis.ts";
 import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { getSessionLimitSeconds } from "./vm/utils.ts";
@@ -408,12 +408,12 @@ app.get("/ping", (_req, res) => {
 // Data's already compressed so go before the compression middleware
 app.get("/subtitle/:hash", async (req, res) => {
   const key = "subtitle:" + req.params.hash;
-  const buf = await redis?.getBuffer(key);
+  const buf = await edgeRedis.execute("subtitle", "getBuffer", (c) => c.getBuffer(key));
   if (!buf) {
     res.status(404).end("not found");
     return;
   }
-  await redis?.expire(key, 24 * 60 * 60);
+  await edgeRedis.execute("subtitle", "expire", (c) => c.expire(key, 24 * 60 * 60));
   res.setHeader("Content-Encoding", "gzip");
   res.end(buf);
 });
@@ -422,7 +422,7 @@ app.use(compression());
 
 app.post("/subtitle", async (req, res) => {
   const data = req.body;
-  if (!redis) {
+  if (!edgeRedis.client) {
     return;
   }
   // calculate hash, gzip and save to redis
@@ -432,7 +432,7 @@ app.post("/subtitle", async (req, res) => {
     .digest()
     .toString("hex");
   let gzipData = gzipSync(data);
-  await redis.setex("subtitle:" + hash, 24 * 60 * 60, gzipData);
+  edgeRedis.execute("subtitle", "setex", (c) => c.setex("subtitle:" + hash, 24 * 60 * 60, gzipData));
   redisCount("subUploads");
   res.json({ hash });
 });
@@ -456,7 +456,7 @@ app.get("/downloadSubtitles", async (req, res) => {
       },
     });
     redisCount("subDownloadsOS");
-    if (!redis) {
+    if (!edgeRedis.client) {
       // Return the direct link to the user, will work for about 3 hours
       res.json(urlResp.data);
       return;
@@ -472,7 +472,7 @@ app.get("/downloadSubtitles", async (req, res) => {
       .digest()
       .toString("hex");
     let gzipData = gzipSync(data);
-    await redis.setex("subtitle:" + hash, 24 * 60 * 60, gzipData);
+    edgeRedis.execute("subtitle", "setex", (c) => c.setex("subtitle:" + hash, 24 * 60 * 60, gzipData));
     res.json({ link: "/subtitle/" + hash });
   } catch (e) {
     if (isAxiosError(e)) {
@@ -1327,12 +1327,12 @@ app.get("/health/:metric", async (req, res) => {
 
 app.get("/timeSeries", async (req, res) => {
   const auth = await authenticateOperator(req);
-  if (!auth.authorized || !redis) {
+  if (!auth.authorized || !metricsRedis.client) {
     res.status(403).json({ error: "Access Denied" });
     return;
   }
-  const timeSeriesData = await redis.lrange("timeSeries", 0, -1);
-  const timeSeries = timeSeriesData.map((entry) => JSON.parse(entry));
+  const timeSeriesData = await metricsRedis.execute("analytics", "lrange", (c) => c.lrange("timeSeries", 0, -1));
+  const timeSeries = timeSeriesData?.map((entry: string) => JSON.parse(entry)) || [];
   res.json(timeSeries);
 });
 
@@ -2280,7 +2280,7 @@ app.post("/room-admission/restore", async (req, res) => {
       if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
         callerUid = decoded.uid;
       }
-    } catch {}
+    } catch { }
   }
 
   if (!callerUid) {
@@ -3308,25 +3308,19 @@ async function minuteMetrics() {
       );
 
       // Phase 8: In critical budget state, degrade non-essential analytics tracking
-      if (!RedisMetrics.isDegradedMode() && redis && redis.status === "ready") {
+      if (!RedisMetrics.isDegradedMode() && metricsRedis.client && metricsRedis.isReady()) {
         try {
           const expireTime = getStartOfDay() / 1000 + 86400;
-          if (room.vBrowser?.creatorClientID) {
-            await redis.zincrby(
-              "vBrowserClientIDMinutes",
-              1,
-              room.vBrowser.creatorClientID,
-            );
-            await redis.expireat("vBrowserClientIDMinutes", expireTime);
-          }
-          if (room.vBrowser?.creatorUID) {
-            await redis.zincrby(
-              "vBrowserUIDMinutes",
-              1,
-              room.vBrowser?.creatorUID,
-            );
-            await redis.expireat("vBrowserUIDMinutes", expireTime);
-          }
+          await metricsRedis.execute("analytics", "zincrby", async (c) => {
+            if (room.vBrowser?.creatorClientID) {
+              await c.zincrby("vBrowserClientIDMinutes", 1, room.vBrowser.creatorClientID);
+              await c.expireat("vBrowserClientIDMinutes", expireTime);
+            }
+            if (room.vBrowser?.creatorUID) {
+              await c.zincrby("vBrowserUIDMinutes", 1, room.vBrowser?.creatorUID);
+              await c.expireat("vBrowserUIDMinutes", expireTime);
+            }
+          });
         } catch (err) {
           // Redis metrics degradation fallback
         }
@@ -3370,12 +3364,12 @@ async function minuteMetrics() {
     vbWaiting,
   };
   try {
-    if (redis && redis.status === "ready") {
-      await redis.setex(
+    if (edgeRedis.client && edgeRedis.isReady()) {
+      await edgeRedis.execute("stats", "setex", (c) => c.setex(
         `shardMetrics:${config.SHARD ?? 0}`,
         120,
         JSON.stringify(obj),
-      );
+      ));
     }
   } catch (err) {
     // Redis shard metrics degradation fallback

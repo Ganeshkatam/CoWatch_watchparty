@@ -2,7 +2,7 @@ import config from "./config.ts";
 import axios from "axios";
 import { Server, Socket } from "socket.io";
 import { randomUUID } from "crypto";
-import { getUser, validateUserToken, validateToken } from "./utils/supabase.ts";
+import { getUser, validateToken } from "./utils/supabase.ts";
 import {
   authorizeRoomAction as pureAuthorizeRoomAction,
   type RoomAction,
@@ -10,11 +10,11 @@ import {
   type ActionTarget,
   type AuthorizationResult,
 } from "./roomAuthorization.ts";
-import { redis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
+import { metricsRedis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
-import { hashRoomPasscode, verifyRoomPasscode, isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
+import { isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
 import { verifyAdmissionToken, fingerprintToken } from "./utils/admissionToken.ts";
 import {
   fetchYoutubeVideo,
@@ -1817,9 +1817,11 @@ export class Room {
     // Force a save because this might change in unattended rooms
     this.lastUpdateTime = new Date();
     this.saveRoom();
-    if (redis && assignTime) {
-      await redis.lpush("vBrowserSessionMS", Date.now() - assignTime);
-      await redis.ltrim("vBrowserSessionMS", 0, 19);
+    if (assignTime) {
+      await metricsRedis.execute("analytics", "lpush", async (c) => {
+        await c.lpush("vBrowserSessionMS", Date.now() - assignTime);
+        await c.ltrim("vBrowserSessionMS", 0, 19);
+      });
     }
 
     // Release VM via registry-resolved manager
@@ -2646,29 +2648,23 @@ export class Room {
       }
 
       // Log the vbrowser creation by uid and clientid
-      if (redis) {
-        const expireTime = getStartOfDay() / 1000 + 86400;
-        if (clientId) {
-          const clientCount = await redis.zincrby(
-            "vBrowserClientIDs",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDs", expireTime);
-          const clientMinutes = await redis.zincrby(
-            "vBrowserClientIDMinutes",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDMinutes", expireTime);
-        }
-        if (uid) {
-          const uidCount = await redis.zincrby("vBrowserUIDs", 1, uid);
-          redis.expireat("vBrowserUIDs", expireTime);
-          const uidMinutes = await redis.zincrby("vBrowserUIDMinutes", 1, uid);
-          redis.expireat("vBrowserUIDMinutes", expireTime);
-          // TODO limit users based on client or uid usage
-        }
+      if (metricsRedis.client) {
+        await metricsRedis.execute("analytics", "zincrby", async (c) => {
+          const expireTime = getStartOfDay() / 1000 + 86400;
+          if (clientId) {
+            await c.zincrby("vBrowserClientIDs", 1, clientId);
+            await c.expireat("vBrowserClientIDs", expireTime);
+            await c.zincrby("vBrowserClientIDMinutes", 1, clientId);
+            await c.expireat("vBrowserClientIDMinutes", expireTime);
+          }
+          if (uid) {
+            await c.zincrby("vBrowserUIDs", 1, uid);
+            await c.expireat("vBrowserUIDs", expireTime);
+            await c.zincrby("vBrowserUIDMinutes", 1, uid);
+            await c.expireat("vBrowserUIDMinutes", expireTime);
+            // TODO limit users based on client or uid usage
+          }
+        });
       }
       // check if the user already has a VM already in postgres
       if (postgres) {
@@ -2770,8 +2766,10 @@ export class Room {
         this.vBrowserPoolId = allocatedPoolId;
         const assignEnd = Date.now();
         const assignElapsed = assignEnd - Number(queueTime);
-        await redis?.lpush("vBrowserStartMS", assignElapsed);
-        await redis?.ltrim("vBrowserStartMS", 0, 19);
+        await metricsRedis.execute("analytics", "lpush", async (c) => {
+          await c.lpush("vBrowserStartMS", assignElapsed);
+          await c.ltrim("vBrowserStartMS", 0, 19);
+        });
         console.log(
           "[ASSIGN] %s to %s in %s",
           assignment.provider + ":" + assignment.id,

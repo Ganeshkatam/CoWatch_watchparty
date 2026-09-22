@@ -32,7 +32,7 @@ interface L1Entry<T> {
 }
 
 export class BoundedL1Cache {
-  private cache = new Map<string, L1Entry<any>>();
+  private cache = new Map<string, L1Entry<unknown>>();
   private maxEntries: number;
 
   constructor(maxEntries = 1000) {
@@ -103,7 +103,7 @@ function createRedisClient(url: string | undefined, name: string): Redis | undef
       keepAlive: 10000,
       enableReadyCheck: true,
       lazyConnect: false,
-      ...(isTls ? { tls: { rejectUnauthorized: false } } : {}),
+      ...(isTls ? { tls: {} } : {}),
     });
     client.on("error", (err) => {
       console.warn(`[REDIS ${name.toUpperCase()} ERROR]:`, err.message);
@@ -145,7 +145,12 @@ export class ManagedRedisClient {
     op: string,
     action: (c: Redis) => Promise<T>
   ): Promise<T | undefined> {
-    if (!this.client) return undefined;
+    if (!this.client) {
+      if (this.tier === "core") {
+        throw new Error(`[REDIS CORE ERROR] Client unavailable for ${feature}:${op}`);
+      }
+      return undefined;
+    }
     const start = Date.now();
     try {
       const res = await action(this.client);
@@ -154,6 +159,9 @@ export class ManagedRedisClient {
     } catch (err: any) {
       RedisMetrics.recordCommand(feature, op, Date.now() - start, false, this.tier);
       console.warn(`[REDIS ${this.tier.toUpperCase()} ${op.toUpperCase()} ERROR] (${feature}):`, err.message);
+      if (this.tier === "core") {
+        throw err;
+      }
       return undefined;
     }
   }
@@ -585,7 +593,7 @@ export async function atomicIncrWithTtl(key: string, ttlSeconds: number, feature
   const res = await coreRedis.execute(feature, "eval", (c) =>
     c.eval(ATOMIC_INCR_EXPIRE_LUA, 1, key, ttlSeconds)
   );
-  return Number(res) || 1;
+  return Number(res);
 }
 
 export async function getRateLimitCount(key: string, feature = "ratelimit"): Promise<number> {
@@ -608,6 +616,3 @@ export async function delRateLimit(key: string, feature = "ratelimit"): Promise<
   );
   return Boolean(res && res > 0);
 }
-
-// Controlled export of the underlying client for legacy compatibility
-export const redis = edgeRedis.client || coreRedis.client;
