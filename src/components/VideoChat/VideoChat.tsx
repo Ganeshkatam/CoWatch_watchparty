@@ -85,10 +85,20 @@ export class VideoChatErrorBoundary extends React.Component<
   }
 }
 
+interface PeerAudioNodes {
+  source: MediaStreamAudioSourceNode;
+  analyserA: AnalyserNode;
+  gain: GainNode;
+  stream: MediaStream;
+}
+
 class PeerAudioBooster {
   private ctx: AudioContext | null = null;
   private compressor: DynamicsCompressorNode | null = null;
-  private peerNodes: Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }> = new Map();
+  private makeUpGain: GainNode | null = null; // post-compressor make-up gain
+  private analyserB: AnalyserNode | null = null; // post-compressor/make-up gain
+  private peerNodes: Map<string, PeerAudioNodes> = new Map();
+  private metricInterval: number | null = null;
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -98,24 +108,35 @@ class PeerAudioBooster {
       try {
         this.ctx = new AudioCtx();
         this.compressor = this.ctx.createDynamicsCompressor();
-        this.compressor.threshold.setValueAtTime(-18, this.ctx.currentTime);
+        this.compressor.threshold.setValueAtTime(-22, this.ctx.currentTime);
         this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
-        this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
+        this.compressor.ratio.setValueAtTime(3, this.ctx.currentTime);
         this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
         this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
-        this.compressor.connect(this.ctx.destination);
+
+        this.makeUpGain = this.ctx.createGain();
+        this.makeUpGain.gain.setValueAtTime(1.65, this.ctx.currentTime); // +4.35 dB make-up gain
+
+        // Analyser B: Measures signal after compressor & make-up gain
+        this.analyserB = this.ctx.createAnalyser();
+        this.analyserB.fftSize = 512;
+
+        this.compressor.connect(this.makeUpGain);
+        this.makeUpGain.connect(this.analyserB);
+        this.analyserB.connect(this.ctx.destination);
       } catch (err) {
         console.warn("Could not create AudioContext or compressor:", err);
       }
     }
     if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
     return this.ctx;
   }
 
-  public attachStream(peerId: string, stream: MediaStream, boostFactor = 1.75): void {
-    if (!stream || stream.getAudioTracks().length === 0) return;
+  public attachStream(peerId: string, stream: MediaStream, boostFactor = 1.25): void {
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
     const ctx = this.getAudioContext();
     if (!ctx || !this.compressor) return;
 
@@ -123,14 +144,83 @@ class PeerAudioBooster {
 
     try {
       const source = ctx.createMediaStreamSource(stream);
+
+      // Analyser A: Measures raw signal from remote MediaStream before compressor
+      const analyserA = ctx.createAnalyser();
+      analyserA.fftSize = 512;
+
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(boostFactor, ctx.currentTime);
-      source.connect(gain);
+
+      // Pipeline: MediaStream -> source -> analyserA -> gain -> compressor -> analyserB -> destination
+      source.connect(analyserA);
+      analyserA.connect(gain);
       gain.connect(this.compressor);
-      this.peerNodes.set(peerId, { source, gain });
+
+      this.peerNodes.set(peerId, { source, analyserA, gain, stream });
+
+      console.log(`[AUDIO_EVIDENCE:attachStream] ${JSON.stringify({
+        peerId,
+        ctxState: ctx.state,
+        trackId: audioTrack.id,
+        trackEnabled: audioTrack.enabled,
+        trackMuted: audioTrack.muted,
+        trackReadyState: audioTrack.readyState,
+        settings: audioTrack.getSettings ? audioTrack.getSettings() : undefined,
+      })}`);
+
+      this.startMetricsPolling();
     } catch (err) {
       console.warn("PeerAudioBooster error attaching peer:", peerId, err);
     }
+  }
+
+  private startMetricsPolling(): void {
+    if (this.metricInterval !== null || typeof window === "undefined") return;
+    this.metricInterval = window.setInterval(() => {
+      if (!this.ctx || !this.compressor || !this.analyserB) return;
+      for (const [peerId, node] of this.peerNodes.entries()) {
+        const audioTrack = node.stream.getAudioTracks()[0];
+        if (!audioTrack) continue;
+
+        // Sample Analyser A (pre-compressor)
+        const bufA = new Float32Array(node.analyserA.fftSize);
+        node.analyserA.getFloatTimeDomainData(bufA);
+        let sumA = 0;
+        let peakA = 0;
+        for (let i = 0; i < bufA.length; i++) {
+          const val = Math.abs(bufA[i]);
+          if (val > peakA) peakA = val;
+          sumA += val * val;
+        }
+        const rmsA = Math.sqrt(sumA / bufA.length);
+
+        // Sample Analyser B (post-compressor)
+        const bufB = new Float32Array(this.analyserB.fftSize);
+        this.analyserB.getFloatTimeDomainData(bufB);
+        let sumB = 0;
+        let peakB = 0;
+        for (let i = 0; i < bufB.length; i++) {
+          const val = Math.abs(bufB[i]);
+          if (val > peakB) peakB = val;
+          sumB += val * val;
+        }
+        const rmsB = Math.sqrt(sumB / bufB.length);
+
+        console.log(`[AUDIO_EVIDENCE:levels] ${JSON.stringify({
+          peerId,
+          ctxState: this.ctx.state,
+          trackEnabled: audioTrack.enabled,
+          trackMuted: audioTrack.muted,
+          trackReadyState: audioTrack.readyState,
+          rmsA_preCompressor: rmsA.toFixed(4),
+          peakA_preCompressor: peakA.toFixed(4),
+          rmsB_postCompressor: rmsB.toFixed(4),
+          peakB_postCompressor: peakB.toFixed(4),
+          compressorReductionDb: this.compressor.reduction,
+        })}`);
+      }
+    }, 1000);
   }
 
   public detachPeer(peerId: string): void {
@@ -138,20 +228,31 @@ class PeerAudioBooster {
     if (node) {
       try {
         node.source.disconnect();
+        node.analyserA.disconnect();
         node.gain.disconnect();
-      } catch {}
+      } catch { }
       this.peerNodes.delete(peerId);
     }
   }
 
   public detachAll(): void {
+    if (this.metricInterval !== null && typeof window !== "undefined") {
+      window.clearInterval(this.metricInterval);
+      this.metricInterval = null;
+    }
     for (const peerId of Array.from(this.peerNodes.keys())) {
       this.detachPeer(peerId);
+    }
+    if (this.analyserB) {
+      try {
+        this.analyserB.disconnect();
+      } catch { }
+      this.analyserB = null;
     }
     if (this.ctx) {
       try {
         this.ctx.close();
-      } catch {}
+      } catch { }
       this.ctx = null;
       this.compressor = null;
     }
@@ -200,6 +301,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     this.socket?.on("signal", this.handleSignal);
 
     if (typeof window !== "undefined" && window.cowatch) {
+      window.cowatch.videoChat = this;
       window.cowatch.getVideoDiagnostics = (targetId?: string) => {
         const pcs = window.cowatch.videoPCs || {};
         const remoteStreams = window.cowatch.remoteStreams || {};
@@ -227,8 +329,13 @@ export class VideoChat extends React.Component<VideoChatProps> {
   componentWillUnmount() {
     this.socket?.off("signal", this.handleSignal);
     this.audioBooster.detachAll();
-    if (typeof window !== "undefined" && window.cowatch && window.cowatch.getVideoDiagnostics) {
-      delete window.cowatch.getVideoDiagnostics;
+    if (typeof window !== "undefined" && window.cowatch) {
+      if (window.cowatch.videoChat === this) {
+        delete window.cowatch.videoChat;
+      }
+      if (window.cowatch.getVideoDiagnostics) {
+        delete window.cowatch.getVideoDiagnostics;
+      }
     }
   }
 
@@ -371,13 +478,13 @@ export class VideoChat extends React.Component<VideoChatProps> {
           const constraints: MediaStreamConstraints = {
             audio: prefMicOn
               ? {
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                  autoGainControl: true,
-                  channelCount: 1,
-                  sampleRate: 48000,
-                  ...(this.props.micDeviceId ? { deviceId: { exact: this.props.micDeviceId } } : {}),
-                }
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+                sampleRate: 48000,
+                ...(this.props.micDeviceId ? { deviceId: { exact: this.props.micDeviceId } } : {}),
+              }
               : false,
             video: prefCameraOn
               ? (this.props.cameraDeviceId ? { deviceId: { exact: this.props.cameraDeviceId } } : true)
@@ -523,7 +630,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     window.cowatch.videoPCs[id] = pc;
     window.cowatch.iceQueues[id] = [];
-    
+
     const ourStream = window.cowatch.ourStream;
     const videoRefs = window.cowatch.videoRefs;
 
@@ -560,7 +667,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
       }
     };
 
-      pc.ontrack = (event: RTCTrackEvent) => {
+    pc.ontrack = (event: RTCTrackEvent) => {
       if (!window.cowatch.remoteStreams) {
         window.cowatch.remoteStreams = {};
       }
@@ -698,7 +805,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
               if (videoRefs[id].srcObject !== ourStream) {
                 videoRefs[id].srcObject = ourStream;
               }
-              videoRefs[id].play().catch(() => {});
+              videoRefs[id].play().catch(() => { });
             } catch (e) {
               console.warn("Could not set local stream on video element:", e);
             }

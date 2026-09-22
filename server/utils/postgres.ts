@@ -19,7 +19,8 @@ function createPool(connectionString: string): Pool {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
-  });
+    prepareThreshold: 0,
+  } as any);
 
   // Handle errors on idle clients in the pool to prevent unhandled ECONNRESET crashes
   pool.on("error", (err) => {

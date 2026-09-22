@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Badge, Loader, Overlay, Select, Title, Tabs, Text } from "@mantine/core";
+import { Badge, Loader, Overlay, Title, Tabs, Text } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -121,12 +121,14 @@ declare global {
     onYouTubeIframeAPIReady: any;
     YT: YT.JsApi;
     cowatch: {
+      videoChat?: any;
+      app?: any;
       ourStream: MediaStream | undefined;
-      videoRefs: HTMLVideoElementDict;
-      videoPCs: PCDict;
-      iceQueues: Record<string, RTCIceCandidateInit[]>;
+      videoRefs: Record<string, HTMLVideoElement | null>;
+      videoPCs: Record<string, RTCPeerConnection>;
+      iceQueues: Record<string, RTCIceCandidate[]>;
       remoteStreams: Record<string, MediaStream>;
-      webtorrent?: WebTorrent.Instance;
+      webtorrent?: any;
       hls?: Hls;
       dash?: MediaPlayerClass;
       getVideoDiagnostics?: (targetId?: string) => any;
@@ -135,6 +137,7 @@ declare global {
 }
 
 window.cowatch = {
+  app: undefined,
   ourStream: undefined,
   videoRefs: {},
   videoPCs: {},
@@ -706,6 +709,9 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   async componentDidMount() {
+    if (typeof window !== "undefined" && window.cowatch) {
+      window.cowatch.app = this;
+    }
     if (this.context.displayName && this.context.displayName !== this.state.myName) {
       this.updateName(this.context.displayName);
     }
@@ -2673,6 +2679,16 @@ export class App extends React.Component<AppProps, AppState> {
             sampleSize: 16,
           },
         });
+        console.log("[SCREENSHARE_EVIDENCE:sharerCapturedStream]", {
+          streamId: stream.id,
+          tracks: stream.getTracks().map((t) => ({
+            kind: t.kind,
+            id: t.id,
+            enabled: t.enabled,
+            readyState: t.readyState,
+            settings: t.getSettings ? t.getSettings() : undefined,
+          })),
+        });
         this.localStreamToPublish = stream;
         this.isLocalStreamAFile = false;
         const leftVideo = this.HTMLInterface.getVideoEl();
@@ -3173,13 +3189,72 @@ export class App extends React.Component<AppProps, AppState> {
         }
       };
       pc.ontrack = (event: RTCTrackEvent) => {
-        // Mount the stream from sharer
-        const leftVideo = this.HTMLInterface.getVideoEl();
+        const leftVideo = this.HTMLInterface.getVideoEl() as HTMLVideoElement | null;
+
+        // PHASE R DIAGNOSTIC INSTRUMENTATION: Capture complete WebRTC track & DOM state
+        const videoTrack = event.track.kind === "video" ? event.track : undefined;
+        console.log("[SCREENSHARE_EVIDENCE:ontrack]", {
+          kind: event.track.kind,
+          trackId: event.track.id,
+          trackReadyState: event.track.readyState,
+          trackEnabled: event.track.enabled,
+          eventStreamsLength: event.streams ? event.streams.length : 0,
+          streamId: event.streams?.[0]?.id,
+          streamTracks: event.streams?.[0]?.getTracks().map((t) => ({
+            kind: t.kind,
+            id: t.id,
+            readyState: t.readyState,
+            enabled: t.enabled,
+          })),
+          videoSettings: videoTrack?.getSettings ? videoTrack.getSettings() : undefined,
+          videoCapabilities: videoTrack?.getCapabilities ? videoTrack.getCapabilities() : undefined,
+          videoElBefore: leftVideo ? {
+            hasSrcObject: Boolean(leftVideo.srcObject),
+            srcObjectId: leftVideo.srcObject instanceof MediaStream ? leftVideo.srcObject.id : null,
+            videoWidth: leftVideo.videoWidth,
+            videoHeight: leftVideo.videoHeight,
+            readyState: leftVideo.readyState,
+            networkState: leftVideo.networkState,
+            paused: leftVideo.paused,
+            muted: leftVideo.muted,
+          } : null,
+          domVisibility: leftVideo ? {
+            display: window.getComputedStyle(leftVideo).display,
+            visibility: window.getComputedStyle(leftVideo).visibility,
+            opacity: window.getComputedStyle(leftVideo).opacity,
+            zIndex: window.getComputedStyle(leftVideo).zIndex,
+            boundingRect: leftVideo.getBoundingClientRect(),
+          } : null,
+          loaderState: this.state.loading,
+          nonPlayableMedia: this.state.nonPlayableMedia,
+        });
+
+        // Mount the stream from sharer safely without re-triggering media load algorithm on subsequent tracks
         if (leftVideo) {
-          leftVideo.src = "";
-          leftVideo.srcObject = event.streams[0];
+          if (leftVideo.src) {
+            leftVideo.removeAttribute("src");
+          }
+          if (leftVideo.srcObject !== event.streams[0]) {
+            leftVideo.srcObject = event.streams[0];
+          }
           leftVideo.muted = false;
           leftVideo.play().catch(console.warn);
+
+          // Listen for metadata and resize events on the video element
+          leftVideo.onloadedmetadata = () => {
+            console.log("[SCREENSHARE_EVIDENCE:loadedmetadata]", {
+              videoWidth: leftVideo.videoWidth,
+              videoHeight: leftVideo.videoHeight,
+              readyState: leftVideo.readyState,
+            });
+          };
+          leftVideo.onresize = () => {
+            console.log("[SCREENSHARE_EVIDENCE:resize]", {
+              videoWidth: leftVideo.videoWidth,
+              videoHeight: leftVideo.videoHeight,
+              readyState: leftVideo.readyState,
+            });
+          };
         }
         this.setState({ loading: false, nonPlayableMedia: false });
       };
@@ -3333,7 +3408,7 @@ export class App extends React.Component<AppProps, AppState> {
     const operationId = operationCoordinator.createOperationId("media-playback", "seek");
     try {
       this.Player().seekVideo(target);
-    } catch {}
+    } catch { }
     this.socket.emit("CMD:seek", { time: toSend, operationId });
   };
 
@@ -4203,8 +4278,8 @@ export class App extends React.Component<AppProps, AppState> {
                       style={{
                         display:
                           this.usingNative() ||
-                          this.state.pipState?.active ||
-                          this.state.fullScreen
+                            this.state.pipState?.active ||
+                            this.state.fullScreen
                             ? "block"
                             : "none",
                         width: "100%",
