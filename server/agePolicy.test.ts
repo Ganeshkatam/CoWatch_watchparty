@@ -208,18 +208,15 @@ async function runAgePolicyTests() {
   }
   console.log("  [PASS] Checkpoint 8: Server codebase verified free of age admission checks or metadata.");
 
-  // Checkpoint 9: Core routes, rooms, and VBrowser have zero age dependencies
+  // Checkpoint 9: Core routes and rooms have zero age dependencies
   const serverPath = path.join(rootDir, "server", "server.ts");
   const serverContent = fs.readFileSync(serverPath, "utf-8");
   const roomPath = path.join(rootDir, "server", "room.ts");
   const roomContent = fs.readFileSync(roomPath, "utf-8");
-  const vbrowserPath = path.join(rootDir, "server", "vm", "provider.ts");
-  const vbrowserContent = fs.readFileSync(vbrowserPath, "utf-8");
 
   assert.ok(!serverContent.includes("age_verified"), "server.ts must not check age_verified for admission");
   assert.ok(!serverContent.includes("date_of_birth"), "server.ts must not check date_of_birth");
   assert.ok(!roomContent.includes("age_verified"), "room.ts must not check age_verified for admission");
-  assert.ok(!vbrowserContent.includes("age_verified"), "provider.ts must not check age_verified for container allocation");
 
   // Simulated admission pipeline check: Admission succeeds without any age attribute
   const admissionPipeline = (req: { authenticated: boolean; emailVerified: boolean; roomPasscodeValid: boolean; isAgeVerified?: boolean }) => {

@@ -9,7 +9,7 @@ export type NotificationType =
   | 'ROOM_ENDING'
   | 'ROOM_ENDED'
   | 'MODERATION_ACTION'
-  | 'VBROWSER_FAILURE'
+
   | 'SYSTEM_ANNOUNCEMENT';
 
 export interface NotificationItem {

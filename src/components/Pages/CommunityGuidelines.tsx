@@ -40,7 +40,7 @@ export const CommunityGuidelines: React.FC = () => {
         <Text mb="lg" c="var(--text-secondary)" size="sm" style={{ lineHeight: 1.7 }}>
           CoWatch is dedicated to providing a safe, enjoyable, and collaborative space for watching
           media and connecting with friends. These guidelines apply to all interactions across rooms,
-          voice/video streams, text chat, and shared virtual browsers.
+          voice/video streams, and text chat.
         </Text>
 
         <h2 className={styles.sectionTitle}>
@@ -82,15 +82,15 @@ export const CommunityGuidelines: React.FC = () => {
         </List>
 
         <h2 className={styles.sectionTitle}>
-          3. Responsible Virtual Browser &amp; Infrastructure Use
+          3. Responsible Infrastructure Use
         </h2>
         <List className={styles.list} spacing="sm">
           <List.Item>
-            <strong>Standard Interactive Use Only:</strong> Cloud virtual browsers are provisioned for
-            interactive web browsing and media playback among room participants.
+            <strong>Standard Interactive Use Only:</strong> Shared platform resources are provisioned for
+            interactive media playback among room participants.
           </List.Item>
           <List.Item>
-            <strong>Prohibited Activities:</strong> Do not use virtual browsers for cryptocurrency mining,
+            <strong>Prohibited Activities:</strong> Do not use platform resources for cryptocurrency mining,
             denial-of-service (DoS) attacks, port scanning, malware distribution, or automated web scraping.
           </List.Item>
           <List.Item>

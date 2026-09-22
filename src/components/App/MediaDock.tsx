@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  IconBrowser,
   IconCheck,
   IconChevronDown,
   IconChevronUp,
@@ -26,7 +25,6 @@ import styles from "./MediaDock.module.css";
 interface MediaDockProps {
   haveLock: boolean;
   onOpenScreenShare: () => void;
-  onOpenVBrowser: () => void;
   onOpenFileShare: () => void;
   onOpenQuickAdd: () => void;
   playlist: PlaylistVideo[];
@@ -37,8 +35,6 @@ interface MediaDockProps {
   onStopMedia?: () => void;
   isScreenSharing?: boolean;
   onStopScreenShare?: () => void;
-  isPlayingVBrowser?: boolean;
-  onStopVBrowser?: () => void;
   isLocked?: boolean;
   onToggleLock?: () => void;
   isFullScreen?: boolean;
@@ -49,7 +45,6 @@ interface MediaDockProps {
 export const MediaDock: React.FC<MediaDockProps> = ({
   haveLock,
   onOpenScreenShare,
-  onOpenVBrowser,
   onOpenFileShare,
   onOpenQuickAdd,
   playlist,
@@ -60,8 +55,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   onStopMedia,
   isScreenSharing,
   onStopScreenShare,
-  isPlayingVBrowser,
-  onStopVBrowser,
   isLocked,
   onToggleLock,
   isFullScreen,
@@ -93,7 +86,7 @@ export const MediaDock: React.FC<MediaDockProps> = ({
   const isLaptop = viewport.width > 1200;
   const isShortHeight = viewport.height < 600;
 
-  const hasActiveMedia = Boolean(roomMedia) || Boolean(isScreenSharing) || Boolean(isPlayingVBrowser);
+  const hasActiveMedia = Boolean(roomMedia) || Boolean(isScreenSharing);
 
   const [isCollapsed, setIsCollapsed] = React.useState(false);
   const collapseTimerRef = React.useRef<number | null>(null);
@@ -232,18 +225,8 @@ export const MediaDock: React.FC<MediaDockProps> = ({
         onMouseLeave={handleDockMouseLeave}
         onClick={handleDockClick}
       >
-        {/* Prioritized single stop button (VBrowser > ScreenShare > Standard Media) */}
-        {isPlayingVBrowser && onStopVBrowser ? (
-        <button
-          type="button"
-          className={styles.stopBtn}
-          onClick={onStopVBrowser}
-          disabled={!haveLock}
-        >
-          <IconX size={15} />
-          <span>{isCompact ? "Stop" : "Stop VBrowser"}</span>
-        </button>
-      ) : isScreenSharing && onStopScreenShare ? (
+        {/* Prioritized single stop button (ScreenShare > Standard Media) */}
+        {isScreenSharing && onStopScreenShare ? (
         <button
           type="button"
           className={styles.stopBtn}
@@ -298,17 +281,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
               </div>
             </Menu.Item>
 
-            {metadata.capabilities?.virtualBrowser && (
-              <Menu.Item
-                leftSection={<IconBrowser size={18} color="var(--color-success)" />}
-                onClick={onOpenVBrowser}
-              >
-                <div className={styles.menuItemWithDesc}>
-                  <span className={styles.menuItemTitle}>Browser</span>
-                </div>
-              </Menu.Item>
-            )}
-
             <Menu.Item
               leftSection={<IconFile size={18} color="var(--media-magnet)" />}
               onClick={onOpenFileShare}
@@ -338,17 +310,6 @@ export const MediaDock: React.FC<MediaDockProps> = ({
           >
             <IconScreenShare size={18} />
           </button>
-
-          {metadata.capabilities?.virtualBrowser && (
-            <button
-              type="button"
-              className={styles.addMediaIconBtn}
-              onClick={onOpenVBrowser}
-              disabled={!haveLock}
-            >
-              <IconBrowser size={18} />
-            </button>
-          )}
 
           <button
             type="button"

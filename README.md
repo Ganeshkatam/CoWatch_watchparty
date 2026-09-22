@@ -17,7 +17,7 @@ CoWatch is a private, real-time synchronized video streaming and collaborative w
   - **Adaptive Bitrate Streaming**: Smooth playback of HTTP Live Streaming (HLS `.m3u8` via `hls.js`) and MPEG-DASH (`.mpd` via `dashjs`).
   - **WebTorrent (P2P)**: In-browser peer-to-peer torrent streaming directly from magnet links with swarm acceleration.
   - **Screen Sharing**: High-framerate, low-latency screen and audio sharing routed directly into the primary player viewport via WebRTC.
-  - **Virtual Browsers (VBrowser - Internal Preview)**: Core backend business logic and container lifecycle management implemented for isolated Neko Chromium sessions (currently in private preview; not yet publicly enabled).
+
   - **Local File Streaming**: Stream local video files directly to participants or transcode on-the-fly.
   - **Interactive Playlist Dock**: Drawer-based playlist queue supporting reordering, queue additions, and instant switching.
 - **Cross-Platform Picture-in-Picture (PiP)**: Full support for native browser Picture-in-Picture on both desktop and mobile devices, integrated with the browser MediaSession API for OS-level lock screen and media center controls.
@@ -167,7 +167,7 @@ REDIS_URL=rediss://default:[PASSWORD]@[ENDPOINT].upstash.io:6379
 
 # Optional: Media Infrastructure
 YOUTUBE_API_KEY=your_youtube_api_key
-VIRTUAL_BROWSER_ENABLED=false
+
 ```
 
 ### 5. Initialize the Database
@@ -209,8 +209,7 @@ Access the application in your browser at `http://localhost:5173`.
 | `npm run prettier` | Formats the codebase using Prettier. |
 | `npm run analyze` | Generates a visual bundle size report using `source-map-explorer`. |
 | `npm run db:strip-slashes` | Runs the database utility to clean escaped slashes in room records. |
-| `npm run testvBrowser` | Spawns a local Neko Chromium virtual browser container via Docker. |
-| `npm run testvlc` | Spawns a local Neko VLC player container via Docker. |
+
 
 ---
 
@@ -220,7 +219,7 @@ CoWatch provides an automated test suite covering contractual invariants, securi
 
 ```bash
 # Domain & Notification Suites
-npm run test:domain-events            # Domain event integration (invites, lifecycle, moderation, vbrowser)
+npm run test:domain-events            # Domain event integration (invites, lifecycle, moderation)
 npm run test:action-contract          # Canonical action routing contracts and fallback policies
 npm run test:notifications            # Notification consistency and SQL template invariants
 npm run test:delivery-profiles        # Email delivery profile bindings and multi-sender routing
@@ -273,22 +272,9 @@ To enable the YouTube search modal inside the media dock:
 2. Generate an API key and set `YOUTUBE_API_KEY=your_api_key` in `.env`.
 3. Restart the server.
 
-### 2. Virtual Browser (VBrowser) Infrastructure (Internal Logic)
-The core backend business logic, allocation tracking, and container lifecycle management for virtual browsers are implemented in `server/vmWorker.ts` (currently an unreleased internal preview not yet exposed to public users):
-- Default state: `VIRTUAL_BROWSER_ENABLED=false` in `.env` (kept disabled for public releases).
-- Local container testing (for internal testing and development):
-  ```bash
-  npm run testvBrowser
-  ```
-- Manual container startup:
-  ```bash
-  docker run -d --rm --name=vbrowser --net=host --shm-size=1g --cap-add="SYS_ADMIN" \
-    -e DISPLAY=":99.0" -e NEKO_PASSWORD=user -e NEKO_PASSWORD_ADMIN=admin \
-    -e NEKO_BIND=":5100" -e NEKO_EPR=":59000-59100" -e NEKO_H264="1" \
-    howardc93/vbrowser
-  ```
 
-### 3. Distributed Redis Tiering
+
+### 2. Distributed Redis Tiering
 In production environments with multiple Node.js instances or PM2 clusters, configure dedicated Redis instances in `.env`:
 - `REDIS_CORE_URL`: Manages atomic outbox leases, distributed locks, and rate limit counters.
 - `REDIS_EDGE_URL`: Handles ephemeral presence data, cache lookups, and session tokens.

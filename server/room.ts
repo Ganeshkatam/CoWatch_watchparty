@@ -11,7 +11,7 @@ import {
   type AuthorizationResult,
 } from "./roomAuthorization.ts";
 import { metricsRedis, redisCount, redisCountDistinct, redisCore } from "./utils/redis.ts";
-import { type AssignedVM } from "./vm/base.ts";
+
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
 import { isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
@@ -26,8 +26,6 @@ import { sanitizeRoomId } from "./strip_slashes.ts";
 import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
 //@ts-expect-error
 import twitch from "twitch-m3u8";
-import { providerRegistry } from "./vm/provider-registry.ts";
-import { vBrowserPolicyService, VBrowserPolicyError } from "./vm/policy.ts";
 import { TimelineAuthority } from "./timelineAuthority.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
@@ -195,9 +193,7 @@ export class Room {
   private pictureMap: StringDict = {};
   private uidToNameMap: StringDict = {};
   private uidToPictureMap: StringDict = {};
-  public vBrowser: AssignedVM | undefined = undefined;
-  public vBrowserProviderId: string | undefined = undefined;
-  public vBrowserPoolId: string | undefined = undefined;
+
   public creator: string | undefined = undefined; // email of the user who created the room (just used for stats)
   public lock: string | undefined = undefined; // uid of the user who locked the room
   public playlist: PlaylistVideo[] = [];
@@ -603,16 +599,7 @@ export class Room {
   private preventTSUpdate = false;
   // Not really a queue since there's no ordering, we just retry as long as this is set
   // If we want a real queue then we need external processing of the jobs and a way to update the room from outside
-  public vBrowserQueue:
-    | {
-      roomId: string;
-      queueTime: Date;
-      isLarge: boolean;
-      region: string;
-      uid: string;
-      clientId: string;
-    }
-    | undefined = undefined;
+
 
   constructor(
     io: Server,
@@ -752,7 +739,7 @@ export class Room {
       }
       // clientId is meant for things that shouldn't require login
       // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
-      // vbrowser controller, identify chat messages, video chat/screenshare signaling
+      // identify chat messages, video chat/screenshare signaling
       // Used as keys for ephemeral room state (e.g. name, picture, timestamp)
 
       // redis-based clientId spoof protection (session)
@@ -968,9 +955,7 @@ export class Room {
               `SELECT * FROM public.expire_rooms_authoritative()`
             ).catch(e => console.error("Failed to update status on authoritative real-time check:", e));
           }
-          if (this.vBrowser) {
-            this.stopVBrowserInternal();
-          }
+
           this.disconnectAllSockets();
           return false;
         }
@@ -1113,39 +1098,7 @@ export class Room {
         validateNotExpired() && this.setUserMute(socket, data),
       );
       socket.on("CMD:leaveScreenShare", () => validateNotExpired() && this.leaveScreenSharing(socket));
-      socket.on("CMD:startVBrowser", (data: unknown) => {
-        if (!validateNotExpired()) return;
-        const context = this.buildAuthorizationContext(socket);
-        const auth = pureAuthorizeRoomAction(context, "vbrowser:start");
-        if (!auth.allowed) {
-          socket.emit("CMD:error", { code: "FORBIDDEN" });
-          socket.emit("errorMessage", "FORBIDDEN");
-          return;
-        }
-        this.startVBrowser(socket, data);
-      });
-      socket.on("CMD:stopVBrowser", () => {
-        if (!validateNotExpired()) return;
-        const context = this.buildAuthorizationContext(socket);
-        const auth = pureAuthorizeRoomAction(context, "vbrowser:stop");
-        if (!auth.allowed) {
-          socket.emit("CMD:error", { code: "FORBIDDEN" });
-          socket.emit("errorMessage", "FORBIDDEN");
-          return;
-        }
-        this.stopVBrowser();
-      });
-      socket.on("CMD:changeController", (data: unknown) => {
-        if (!validateNotExpired()) return;
-        const context = this.buildAuthorizationContext(socket);
-        const auth = pureAuthorizeRoomAction(context, "vbrowser:control");
-        if (!auth.allowed) {
-          socket.emit("CMD:error", { code: "FORBIDDEN" });
-          socket.emit("errorMessage", "FORBIDDEN");
-          return;
-        }
-        this.changeController(String(data));
-      });
+
       socket.on("CMD:subtitle", (data: unknown) => {
         if (!validateNotExpired()) return;
         const context = this.buildAuthorizationContext(socket);
@@ -1522,7 +1475,6 @@ export class Room {
       paused: this.paused,
       nameMap: abbrNameMap,
       pictureMap: abbrPictureMap,
-      vBrowser: this.vBrowser,
       lock: this.lock,
       creator: this.creator,
       playlist: this.playlist,
@@ -1545,9 +1497,7 @@ export class Room {
     if (roomObj.pictureMap) {
       this.pictureMap = roomObj.pictureMap;
     }
-    if (roomObj.vBrowser) {
-      this.vBrowser = roomObj.vBrowser;
-    }
+
     if (roomObj.lock) {
       this.lock = roomObj.lock;
     }
@@ -1639,8 +1589,6 @@ export class Room {
       subtitle: this.subtitle,
       playbackRate: this.playbackRate,
       paused: this.paused,
-      isVBrowserLarge: Boolean(this.vBrowser && this.vBrowser.large),
-      controller: this.vBrowser?.controllerClient,
       loop: this.loop,
     };
   };
@@ -1803,41 +1751,7 @@ export class Room {
     return true;
   };
 
-  public stopVBrowserInternal = async () => {
-    const assignTime = this.vBrowser && this.vBrowser.assignTime;
-    const id = this.vBrowser?.id;
-    const isLarge = this.vBrowser?.large ?? false;
-    const region = this.vBrowser?.region ?? "";
-    const providerId = this.vBrowserProviderId;
-    const poolId = this.vBrowserPoolId;
-    this.vBrowser = undefined;
-    this.vBrowserProviderId = undefined;
-    this.vBrowserPoolId = undefined;
-    this.cmdHost(null, "");
-    // Force a save because this might change in unattended rooms
-    this.lastUpdateTime = new Date();
-    this.saveRoom();
-    if (assignTime) {
-      await metricsRedis.execute("analytics", "lpush", async (c) => {
-        await c.lpush("vBrowserSessionMS", Date.now() - assignTime);
-        await c.ltrim("vBrowserSessionMS", 0, 19);
-      });
-    }
 
-    // Release VM via registry-resolved manager
-    if (id && poolId) {
-      try {
-        const manager = providerRegistry.resolve(poolId);
-        if (manager) {
-          await manager.resetVM(id, this.roomId);
-        }
-      } catch (e) {
-        console.warn("Failed to release VBrowser VM:", e);
-      }
-    }
-    // Release reservation in DB
-    await vBrowserPolicyService.releaseByRoom(this.roomId);
-  };
 
   private cmdHost = (socket: Socket | null, data: string) => {
     if (data && data.length > 50000) {
@@ -1865,8 +1779,7 @@ export class Room {
     if (data === "") {
       this.playlistNext(null);
     }
-    // The room video is changing so remove room from vbrowser queue
-    this.vBrowserQueue = undefined;
+
     // Resend the roster (updates screenshare state etc)
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
@@ -2003,13 +1916,7 @@ export class Room {
   };
 
   private startHosting = async (socket: Socket, data: string) => {
-    if (this.vBrowser) {
-      socket.emit(
-        "errorMessage",
-        `Can't update the video while vbrowser is running`,
-      );
-      return;
-    }
+
     redisCount("urlStarts");
     if (config.STREAM_PATH && data?.startsWith(config.STREAM_PATH)) {
       redisCount("streamStarts");
@@ -2623,185 +2530,7 @@ export class Room {
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
 
-  private startVBrowser = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      options?: { size: string; region: string; provider: string };
-    };
-    if (!data) {
-      socket.emit("errorMessage", "Invalid vBrowser input");
-      return;
-    }
-    const { clientId, uid } = socket;
-    // these checks are skipped if auth not provided
-    if (config.SUPABASE_URL) {
-      const user = await getUser(uid);
-      // Validate verified email if not a third-party auth provider
-      if (
-        user?.app_metadata?.provider === "email" &&
-        !user?.email_confirmed_at
-      ) {
-        socket.emit(
-          "errorMessage",
-          "A verified email is required to start a VBrowser.",
-        );
-        return;
-      }
 
-      // Log the vbrowser creation by uid and clientid
-      if (metricsRedis.client) {
-        await metricsRedis.execute("analytics", "zincrby", async (c) => {
-          const expireTime = getStartOfDay() / 1000 + 86400;
-          if (clientId) {
-            await c.zincrby("vBrowserClientIDs", 1, clientId);
-            await c.expireat("vBrowserClientIDs", expireTime);
-            await c.zincrby("vBrowserClientIDMinutes", 1, clientId);
-            await c.expireat("vBrowserClientIDMinutes", expireTime);
-          }
-          if (uid) {
-            await c.zincrby("vBrowserUIDs", 1, uid);
-            await c.expireat("vBrowserUIDs", expireTime);
-            await c.zincrby("vBrowserUIDMinutes", 1, uid);
-            await c.expireat("vBrowserUIDMinutes", expireTime);
-            // TODO limit users based on client or uid usage
-          }
-        });
-      }
-      // check if the user already has a VM already in postgres
-      if (postgres) {
-        const { rows } = await postgres.query(
-          "SELECT count(1) from vbrowser WHERE uid = $1",
-          [uid],
-        );
-        if (rows[0].count >= 2) {
-          socket.emit(
-            "errorMessage",
-            "There is already an active vBrowser for this user.",
-          );
-          return;
-        }
-      }
-    }
-    let isLarge = false;
-    let region = "";
-    // allow sub options
-    if (uid || !config.SUPABASE_URL) {
-      isLarge = data.options?.size === "large";
-      if (data.options?.region) {
-        region = data.options?.region;
-      }
-    }
-
-    redisCount("vBrowserStarts");
-    this.cmdHost(socket, "vbrowser://");
-    // Put the room in the vbrowser queue
-    this.vBrowserQueue = {
-      roomId: this.roomId,
-      queueTime: new Date(),
-      isLarge,
-      region,
-      uid,
-      clientId,
-    };
-    // Check if a vbrowser is available
-    while (this.vBrowserQueue) {
-      const { queueTime, isLarge, region, uid, roomId, clientId } =
-        this.vBrowserQueue;
-      let assignment: AssignedVM | undefined = undefined;
-      let allocatedProviderId: string | undefined;
-      let allocatedPoolId: string | undefined;
-      try {
-        const result = await vBrowserPolicyService.allocate({
-          roomId,
-          uid,
-          isLarge,
-          region,
-        });
-        assignment = result.assignment;
-        allocatedProviderId = result.providerId;
-        allocatedPoolId = result.poolId;
-      } catch (e: any) {
-        this.vBrowserQueue = undefined;
-        if (e instanceof VBrowserPolicyError) {
-          let msg = "VBrowser is currently unavailable. Please try again later.";
-          if (e.code === "AUTHENTICATION_REQUIRED") {
-            msg = "An authenticated account is required to start a VBrowser.";
-          } else if (e.code === "VBROWSER_USER_LIMIT") {
-            msg = "You have reached the maximum number of active VBrowsers.";
-          } else if (e.code === "VBROWSER_ROOM_LIMIT") {
-            msg = "This room has reached the maximum number of active VBrowsers.";
-          } else if (e.code === "VBROWSER_DURATION_LIMIT") {
-            msg = "The requested session duration exceeds maximum allowed limit.";
-          }
-          socket.emit("errorMessage", msg);
-          return;
-        }
-        console.warn("VBrowser assignment failed:", e?.message || e);
-        socket.emit("errorMessage", "VBrowser is currently unavailable. Please try again later.");
-        const opId = (e as any)?.operationId || (e as any)?.operation_id || randomUUID();
-        if (uid) {
-          notificationService
-            .notifyUser({
-              userId: uid,
-              type: "VBROWSER_FAILURE",
-              title: "Virtual Browser Unavailable",
-              body: `Could not launch virtual browser session in room ${this.roomId}. Please try again.`,
-              metadata: {
-                roomId: this.roomId,
-                action: "open_room",
-                targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
-                operationId: opId,
-              },
-              eventId: `VBROWSER_FAILURE:${this.roomId}:${opId}`,
-            })
-            .catch((err) => console.error("[Notification] Failed to notify controller of vbrowser failure:", err));
-        }
-        return;
-      }
-      if (assignment) {
-        this.vBrowser = assignment;
-        this.vBrowser.controllerClient = clientId;
-        this.vBrowser.creatorUID = uid;
-        this.vBrowser.creatorClientID = clientId;
-        this.vBrowserProviderId = allocatedProviderId;
-        this.vBrowserPoolId = allocatedPoolId;
-        const assignEnd = Date.now();
-        const assignElapsed = assignEnd - Number(queueTime);
-        await metricsRedis.execute("analytics", "lpush", async (c) => {
-          await c.lpush("vBrowserStartMS", assignElapsed);
-          await c.ltrim("vBrowserStartMS", 0, 19);
-        });
-        console.log(
-          "[ASSIGN] %s to %s in %s",
-          assignment.provider + ":" + assignment.id,
-          roomId,
-          assignElapsed + "ms",
-        );
-        this.cmdHost(
-          null,
-          "vbrowser://" + this.vBrowser.pass + "@" + this.vBrowser.host,
-        );
-      }
-      this.vBrowserQueue = undefined;
-    }
-  };
-
-  private stopVBrowser = async () => {
-    if (!this.vBrowser && this.video !== "vbrowser://") {
-      return;
-    }
-    await this.stopVBrowserInternal();
-    redisCount("vBrowserTerminateManual");
-  };
-
-  private changeController = (data: string) => {
-    if (data && data.length > 100) {
-      return;
-    }
-    if (this.vBrowser) {
-      this.vBrowser.controllerClient = data;
-      this.io.of(this.roomId).emit("REC:changeController", data);
-    }
-  };
 
   private addSubtitles = async (data: string) => {
     if (data && data.length > 10000) {
@@ -2931,11 +2660,6 @@ export class Room {
           canDelete: this.canControlPlayback(socket),
           canNext: this.canControlPlayback(socket),
         },
-        vbrowser: {
-          canStart: this.canControlPlayback(socket),
-          canStop: this.canModerate(socket),
-          canControl: this.canControlPlayback(socket),
-        },
       },
     });
   };
@@ -2974,9 +2698,7 @@ export class Room {
           this.status = "inactive";
           this.lastUpdateTime = new Date();
           this.io.of(this.roomId).emit("ROOM_SESSION_STOPPED");
-          if (this.vBrowser) {
-            await this.stopVBrowserInternal();
-          }
+
           if (postgres) {
             await postgres.query(
               "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",

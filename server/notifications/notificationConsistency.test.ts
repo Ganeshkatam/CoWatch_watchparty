@@ -47,14 +47,18 @@ async function runConsistencyTests() {
   // Extract seeded types from notification_type_registry
   // Pattern: ('TYPE', 'Description', email_eligible, in_app_eligible, 'category')
   const seedRegex = /\('([A-Z_]+)'\s*,\s*'([^']+)'\s*,\s*(true|false)\s*,\s*(true|false)\s*,\s*'([a-z]+)'\)/g;
+  // Decommissioned types preserved in historical migrations but removed from active application
+  const DEPRECATED_HISTORICAL_TYPES = new Set<string>(['VBROWSER_FAILURE']);
   const dbTypes = new Map<string, { emailEligible: boolean; category: string }>();
 
   let match: RegExpExecArray | null;
   while ((match = seedRegex.exec(migrationSql)) !== null) {
-    dbTypes.set(match[1], {
-      emailEligible: match[3] === 'true',
-      category: match[5],
-    });
+    if (!DEPRECATED_HISTORICAL_TYPES.has(match[1])) {
+      dbTypes.set(match[1], {
+        emailEligible: match[3] === 'true',
+        category: match[5],
+      });
+    }
   }
 
   assert(dbTypes.size > 0, 'Found seeded types in notification_type_registry migration');

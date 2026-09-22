@@ -9,7 +9,7 @@
 export const MODAL_SIZES = {
   sm: 420, // Confirmations, alerts, host assignment, error dialogs, passcode prompt
   md: 520, // Standard configuration, settings, feedback, invites, audio/video device selection
-  lg: 680, // Complex editing, room details, virtual browser, multi-stream selection
+  lg: 680, // Complex editing, room details, multi-stream selection
   xl: 840, // Dense management data grids, multi-tab settings
 } as const;
 

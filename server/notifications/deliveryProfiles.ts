@@ -39,7 +39,7 @@ export function resolveDeliveryProfile(type: NotificationType): DeliveryProfileI
       return 'transactional_invitation';
 
     case NotificationType.MODERATION_ACTION:
-    case NotificationType.VBROWSER_FAILURE:
+
       return 'transactional_security';
 
     case NotificationType.SYSTEM_ANNOUNCEMENT:

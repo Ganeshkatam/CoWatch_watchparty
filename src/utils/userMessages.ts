@@ -238,13 +238,7 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "none",
     duration: 3000,
   },
-  MEDIA_VBROWSER_RUNNING: {
-    message: "Stop the virtual browser before changing the video.",
-    severity: "warning",
-    presentation: "toast",
-    action: "none",
-    duration: 3000,
-  },
+
   MEDIA_ALREADY_SHARING: {
     message: "Someone is already sharing in this room.",
     severity: "warning",
@@ -259,34 +253,7 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "none",
     duration: 3000,
   },
-  VBROWSER_INVALID_INPUT: {
-    message: "We couldn't start the virtual browser with those settings.",
-    severity: "error",
-    presentation: "toast",
-    action: "retry",
-    duration: 3000,
-  },
-  VBROWSER_EMAIL_REQUIRED: {
-    message: "Please verify your email before starting the virtual browser.",
-    severity: "warning",
-    presentation: "toast",
-    action: "none",
-    duration: 4000,
-  },
-  VBROWSER_ALREADY_ACTIVE: {
-    message: "You already have a virtual browser running.",
-    severity: "warning",
-    presentation: "toast",
-    action: "none",
-    duration: 3000,
-  },
-  VBROWSER_UNAVAILABLE: {
-    message: "The virtual browser is temporarily unavailable. Please try again later.",
-    severity: "error",
-    presentation: "toast",
-    action: "retry",
-    duration: 4000,
-  },
+
 
   // DB Failures & Timeouts (never imply server rejection)
   GENERIC_ACTION_FAILED: {
@@ -370,7 +337,6 @@ export type FeedbackContext =
   | "participants"
   | "chat"
   | "video"
-  | "virtual-browser"
   | "connection";
 
 export interface FeedbackPayload {
@@ -400,7 +366,6 @@ export function createSafeFeedbackContext(
     "participants",
     "chat",
     "video",
-    "virtual-browser",
     "connection",
   ];
 
@@ -427,7 +392,7 @@ export function createSafeFeedbackContext(
     "operation-timeout",
     "connection-failed",
     "playback-error",
-    "vbrowser-error",
+
     "general",
   ];
 
@@ -610,31 +575,15 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
     return USER_MESSAGES.MOD_DELETE_CHAT_HOST_ONLY;
   }
 
-  // Media & Virtual Browser
-  if (
-    trimmed.includes("Can't update the video while vbrowser is running") ||
-    trimmed.includes("vbrowser is running")
-  ) {
-    return USER_MESSAGES.MEDIA_VBROWSER_RUNNING;
-  }
+  // Media
+
   if (trimmed.includes("already an active share in this room")) {
     return USER_MESSAGES.MEDIA_ALREADY_SHARING;
   }
   if (trimmed.includes("Not the active sharer")) {
     return USER_MESSAGES.MEDIA_NOT_ACTIVE_SHARER;
   }
-  if (trimmed.includes("Invalid vBrowser input")) {
-    return USER_MESSAGES.VBROWSER_INVALID_INPUT;
-  }
-  if (trimmed.includes("verified email is required to start a VBrowser")) {
-    return USER_MESSAGES.VBROWSER_EMAIL_REQUIRED;
-  }
-  if (trimmed.includes("already an active vBrowser for this user")) {
-    return USER_MESSAGES.VBROWSER_ALREADY_ACTIVE;
-  }
-  if (trimmed.includes("VBrowser is currently unavailable")) {
-    return USER_MESSAGES.VBROWSER_UNAVAILABLE;
-  }
+
 
   // Database / Participant mutations
   if (trimmed.includes("Failed to update participant lock")) {

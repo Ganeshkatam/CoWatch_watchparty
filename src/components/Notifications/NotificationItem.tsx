@@ -83,12 +83,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             <IconAlertTriangle size={18} stroke={1.75} />
           </div>
         );
-      case 'VBROWSER_FAILURE':
-        return (
-          <div className={`${styles.iconWrapper} ${styles.iconWarning}`}>
-            <IconAlertTriangle size={18} stroke={1.75} />
-          </div>
-        );
+
       case 'SYSTEM_ANNOUNCEMENT':
       default:
         return (

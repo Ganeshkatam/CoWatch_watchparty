@@ -154,7 +154,7 @@ async function runTests() {
   const io = new Server(server);
   const db = new MockDatabase();
   const memoryRooms = new Map<string, Room>();
-  const manager = new RoomLifecycleManager(db, memoryRooms, undefined);
+  const manager = new RoomLifecycleManager(db, memoryRooms);
 
   const ownerId = "owner-uuid-001";
 

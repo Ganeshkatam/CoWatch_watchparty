@@ -99,7 +99,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
     case 'ROOM_STARTED':
     case 'ROOM_HOST_TRANSFER':
     case 'ROOM_ENDING':
-    case 'VBROWSER_FAILURE':
+
       return {
         action: 'open_room',
         label: 'Open Room',

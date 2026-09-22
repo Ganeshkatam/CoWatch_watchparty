@@ -66,7 +66,6 @@ const validContexts: FeedbackContext[] = [
   "participants",
   "chat",
   "video",
-  "virtual-browser",
   "connection",
 ];
 
@@ -150,7 +149,6 @@ function validateServerPayload(body: any): { valid: boolean; error?: string; san
     "participants",
     "chat",
     "video",
-    "virtual-browser",
     "connection",
   ];
 
@@ -337,7 +335,7 @@ function validateOperationalQuery(params: {
 
   const allowedStatuses = ["new", "reviewed", "actioned", "dismissed"];
   const allowedTypes = ["bug", "suggestion", "problem", "experience"];
-  const allowedContexts = ["room", "playback", "host", "participants", "chat", "video", "virtual-browser", "connection"];
+  const allowedContexts = ["room", "playback", "host", "participants", "chat", "video", "connection"];
 
   if (params.status && !allowedStatuses.includes(params.status)) {
     return { valid: false, boundedPage, boundedLimit, error: "Invalid status filter" };

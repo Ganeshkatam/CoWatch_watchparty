@@ -52,10 +52,7 @@ async function runDeliveryProfileTests() {
     resolveDeliveryProfile(NotificationType.MODERATION_ACTION) === 'transactional_security',
     'MODERATION_ACTION must map to transactional_security',
   );
-  assert(
-    resolveDeliveryProfile(NotificationType.VBROWSER_FAILURE) === 'transactional_security',
-    'VBROWSER_FAILURE must map to transactional_security',
-  );
+
   assert(
     resolveDeliveryProfile(NotificationType.SYSTEM_ANNOUNCEMENT) === 'transactional_system',
     'SYSTEM_ANNOUNCEMENT must map to transactional_system',

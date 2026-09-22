@@ -265,7 +265,7 @@ export const Home: React.FC = () => {
           <div className={styles.sectionHeadingWrapper}>
             <div className={styles.sectionBadge}>Media Sources</div>
             <Title id="sources-heading" order={2} className={styles.sectionTitle}>
-              Five ways to bring something to the party.
+              Four ways to bring something to the party.
             </Title>
             <Text className={styles.sectionSubtitle}>
               Whether it is YouTube, a streaming service via cloud browser, a local video file, or your own screen, CoWatch makes it easy to share what you love.
@@ -273,11 +273,9 @@ export const Home: React.FC = () => {
           </div>
 
           <div className={styles.sourcesCard}>
-            <Tabs defaultValue="vbrowser" color="violet" variant="outline">
+            <Tabs defaultValue="youtube" color="violet" variant="outline">
               <Tabs.List grow>
-                <Tabs.Tab value="vbrowser" leftSection={<IconBrowser size={16} />}>
-                  Cloud VBrowser
-                </Tabs.Tab>
+
                 <Tabs.Tab value="youtube" leftSection={<IconBrandYoutubeFilled size={16} />}>
                   YouTube
                 </Tabs.Tab>
@@ -292,40 +290,7 @@ export const Home: React.FC = () => {
                 </Tabs.Tab>
               </Tabs.List>
 
-              {/* Tab 1: Cloud VBrowser */}
-              <Tabs.Panel value="vbrowser">
-                <div className={styles.sourceTabContent}>
-                  <div className={styles.sourceDetails}>
-                    <div className={styles.sourceTitle}>Cloud VBrowser</div>
-                    <div className={styles.sourceWhatItSolves}>
-                      Watch supported streaming services through a dedicated remote browser when conventional
-                      browser capture isn't suitable.
-                    </div>
-                    <div className={styles.capabilityList}>
-                      <div className={styles.capabilityItem}>
-                        <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Remote cloud Chromium session isolated from your personal machine (subject to cloud instance availability)</span>
-                      </div>
-                      <div className={styles.capabilityItem}>
-                        <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Interactive control passing between room participants</span>
-                      </div>
-                      <div className={styles.capabilityItem}>
-                        <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Zero host upload bandwidth strain while streaming web media</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.sourcePreviewVisual}>
-                    <div className={styles.sourcePreviewBadge}>Remote Cloud Environment</div>
-                    <img
-                      src="/screenshot_full.png"
-                      alt="Virtual Browser in room session"
-                      className={styles.sourcePreviewImage}
-                    />
-                  </div>
-                </div>
-              </Tabs.Panel>
+
 
               {/* Tab 2: YouTube */}
               <Tabs.Panel value="youtube">
@@ -679,7 +644,7 @@ export const Home: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td>Cloud VBrowser for Capture-Restricted Sites</td>
+
                   <td className={styles.highlightColumn}>
                     <IconCheck size={18} className={styles.checkIcon} /> Yes (Remote VM)
                   </td>
@@ -757,16 +722,7 @@ export const Home: React.FC = () => {
                 </Accordion.Panel>
               </Accordion.Item>
 
-              <Accordion.Item value="vbrowser" className={styles.faqItem}>
-                <Accordion.Control className={styles.faqControl}>
-                  Why does CoWatch use a Cloud VBrowser?
-                </Accordion.Control>
-                <Accordion.Panel className={styles.faqPanel}>
-                  Some streaming sites restrict conventional browser capture. CoWatch can use a remote browser
-                  environment for supported services, allowing the shared viewing experience to work without
-                  relying on ordinary local screen capture.
-                </Accordion.Panel>
-              </Accordion.Item>
+
 
               <Accordion.Item value="installs" className={styles.faqItem}>
                 <Accordion.Control className={styles.faqControl}>

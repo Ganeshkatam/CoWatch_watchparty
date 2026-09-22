@@ -29,9 +29,6 @@ export type RoomAction =
   | "playlist:move"
   | "playlist:delete"
   | "playlist:next"
-  | "vbrowser:start"
-  | "vbrowser:stop"
-  | "vbrowser:control"
   | "room:subtitle_change";
 
 export interface AuthorizationContext {
@@ -161,9 +158,6 @@ export function authorizeRoomAction(
     case "playlist:move":
     case "playlist:delete":
     case "playlist:next":
-    case "vbrowser:start":
-    case "vbrowser:stop":
-    case "vbrowser:control":
     case "room:subtitle_change":
       if (!context.playbackLocked) {
         return { allowed: true, code: "OK" };

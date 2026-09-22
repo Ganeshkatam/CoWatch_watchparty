@@ -26,20 +26,16 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
   max_permanent_rooms integer NOT NULL,
   max_participant_capacity integer NOT NULL,
   max_room_duration_hours integer DEFAULT 24 NOT NULL,
-  is_vbrowser_allowed boolean DEFAULT false NOT NULL,
-  max_vbrowser_concurrency integer DEFAULT 0 NOT NULL,
   is_active boolean DEFAULT true NOT NULL,
   created_at timestamptz DEFAULT now() NOT NULL,
   updated_at timestamptz DEFAULT now() NOT NULL,
   CONSTRAINT check_permanent_lte_total CHECK (max_permanent_rooms <= max_total_rooms),
-  CONSTRAINT check_vbrowser_concurrency_allowed CHECK (is_vbrowser_allowed OR max_vbrowser_concurrency = 0),
   CONSTRAINT check_watch_lte_total CHECK (max_watch_rooms <= max_total_rooms),
   CONSTRAINT subscription_plans_id_check CHECK (length(id) > 0 AND id ~ '^[a-z0-9_-]+$'::text),
   CONSTRAINT subscription_plans_max_participant_capacity_check CHECK (max_participant_capacity >= 2 AND max_participant_capacity <= 500),
   CONSTRAINT subscription_plans_max_permanent_rooms_check CHECK (max_permanent_rooms >= 0),
   CONSTRAINT subscription_plans_max_room_duration_hours_check CHECK (max_room_duration_hours >= 1 AND max_room_duration_hours <= 720),
   CONSTRAINT subscription_plans_max_total_rooms_check CHECK (max_total_rooms >= 0),
-  CONSTRAINT subscription_plans_max_vbrowser_concurrency_check CHECK (max_vbrowser_concurrency >= 0),
   CONSTRAINT subscription_plans_max_watch_rooms_check CHECK (max_watch_rooms >= 0),
   CONSTRAINT subscription_plans_pkey PRIMARY KEY (id)
 );
@@ -77,13 +73,10 @@ CREATE TABLE IF NOT EXISTS public.account_room_limits (
   override_permanent_rooms integer,
   override_participant_capacity integer,
   override_room_duration_hours integer,
-  override_vbrowser_allowed boolean,
-  override_vbrowser_concurrency integer,
   CONSTRAINT account_room_limits_override_participant_capacity_check CHECK (override_participant_capacity IS NULL OR override_participant_capacity >= 2 AND override_participant_capacity <= 500),
   CONSTRAINT account_room_limits_override_permanent_rooms_check CHECK (override_permanent_rooms IS NULL OR override_permanent_rooms >= 0),
   CONSTRAINT account_room_limits_override_room_duration_hours_check CHECK (override_room_duration_hours IS NULL OR override_room_duration_hours >= 1 AND override_room_duration_hours <= 720),
   CONSTRAINT account_room_limits_override_total_rooms_check CHECK (override_total_rooms IS NULL OR override_total_rooms >= 0),
-  CONSTRAINT account_room_limits_override_vbrowser_concurrency_check CHECK (override_vbrowser_concurrency IS NULL OR override_vbrowser_concurrency >= 0),
   CONSTRAINT account_room_limits_override_watch_rooms_check CHECK (override_watch_rooms IS NULL OR override_watch_rooms >= 0),
   CONSTRAINT check_override_permanent_lte_total CHECK (override_permanent_rooms IS NULL OR override_total_rooms IS NULL OR override_permanent_rooms <= override_total_rooms),
   CONSTRAINT check_override_watch_lte_total CHECK (override_watch_rooms IS NULL OR override_total_rooms IS NULL OR override_watch_rooms <= override_total_rooms),
@@ -276,8 +269,6 @@ CREATE TABLE IF NOT EXISTS public.room_quota_events (
   CONSTRAINT room_quota_events_pkey PRIMARY KEY (id)
 );
 
--- 2.13 Table: public.vbrowser_providers
-CREATE TABLE IF NOT EXISTS public.vbrowser_providers (
   id text NOT NULL,
   display_name text NOT NULL,
   provider_type text NOT NULL,
@@ -292,17 +283,8 @@ CREATE TABLE IF NOT EXISTS public.vbrowser_providers (
   max_large_sessions integer,
   max_session_duration_seconds integer,
   max_large_session_duration_seconds integer,
-  CONSTRAINT vbrowser_providers_display_name_not_empty CHECK (btrim(display_name) <> ''::text),
-  CONSTRAINT vbrowser_providers_enabled_lifecycle_check CHECK (NOT enabled OR lifecycle = 'ENABLED'::text),
-  CONSTRAINT vbrowser_providers_id_not_empty CHECK (btrim(id) <> ''::text),
-  CONSTRAINT vbrowser_providers_lifecycle_check CHECK (lifecycle = ANY (ARRAY['DRAFT'::text, 'ENABLED'::text, 'DISABLED'::text, 'RETIRED'::text])),
-  CONSTRAINT vbrowser_providers_policy_nonnegative CHECK ((max_concurrent_sessions IS NULL OR max_concurrent_sessions >= 0) AND (max_sessions_per_user IS NULL OR max_sessions_per_user >= 0) AND (max_sessions_per_room IS NULL OR max_sessions_per_room >= 0) AND (max_large_sessions IS NULL OR max_large_sessions >= 0) AND (max_session_duration_seconds IS NULL OR max_session_duration_seconds > 0) AND (max_large_session_duration_seconds IS NULL OR max_large_session_duration_seconds > 0)),
-  CONSTRAINT vbrowser_providers_provider_type_check CHECK (provider_type = ANY (ARRAY['cloud'::text, 'docker'::text])),
-  CONSTRAINT vbrowser_providers_pkey PRIMARY KEY (id)
 );
 
--- 2.14 Table: public.vbrowser_pools
-CREATE TABLE IF NOT EXISTS public.vbrowser_pools (
   id text NOT NULL,
   provider_id text NOT NULL,
   region text NOT NULL,
@@ -319,18 +301,8 @@ CREATE TABLE IF NOT EXISTS public.vbrowser_pools (
   max_large_sessions integer,
   max_session_duration_seconds integer,
   max_large_session_duration_seconds integer,
-  CONSTRAINT vbrowser_pools_check CHECK (limit_size IS NULL OR limit_size >= min_size),
-  CONSTRAINT vbrowser_pools_enabled_lifecycle_check CHECK (NOT enabled OR lifecycle = 'ENABLED'::text),
-  CONSTRAINT vbrowser_pools_id_not_empty CHECK (btrim(id) <> ''::text),
-  CONSTRAINT vbrowser_pools_lifecycle_check CHECK (lifecycle = ANY (ARRAY['DRAFT'::text, 'ENABLED'::text, 'DISABLED'::text, 'RETIRED'::text])),
-  CONSTRAINT vbrowser_pools_min_size_check CHECK (min_size >= 0),
-  CONSTRAINT vbrowser_pools_policy_nonnegative CHECK ((max_sessions_per_user IS NULL OR max_sessions_per_user >= 0) AND (max_sessions_per_room IS NULL OR max_sessions_per_room >= 0) AND (max_large_sessions IS NULL OR max_large_sessions >= 0) AND (max_session_duration_seconds IS NULL OR max_session_duration_seconds > 0) AND (max_large_session_duration_seconds IS NULL OR max_large_session_duration_seconds > 0)),
-  CONSTRAINT vbrowser_pools_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES vbrowser_providers(id) ON DELETE RESTRICT,
-  CONSTRAINT vbrowser_pools_pkey PRIMARY KEY (id)
 );
 
--- 2.15 Table: public.vbrowser
-CREATE TABLE IF NOT EXISTS public.vbrowser (
   id bigserial NOT NULL,
   pool text NOT NULL,
   vmid text NOT NULL,
@@ -348,13 +320,8 @@ CREATE TABLE IF NOT EXISTS public.vbrowser (
   pool_id text,
   expires_at timestamptz,
   released_at timestamptz,
-  CONSTRAINT vbrowser_pool_id_fkey FOREIGN KEY (pool_id) REFERENCES vbrowser_pools(id) ON DELETE RESTRICT,
-  CONSTRAINT vbrowser_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES vbrowser_providers(id) ON DELETE RESTRICT,
-  CONSTRAINT vbrowser_pkey PRIMARY KEY (id)
 );
 
--- 2.16 Table: public.vbrowser_reservations
-CREATE TABLE IF NOT EXISTS public.vbrowser_reservations (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   provider_id text NOT NULL,
   pool_id text NOT NULL,
@@ -370,12 +337,6 @@ CREATE TABLE IF NOT EXISTS public.vbrowser_reservations (
   operation_id text,
   vmid text,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT vbrowser_reservations_release_timestamp_check CHECK ((status = ANY (ARRAY['RELEASED'::text, 'FAILED'::text, 'EXPIRED'::text])) = (released_at IS NOT NULL)),
-  CONSTRAINT vbrowser_reservations_status_check CHECK (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text, 'RELEASING'::text, 'RELEASED'::text, 'FAILED'::text, 'EXPIRED'::text])),
-  CONSTRAINT vbrowser_reservations_pool_id_fkey FOREIGN KEY (pool_id) REFERENCES vbrowser_pools(id) ON DELETE RESTRICT,
-  CONSTRAINT vbrowser_reservations_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES vbrowser_providers(id) ON DELETE RESTRICT,
-  CONSTRAINT vbrowser_reservations_room_id_fkey FOREIGN KEY (room_id) REFERENCES rooms("roomId") ON DELETE CASCADE,
-  CONSTRAINT vbrowser_reservations_pkey PRIMARY KEY (id)
 );
 
 -- 2.17 Table: public.notification_type_registry
@@ -540,7 +501,7 @@ CREATE TABLE IF NOT EXISTS public.feedback (
   reviewed_at timestamptz,
   updated_at timestamptz DEFAULT now(),
   idempotency_key text,
-  CONSTRAINT feedback_context_check CHECK (context = ANY (ARRAY['room'::text, 'playback'::text, 'host'::text, 'participants'::text, 'chat'::text, 'video'::text, 'virtual-browser'::text, 'connection'::text])),
+  CONSTRAINT feedback_context_check CHECK (context = ANY (ARRAY['room'::text, 'playback'::text, 'host'::text, 'participants'::text, 'chat'::text, 'video'::text, 'connection'::text])),
   CONSTRAINT feedback_message_check CHECK (char_length(message) >= 1 AND char_length(message) <= 2000),
   CONSTRAINT feedback_rating_check CHECK (rating >= 1 AND rating <= 5),
   CONSTRAINT feedback_status_check CHECK (status = ANY (ARRAY['new'::text, 'reviewed'::text, 'actioned'::text, 'dismissed'::text])),
@@ -1581,16 +1542,12 @@ BEGIN
 END;
 $function$;
 
--- 4.24 Function: public.reserve_vbrowser_capacity
-CREATE OR REPLACE FUNCTION public.reserve_vbrowser_capacity(p_provider_id text, p_pool_id text, p_room_id text, p_user_id text, p_is_large boolean, p_config_provider_limit integer, p_config_pool_limit integer, p_lease_seconds integer)
  RETURNS uuid
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO ''
 AS $function$
 DECLARE
-  provider_row public.vbrowser_providers%ROWTYPE;
-  pool_row public.vbrowser_pools%ROWTYPE;
   active_provider integer;
   active_pool integer;
   active_user integer;
@@ -1608,8 +1565,6 @@ BEGIN
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended(p_provider_id, 0));
   PERFORM pg_advisory_xact_lock(hashtextextended(p_pool_id, 0));
-  SELECT * INTO provider_row FROM public.vbrowser_providers WHERE id = p_provider_id FOR UPDATE;
-  SELECT * INTO pool_row FROM public.vbrowser_pools WHERE id = p_pool_id FOR UPDATE;
   IF NOT FOUND OR pool_row.provider_id <> p_provider_id OR NOT provider_row.enabled OR provider_row.lifecycle <> 'ENABLED' OR NOT pool_row.enabled OR pool_row.lifecycle <> 'ENABLED' THEN
     RAISE EXCEPTION 'POLICY_MISSING_OR_DISABLED';
   END IF;
@@ -1621,25 +1576,18 @@ BEGIN
   effective_user := LEAST(provider_row.max_sessions_per_user, pool_row.max_sessions_per_user);
   effective_room := LEAST(provider_row.max_sessions_per_room, pool_row.max_sessions_per_room);
   effective_large := LEAST(provider_row.max_large_sessions, pool_row.max_large_sessions);
-  UPDATE public.vbrowser_reservations SET status = 'EXPIRED', released_at = now(), failure_reason = 'LEASE_EXPIRED' WHERE status IN ('RESERVED', 'ALLOCATED') AND expires_at <= now();
-  SELECT count(*) INTO active_provider FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_pool FROM public.vbrowser_reservations WHERE pool_id = p_pool_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_user FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND user_id = p_user_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_room FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND room_id = p_room_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_large FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND is_large AND status IN ('RESERVED', 'ALLOCATED');
   IF active_provider >= effective_provider THEN RAISE EXCEPTION 'PROVIDER_CAPACITY_EXCEEDED'; END IF;
   IF active_pool >= effective_pool THEN RAISE EXCEPTION 'POOL_CAPACITY_EXCEEDED'; END IF;
   IF active_user >= effective_user THEN RAISE EXCEPTION 'USER_CAPACITY_EXCEEDED'; END IF;
   IF active_room >= effective_room THEN RAISE EXCEPTION 'ROOM_CAPACITY_EXCEEDED'; END IF;
   IF p_is_large AND active_large >= effective_large THEN RAISE EXCEPTION 'LARGE_CAPACITY_EXCEEDED'; END IF;
-  INSERT INTO public.vbrowser_reservations(provider_id, pool_id, room_id, user_id, is_large, expires_at) VALUES (p_provider_id, p_pool_id, p_room_id, p_user_id, p_is_large, now() + make_interval(secs => p_lease_seconds)) RETURNING id INTO reservation_id;
   RETURN reservation_id;
 END;
 $function$;
 
 -- 4.25 Function: public.resolve_account_entitlement
 CREATE OR REPLACE FUNCTION public.resolve_account_entitlement(p_account_id uuid)
- RETURNS TABLE(account_id uuid, plan_id text, plan_display_name text, enabled boolean, max_total_rooms integer, max_watch_rooms integer, max_permanent_rooms integer, max_participant_capacity integer, max_room_duration_hours integer, is_vbrowser_allowed boolean, max_vbrowser_concurrency integer, has_overrides boolean)
+ RETURNS TABLE(account_id uuid, plan_id text, plan_display_name text, enabled boolean, max_total_rooms integer, max_watch_rooms integer, max_permanent_rooms integer, max_participant_capacity integer, max_room_duration_hours integer, has_overrides boolean)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO ''
@@ -1652,8 +1600,6 @@ DECLARE
   v_eff_permanent integer;
   v_eff_capacity integer;
   v_eff_duration integer;
-  v_eff_vbrowser_allowed boolean;
-  v_eff_vbrowser_concurrency integer;
   v_has_overrides boolean;
 BEGIN
   SELECT 
@@ -1666,15 +1612,11 @@ BEGIN
     p.max_permanent_rooms AS base_permanent,
     p.max_participant_capacity AS base_capacity,
     p.max_room_duration_hours AS base_duration,
-    p.is_vbrowser_allowed AS base_vbrowser_allowed,
-    p.max_vbrowser_concurrency AS base_vbrowser_concurrency,
     l.override_total_rooms,
     l.override_watch_rooms,
     l.override_permanent_rooms,
     l.override_participant_capacity,
-    l.override_room_duration_hours,
-    l.override_vbrowser_allowed,
-    l.override_vbrowser_concurrency
+    l.override_room_duration_hours
   INTO v_rec
   FROM public.account_room_limits l
   JOIN public.subscription_plans p ON l.plan_id = p.id
@@ -1689,20 +1631,13 @@ BEGIN
   v_eff_permanent := LEAST(COALESCE(v_rec.override_permanent_rooms, v_rec.base_permanent), v_eff_total);
   v_eff_capacity := COALESCE(v_rec.override_participant_capacity, v_rec.base_capacity);
   v_eff_duration := COALESCE(v_rec.override_room_duration_hours, v_rec.base_duration);
-  v_eff_vbrowser_allowed := COALESCE(v_rec.override_vbrowser_allowed, v_rec.base_vbrowser_allowed);
-  v_eff_vbrowser_concurrency := CASE 
-    WHEN NOT v_eff_vbrowser_allowed THEN 0
-    ELSE COALESCE(v_rec.override_vbrowser_concurrency, v_rec.base_vbrowser_concurrency)
-  END;
 
   v_has_overrides := (
     v_rec.override_total_rooms IS NOT NULL OR
     v_rec.override_watch_rooms IS NOT NULL OR
     v_rec.override_permanent_rooms IS NOT NULL OR
     v_rec.override_participant_capacity IS NOT NULL OR
-    v_rec.override_room_duration_hours IS NOT NULL OR
-    v_rec.override_vbrowser_allowed IS NOT NULL OR
-    v_rec.override_vbrowser_concurrency IS NOT NULL
+    v_rec.override_room_duration_hours IS NOT NULL
   );
 
   account_id := v_rec.account_id;
@@ -1714,8 +1649,6 @@ BEGIN
   max_permanent_rooms := v_eff_permanent;
   max_participant_capacity := v_eff_capacity;
   max_room_duration_hours := v_eff_duration;
-  is_vbrowser_allowed := v_eff_vbrowser_allowed;
-  max_vbrowser_concurrency := v_eff_vbrowser_concurrency;
   has_overrides := v_has_overrides;
 
   RETURN NEXT;
@@ -2094,8 +2027,6 @@ BEGIN
 END;
 $function$;
 
--- 4.31 Function: public.vbrowser_acquire_reservation
-CREATE OR REPLACE FUNCTION public.vbrowser_acquire_reservation(p_provider_id text, p_pool_id text, p_room_id text, p_user_id uuid, p_is_large boolean, p_lease_seconds integer, p_config_provider_limit integer, p_config_pool_limit integer)
  RETURNS text
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -2103,8 +2034,6 @@ CREATE OR REPLACE FUNCTION public.vbrowser_acquire_reservation(p_provider_id tex
 AS $function$
 DECLARE
   reservation_id text;
-  provider_row public.vbrowser_providers%ROWTYPE;
-  pool_row public.vbrowser_pools%ROWTYPE;
   effective_provider integer;
   effective_pool integer;
   effective_user integer;
@@ -2116,7 +2045,6 @@ DECLARE
   active_room integer;
   active_large integer;
   v_entitlement RECORD;
-  v_active_user_vbrowser_allocations integer;
 BEGIN
   -- Input validation
   IF p_lease_seconds IS NULL OR p_lease_seconds <= 0 OR p_config_provider_limit < 0 OR p_config_pool_limit < 0 THEN
@@ -2136,13 +2064,10 @@ BEGIN
     RAISE EXCEPTION 'ACCOUNT_ROOMS_DISABLED';
   END IF;
 
-  IF NOT v_entitlement.is_vbrowser_allowed THEN
-    RAISE EXCEPTION 'VBROWSER_NOT_ENTITLED';
   END IF;
 
   -- 3. Row-level locks on provider and pool with lifecycle verification
   SELECT * INTO provider_row 
-  FROM public.vbrowser_providers 
   WHERE id = p_provider_id 
   FOR UPDATE;
 
@@ -2151,7 +2076,6 @@ BEGIN
   END IF;
 
   SELECT * INTO pool_row 
-  FROM public.vbrowser_pools 
   WHERE id = p_pool_id AND provider_id = p_provider_id 
   FOR UPDATE;
 
@@ -2173,25 +2097,15 @@ BEGIN
   effective_large := LEAST(provider_row.max_large_sessions, pool_row.max_large_sessions);
 
   -- 4. Sweep expired reservations
-  UPDATE public.vbrowser_reservations
   SET status = 'EXPIRED', released_at = now(), failure_reason = 'LEASE_EXPIRED'
   WHERE status IN ('RESERVED', 'ALLOCATED') AND expires_at <= now();
 
   -- 5. Enforce user plan concurrency limit under lock
-  SELECT count(*) INTO v_active_user_vbrowser_allocations
-  FROM public.vbrowser_reservations
   WHERE user_id = p_user_id::text AND status IN ('RESERVED', 'ALLOCATED');
 
-  IF v_active_user_vbrowser_allocations >= v_entitlement.max_vbrowser_concurrency THEN
-    RAISE EXCEPTION 'VBROWSER_CONCURRENCY_LIMIT_REACHED';
   END IF;
 
   -- 6. Count active allocations under lock
-  SELECT count(*) INTO active_provider FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_pool FROM public.vbrowser_reservations WHERE pool_id = p_pool_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_user FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND user_id = p_user_id::text AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_room FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND room_id = p_room_id AND status IN ('RESERVED', 'ALLOCATED');
-  SELECT count(*) INTO active_large FROM public.vbrowser_reservations WHERE provider_id = p_provider_id AND is_large AND status IN ('RESERVED', 'ALLOCATED');
 
   IF active_provider >= effective_provider THEN RAISE EXCEPTION 'PROVIDER_CAPACITY_EXCEEDED'; END IF;
   IF active_pool >= effective_pool THEN RAISE EXCEPTION 'POOL_CAPACITY_EXCEEDED'; END IF;
@@ -2200,7 +2114,6 @@ BEGIN
   IF p_is_large AND active_large >= effective_large THEN RAISE EXCEPTION 'LARGE_CAPACITY_EXCEEDED'; END IF;
 
   -- 7. Atomic insertion
-  INSERT INTO public.vbrowser_reservations (provider_id, pool_id, room_id, user_id, is_large, expires_at)
   VALUES (p_provider_id, p_pool_id, p_room_id, p_user_id::text, p_is_large, now() + make_interval(secs => p_lease_seconds))
   RETURNING id::text INTO reservation_id;
 
@@ -2208,8 +2121,6 @@ BEGIN
 END;
 $function$;
 
--- 4.32 Function: public.vbrowser_release_reservation
-CREATE OR REPLACE FUNCTION public.vbrowser_release_reservation(p_user_id uuid, p_room_id text)
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -2218,7 +2129,6 @@ AS $function$
 DECLARE
   v_released_count integer;
 BEGIN
-  UPDATE public.vbrowser_reservations
   SET status = 'RELEASED', released_at = now()
   WHERE user_id = p_user_id::text
     AND room_id = p_room_id
@@ -2272,14 +2182,8 @@ CREATE TRIGGER trg_subscription_plans_updated_at
   BEFORE UPDATE ON public.subscription_plans
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-DROP TRIGGER IF EXISTS vbrowser_pools_set_updated_at ON public.vbrowser_pools;
-CREATE TRIGGER vbrowser_pools_set_updated_at
-  BEFORE UPDATE ON public.vbrowser_pools
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-DROP TRIGGER IF EXISTS vbrowser_providers_set_updated_at ON public.vbrowser_providers;
-CREATE TRIGGER vbrowser_providers_set_updated_at
-  BEFORE UPDATE ON public.vbrowser_providers
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- Triggers on auth.users
@@ -2343,23 +2247,6 @@ CREATE INDEX IF NOT EXISTS room_owner_id_idx ON public.rooms USING btree (owner_
 CREATE INDEX IF NOT EXISTS "room_roomId_idx" ON public.rooms USING gin ("roomId" gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS rooms_inactivity_idx ON public.rooms USING btree ("lastActiveAt") WHERE (status = 'active'::text);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_plans_single_default ON public.subscription_plans USING btree (is_default) WHERE (is_default = true);
-CREATE INDEX IF NOT EXISTS vbrowser_active_lease_idx ON public.vbrowser USING btree (provider_id, pool_id, "heartbeatTime") WHERE ((state = ANY (ARRAY['staging'::text, 'used'::text])) AND (released_at IS NULL));
-CREATE INDEX IF NOT EXISTS vbrowser_pool_id_idx ON public.vbrowser USING btree (pool_id);
-CREATE INDEX IF NOT EXISTS vbrowser_pool_state_idx ON public.vbrowser USING btree (pool, state);
-CREATE UNIQUE INDEX IF NOT EXISTS vbrowser_pool_vmid_idx ON public.vbrowser USING btree (pool, vmid);
-CREATE INDEX IF NOT EXISTS vbrowser_provider_id_idx ON public.vbrowser USING btree (provider_id);
-CREATE INDEX IF NOT EXISTS "vbrowser_roomId_idx" ON public.vbrowser USING btree ("roomId");
-CREATE INDEX IF NOT EXISTS vbrowser_uid_idx ON public.vbrowser USING btree (uid);
-CREATE INDEX IF NOT EXISTS vbrowser_pools_provider_id_idx ON public.vbrowser_pools USING btree (provider_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vbrowser_res_active_room ON public.vbrowser_reservations USING btree (room_id) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text, 'RELEASING'::text]));
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vbrowser_res_operation_id ON public.vbrowser_reservations USING btree (operation_id) WHERE (operation_id IS NOT NULL);
-CREATE INDEX IF NOT EXISTS idx_vbrowser_res_room_id_status ON public.vbrowser_reservations USING btree (room_id, status);
-CREATE INDEX IF NOT EXISTS idx_vbrowser_res_status_created_at ON public.vbrowser_reservations USING btree (status, created_at);
-CREATE INDEX IF NOT EXISTS vbrowser_reservations_active_pool_idx ON public.vbrowser_reservations USING btree (pool_id) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text]));
-CREATE INDEX IF NOT EXISTS vbrowser_reservations_active_provider_idx ON public.vbrowser_reservations USING btree (provider_id) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text]));
-CREATE INDEX IF NOT EXISTS vbrowser_reservations_active_room_idx ON public.vbrowser_reservations USING btree (provider_id, room_id) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text]));
-CREATE INDEX IF NOT EXISTS vbrowser_reservations_active_user_idx ON public.vbrowser_reservations USING btree (provider_id, user_id) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text]));
-CREATE INDEX IF NOT EXISTS vbrowser_reservations_expiry_idx ON public.vbrowser_reservations USING btree (expires_at) WHERE (status = ANY (ARRAY['RESERVED'::text, 'ALLOCATED'::text]));
 
 -- ----------------------------------------------------------------------------
 -- 7. ROW LEVEL SECURITY & POLICIES
@@ -2376,10 +2263,6 @@ ALTER TABLE public.room_lifecycle_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_media_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_quota_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_providers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_pools ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_reservations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_type_registry ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
@@ -2621,36 +2504,24 @@ CREATE POLICY "Public view active subscription plans"
   USING ((is_active = true))
 ;
 
-DROP POLICY IF EXISTS "vbrowser_deny_client_access" ON public.vbrowser;
-CREATE POLICY "vbrowser_deny_client_access"
-  ON public.vbrowser
   FOR ALL
   TO public
   USING (false)
   WITH CHECK (false)
 ;
 
-DROP POLICY IF EXISTS "vbrowser_pools_deny_client_access" ON public.vbrowser_pools;
-CREATE POLICY "vbrowser_pools_deny_client_access"
-  ON public.vbrowser_pools
   FOR ALL
   TO public
   USING (false)
   WITH CHECK (false)
 ;
 
-DROP POLICY IF EXISTS "vbrowser_providers_deny_client_access" ON public.vbrowser_providers;
-CREATE POLICY "vbrowser_providers_deny_client_access"
-  ON public.vbrowser_providers
   FOR ALL
   TO public
   USING (false)
   WITH CHECK (false)
 ;
 
-DROP POLICY IF EXISTS "vbrowser_reservations_deny_client_access" ON public.vbrowser_reservations;
-CREATE POLICY "vbrowser_reservations_deny_client_access"
-  ON public.vbrowser_reservations
   FOR ALL
   TO public
   USING (false)
@@ -2681,10 +2552,6 @@ REVOKE ALL ON TABLE public.room_lifecycle_events FROM PUBLIC, anon, authenticate
 REVOKE ALL ON TABLE public.room_media_sessions FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.room_messages FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.room_quota_events FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.vbrowser_providers FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.vbrowser_pools FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.vbrowser FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.vbrowser_reservations FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.notification_type_registry FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.notification_preferences FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.notifications FROM PUBLIC, anon, authenticated;
@@ -2761,14 +2628,6 @@ GRANT SELECT ON TABLE public.subscription_plans TO anon;
 GRANT SELECT ON TABLE public.subscription_plans TO authenticated;
 GRANT ALL ON TABLE public.subscription_plans TO postgres;
 GRANT ALL ON TABLE public.subscription_plans TO service_role;
-GRANT ALL ON TABLE public.vbrowser TO postgres;
-GRANT ALL ON TABLE public.vbrowser TO service_role;
-GRANT ALL ON TABLE public.vbrowser_pools TO postgres;
-GRANT ALL ON TABLE public.vbrowser_pools TO service_role;
-GRANT ALL ON TABLE public.vbrowser_providers TO postgres;
-GRANT ALL ON TABLE public.vbrowser_providers TO service_role;
-GRANT ALL ON TABLE public.vbrowser_reservations TO postgres;
-GRANT ALL ON TABLE public.vbrowser_reservations TO service_role;
 GRANT ALL ON TABLE public.webhook_events TO postgres;
 GRANT ALL ON TABLE public.webhook_events TO service_role;
 
@@ -2798,15 +2657,12 @@ REVOKE ALL ON FUNCTION public.purge_expired_rate_limits FROM PUBLIC, anon, authe
 REVOKE ALL ON FUNCTION public.purge_failed_email_outbox FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.purge_read_notifications_expired FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.purge_sent_email_outbox FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.reserve_vbrowser_capacity FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.resolve_account_entitlement FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_room_activity_authoritative FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_room_participants_lock_authoritative FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_room_permanence_authoritative FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_updated_at FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.update_room_metadata_authoritative FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.vbrowser_acquire_reservation FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.vbrowser_release_reservation FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.check_user_email_domain TO postgres;
 GRANT EXECUTE ON FUNCTION public.check_user_email_domain TO service_role;
 GRANT EXECUTE ON FUNCTION public.consume_durable_rate_limit TO postgres;
@@ -2855,8 +2711,6 @@ GRANT EXECUTE ON FUNCTION public.purge_read_notifications_expired TO postgres;
 GRANT EXECUTE ON FUNCTION public.purge_read_notifications_expired TO service_role;
 GRANT EXECUTE ON FUNCTION public.purge_sent_email_outbox TO postgres;
 GRANT EXECUTE ON FUNCTION public.purge_sent_email_outbox TO service_role;
-GRANT EXECUTE ON FUNCTION public.reserve_vbrowser_capacity TO postgres;
-GRANT EXECUTE ON FUNCTION public.reserve_vbrowser_capacity TO service_role;
 GRANT EXECUTE ON FUNCTION public.resolve_account_entitlement TO postgres;
 GRANT EXECUTE ON FUNCTION public.resolve_account_entitlement TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_room_activity_authoritative TO postgres;
@@ -2872,7 +2726,3 @@ GRANT EXECUTE ON FUNCTION public.set_updated_at TO postgres;
 GRANT EXECUTE ON FUNCTION public.set_updated_at TO service_role;
 GRANT EXECUTE ON FUNCTION public.update_room_metadata_authoritative TO postgres;
 GRANT EXECUTE ON FUNCTION public.update_room_metadata_authoritative TO service_role;
-GRANT EXECUTE ON FUNCTION public.vbrowser_acquire_reservation TO postgres;
-GRANT EXECUTE ON FUNCTION public.vbrowser_acquire_reservation TO service_role;
-GRANT EXECUTE ON FUNCTION public.vbrowser_release_reservation TO postgres;
-GRANT EXECUTE ON FUNCTION public.vbrowser_release_reservation TO service_role;

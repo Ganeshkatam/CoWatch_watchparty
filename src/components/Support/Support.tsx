@@ -6,7 +6,6 @@ import {
   IconVideo,
   IconScreenShare,
   IconWifi,
-  IconBrowser,
   IconShieldLock,
   IconMail,
   IconHelpCircle,
@@ -89,7 +88,7 @@ const SECTIONS: TroubleshootingSection[] = [
       {
         highlight: "DRM-Protected Content:",
         description:
-          "Mainstream subscription services (Netflix, Disney+, Prime) enforce hardware DRM (HDCP) that causes screen shares to appear black. Use Virtual Browsers or direct media URLs instead.",
+          "Mainstream subscription services (Netflix, Disney+, Prime) enforce hardware DRM (HDCP) that causes screen shares to appear black. Use direct media URLs instead.",
       },
       {
         highlight: "macOS Screen Recording Permissions:",
@@ -121,29 +120,7 @@ const SECTIONS: TroubleshootingSection[] = [
       },
     ],
   },
-  {
-    icon: <IconBrowser size={22} />,
-    iconBg: "rgba(245, 158, 11, 0.15)",
-    iconColor: "var(--color-warning)",
-    title: "Cloud Virtual Browsers",
-    items: [
-      {
-        highlight: "Host Control & Delegation:",
-        description:
-          "Only one participant can control the virtual browser cursor at a time. The room host can reassign or revoke control at any moment.",
-      },
-      {
-        highlight: "Session Timeouts:",
-        description:
-          "Virtual browser sessions are provisioned on ephemeral cloud instances. Instances shut down automatically after periods of room inactivity to conserve resources.",
-      },
-      {
-        highlight: "Acceptable Use Policy:",
-        description:
-          "Virtual browsers are monitored for abusive network usage including crypto-mining, automated scraping, or denial-of-service attempts.",
-      },
-    ],
-  },
+
   {
     icon: <IconShieldLock size={22} />,
     iconBg: "rgba(99, 102, 241, 0.15)",

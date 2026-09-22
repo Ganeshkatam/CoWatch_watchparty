@@ -66,11 +66,7 @@ export const Privacy = () => {
           <List.Item>Direct peer-to-peer media streaming inherently exchanges network addresses (IP addresses) between participants in the room to route audio and video.</List.Item>
         </List>
 
-        <h2 className={styles.sectionTitle}>Virtual Browsers</h2>
-        <List className={styles.list} spacing="sm">
-          <List.Item>Cloud virtual browser containers are dedicated to your session and are automatically recycled and wiped upon session conclusion.</List.Item>
-          <List.Item>Interactive control commands are encrypted in-transit between your browser and the cloud virtual machine.</List.Item>
-        </List>
+
 
         <h2 className={styles.sectionTitle}>Third-Party Services</h2>
         <List className={styles.list} spacing="sm">
@@ -100,7 +96,7 @@ export const Terms = () => {
           <List.Item><strong>Age Requirement:</strong> You must be at least 18 years of age to register an account or use the service.</List.Item>
           <List.Item><strong>User Content & Rights:</strong> You warrant that you have all necessary rights, licenses, or permissions for any media content, URLs, files, or streams you share or broadcast in rooms.</List.Item>
           <List.Item><strong>Prohibited Conduct:</strong> You may not use the service to transmit illegal, infringing, defamatory, harassing, abusive, or sexually explicit material. Violating content will result in immediate termination.</List.Item>
-          <List.Item><strong>Virtual Browser Acceptable Use:</strong> Shared virtual browser instances must be used solely for standard interactive browsing and media playback. Automated vulnerability scanning, cryptocurrency mining, denial-of-service attacks, and network probing are strictly prohibited.</List.Item>
+          <List.Item><strong>Infrastructure Acceptable Use:</strong> Shared resources must be used solely for standard interactive browsing and media playback. Automated vulnerability scanning, cryptocurrency mining, denial-of-service attacks, and network probing are strictly prohibited.</List.Item>
           <List.Item><strong>Room Management & Moderation:</strong> Room hosts have authority over their rooms, including setting passcodes, participant locks, and kicking or banning users who disrupt the session. Users must respect room rules and host moderation actions.</List.Item>
           <List.Item><strong>Service Availability:</strong> CoWatch is provided on an "as is" and "as available" basis without warranties of uninterrupted uptime or error-free operation.</List.Item>
           <List.Item><strong>Account Suspension & Termination:</strong> We reserve the right to suspend or terminate accounts that violate these Terms, our Community Guidelines, or applicable laws.</List.Item>
@@ -118,7 +114,7 @@ export const Terms = () => {
 export const FAQ = () => {
   useDocumentMetadata({
     title: "Frequently Asked Questions | CoWatch",
-    description: "Frequently asked questions about CoWatch, virtual browsers, screensharing, and watch party features.",
+    description: "Frequently asked questions about CoWatch, screensharing, and watch party features.",
   });
 
   return (
@@ -158,39 +154,6 @@ export const FAQ = () => {
           color: "var(--text-muted)",
         },
       }}>
-        <Accordion.Item value="vbrowser">
-          <Accordion.Control>
-            <Text fw={600} size="md" c="var(--text-primary)">
-              What's a VBrowser?
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            A virtual browser (VBrowser) is a cloud-hosted Chromium session that room members can connect to simultaneously. Everyone in the room sees the same screen in real-time with shared controls, making it ideal for watching videos, browsing media sites, or collaborating together.
-          </Accordion.Panel>
-        </Accordion.Item>
-
-        <Accordion.Item value="vbrowser-stop">
-          <Accordion.Control>
-            <Text fw={600} size="md" c="var(--text-primary)">
-              Why did my VBrowser session stop?
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            Virtual browsers terminate automatically when a room becomes empty or inactive to conserve server capacity. Individual sessions also have a standard maximum duration of 24 hours.
-          </Accordion.Panel>
-        </Accordion.Item>
-
-        <Accordion.Item value="vbrowser-not-available">
-          <Accordion.Control>
-            <Text fw={600} size="md" c="var(--text-primary)">
-              How do I access sites that show a "not available" message in the VBrowser?
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            Certain streaming providers block data center and cloud IP addresses. When encountering geo-restrictions or data center blocks, you can install a VPN or proxy extension inside the virtual browser session.
-          </Accordion.Panel>
-        </Accordion.Item>
-
         <Accordion.Item value="audio-screensharing">
           <Accordion.Control>
             <Text fw={600} size="md" c="var(--text-primary)">

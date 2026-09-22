@@ -13,7 +13,7 @@ export interface DocumentMetadataOptions {
 
 const DEFAULT_TITLE = "CoWatch - Watch Together with Friends";
 const DEFAULT_DESCRIPTION =
-  "Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a virtual browser.";
+  "Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share.";
 
 export function formatDocumentTitle(title?: string): string {
   if (!title || !title.trim()) {

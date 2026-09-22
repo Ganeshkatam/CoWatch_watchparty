@@ -20,7 +20,6 @@ import {
   isScreenShare,
   isFileShare,
   isLocalMedia,
-  isVBrowser,
   isDash,
   VIDEO_MAX_HEIGHT_CSS,
   createUuid,
@@ -33,12 +32,10 @@ import { examples } from "../../utils/examples";
 import { generateName } from "../../utils/generateName";
 import { parseWatchParams, getWatchUrl } from "../../utils/routeParams";
 import { Chat, ChatComponent } from "../Chat/Chat";
-import { VBrowser } from "../VBrowser/VBrowser";
 import { VideoChat, VideoChatErrorBoundary } from "../VideoChat/VideoChat";
 import { getCurrentSettings } from "../Settings/LocalSettings";
 import { MultiStreamModal } from "../Modal/MultiStreamModal";
 import { Controls } from "../Controls/Controls";
-import { VBrowserModal } from "../Modal/VBrowserModal";
 import { SettingsModal } from "../Settings/SettingsModal";
 import { ErrorModal } from "../Modal/ErrorModal";
 import { PasscodeModal } from "../Modal/PasscodeModal";
@@ -172,7 +169,6 @@ interface AppState {
   fullScreen: boolean;
   controlsTimestamp: number;
   watchOptions: SearchResult[];
-  isVBrowser: boolean;
   isAutoPlayable: boolean;
   downloaded: number;
   total: number;
@@ -187,13 +183,9 @@ interface AppState {
   overlayMsg: string;
   isErrorAuth: boolean;
   settings: Settings;
-  vBrowserResolution: string;
-  vBrowserQuality: string;
-  isVBrowserLarge: boolean;
   nonPlayableMedia: boolean;
   currentTab: string;
   isSubscribeModalOpen: boolean;
-  isVBrowserModalOpen: boolean;
   isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
@@ -280,7 +272,6 @@ export class App extends React.Component<AppProps, AppState> {
     fullScreen: false,
     controlsTimestamp: 0,
     watchOptions: [],
-    isVBrowser: false,
     isAutoPlayable: true,
     downloaded: 0,
     total: 0,
@@ -290,9 +281,6 @@ export class App extends React.Component<AppProps, AppState> {
     overlayMsg: "",
     isErrorAuth: false,
     settings: {},
-    vBrowserResolution: "1280x720@30",
-    vBrowserQuality: "1",
-    isVBrowserLarge: false,
     nonPlayableMedia: false,
     currentTab: (() => {
       const parsed = parseWatchParams(window.location.search);
@@ -301,7 +289,6 @@ export class App extends React.Component<AppProps, AppState> {
       return new URLSearchParams(window.location.search).get("tab") ?? "people";
     })(),
     isSubscribeModalOpen: false,
-    isVBrowserModalOpen: false,
     isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
@@ -1626,9 +1613,7 @@ export class App extends React.Component<AppProps, AppState> {
         if (isLocalMedia(this.state.roomMedia) && !isLocalMedia(currentMedia)) {
           this.localMediaCoordinator?.reset();
         }
-        if (this.playingVBrowser() && !isVBrowser(currentMedia)) {
-          this.stopVBrowser();
-        }
+
         if (this.playingScreenShare() && isScreenShare(currentMedia)) {
           // Ignore, it's probably a reconnection
           return;
@@ -1637,14 +1622,7 @@ export class App extends React.Component<AppProps, AppState> {
           // Ignore, it's probably a reconnection
           return;
         }
-        if (
-          this.playingVBrowser() &&
-          this.getVBrowserHost() &&
-          isVBrowser(currentMedia)
-        ) {
-          // Ignore, it's probably a reconnection
-          return;
-        }
+
         this.setState(
           {
             roomMedia: currentMedia,
@@ -1654,10 +1632,6 @@ export class App extends React.Component<AppProps, AppState> {
             roomPlaybackRate: data.playbackRate,
             loading: this.state.roomMedia !== currentMedia ? Boolean(data.video) : this.state.loading,
             nonPlayableMedia: false,
-            isVBrowserLarge: data.isVBrowserLarge,
-            vBrowserResolution: "1280x720@30",
-            vBrowserQuality: "1",
-            controller: data.controller,
             isLiveStream: false,
           },
           async () => {
@@ -1665,7 +1639,7 @@ export class App extends React.Component<AppProps, AppState> {
             const leftVideo = this.HTMLInterface.getVideoEl();
 
             const localMedia = isLocalMedia(currentMedia);
-            const isWebRTCStream = isScreenShare(currentMedia) || isFileShare(currentMedia) || isVBrowser(currentMedia);
+            const isWebRTCStream = isScreenShare(currentMedia) || isFileShare(currentMedia);
 
             // Stop all players
             // Unless the user is sharing a file, screen, or local media, because we play it in leftVideo
@@ -1698,16 +1672,12 @@ export class App extends React.Component<AppProps, AppState> {
 
             if (
               this.playingScreenShare() ||
-              this.playingFileShare() ||
-              this.playingVBrowser()
+              this.playingFileShare()
             ) {
               console.log(
-                "exiting REC:host since we are using webRTC (fileshare, screenshare, or vbrowser). Check setupRTCConnections()",
+                "exiting REC:host since we are using webRTC (fileshare, screenshare). Check setupRTCConnections()",
               );
-              if (!(this.playingVBrowser() && !this.getVBrowserHost())) {
-                // Remove the loader unless we're waiting for a vbrowser
-                this.setLoadingFalse();
-              }
+              this.setLoadingFalse();
               this.setState({ nonPlayableMedia: false });
               this.setupRTCConnections();
               return;
@@ -3216,13 +3186,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  startVBrowser = async (options: { size: string }) => {
-    this.socket.emit("CMD:startVBrowser", { options });
-  };
 
-  stopVBrowser = async () => {
-    this.socket.emit("CMD:stopVBrowser");
-  };
 
   changeController = async (value: string | null) => {
     // console.log(data);
@@ -3256,20 +3220,8 @@ export class App extends React.Component<AppProps, AppState> {
     return isFileShare(this.state.roomMedia);
   };
 
-  playingVBrowser = () => {
-    return isVBrowser(this.state.roomMedia);
-  };
-
-  getVBrowserPass = () => {
-    return this.state.roomMedia.replace("vbrowser://", "").split("@")[0];
-  };
-
-  getVBrowserHost = () => {
-    return this.state.roomMedia.replace("vbrowser://", "").split("@")[1];
-  };
-
   isPauseDisabled = () => {
-    return this.playingScreenShare() || this.playingVBrowser();
+    return this.playingScreenShare();
   };
 
   localSeek = (customTime?: number) => {
@@ -3435,14 +3387,8 @@ export class App extends React.Component<AppProps, AppState> {
     // Default: fullscreen the body (theater mode)
     let container = document.body as HTMLElement;
     if (bVideoOnly || isMobile()) {
-      if (this.playingVBrowser() && !isMobile()) {
-        // vbrowser needs to fullscreen the control wrapper div
-        // Can't really control the VBrowser on mobile anyway, so just fullscreen the video
-        container = document.getElementById("leftVideoParent") as HTMLElement;
-      } else {
-        // fullscreen just the video
-        container = this.Player().getVideoEl();
-      }
+      // fullscreen just the video
+      container = this.Player().getVideoEl();
     }
     if (
       !container.requestFullscreen &&
@@ -3543,9 +3489,7 @@ export class App extends React.Component<AppProps, AppState> {
       const sharer = this.state.participants.find((user) => user.isScreenShare);
       return this.state.nameMap[sharer?.id ?? ""] + "'s file";
     }
-    if (input.startsWith("vbrowser://")) {
-      return "Virtual Browser" + (this.state.isVBrowserLarge ? "+" : "");
-    }
+
     if (isYouTube(input)) {
       const id = getYoutubeVideoID(input);
       return id ? `YouTube (${id})` : "YouTube Video";
@@ -3831,12 +3775,7 @@ export class App extends React.Component<AppProps, AppState> {
             startConvert={this.startConvert}
           />
         )}
-        {this.state.isVBrowserModalOpen && (
-          <VBrowserModal
-            closeModal={() => this.setState({ isVBrowserModalOpen: false })}
-            startVBrowser={this.startVBrowser}
-          />
-        )}
+
         {this.state.isScreenShareModalOpen && (
           <ScreenShareModal
             closeModal={() => this.setState({ isScreenShareModalOpen: false })}
@@ -4135,8 +4074,7 @@ export class App extends React.Component<AppProps, AppState> {
                 }}
               >
                 {!this.state.fullScreen &&
-                  (this.playingVBrowser() ||
-                    this.state.uploadController ||
+                  (this.state.uploadController ||
                     this.localStreamToPublish) && (
                     <div
                       style={{
@@ -4161,84 +4099,7 @@ export class App extends React.Component<AppProps, AppState> {
                           Stop Share
                         </Button>
                       )}
-                      {this.playingVBrowser() && (
-                        <>
-                          <Button
-                            size="xs"
-                            color="red"
-                            disabled={!this.haveLock()}
-                            onClick={this.stopVBrowser}
-                            leftSection={<IconX size={14} />}
-                          >
-                            Stop VBrowser
-                          </Button>
-                          <Select
-                            size="xs"
-                            leftSection={<IconKeyboardFilled size={14} />}
-                            value={this.state.controller}
-                            placeholder="No controller"
-                            clearable
-                            onChange={this.changeController}
-                            disabled={!this.haveLock()}
-                            data={this.state.participants.map((p) => ({
-                              label: this.state.nameMap[p.id] || p.name || (p.id ? "Guest" : "Participant"),
-                              value: p.id,
-                            }))}
-                          />
-                          <Select
-                            size="xs"
-                            leftSection={<IconUserScreen size={14} />}
-                            disabled={!this.haveLock()}
-                            value={this.state.vBrowserResolution}
-                            onChange={(value) =>
-                              this.setState({
-                                vBrowserResolution: value!,
-                              })
-                            }
-                            data={[
-                              {
-                                label: "1080p (Plus only)",
-                                value: "1920x1080@30",
-                                disabled: !this.state.isVBrowserLarge,
-                              },
-                              {
-                                label: "720p",
-                                value: "1280x720@30",
-                              },
-                              {
-                                label: "576p",
-                                value: "1024x576@60",
-                              },
-                              {
-                                label: "486p",
-                                value: "864x486@60",
-                              },
-                              {
-                                label: "360p",
-                                value: "640x360@60",
-                              },
-                            ]}
-                          />
-                          <Select
-                            size="xs"
-                            leftSection={<IconAntennaBars5 size={14} />}
-                            disabled={!this.haveLock()}
-                            value={this.state.vBrowserQuality}
-                            onChange={(value) => {
-                              this.setState({
-                                vBrowserQuality: value!,
-                              });
-                            }}
-                            data={[
-                              { label: "Eco (0.25x)", value: "0.25" },
-                              { label: "Low (0.5x)", value: "0.5" },
-                              { label: "Standard (1x)", value: "1" },
-                              { label: "High (1.5x)", value: "1.5" },
-                              { label: "Ultra (2x)", value: "2" },
-                            ]}
-                          />
-                        </>
-                      )}
+
                       {this.state.uploadController && (
                         <Button
                           size="xs"
@@ -4278,7 +4139,7 @@ export class App extends React.Component<AppProps, AppState> {
                           id="loader"
                           className={`${styles.videoContent} ${styles.flexCenter}`}
                         >
-                          {this.state.loading && (Boolean(this.state.roomMedia) || this.playingVBrowser()) && (
+                          {this.state.loading && Boolean(this.state.roomMedia) && (
                             <div
                               className={styles.flexCenter}
                               style={{
@@ -4286,11 +4147,6 @@ export class App extends React.Component<AppProps, AppState> {
                               }}
                             >
                               <Loader />
-                              <div>
-                                {this.playingVBrowser()
-                                  ? "Launching virtual browser. This can take up to a minute."
-                                  : ""}
-                              </div>
                             </div>
                           )}
                           {!this.state.roomMedia && (
@@ -4343,43 +4199,22 @@ export class App extends React.Component<AppProps, AppState> {
                     >
                       <div id="leftYt" style={{ width: "100%", height: "100%" }} />
                     </div>
-                    {this.playingVBrowser() &&
-                      this.getVBrowserPass() &&
-                      this.getVBrowserHost() ? (
-                      <VBrowser
-                        username={this.state.myClientId}
-                        password={this.getVBrowserPass()}
-                        hostname={this.getVBrowserHost()}
-                        controlling={this.state.controller === this.state.myClientId}
-                        resolution={this.state.vBrowserResolution}
-                        quality={this.state.vBrowserQuality}
-                        doPlay={this.localPlay}
-                        setResolution={(data: string) =>
-                          this.setState({ vBrowserResolution: data })
-                        }
-                        setQuality={(data: string) => {
-                          this.setState({ vBrowserQuality: data });
-                        }}
-                        isMobile={isMobile()}
-                      />
-                    ) : (
-                      <video
-                        style={{
-                          display:
-                            this.usingNative() ||
-                            this.state.pipState?.active ||
-                            this.state.fullScreen
-                              ? "block"
-                              : "none",
-                          width: "100%",
-                          maxHeight: VIDEO_MAX_HEIGHT_CSS,
-                        }}
-                        id="leftVideo"
-                        onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
-                        playsInline
-                        onClick={this.roomTogglePlay}
-                      ></video>
-                    )}
+                    <video
+                      style={{
+                        display:
+                          this.usingNative() ||
+                          this.state.pipState?.active ||
+                          this.state.fullScreen
+                            ? "block"
+                            : "none",
+                        width: "100%",
+                        maxHeight: VIDEO_MAX_HEIGHT_CSS,
+                      }}
+                      id="leftVideo"
+                      onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
+                      playsInline
+                      onClick={this.roomTogglePlay}
+                    ></video>
                     {Boolean(this.state.total) && (
                       <div
                         style={{
@@ -4410,11 +4245,7 @@ export class App extends React.Component<AppProps, AppState> {
                       onOpenScreenShare={() =>
                         this.setState({ isScreenShareModalOpen: true })
                       }
-                      onOpenVBrowser={() => {
-                        if (this.context?.capabilities?.virtualBrowser) {
-                          this.setState({ isVBrowserModalOpen: true });
-                        }
-                      }}
+
                       onOpenFileShare={() =>
                         this.setState({ isFileShareModalOpen: true })
                       }
@@ -4430,8 +4261,7 @@ export class App extends React.Component<AppProps, AppState> {
                       onStopMedia={() => this.roomSetMedia("")}
                       isScreenSharing={Boolean(this.localStreamToPublish)}
                       onStopScreenShare={this.stopPublishingLocalStream}
-                      isPlayingVBrowser={this.playingVBrowser()}
-                      onStopVBrowser={this.stopVBrowser}
+
                       isLocked={Boolean(this.state.roomLock)}
                       onToggleLock={this.toggleLock}
                       isFullScreen={this.state.fullScreen}

@@ -78,8 +78,8 @@ const PILLARS: Pillar[] = [
     icon: <IconBolt size={24} />,
     title: "Low-Latency Scalable Infrastructure",
     description:
-      "Dockerized micro-service pipeline with ephemeral virtual browsers, Redis caching, Node.js concurrency handling, and optimized zero-downtime production deployment.",
-    tags: ["Node.js", "Docker", "Neko VBrowser", "Vite", "PM2"],
+      "Dockerized micro-service pipeline with Redis caching, Node.js concurrency handling, and optimized zero-downtime production deployment.",
+    tags: ["Node.js", "Docker", "Vite", "PM2"],
   },
 ];
 

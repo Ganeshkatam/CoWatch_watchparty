@@ -91,14 +91,7 @@ async function runActionTests() {
   assert(legacyInvite.url === '/join/party-777', 'ROOM_INVITATION must route to room');
   assert(legacyInvite.label === 'Join Room', 'ROOM_INVITATION label must be Join Room');
 
-  const legacyVBrowser = resolveNotificationAction(
-    mockNotification({
-      type: 'VBROWSER_FAILURE',
-      metadata: { roomId: 'room-vb' },
-    }),
-  );
-  assert(legacyVBrowser.action === 'open_room', 'VBROWSER_FAILURE must fallback to open_room');
-  assert(legacyVBrowser.url === '/watch/room-vb', 'VBROWSER_FAILURE must route to room');
+
   console.log('  PASS: Safety fallbacks prevent navigating to dead or banned rooms');
 
   // 3. Fallback when roomId is completely missing

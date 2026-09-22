@@ -7,7 +7,6 @@
  *   3. Room Ending: atomic concurrency-safe 15m claim preventing duplicate warnings.
  *   4. Room Ended: recipient audience and canonical go_home action.
  *   5. Moderation Action: target-only dispatch with explicit go_home action and UUID eventId.
- *   6. VBrowser Failure: allocation-scoped controller notification with operationId idempotency.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -78,7 +77,7 @@ async function runDomainEventTests() {
     event_id: roomStartedEventId,
   });
   assert(actionStarted.action === 'open_room', 'ROOM_STARTED action must be open_room');
-  assert(actionStarted.url === `/room/${roomId}`, 'ROOM_STARTED url must target /room/:roomId');
+  assert(actionStarted.url === `/watch/${roomId}`, 'ROOM_STARTED url must target /watch/:roomId');
   console.log('  PASS: ROOM_STARTED uses authoritative session boundary with open_room action');
 
   // ---------------------------------------------------------------------------
@@ -171,35 +170,7 @@ async function runDomainEventTests() {
   assert(!kickEventId.includes('Date.now()'), 'Moderation eventId must use authoritative UUID, not Date.now()');
   console.log('  PASS: Moderation events route strictly to /home and use UUID eventId');
 
-  // ---------------------------------------------------------------------------
-  // Case 6: VBrowser Failure Allocation-Scoped Controller Notification
-  // ---------------------------------------------------------------------------
-  console.log('Case 6: Testing VBROWSER_FAILURE allocation-scoped controller notification...');
-  const opId = randomUUID();
-  const vbFailureEventId = `VBROWSER_FAILURE:${roomId}:${opId}`;
 
-  const vbAction = resolveNotificationAction({
-    id: randomUUID(),
-    user_id: callerUid, // Controller
-    type: 'VBROWSER_FAILURE',
-    title: 'Virtual Browser Unavailable',
-    body: 'Could not launch virtual browser session',
-    metadata: {
-      roomId,
-      action: 'open_room',
-      targetUrl: `/room/${roomId}`,
-      operationId: opId,
-    },
-    created_at: new Date().toISOString(),
-    read_at: null,
-    expires_at: null,
-    event_id: vbFailureEventId,
-  });
-
-  assert(vbAction.action === 'open_room', 'VBrowser failure action must allow returning to room');
-  assert(vbAction.url === `/room/${roomId}`, 'VBrowser failure url must return to active room');
-  assert(vbFailureEventId === `VBROWSER_FAILURE:${roomId}:${opId}`, 'VBrowser failure eventId must be scoped to operationId');
-  console.log('  PASS: VBrowser failure notification correctly scoped to controller and operationId');
 
   console.log('\nAll NOTIFY-003B Domain Event Integration tests passed successfully!\n');
 }

@@ -19,8 +19,7 @@ const statsUrl = `${serverPath}/stats`;
 // Rendering:
 // Anything that's a Record<string, number> should render as 2 column table
 // e.g. counts, roomsizecounts, per shard stats
-// vBrowserClientIDs etc. should be converted to key/value pairs
-// vmManagerStats and currentRoomData should render in JSON blocks
+// currentRoomData should render in JSON blocks
 
 const Debug = () => {
   const [operatorKey, setOperatorKey] = useState<string>(() => {
@@ -167,16 +166,7 @@ const Debug = () => {
         }}
       >
         {Object.keys(state.current).map((k) => {
-          if (k === "vmManagerStats") {
-            return (
-              <div style={{ overflow: "auto" }}>
-                <pre style={{ fontSize: 12 }} key={k}>
-                  {JSON.stringify(state.current[k], null, 2)}
-                </pre>
-              </div>
-            );
-          } else if (Array.isArray(state.current[k])) {
-            // One column table
+          if (Array.isArray(state.current[k])) {
             return (
               <div
                 style={{

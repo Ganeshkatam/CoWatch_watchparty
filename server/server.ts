@@ -11,8 +11,7 @@ import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
 import { metricsRedis, edgeRedis, redisCount, redisEdge, RedisMetrics } from "./utils/redis.ts";
 import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
-import { getStartOfDay } from "./utils/time.ts";
-import { getSessionLimitSeconds } from "./vm/utils.ts";
+
 import { postgres, upsertObject } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
@@ -28,7 +27,7 @@ import {
   decryptPasscodeForOwner,
   computePasscodeFingerprint,
 } from "./utils/roomPasscode.ts";
-import { generateAdmissionToken, issueRoomAdmissionToken } from "./utils/admissionToken.ts";
+import { issueRoomAdmissionToken } from "./utils/admissionToken.ts";
 import { isTerminalRoom } from "./lifecycle/types.ts";
 import {
   checkPasscodeRateLimits,
@@ -43,16 +42,13 @@ import {
   recordFeedbackAttempt,
 } from "./utils/feedbackRateLimit.ts";
 import {
-  checkAbuseReportRateLimit,
   recordAbuseReportAttempt,
 } from "./utils/abuseReportRateLimit.ts";
 import { checkDurableAbuseReportRateLimit } from "./utils/durableRateLimit.ts";
 import { feedbackTelemetry } from "./utils/feedbackTelemetry.ts";
 import { authenticateOperator } from "./utils/operatorAuth.ts";
-import { getVBrowserProvider } from "./vm/provider.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
-import { bootstrapProviderRegistry } from "./vm/provider-bootstrap.ts";
 import { profileRouter } from "./routes/profile.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
@@ -76,8 +72,7 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled promise rejection at:", promise, "reason:", reason);
 });
 
-// Populate provider registry from VM_MANAGER_CONFIG before any allocation can occur.
-bootstrapProviderRegistry();
+
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
@@ -309,7 +304,7 @@ setInterval(async () => {
 
 if (process.env.NODE_ENV === "development") {
   try {
-    import("./vmWorker.ts");
+
     // import('./syncSubs.ts');
     // import('./timeSeries.ts');
   } catch (e) {
@@ -319,7 +314,7 @@ if (process.env.NODE_ENV === "development") {
 
 app.use(cors(corsOptions));
 
-// NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media & VBrowser safe)
+// NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media safe)
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -888,7 +883,6 @@ app.post("/api/feedback", async (req, res) => {
       "participants",
       "chat",
       "video",
-      "virtual-browser",
       "connection",
     ];
 
@@ -1059,7 +1053,7 @@ app.get("/api/admin/feedback", async (req, res) => {
 
     const allowedStatuses = ["new", "reviewed", "actioned", "dismissed"];
     const allowedTypes = ["bug", "suggestion", "problem", "experience"];
-    const allowedContexts = ["room", "playback", "host", "participants", "chat", "video", "virtual-browser", "connection"];
+    const allowedContexts = ["room", "playback", "host", "participants", "chat", "video", "connection"];
 
     if (rawStatus && !allowedStatuses.includes(rawStatus)) {
       res.status(400).json({ error: "Invalid status filter" });
@@ -1317,13 +1311,7 @@ app.get("/api/admin/feedback/metrics", async (req, res) => {
   }
 });
 
-app.get("/health/:metric", async (req, res) => {
-  const vmManagerStats = (
-    await axios.get("http://localhost:" + config.VMWORKER_PORT + "/stats")
-  ).data;
-  const result = vmManagerStats[req.params.metric]?.availableVBrowsers?.length;
-  res.status(result ? 200 : 500).json(result);
-});
+
 
 app.get("/timeSeries", async (req, res) => {
   const auth = await authenticateOperator(req);
@@ -1863,18 +1851,7 @@ app.get("/metadata", async (req, res) => {
       decoded = valResult;
     }
   }
-  let isFreePoolFull = false;
-  if (config.VM_MANAGER_CONFIG) {
-    try {
-      isFreePoolFull = (
-        await axios.get(
-          "http://localhost:" + config.VMWORKER_PORT + "/isFreePoolFull",
-        )
-      ).data.isFull;
-    } catch (e: any) {
-      console.warn("[WARNING]: free pool check failed: %s", e.code);
-    }
-  }
+
   const beta =
     decoded?.email != null &&
     Boolean(config.BETA_USER_EMAILS.split(",").includes(decoded?.email));
@@ -1893,25 +1870,14 @@ app.get("/metadata", async (req, res) => {
       console.warn("[WARNING]: active_user upsert failed:", e.message);
     });
   }
-  const vBrowserProvider = getVBrowserProvider();
   res.json({
-    isFreePoolFull,
     beta,
     streamPath,
     convertPath,
-    capabilities: {
-      virtualBrowser: vBrowserProvider.isEnabled,
-    },
   });
 });
 
-app.get("/capabilities", (_req, res) => {
-  const vBrowserProvider = getVBrowserProvider();
-  res.json({
-    virtualBrowser: vBrowserProvider.isEnabled,
-    provider: vBrowserProvider.id,
-  });
-});
+
 
 function sanitizeActionUrl(url?: string | null): string | null {
   if (!url || typeof url !== "string") {
@@ -2923,9 +2889,7 @@ app.post("/endRoom", async (req, res) => {
           : 'This watch party has been ended by the host.',
       });
 
-      if (memoryRoom.vBrowser) {
-        await memoryRoom.stopVBrowserInternal();
-      }
+
       memoryRoom.disconnectAllSockets();
     }
 
@@ -3001,7 +2965,6 @@ app.delete("/deleteRoom", async (req, res) => {
       rooms.delete(roomId);
       unregisterRoomNamespace(roomId);
       memoryRoom.destroy();
-      await memoryRoom.stopVBrowserInternal();
     }
 
     res.status(204).end();
@@ -3079,7 +3042,6 @@ async function saveRooms() {
     Array.from(rooms.entries()).map(async ([key, room]) => {
       if (
         room.roster.length === 0 &&
-        !room.vBrowser &&
         Number(room.lastUpdateTime) < Date.now() - 8 * 60 * 60 * 1000
       ) {
         console.log(
@@ -3162,9 +3124,7 @@ async function expireRooms() {
             msg: 'This room has expired.',
           });
 
-          if (room.vBrowser) {
-            room.stopVBrowserInternal();
-          }
+
 
           room.disconnectAllSockets();
         }
@@ -3251,38 +3211,7 @@ async function release() {
   const roomArr = Array.from(rooms.values());
   console.log("[RELEASE] %s rooms in batch", roomArr.length);
   for (let room of roomArr) {
-    if (room.vBrowser && room.vBrowser.assignTime) {
-      const maxTime = getSessionLimitSeconds(room.vBrowser.large) * 1000;
-      const elapsed = Date.now() - room.vBrowser.assignTime;
-      const ttl = maxTime - elapsed;
-      const isTimedOut = ttl && ttl < releaseInterval;
-      const isAlmostTimedOut = ttl && ttl < releaseInterval * 2;
-      const isRoomEmpty = room.roster.length === 0;
-      const isRoomIdle =
-        Date.now() - Number(room.lastUpdateTime) > 5 * 60 * 1000;
-      if (isTimedOut || (isRoomEmpty && isRoomIdle)) {
-        console.log("[RELEASE] VM in room:", room.roomId);
-        room.stopVBrowserInternal();
-        if (isTimedOut) {
-          room.addChatMessage(null, {
-            id: "",
-            system: true,
-            cmd: "vBrowserTimeout",
-            msg: "",
-          });
-          redisCount("vBrowserTerminateTimeout");
-        } else if (isRoomEmpty) {
-          redisCount("vBrowserTerminateEmpty");
-        }
-      } else if (isAlmostTimedOut) {
-        room.addChatMessage(null, {
-          id: "",
-          system: true,
-          cmd: "vBrowserAlmostTimeout",
-          msg: "",
-        });
-      }
-    }
+
     // We want to spread out the jobs over about half the release interval
     // This gives other jobs some CPU time
     const waitTime = releaseInterval / 2 / roomArr.length;
@@ -3295,37 +3224,11 @@ const lastPresenceSnapshot = new Map<string, string>();
 
 async function minuteMetrics() {
   const roomArr = Array.from(rooms.values());
-  let vbWaiting = 0;
   const dirtyPresenceBatch: Record<string, string> = {};
   const emptyRoomsToClean: string[] = [];
 
   for (let room of roomArr) {
-    if (room.vBrowser && room.vBrowser.id) {
-      // Update the heartbeat in postgres
-      await postgres?.query(
-        `UPDATE vbrowser SET "heartbeatTime" = NOW() WHERE "roomId" = $1 and vmid = $2`,
-        [room.roomId, room.vBrowser.id],
-      );
 
-      // Phase 8: In critical budget state, degrade non-essential analytics tracking
-      if (!RedisMetrics.isDegradedMode() && metricsRedis.client && metricsRedis.isReady()) {
-        try {
-          const expireTime = getStartOfDay() / 1000 + 86400;
-          await metricsRedis.execute("analytics", "zincrby", async (c) => {
-            if (room.vBrowser?.creatorClientID) {
-              await c.zincrby("vBrowserClientIDMinutes", 1, room.vBrowser.creatorClientID);
-              await c.expireat("vBrowserClientIDMinutes", expireTime);
-            }
-            if (room.vBrowser?.creatorUID) {
-              await c.zincrby("vBrowserUIDMinutes", 1, room.vBrowser?.creatorUID);
-              await c.expireat("vBrowserUIDMinutes", expireTime);
-            }
-          });
-        } catch (err) {
-          // Redis metrics degradation fallback
-        }
-      }
-    }
 
     const users = room.roster.length;
     const rosterData = users > 0 ? room.getRosterForStats() : [];
@@ -3344,7 +3247,7 @@ async function minuteMetrics() {
         emptyRoomsToClean.push(room.roomId);
       }
     }
-    vbWaiting += room.vBrowserQueue ? 1 : 0;
+
   }
 
   // Flush dirty presence batch in single atomic operation (1 command for all changed rooms)
@@ -3361,7 +3264,6 @@ async function minuteMetrics() {
     mem: process.memoryUsage().rss,
     roomCount: rooms.size,
     users: io.engine.clientsCount,
-    vbWaiting,
   };
   try {
     if (edgeRedis.client && edgeRedis.isReady()) {

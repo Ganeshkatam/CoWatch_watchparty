@@ -311,7 +311,7 @@ async function runTests() {
   testRoom.isChatDisabled = false;
   console.log('✓ Host complete chat authority matrix strictly verified (send, edit, delete, clear, react)');
 
-  // 2.5 Exhaustive Mutation Inventory Check (Playback, Playlist, VBrowser, Subtitles, Locks)
+  // 2.5 Exhaustive Mutation Inventory Check (Playback, Playlist, Subtitles, Locks)
   console.log('\n--- Section 2.5: Exhaustive Mutation Inventory Check ---');
   testRoom.lock = 'host-uid'; // Lock playback to host
 
@@ -325,9 +325,6 @@ async function runTests() {
     'playlist:move',
     'playlist:delete',
     'playlist:next',
-    'vbrowser:start',
-    'vbrowser:stop',
-    'vbrowser:control',
     'room:subtitle_change',
   ];
 
@@ -348,7 +345,7 @@ async function runTests() {
   assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'room:lock_participants' }).allowed === false, 'Member cannot lock participants');
 
   testRoom.lock = ''; // Unlock
-  console.log('✓ Exhaustive mutation inventory verified: playback, playlist, vbrowser, subtitles, locks');
+  console.log('✓ Exhaustive mutation inventory verified: playback, playlist, subtitles, locks');
 
   // =========================================================================
   // Section 3: Room Ownership Boundary Check
@@ -706,12 +703,7 @@ async function runTests() {
     'CMD:playlistMove': { category: 'PRIVILEGED', requiredAction: 'playlist:move' },
     'CMD:playlistDelete': { category: 'PRIVILEGED', requiredAction: 'playlist:delete' },
 
-    // 5. Privileged VBrowser Operations
-    'CMD:startVBrowser': { category: 'PRIVILEGED', requiredAction: 'vbrowser:start' },
-    'CMD:stopVBrowser': { category: 'PRIVILEGED', requiredAction: 'vbrowser:stop' },
-    'CMD:changeController': { category: 'PRIVILEGED', requiredAction: 'vbrowser:control' },
-
-    // 6. Explicitly Denied Operations (Server-Enforced Invariant Denials)
+    // 5. Explicitly Denied Operations (Server-Enforced Invariant Denials)
     'CMD:becomeHost': { category: 'DENIED' },
     'CMD:claimHost': { category: 'DENIED' },
     'CMD:setRoomState': { category: 'DENIED' },
@@ -858,7 +850,7 @@ async function runTests() {
   assert(actionTypeMatch, 'Could not extract RoomAction union from server/roomAuthorization.ts');
 
   const definedActions = [...actionTypeMatch[1].matchAll(/["']([a-zA-Z0-9_:]+)["']/g)].map(m => m[1]);
-  assert(definedActions.length >= 24, `Expected at least 24 RoomAction variants, found ${definedActions.length}`);
+  assert(definedActions.length >= 21, `Expected at least 21 RoomAction variants, found ${definedActions.length}`);
 
   // Verify each defined RoomAction is handled in authorizeRoomAction's switch statement
   for (const actionName of definedActions) {

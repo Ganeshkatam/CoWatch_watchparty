@@ -18,7 +18,7 @@ export const NotificationType = {
   ROOM_ENDING:         'ROOM_ENDING',
   ROOM_ENDED:          'ROOM_ENDED',
   MODERATION_ACTION:   'MODERATION_ACTION',
-  VBROWSER_FAILURE:    'VBROWSER_FAILURE',
+
   SYSTEM_ANNOUNCEMENT: 'SYSTEM_ANNOUNCEMENT',
 } as const;
 
@@ -50,7 +50,7 @@ export const NOTIFICATION_CATEGORY: Record<NotificationType, string> = {
   ROOM_ENDING:         'room_events',
   ROOM_ENDED:          'room_events',
   MODERATION_ACTION:   'moderation_events',
-  VBROWSER_FAILURE:    'system_announcements',
+
   SYSTEM_ANNOUNCEMENT: 'system_announcements',
 };
 

@@ -145,9 +145,7 @@ export const isLocalMedia = (input: string) => {
   return Boolean(input && input.startsWith("localmedia://"));
 };
 
-export const isVBrowser = (input: string) => {
-  return input.startsWith("vbrowser://");
-};
+
 
 export async function testAutoplay() {
   const result = await canAutoplay.video();

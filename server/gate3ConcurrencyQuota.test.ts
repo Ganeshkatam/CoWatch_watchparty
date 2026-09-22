@@ -279,7 +279,11 @@ async function runGate3ConcurrencyQuotaTests() {
   console.log('================================================================\n');
 }
 
-runGate3ConcurrencyQuotaTests().catch((err) => {
-  console.error('PROD-003 Gate 3 Test Failed:', err);
-  process.exit(1);
-});
+runGate3ConcurrencyQuotaTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('PROD-003 Gate 3 Test Failed:', err);
+    process.exit(1);
+  });

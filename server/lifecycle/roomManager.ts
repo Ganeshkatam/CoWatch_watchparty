@@ -6,21 +6,17 @@ import {
 } from "./types.ts";
 import { Room } from "../room.ts";
 import type { DatabasePool } from "./admissionCoordinator.ts";
-import type { VBrowserCoordinator } from "../vbrowser/coordinator.ts";
 
 export class RoomLifecycleManager {
   private db: DatabasePool | null;
   private inMemoryRooms: Map<string, Room>;
-  private vbrowserCoordinator?: VBrowserCoordinator;
 
   constructor(
     db: DatabasePool | null,
-    inMemoryRooms: Map<string, Room>,
-    vbrowserCoordinator?: VBrowserCoordinator
+    inMemoryRooms: Map<string, Room>
   ) {
     this.db = db;
     this.inMemoryRooms = inMemoryRooms;
-    this.vbrowserCoordinator = vbrowserCoordinator;
   }
 
   public createSnapshot(room: Room, lifecycleRevision: number = 1): RoomSnapshot {
@@ -56,7 +52,7 @@ export class RoomLifecycleManager {
    * Two-phase safe idle evacuation barrier with optimistic revision CAS:
    * 1. Check connected participants === 0.
    * 2. Read room lifecycle_revision = N.
-   * 3. Begin resource teardown (VBrowser / VMs) with unique teardownOperationId.
+   * 3. Begin resource teardown with unique teardownOperationId.
    * 4. Execute final atomic evacuation CAS:
    *    UPDATE rooms SET status = 'inactive', lifecycle_revision = N + 1, data = $snapshot
    *    WHERE "roomId" = $roomId AND lifecycle_revision = N AND status = 'active'
@@ -110,19 +106,7 @@ export class RoomLifecycleManager {
 
       // Step 3: Resource teardown with idempotency
       const teardownOpId = `unload_teardown_${roomId}_${Date.now()}`;
-      if (this.vbrowserCoordinator) {
-        await this.vbrowserCoordinator.releaseByRoom(roomId, teardownOpId).catch((err) => {
-          console.warn(`Idempotent coordinator teardown notice for room ${roomId}:`, err);
-        });
-      }
 
-      if (room.vBrowser) {
-        try {
-          await room.stopVBrowserInternal();
-        } catch (vErr) {
-          console.warn(`Idempotent VM teardown notice for room ${roomId}:`, vErr);
-        }
-      }
 
       // Re-verify in-memory participant barrier before CAS
       if (room.roster.length > 0) {
@@ -196,18 +180,14 @@ export class RoomLifecycleManager {
             [roomId]
           );
 
-          // Teardown VBrowser allocations
-          if (this.vbrowserCoordinator) {
-            await this.vbrowserCoordinator.releaseByRoom(roomId, `expire_${roomId}_${now}`).catch(() => {});
-          }
+
+
 
           // Handle active in-memory instance
           const inMem = this.inMemoryRooms.get(roomId);
           if (inMem) {
             inMem.status = "expired";
-            if (inMem.vBrowser) {
-              await inMem.stopVBrowserInternal().catch(() => {});
-            }
+
             inMem.disconnectAllSockets();
             inMem.destroy();
             this.inMemoryRooms.delete(roomId);

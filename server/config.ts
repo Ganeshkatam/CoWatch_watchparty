@@ -18,7 +18,7 @@ const defaults = {
   REDIS_CORE_URL: "", // Redis Core: distributed coordination (locks, leases, idempotency)
   REDIS_EDGE_URL: "", // Redis Edge: high-volume cache (metadata, batched presence)
   REDIS_METRICS_URL: "", // Redis Metrics: analytics buffer flush
-  DATABASE_URL: "", // Optional, for permanent rooms and VBrowser management (PostgreSQL)
+  DATABASE_URL: "", // Optional, for permanent rooms (PostgreSQL)
   SUPABASE_URL: "", // Optional, required for Supabase integration
   SUPABASE_SECRET_KEY: "", // Optional, required for Supabase integration
   PORT: 8080, // Port to use for server
@@ -42,49 +42,7 @@ const defaults = {
   STREAM_PATH: "", // Path of server that supports additional video streams
   CONVERT_PATH: "", // Path of server that supports video conversion
 
-  // ==========================================
-  // VBrowser Infrastructure Configuration
-  // ==========================================
-  VIRTUAL_BROWSER_ENABLED: false, // Authoritative server switch. Defaults to false.
-  VIRTUAL_BROWSER_PROVIDER: "auto", // Provider selection: "auto" | "local" | "hetzner" | "pooled"
-  VBROWSER_SESSION_SECONDS: 10800, // Number of seconds to allow vbrowsers to run for
-  VBROWSER_SESSION_SECONDS_LARGE: 86400, // Number of seconds to allow large vbrowsers to run for
-  VBROWSER_AUTOSCALING: false, // Gate provisioning behind an operator-controlled setting. Defaults to false.
-  VBROWSER_PROVIDER_LIMIT: 2147483647, // Config ceiling for provider capacity
-  VBROWSER_POOL_LIMIT: 2147483647, // Config ceiling for pool capacity
-  VM_POOL_RAMP_DOWN_HOURS: "", // Comma separated start/end UTC hours of the ramp down period
-  VM_POOL_RAMP_UP_HOURS: "", // Comma separated start/end UTC hours of the ramp up period
-  VBROWSER_TAG: "", // Optional, tag to put on VBrowser VM instances
-  DO_TOKEN: "", // Optional, for DigitalOcean VMs
-  DO_GATEWAY: "", // Gateway handling SSL termination
-  DO_IMAGE: "", // ID of DigitalOcean snapshot image to use for vbrowser
-  DO_SSH_KEYS: "", // IDs of DigitalOcean SSH keys to access vbrowsers
-  HETZNER_TOKEN: "", // Optional, for Hetzner VMs
-  HETZNER_GATEWAY: "", // Gateway handling SSL termination
-  HETZNER_SSH_KEYS: "", // IDs of Hetzner SSH keys to access vbrowsers
-  HETZNER_IMAGE: "", // ID of Hetzner snapshot image to use for vbrowser
-  SCW_SECRET_KEY: "", // Optional, for Scaleway VMs
-  SCW_ORGANIZATION_ID: "", // Optional, for Scaleway VMs
-  SCW_GATEWAY: "", // Gateway handling SSL termination
-  SCW_IMAGE: "", // ID of Scaleway snapshot image to use for vbrowser
-  // Azure VM Configuration
-  AZURE_CLIENT_ID: "", // Optional, Azure Service Principal Application Client ID
-  AZURE_CLIENT_SECRET: "", // Optional, Azure Service Principal Client Secret
-  AZURE_TENANT_ID: "", // Optional, Azure AD Directory Tenant ID
-  AZURE_SUBSCRIPTION_ID: "", // Optional, Azure Subscription ID
-  AZURE_RESOURCE_GROUP: "", // Optional, Azure Resource Group Name
-  AZURE_LOCATION: "eastus", // Optional, Azure location/region (e.g. eastus)
-  AZURE_GATEWAY: "", // Optional, Gateway handling SSL termination for Azure
-  AZURE_IMAGE_ID: "", // Optional, Azure Resource ID for custom managed image (/subscriptions/.../resourceGroups/.../providers/Microsoft.Compute/images/...)
-  AZURE_ADMIN_USERNAME: "azureuser", // Optional, Admin username for Azure VMs
-  AZURE_SSH_KEY: "", // Optional, Public SSH key for Azure VM admin user
-  AZURE_SUBNET_ID: "", // Optional, Azure Virtual Network Subnet ID for attaching NICs
-  AZURE_REUSE_VMS: false, // Optional, default false (clean termination per session)
-  VM_MANAGER_CONFIG: "", // Comma-separated list of the pools of VMs to run (provider:size:region:minSize:limitSize:hostname), e.g. Docker:large:US:0:1:localhost,Docker:standard:US:0:1:localhost
-  VM_MIN_UPTIME_MINUTES: 15, // Number of minutes of the hour VMs must exist for before being eligible for termination
-  VMWORKER_PORT: 3100, // Port to use for the vmWorker HTTP server
-  VM_ASSIGNMENT_TIMEOUT: 75, // Number of seconds to wait for a VM before failing
-  VBROWSER_ADMIN_KEY: "", // Optional, the key to hit admin endpoints on the vbrowser
+
 
   // ==========================================
   // NOTIFY-001, NOTIFY-002 & NOTIFY-004: Transactional Email Architecture
@@ -140,9 +98,7 @@ const defaults = {
   // Development / Legacy Compatibility Configuration
   // ==========================================
   // Kept solely because existing local Docker development/testing infrastructure or legacy admin metrics depend on them.
-  DOCKER_VM_HOST: "localhost", // Optional, for Docker VMs
-  DOCKER_VM_HOST_SSH_USER: "root", // Optional, username for Docker host
-  DOCKER_VM_HOST_SSH_KEY_BASE64: "", // Optional, private SSH key for Docker host, or default to ~/.ssh/id_rsa content
+
   SSL_KEY_FILE: "", // Optional, Filename of SSL key (to use https for local development)
   SSL_CRT_FILE: "", // Optional, Filename of SSL cert (to use https for local development)
   STATS_KEY: "", // Secret string to validate viewing stats
@@ -152,29 +108,6 @@ const defaults = {
 const resolvedConfig = {
   ...defaults,
   ...process.env,
-  VIRTUAL_BROWSER_ENABLED:
-    process.env.VIRTUAL_BROWSER_ENABLED !== undefined
-      ? process.env.VIRTUAL_BROWSER_ENABLED === "true"
-      : defaults.VIRTUAL_BROWSER_ENABLED,
-  VIRTUAL_BROWSER_PROVIDER: (
-    process.env.VIRTUAL_BROWSER_PROVIDER || defaults.VIRTUAL_BROWSER_PROVIDER
-  ).toLowerCase(),
-  VBROWSER_AUTOSCALING:
-    process.env.VBROWSER_AUTOSCALING !== undefined
-      ? process.env.VBROWSER_AUTOSCALING === "true"
-      : defaults.VBROWSER_AUTOSCALING,
-  VBROWSER_PROVIDER_LIMIT:
-    process.env.VBROWSER_PROVIDER_LIMIT !== undefined
-      ? Number(process.env.VBROWSER_PROVIDER_LIMIT)
-      : defaults.VBROWSER_PROVIDER_LIMIT,
-  VBROWSER_POOL_LIMIT:
-    process.env.VBROWSER_POOL_LIMIT !== undefined
-      ? Number(process.env.VBROWSER_POOL_LIMIT)
-      : defaults.VBROWSER_POOL_LIMIT,
-  AZURE_REUSE_VMS:
-    process.env.AZURE_REUSE_VMS !== undefined
-      ? process.env.AZURE_REUSE_VMS === "true"
-      : defaults.AZURE_REUSE_VMS,
 };
 
 export default resolvedConfig;

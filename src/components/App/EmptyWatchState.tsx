@@ -69,7 +69,7 @@ export const NonPlayableMediaState: React.FC<NonPlayableMediaStateProps> = () =>
             It doesn't look like this is a media file
           </h3>
           <p className={styles.emptySubtitle}>
-            Maybe you meant to launch a Virtual Browser if you're trying to visit a web page?
+            Try using a direct video URL or screen share instead of a web page link.
           </p>
         </div>
       </div>

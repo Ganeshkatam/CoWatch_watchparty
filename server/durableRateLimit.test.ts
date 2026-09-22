@@ -92,7 +92,11 @@ async function runDurableRateLimitTests() {
   console.log('\nAll NOTIFY-004 Durable Rate Limiter tests PASSED successfully!\n');
 }
 
-runDurableRateLimitTests().catch((err) => {
-  console.error('\nDurable rate limiter tests failed:', err);
-  process.exit(1);
-});
+runDurableRateLimitTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('\nDurable rate limiter tests failed:', err);
+    process.exit(1);
+  });

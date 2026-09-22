@@ -6,7 +6,7 @@ type BooleanDict = Record<string, boolean>;
 type AnyDict = Record<string, any>;
 type PCDict = Record<string, RTCPeerConnection>;
 type HTMLVideoElementDict = Record<string, HTMLVideoElement>;
-type MediaType = "vbrowser" | "screenshare" | "video" | "youtube";
+type MediaType = "screenshare" | "video" | "youtube";
 
 interface User {
   id: string;
@@ -86,8 +86,6 @@ interface HostState {
   videoTS: number;
   subtitle: string;
   paused: boolean;
-  isVBrowserLarge: boolean;
-  controller?: string;
   playbackRate: number;
   loop: boolean;
 }
@@ -125,7 +123,6 @@ interface ShardMetric {
   mem: number;
   roomCount: number;
   users: number;
-  vbWaiting: number;
 }
 
 declare const __APP_BUILD_INFO__: {
