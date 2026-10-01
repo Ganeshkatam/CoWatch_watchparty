@@ -87,31 +87,74 @@ async function runLocalMediaServerTests() {
 
   // Case 1: Sender identity enforcement (Server-derived fromPeerId, rejecting spoofed identity)
   await authority.announceSession("room_alpha", "host_user_1", true, { ...baseManifest });
+  authority.registerPeer("room_alpha", "host_user_1", "peer_1", "socket_peer_1");
   authority.registerPeer("room_alpha", "user_2", "peer_2", "socket_peer_2");
   signaling.clear();
 
-  const spoofAttemptPayload = {
+  // Valid relay between registered peers with matching socket ownership
+  const validPayload = {
     roomId: "room_alpha",
-    fromPeerId: "peer_spoofed_victim", // Attempted spoof
+    fromPeerId: "peer_1",
     toPeerId: "peer_2",
     signal: { sdp: "offer_data" },
     epoch: 1,
   };
-
-  // Server relay logic requires matching session and epoch
   const relaySuccess = authority.handleSignalRelay(
-    {} as any,
+    { id: "socket_peer_1", uid: "host_user_1" },
+    "socket_peer_2",
+    validPayload,
+    "media_test_001"
+  );
+  assert(relaySuccess === true, "Case 1.1: Valid relay between registered peers should succeed");
+  assert(signaling.relayedSignals.length === 1, "Case 1.1: Exactly 1 signal relayed");
+  assert(
+    signaling.relayedSignals[0].targetSocketId === "socket_peer_2",
+    "Case 1.1: Relayed to verified target socket"
+  );
+
+  // Spoofed unregistered sender peer rejected
+  const spoofAttemptPayload = {
+    roomId: "room_alpha",
+    fromPeerId: "peer_spoofed_victim", // Attempted spoof of unregistered peer
+    toPeerId: "peer_2",
+    signal: { sdp: "offer_data" },
+    epoch: 1,
+  };
+  const spoofRelay = authority.handleSignalRelay(
+    { id: "socket_peer_1", uid: "host_user_1" },
     "socket_peer_2",
     spoofAttemptPayload,
     "media_test_001"
   );
-  assert(relaySuccess === true, "Case 1: Valid relay should succeed");
-  assert(signaling.relayedSignals.length === 1, "Case 1: Exactly 1 signal relayed");
-  assert(
-    signaling.relayedSignals[0].targetSocketId === "socket_peer_2",
-    "Case 1: Relayed to verified target socket"
+  assert(spoofRelay === false, "Case 1.2: Unregistered sender peer must be strictly rejected");
+
+  // Spoofed socket identity (socket.id does not match sender peer record)
+  const spoofedSocketRelay = authority.handleSignalRelay(
+    { id: "socket_attacker", uid: "host_user_1" },
+    "socket_peer_2",
+    validPayload,
+    "media_test_001"
   );
-  console.log("  PASS [Case 1: Server routes signaling to target socket]");
+  assert(spoofedSocketRelay === false, "Case 1.3: Mismatched socket.id must be strictly rejected");
+
+  // Spoofed user identity (socket.uid does not match sender peer record)
+  const spoofedUidRelay = authority.handleSignalRelay(
+    { id: "socket_peer_1", uid: "attacker_user" },
+    "socket_peer_2",
+    validPayload,
+    "media_test_001"
+  );
+  assert(spoofedUidRelay === false, "Case 1.4: Mismatched socket.uid must be strictly rejected");
+
+  // Mismatched target socket rejected
+  const mismatchedTargetRelay = authority.handleSignalRelay(
+    { id: "socket_peer_1", uid: "host_user_1" },
+    "socket_wrong_target",
+    validPayload,
+    "media_test_001"
+  );
+  assert(mismatchedTargetRelay === false, "Case 1.5: Mismatched target socket must be strictly rejected");
+  console.log("  PASS [Case 1: Server routes signaling to target socket and strictly verifies peer ownership]");
 
   // Case 2: Cross-room signaling target isolation
   // Target in room_beta should not receive signals from room_alpha
@@ -172,9 +215,9 @@ async function runLocalMediaServerTests() {
   // Case 6: Terminated session signal dropped
   authority.terminateSession("room_alpha");
   const terminatedRelay = authority.handleSignalRelay(
-    {} as any,
+    { id: "socket_peer_1", uid: "host_user_1" },
     "socket_peer_2",
-    spoofAttemptPayload,
+    validPayload,
     "media_test_001"
   );
   assert(terminatedRelay === false, "Case 6: Signal in terminated session must be dropped");

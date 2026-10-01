@@ -66,12 +66,81 @@ import {
   purgeSentOutboxRows,
   purgeFailedOutboxRows,
 } from "./notifications/emailOutbox.ts";
+import { validateExternalUrl, safeExternalGet } from "./utils/ssrfValidator.ts";
+
+let isShuttingDown = false;
+
+export async function handleFatalError(
+  type: "uncaughtException" | "unhandledRejection" | "SIGTERM" | "SIGINT",
+  error?: unknown
+): Promise<void> {
+  const isSignal = type === "SIGTERM" || type === "SIGINT";
+  if (error) {
+    const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
+    console.error(`[FATAL] ${type} encountered:`, errorMessage);
+  } else {
+    console.log(`[LIFECYCLE] ${type} signal received; starting graceful shutdown`);
+  }
+
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  // Bounded failsafe timer: guarantee process termination within 4 seconds
+  const failsafeTimer = setTimeout(() => {
+    console.error("[LIFECYCLE] Graceful drain timed out; forcing exit");
+    process.exit(isSignal ? 0 : 1);
+  }, 4000);
+  failsafeTimer.unref();
+
+  try {
+    // 1. Stop HTTP listener from taking new connections
+    if (server && typeof server.close === "function") {
+      server.close(() => {
+        console.log("[LIFECYCLE] HTTP server stopped accepting connections");
+      });
+    }
+
+    // 2. Close Socket.IO server
+    if (io) {
+      io.close();
+    }
+
+    // 3. Close PostgreSQL pool
+    if (postgres && typeof postgres.end === "function") {
+      await postgres.end().catch((err: unknown) => {
+        console.error("[LIFECYCLE] Error closing PostgreSQL pool:", err);
+      });
+    }
+
+    // 4. Disconnect Redis instances
+    if (edgeRedis?.client) {
+      edgeRedis.client.disconnect();
+    }
+    if (metricsRedis?.client) {
+      metricsRedis.client.disconnect();
+    }
+
+    console.log(`[LIFECYCLE] Clean shutdown complete for ${type}`);
+  } catch (err: unknown) {
+    console.error("[LIFECYCLE] Error during shutdown drain:", err);
+  } finally {
+    process.exit(isSignal ? 0 : 1);
+  }
+}
 
 process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception in server process:", err);
+  void handleFatalError("uncaughtException", err);
 });
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled promise rejection at:", promise, "reason:", reason);
+process.on("unhandledRejection", (reason) => {
+  void handleFatalError("unhandledRejection", reason);
+});
+process.on("SIGTERM", () => {
+  void handleFatalError("SIGTERM");
+});
+process.on("SIGINT", () => {
+  void handleFatalError("SIGINT");
 });
 
 
@@ -476,47 +545,52 @@ app.get("/searchSubtitles", async (req, res) => {
     const url = req.query.url ? String(req.query.url) : "";
     let subUrl = "";
     if (url) {
-      const startResp = await axios({
-        method: "get",
-        url: url,
-        headers: {
-          Range: "bytes=0-65535",
-        },
-        responseType: "arraybuffer",
+      const validation = await validateExternalUrl(url, ["https:", "http:"]);
+      if (!validation.valid) {
+        res.status(400).json({ error: "INVALID_URL", message: validation.reason || "Disallowed target URL" });
+        return;
+      }
+      const startResp = await safeExternalGet(url, {
+        headers: { Range: "bytes=0-65535" },
+        maxBytes: 128 * 1024,
+        timeoutMs: 5000,
+        allowedProtocols: ["https:", "http:"],
       });
       const start = startResp.data;
-      const size = Number(startResp.headers["content-range"].split("/")[1]);
-      const endResp = await axios({
-        method: "get",
-        url: url,
-        headers: {
-          Range: `bytes=${size - 65536}-`,
-        },
-        responseType: "arraybuffer",
-      });
-      const end = endResp.data;
-      // console.log(start, end, size);
-      let hash = computeOpenSubtitlesHash(start, end, size);
-      // hash = 'f65334e75574f00f';
-      // Search API for subtitles by hash
+      const contentRange = startResp.headers["content-range"] || "";
+      const sizeMatch = contentRange.match(/\/(\d+)$/);
+      const size = sizeMatch ? Number(sizeMatch[1]) : 0;
+      let end: Buffer = Buffer.alloc(0);
+      if (size > 65536) {
+        const endResp = await safeExternalGet(url, {
+          headers: { Range: `bytes=${size - 65536}-` },
+          maxBytes: 128 * 1024,
+          timeoutMs: 5000,
+          allowedProtocols: ["https:", "http:"],
+        });
+        end = endResp.data;
+      }
+      const hash = computeOpenSubtitlesHash(start, end, size);
       subUrl = `https://api.opensubtitles.com/api/v1/subtitles?moviehash=${hash}&languages=en`;
     } else if (title) {
-      subUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${title}&languages=en`;
+      subUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(title)}&languages=en`;
     }
-    // Alternative, web client calls this to get back some JS with the download URL embedded
-    // https://www.opensubtitles.com/nocache/download/7585196/subreq.js?file_name=Borgen.S04E01.en&locale=en&np=true&sub_frmt=srt&subtitle_id=6615808&ext_installed=false
-    // Up to 10 downloads per IP per day, but proxyable and doesn't require key
+    if (!subUrl) {
+      res.json([]);
+      return;
+    }
     const response = await axios.get(subUrl, {
       headers: {
         "User-Agent": "cowatch v1",
         "Api-Key": config.OPENSUBTITLES_KEY,
       },
+      timeout: 5000,
     });
-    // console.log(subUrl, response.data);
     const subtitles = response.data;
-    res.json(subtitles.data);
-  } catch (e: any) {
-    console.error(e.message);
+    res.json(subtitles?.data || []);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Subtitle search failed";
+    console.error("searchSubtitles error:", message);
     res.json([]);
   }
   redisCount("subSearchesOS");
@@ -3104,33 +3178,41 @@ app.get("/proxy/*splat", async (req, res) => {
     const parsed = new URL("http://localhost" + req.url);
     const pathname = parsed.pathname.slice("/proxy".length);
     const host = parsed.searchParams.get("host");
+    if (!host) {
+      res.status(400).send("Missing host parameter");
+      return;
+    }
+    const targetUrl = "https://" + host + pathname;
+    const validation = await validateExternalUrl(targetUrl, ["https:"]);
+    if (!validation.valid) {
+      res.status(403).send(`Forbidden proxy target: ${validation.reason || "Disallowed host"}`);
+      return;
+    }
+
     if (pathname.endsWith("index-dvr.m3u8")) {
       // VOD
-      // https://d2vjef5jvl6bfs.cloudfront.net/3012391a6c3e84c79ef6_gamesdonequick_41198403369_1681059003/chunked/index-dvr.m3u8
-      const resp = await axios.get("https://" + host + pathname);
-      const re2 = /(.*.ts)/g;
-      let repl = resp.data.replaceAll(re2, `$1?host=${host}`);
+      const resp = await safeExternalGet(targetUrl, {
+        timeoutMs: 8000,
+        maxBytes: 2 * 1024 * 1024,
+      });
+      const re2 = /(.*\.ts)/g;
+      let repl = resp.data.toString("utf-8").replaceAll(re2, `$1?host=${encodeURIComponent(host)}`);
       // Mark this as a VOD
       repl += "#EXT-X-ENDLIST";
       res.send(repl);
     } else if (pathname.endsWith(".m3u8")) {
       // Stream
-      // https://video-weaver.sea02.hls.ttvnw.net/v1/playlist/CrQEgv7Mz6nnsfJH3XtVQxeYXk8mViy1zNGWglcybvxZsI1rv3iLnjAnnqwCiVXCJ-DdD27J6RuFrLy7YUYwHUCKazIKICIupUCn9UXtaBYhBM5JIYqg9dz6NWYrCWU9HZJj2TGROv9mAOKuTR51YS82hdYL4PFZa3xxWXhgDsxXQHNDB03kY6S0aG0-EVva1xYrn5Ge6IAXRwug9QDGlb-ydtF3BtYppoTklVI7CVLySPPwbbt5Ow1JXdnKhLSwQEs4bh3BLwMnRBwUFI5nmE18BLYbkMOUivgYP5SSMgnGGlSkJO-iJNPWvepunEgyBUzB_7L-b1keTcV-Qak9IcWIITIWbRvmg6qB3ZSuWdcJgWKmdXdIn4qoRM4o16G1_0N_WRqPtMQFo0hmTlAVmHrzRArJQmaSgqAxZxRbFMd9RFeX6qjP9NtwguPbSeStdVbQxMNC34iavYUIxo8Ug812BHsG7J_kIlof2zkIqkEbP3oV3UkSByIo7xh9EEVargjaGDuQRt8zPQ6-fNBWJJe9F6IFu7lXBPIJ016lopyfcvTWjbLbBHsVkg6vG-3UISh0nud7KB5g5ipQePhtcFSI5hvjlfX1DAVHEpTWXkvlnL4wNqEqpBYL2btSXYeE1Cb-RAvrAT0s61usERcL2eI-S5aTcSO8_hxQ2afC7c9vlypOWgP6p6XNpViZHXmdXv4t-d68Z-MpLtSU7VbB3pRWnSswFFyA3W39ITic4lb97Djp3wHhGgz0Sy8aDb9r0tnphIYgASoJdXMtZWFzdC0yMKQG.m3u8
-      // Extract the edge URL host and add it to URL so proxy can fetch
-      const resp = await axios.get("https://" + host + pathname);
-      // const re = /https:\/\/(.*)\/v1\/segment\/(.*)/g;
-      // const match = re.exec(resp.data);
-      // const edgehost = match?.[1];
-      // const repl = resp.data.replaceAll(
-      //   re,
-      //   `/proxy/v1/segment/$2?host=${edgehost}`,
-      // );
-      const repl = resp.data;
+      const resp = await safeExternalGet(targetUrl, {
+        timeoutMs: 8000,
+        maxBytes: 2 * 1024 * 1024,
+      });
+      const repl = resp.data.toString("utf-8");
       res.send(repl);
     } else if (pathname.endsWith(".ts")) {
       // Segment
-      const resp = await axios.get("https://" + host + pathname, {
-        responseType: "arraybuffer",
+      const resp = await safeExternalGet(targetUrl, {
+        timeoutMs: 15000,
+        maxBytes: 25 * 1024 * 1024,
       });
       res.writeHead(200, {
         "Content-Type": "application/octet-stream",
@@ -3141,12 +3223,14 @@ app.get("/proxy/*splat", async (req, res) => {
       res.write(resp.data);
       res.end();
     } else {
-      res.status(404);
-      res.end();
+      res.status(404).end();
     }
-  } catch (e) {
-    // console.log(e);
-    console.log("proxy failed: %s", req.url);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Proxy request failed";
+    console.log("proxy failed: %s - %s", req.url, message);
+    if (!res.headersSent) {
+      res.status(502).send("Bad Gateway");
+    }
   }
 });
 

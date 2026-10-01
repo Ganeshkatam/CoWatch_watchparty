@@ -28,6 +28,11 @@ function toUuid(id: string): string {
   return `${raw.substring(0, 8)}-${raw.substring(8, 12)}-4${raw.substring(13, 16)}-a${raw.substring(17, 20)}-${raw.substring(20, 32)}`;
 }
 
+export interface SignalingSocketContext {
+  id?: string;
+  uid?: string;
+}
+
 export class LocalMediaAuthority {
   private db: DatabasePool | Pool | null;
   private signaling: LocalMediaSignaling;
@@ -106,13 +111,17 @@ export class LocalMediaAuthority {
   }
 
   public handleSignalRelay(
-    socket: any,
+    socket: SignalingSocketContext | null | undefined,
     targetSocketId: string,
     payload: SignalMessagePayload,
     mediaId?: string
   ): boolean {
+    if (!payload || !payload.roomId || !payload.fromPeerId || !payload.toPeerId) {
+      return false;
+    }
+
     const session = this.sessions.get(payload.roomId);
-    if (!session || session.status !== "ACTIVE") {
+    if (!session || !session.isActive()) {
       return false;
     }
 
@@ -124,7 +133,39 @@ export class LocalMediaAuthority {
       return false;
     }
 
-    return this.signaling.relaySignal(socket, targetSocketId, payload);
+    // Peer registry boundary validation
+    const registry = this.registries.get(payload.roomId);
+    if (!registry) {
+      return false;
+    }
+
+    // Validate target peer is registered in this room
+    const targetPeer = registry.getPeer(payload.toPeerId);
+    if (!targetPeer || targetPeer.roomId !== payload.roomId) {
+      return false;
+    }
+    // Verify target socket matches the registered target peer
+    if (targetSocketId && targetPeer.socketId && targetSocketId !== targetPeer.socketId) {
+      return false;
+    }
+
+    // Validate sender peer is registered in this room
+    const senderPeer = registry.getPeer(payload.fromPeerId);
+    if (!senderPeer || senderPeer.roomId !== payload.roomId) {
+      return false;
+    }
+
+    // If socket metadata is provided, enforce socket and UID ownership
+    if (socket) {
+      if (socket.id && senderPeer.socketId && socket.id !== senderPeer.socketId) {
+        return false;
+      }
+      if (socket.uid && senderPeer.userId && socket.uid !== senderPeer.userId) {
+        return false;
+      }
+    }
+
+    return this.signaling.relaySignal(socket as any, targetSocketId, payload);
   }
 
   public registerPeer(roomId: string, userId: string, peerId: string, socketId: string): void {
