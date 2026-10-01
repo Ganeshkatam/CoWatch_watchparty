@@ -97,6 +97,8 @@ export const Signup = () => {
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -269,12 +271,14 @@ export const Signup = () => {
     e.preventDefault();
     if (submitting) return;
     setError(null);
+    setNameError(null);
+    setPasswordError(null);
     setDobError(null);
     setSuccess(null);
     setIsDuplicate(false);
 
     if (!name.trim()) {
-      setError("Please enter your name");
+      setNameError("Please enter your name");
       return;
     }
 
@@ -301,7 +305,7 @@ export const Signup = () => {
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setPasswordError("Password must be at least 6 characters");
       return;
     }
 
@@ -657,7 +661,17 @@ export const Signup = () => {
                     )}
 
                     <div>
-                      <TextInput label="Name" placeholder="Your name" required value={name} onChange={(e) => setName(e.target.value)} />
+                      <TextInput
+                        label="Name"
+                        placeholder="Your name"
+                        required
+                        value={name}
+                        error={nameError || undefined}
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          if (nameError) setNameError(null);
+                        }}
+                      />
                     </div>
                     <div>
                       <TextInput label="Email" placeholder="your@email.com" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -665,7 +679,17 @@ export const Signup = () => {
                         Supported: Gmail, Outlook, Yahoo, Zoho, Proton
                       </Text>
                     </div>
-                    <PasswordInput label="Password" placeholder="Your password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <PasswordInput
+                      label="Password"
+                      placeholder="Your password"
+                      required
+                      value={password}
+                      error={passwordError || undefined}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (passwordError) setPasswordError(null);
+                      }}
+                    />
 
                     <Checkbox
                       checked={agreedToTerms}

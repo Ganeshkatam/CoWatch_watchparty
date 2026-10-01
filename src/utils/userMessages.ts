@@ -151,9 +151,15 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
   HOST_TARGET_REQUIRED: {
     message: "Please choose someone to become the new host.",
     severity: "warning",
-    presentation: "toast",
+    presentation: "banner",
     action: "choose-host",
     duration: 3000,
+  },
+  AUTH_RESET_TOKEN_EXPIRED: {
+    message: "Your confirmation or password reset link has expired. Please sign in or request a new link.",
+    severity: "error",
+    presentation: "banner",
+    action: "none",
   },
   HOST_TRANSFER_FAILED: {
     message: "We couldn't change the host. Please choose another participant and try again.",
@@ -252,6 +258,13 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     presentation: "toast",
     action: "none",
     duration: 3000,
+  },
+  LOCAL_MEDIA_LOAD_FAILED: {
+    message: "Could not load the selected video file. Please check the format and try again.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 4000,
   },
 
 
@@ -582,6 +595,9 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
   }
   if (trimmed.includes("Not the active sharer")) {
     return USER_MESSAGES.MEDIA_NOT_ACTIVE_SHARER;
+  }
+  if (trimmed.includes("Failed to start local media") || trimmed.includes("Local media")) {
+    return USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED;
   }
 
 

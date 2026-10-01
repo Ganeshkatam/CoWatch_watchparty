@@ -145,6 +145,34 @@ window.cowatch = {
   remoteStreams: {},
 };
 
+function extractCmdErrorMessage(data: unknown): string {
+  if (typeof data === "string") {
+    const trimmed = data.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  if (data && typeof data === "object") {
+    if ("message" in data && typeof data.message === "string") {
+      const trimmed = data.message.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+    if ("code" in data && typeof data.code === "string") {
+      if (data.code === "FORBIDDEN") {
+        return "Playback controls are locked to the host.";
+      }
+      if (data.code === "ROOM_EXPIRED") {
+        return "This room has expired.";
+      }
+      if (data.code === "INVALID_STATE") {
+        return "This action cannot be completed in the current room state.";
+      }
+      if (data.code === "SERVICE_UNAVAILABLE" || data.code === "INTERNAL_ERROR") {
+        return "Service is temporarily unavailable. Please try again.";
+      }
+    }
+  }
+  return "Action could not be completed.";
+}
+
 interface AppProps {
   urlRoomId?: string;
   location?: any;
@@ -356,7 +384,6 @@ export class App extends React.Component<AppProps, AppState> {
   socket: Socket = null!;
   mediasoupPubSocket: Socket | null = null;
   mediasoupSubSocket: Socket | null = null;
-  ytDebounce = true;
   localStreamToPublish?: MediaStream;
   isLocalStreamAFile = false;
   publisherConns: PCDict = {};
@@ -1154,6 +1181,14 @@ export class App extends React.Component<AppProps, AppState> {
           cleanRoomId,
           assignedClientId,
           (state) => {
+            if (state.error) {
+              showUserMessage({
+                ...USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED,
+                message: sanitizeServerErrorMessage(state.error),
+              });
+              this.setState({ loading: false, nonPlayableMedia: true });
+              return;
+            }
             if (state.role === "PARTICIPANT_PEER" && state.objectUrl) {
               const leftVideo = this.HTMLInterface.getVideoEl();
               if (leftVideo && leftVideo.src !== state.objectUrl) {
@@ -1432,9 +1467,14 @@ export class App extends React.Component<AppProps, AppState> {
           showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
         }
       });
-      socket.on("successMessage", (success: string) => {
+      socket.on("CMD:error", (data: unknown) => {
         if (!isCurrentGeneration()) return;
-        showUserMessage({ ...USER_MESSAGES.FEEDBACK_SUBMIT_SUCCESS, message: success });
+        const rawMessage = extractCmdErrorMessage(data);
+        const sanitized = sanitizeServerErrorMessage(rawMessage);
+        operationCoordinator.rejectDomainOperations("host-authority", sanitized);
+        operationCoordinator.rejectDomainOperations("participant-authority", sanitized);
+        operationCoordinator.rejectDomainOperations("media-playback", sanitized);
+        showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
       });
       const handleHostUpdate = (data: any) => {
         if (!isCurrentGeneration()) return;
@@ -1480,7 +1520,6 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("kicked", (data?: { message?: string }) => {
         if (!isCurrentGeneration()) return;
         clearAdmissionSession(this.state.roomId);
-        showUserMessage(USER_MESSAGES.MOD_KICKED_SELF);
         const ctx: PostRoomContext = {
           reason: "kicked",
           roomId: this.state.roomId,
@@ -1501,7 +1540,6 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("banned", (data?: { message?: string }) => {
         if (!isCurrentGeneration()) return;
         clearAdmissionSession(this.state.roomId);
-        showUserMessage(USER_MESSAGES.MOD_BANNED_SELF);
         const ctx: PostRoomContext = {
           reason: "kicked",
           roomId: this.state.roomId,
@@ -1629,6 +1667,7 @@ export class App extends React.Component<AppProps, AppState> {
           return;
         }
 
+        const mediaChanged = this.state.roomMedia !== currentMedia;
         this.setState(
           {
             roomMedia: currentMedia,
@@ -1636,7 +1675,7 @@ export class App extends React.Component<AppProps, AppState> {
             roomSubtitle: data.subtitle,
             roomLoop: data.loop,
             roomPlaybackRate: data.playbackRate,
-            loading: this.state.roomMedia !== currentMedia ? Boolean(data.video) : this.state.loading,
+            loading: mediaChanged ? Boolean(data.video) : this.state.loading,
             nonPlayableMedia: false,
             isLiveStream: false,
           },
@@ -1647,14 +1686,15 @@ export class App extends React.Component<AppProps, AppState> {
             const localMedia = isLocalMedia(currentMedia);
             const isWebRTCStream = isScreenShare(currentMedia) || isFileShare(currentMedia);
 
-            // Stop all players
-            // Unless the user is sharing a file, screen, or local media, because we play it in leftVideo
-            if (!this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
+            // Stop players and clear state only when media source actually changed
+            if (mediaChanged && !this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
               this.HTMLInterface.pauseVideo();
             }
-            this.YouTubeInterface.stopVideo();
+            if (mediaChanged) {
+              this.YouTubeInterface.stopVideo();
+            }
 
-            if (!this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
+            if (mediaChanged && !this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
               this.Player().clearState();
             }
             if (data.subtitle) {
@@ -1814,42 +1854,49 @@ export class App extends React.Component<AppProps, AppState> {
             //   player.load();
             //   player.play();
             // }
-            else {
+            else if (mediaChanged) {
               await this.Player().setSrcAndTime(src, time);
             }
-            // Start this video
+
+            if (mediaChanged) {
+              // Do right before playing on source change
+              leftVideo?.addEventListener(
+                "canplay",
+                () => {
+                  this.setLoadingFalse();
+                  let ts: number | undefined = undefined;
+                  // WebTorrent and Hls and Dash reset position back to 0 so set it back here
+                  if (
+                    isMagnet(src) ||
+                    isHls(src) ||
+                    isDash(src) ||
+                    this.state.isLiveStream
+                  ) {
+                    ts = time;
+                  }
+                  if (typeof ts === "number") {
+                    this.localSeek(ts);
+                  }
+                  if (this.state.uploadController) {
+                    // Jump back to the start of the video
+                    this.roomSeek(0);
+                  }
+                  if (data.playbackRate) {
+                    // Set playback rate again since it might have been lost
+                    console.log("setting playback rate again", data.playbackRate);
+                    this.Player().setPlaybackRate(data.playbackRate);
+                  }
+                },
+                { once: true },
+              );
+            }
+
+            // Synchronize play/pause state
             if (!data.paused) {
               this.localPlay();
+            } else {
+              this.localPause();
             }
-            // Do right before playing
-            leftVideo?.addEventListener(
-              "canplay",
-              () => {
-                this.setLoadingFalse();
-                let ts = undefined;
-                // WebTorrent and Hls and Dash reset position back to 0 so set it back here
-                if (
-                  isMagnet(src) ||
-                  isHls(src) ||
-                  isDash(src) ||
-                  this.state.isLiveStream
-                ) {
-                  ts = time;
-                }
-                // Resync to leader since the loading might have taken some time
-                this.localSeek(ts);
-                if (this.state.uploadController) {
-                  // Jump back to the start of the video
-                  this.roomSeek(0);
-                }
-                if (data.playbackRate) {
-                  // Set playback rate again since it might have been lost
-                  console.log("setting playback rate again", data.playbackRate);
-                  this.Player().setPlaybackRate(data.playbackRate);
-                }
-              },
-              { once: true },
-            );
 
             // Progress updater
             window.clearInterval(this.progressUpdater);
@@ -2350,23 +2397,6 @@ export class App extends React.Component<AppProps, AppState> {
                 this.onVideoEnded(e.target.getVideoUrl());
               }
             }
-            if (
-              this.ytDebounce &&
-              ((e.data === window.YT?.PlayerState?.PLAYING &&
-                this.state.roomPaused) ||
-                (e.data === window.YT?.PlayerState?.PAUSED &&
-                  !this.state.roomPaused))
-            ) {
-              this.ytDebounce = false;
-              const isPlaying = e.data === window.YT?.PlayerState?.PLAYING;
-              const operationId = operationCoordinator.createOperationId("media-playback", isPlaying ? "play" : "pause");
-              if (isPlaying) {
-                this.socket.emit("CMD:play", { operationId });
-              } else {
-                this.socket.emit("CMD:pause", { operationId });
-              }
-              window.setTimeout(() => (this.ytDebounce = true), 500);
-            }
           },
           onError: (e) => {
             console.warn("YouTube player error:", e.data);
@@ -2660,6 +2690,8 @@ export class App extends React.Component<AppProps, AppState> {
         this.setLoadingFalse();
       } catch (err) {
         console.error("Failed to start local media share:", err);
+        this.setLoadingFalse();
+        showUserMessage(USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED);
       }
     }
   };
@@ -3323,7 +3355,7 @@ export class App extends React.Component<AppProps, AppState> {
         return;
       }
     }
-    const canAutoplay = this.state.isAutoPlayable || (await testAutoplay());
+    const canAutoplay = this.state.isAutoPlayable;
     this.setState(
       { roomPaused: false, isAutoPlayable: canAutoplay },
       async () => {
@@ -3338,10 +3370,21 @@ export class App extends React.Component<AppProps, AppState> {
         }
         try {
           await this.Player().playVideo();
-        } catch (e: any) {
-          console.warn(e, e.name);
-          if (
-            e.name === "NotSupportedError" &&
+        } catch (e: unknown) {
+          console.warn("Playback start failed:", e);
+          const errorName = e && typeof e === "object" && "name" in e ? String((e as { name: unknown }).name) : "";
+          if (errorName === "NotAllowedError") {
+            // Autoplay unmuted blocked by browser policy without user gesture: fallback to muted playback to keep video playing
+            console.log("Unmuted autoplay restricted by browser; muting and retrying...");
+            this.localSetMute(true);
+            this.setState({ isAutoPlayable: false });
+            try {
+              await this.Player().playVideo();
+            } catch (retryErr: unknown) {
+              console.warn("Muted playback retry also failed:", retryErr);
+            }
+          } else if (
+            errorName === "NotSupportedError" &&
             this.usingNative() &&
             !isLocalMedia(this.state.roomMedia) &&
             !this.playingScreenShare() &&
@@ -3393,7 +3436,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (this.isPauseDisabled()) {
       return;
     }
-    const shouldPlay = this.Player().shouldPlay();
+    const shouldPlay = this.state.roomPaused;
     const operationId = operationCoordinator.createOperationId("media-playback", shouldPlay ? "play" : "pause");
     if (shouldPlay) {
       this.socket.emit("CMD:play", { operationId });
@@ -3620,6 +3663,12 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   onVideoEnded = (url: string) => {
+    const duration = this.Player().getDuration();
+    const currentTime = this.Player().getCurrentTime();
+    // Guard against spurious onEnded events fired on video load or when currentTime is not near duration
+    if (duration > 0 && currentTime < duration - 1.5) {
+      return;
+    }
     this.localPause();
     // check if looping is on, if so set time back to 0 and restart
     if (this.state.roomLoop) {
@@ -4273,6 +4322,19 @@ export class App extends React.Component<AppProps, AppState> {
                       }}
                     >
                       <div id="leftYt" style={{ width: "100%", height: "100%" }} />
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: "100%",
+                          zIndex: 1,
+                          cursor: "pointer",
+                        }}
+                        onClick={this.roomTogglePlay}
+                        onDoubleClick={() => this.localFullScreen(!this.state.fullScreen)}
+                      />
                     </div>
                     <video
                       style={{

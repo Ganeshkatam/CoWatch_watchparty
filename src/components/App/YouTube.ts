@@ -69,9 +69,9 @@ export class YouTube implements Player {
     try {
       this.coWatchYTPlayer.cueVideoById({
         videoId,
-        startSeconds: time,
+        startSeconds: typeof time === "number" && Number.isFinite(time) && time >= 0 ? time : 0,
       });
-    } catch (e) {
+    } catch (e: unknown) {
       console.warn("Error in YouTube cueVideoById:", e);
     }
   };

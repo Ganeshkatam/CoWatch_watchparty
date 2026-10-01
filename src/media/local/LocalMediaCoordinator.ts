@@ -25,6 +25,7 @@ export interface LocalMediaState {
   inFlightRequests: number;
   peersCount: number;
   isReady: boolean;
+  error?: string | null;
 }
 
 export interface MediaCompatibilityProbeResult {
@@ -234,6 +235,7 @@ export class LocalMediaCoordinator {
   private scheduleTimer: any = null;
   private heartbeatTimer: any = null;
   private lastKnownTime: number = 0;
+  private lastError: string | null = null;
   private onStateChange?: (state: LocalMediaState) => void;
 
   constructor(
@@ -425,6 +427,13 @@ export class LocalMediaCoordinator {
       },
       onError: (err) => {
         console.warn("LocalMediaSource error:", err);
+        this.lastError =
+          typeof err === "string"
+            ? err
+            : err instanceof Error
+              ? err.message
+              : "Unable to play local stream on this browser.";
+        this.notifyState();
       },
     });
 
@@ -607,6 +616,7 @@ export class LocalMediaCoordinator {
         this.role === "HOST_SEED"
           ? !!this.objectUrl
           : (this.mediaSource?.isReady() ?? false),
+      error: this.lastError,
     };
   }
 
@@ -646,6 +656,7 @@ export class LocalMediaCoordinator {
     this.manifest = null;
     this.objectUrl = null;
     this.lastKnownTime = 0;
+    this.lastError = null;
     this.role = "IDLE";
     this.notifyState();
   }

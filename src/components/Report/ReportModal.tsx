@@ -81,12 +81,6 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       onClose();
     } else {
       setErrorMessage(result.error || "Failed to submit abuse report.");
-      notifications.show({
-        title: "Report Failed",
-        message: result.error || "Failed to submit report. Please try again.",
-        color: "red",
-        icon: <IconAlertCircle size={18} />,
-      });
     }
   };
 

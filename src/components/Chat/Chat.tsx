@@ -672,10 +672,16 @@ export class ChatComponent extends React.Component<
           )}
           <TextInput
             ref={this.chatInputRef}
-            onKeyDown={(e: any) => e.key === "Enter" && this.sendChatMsg()}
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
+              e.key === "Enter" && this.sendChatMsg()
+            }
             onChange={this.updateChatMsg}
             value={this.state.chatMsg}
-            error={this.chatTooLong()}
+            error={
+              this.chatTooLong()
+                ? "Message exceeds 10,000 character limit"
+                : undefined
+            }
             disabled={this.props.isChatDisabled}
             placeholder={
               this.props.isChatDisabled

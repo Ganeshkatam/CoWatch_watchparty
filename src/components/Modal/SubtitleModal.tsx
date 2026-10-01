@@ -8,6 +8,7 @@ import {
   TextInput,
   ActionIcon,
   Divider,
+  Alert,
 } from "@mantine/core";
 import { Socket } from "socket.io-client";
 import { openFileSelector, serverPath } from "../../utils/utils";
@@ -20,6 +21,16 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
+
+export interface SubtitleSearchResult {
+  id: string;
+  type: string;
+  attributes: {
+    files?: Array<{ file_id?: string }>;
+    release?: string;
+    [key: string]: unknown;
+  };
+}
 
 export class SubtitleModal extends React.Component<{
   closeModal: () => void;
@@ -35,7 +46,10 @@ export class SubtitleModal extends React.Component<{
   declare context: React.ContextType<typeof MetadataContext>;
   state = {
     loading: false,
-    searchResults: [],
+    isUploading: false,
+    uploadError: null as string | null,
+    searchError: null as string | null,
+    searchResults: [] as SubtitleSearchResult[],
     titleQuery: this.props
       .getMediaDisplayName(this.props.roomMedia)
       .split("/")
@@ -61,28 +75,60 @@ export class SubtitleModal extends React.Component<{
   }
 
   uploadSubtitle = async () => {
-    const files = await openFileSelector(".srt,.vtt");
-    if (!files) {
-      return;
-    }
-    const file = files[0];
-    const reader = new FileReader();
-    reader.addEventListener("load", async (event) => {
-      const subData = event.target?.result;
-      // Upload to server
-      const resp = await fetch(serverPath + "/subtitle", {
-        method: "POST",
-        body: subData,
-        headers: { "Content-Type": "text/plain" },
+    try {
+      this.setState({ uploadError: null });
+      const files = await openFileSelector(".srt,.vtt");
+      if (!files || files.length === 0) {
+        return;
+      }
+      this.setState({ isUploading: true });
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onerror = () => {
+        this.setState({
+          uploadError: "Failed to read subtitle file. Please try again.",
+          isUploading: false,
+        });
+      };
+      reader.onload = async (event) => {
+        try {
+          const subData = event.target?.result;
+          if (typeof subData !== "string") {
+            throw new Error("Invalid file content");
+          }
+          const resp = await fetch(serverPath + "/subtitle", {
+            method: "POST",
+            body: subData,
+            headers: { "Content-Type": "text/plain" },
+          });
+          if (!resp.ok) {
+            throw new Error(`Upload failed with status ${resp.status}`);
+          }
+          const json = (await resp.json()) as { hash?: string };
+          if (!json?.hash) {
+            throw new Error("Server returned invalid subtitle hash");
+          }
+          this.props.socket.emit(
+            "CMD:subtitle",
+            serverPath + "/subtitle/" + json.hash,
+          );
+          this.setState({ isUploading: false, uploadError: null });
+        } catch (err) {
+          console.error("Failed to upload subtitle file:", err);
+          this.setState({
+            uploadError: "Failed to upload subtitle file. Please try again.",
+            isUploading: false,
+          });
+        }
+      };
+      reader.readAsText(file);
+    } catch (err) {
+      console.error("Subtitle selector error:", err);
+      this.setState({
+        uploadError: "Failed to open subtitle file.",
+        isUploading: false,
       });
-      // Once URL obtained, make those the room subtitles
-      const json = await resp.json();
-      this.props.socket.emit(
-        "CMD:subtitle",
-        serverPath + "/subtitle/" + json.hash,
-      );
-    });
-    reader.readAsText(file);
+    }
   };
   render() {
     const { closeModal } = this.props;
@@ -126,12 +172,18 @@ export class SubtitleModal extends React.Component<{
             />
             <Button
               color="violet"
+              loading={this.state.isUploading}
               onClick={() => this.uploadSubtitle()}
               disabled={!this.props.haveLock()}
               leftSection={<IconUpload />}
             >
               Upload (.srt / .vtt)
             </Button>
+            {this.state.uploadError && (
+              <Alert color="red" variant="light" mt="xs">
+                {this.state.uploadError}
+              </Alert>
+            )}
             <Divider my="lg" />
             <Title order={6}>OpenSubtitles</Title>
             <TextInput
@@ -146,15 +198,26 @@ export class SubtitleModal extends React.Component<{
                     color="green"
                     disabled={!this.props.haveLock()}
                     onClick={async () => {
-                      this.setState({ loading: true });
-                      const resp = await fetch(
-                        serverPath +
-                          "/searchSubtitles?title=" +
-                          this.state.titleQuery,
-                      );
-                      const json = await resp.json();
-                      this.setState({ searchResults: json });
-                      this.setState({ loading: false });
+                      try {
+                        this.setState({ loading: true, searchError: null });
+                        const resp = await fetch(
+                          serverPath +
+                            "/searchSubtitles?title=" +
+                            encodeURIComponent(this.state.titleQuery),
+                        );
+                        if (!resp.ok) throw new Error("Search failed");
+                        const json = await resp.json();
+                        this.setState({
+                          searchResults: Array.isArray(json) ? json : [],
+                          loading: false,
+                        });
+                      } catch (err) {
+                        console.error("Search subtitles by title failed:", err);
+                        this.setState({
+                          searchError: "Failed to search subtitles. Please try again.",
+                          loading: false,
+                        });
+                      }
                     }}
                     leftSection={<IconSearch />}
                   >
@@ -165,15 +228,26 @@ export class SubtitleModal extends React.Component<{
                     color="blue"
                     disabled={!this.props.haveLock()}
                     onClick={async () => {
-                      this.setState({ loading: true });
-                      const resp = await fetch(
-                        serverPath +
-                          "/searchSubtitles?url=" +
-                          this.props.roomMedia,
-                      );
-                      const json = await resp.json();
-                      this.setState({ searchResults: json });
-                      this.setState({ loading: false });
+                      try {
+                        this.setState({ loading: true, searchError: null });
+                        const resp = await fetch(
+                          serverPath +
+                            "/searchSubtitles?url=" +
+                            encodeURIComponent(this.props.roomMedia),
+                        );
+                        if (!resp.ok) throw new Error("Search failed");
+                        const json = await resp.json();
+                        this.setState({
+                          searchResults: Array.isArray(json) ? json : [],
+                          loading: false,
+                        });
+                      } catch (err) {
+                        console.error("Search subtitles by hash failed:", err);
+                        this.setState({
+                          searchError: "Failed to search subtitles. Please try again.",
+                          loading: false,
+                        });
+                      }
                     }}
                     leftSection={<IconSearch />}
                   >
@@ -182,29 +256,42 @@ export class SubtitleModal extends React.Component<{
                 </div>
               }
             ></TextInput>
+            {this.state.searchError && (
+              <Alert color="red" variant="light" mt="xs">
+                {this.state.searchError}
+              </Alert>
+            )}
             <div
               style={{ display: "flex", flexDirection: "column", gap: "4px" }}
             >
               {this.state.searchResults.map(
-                (result: {
-                  id: string;
-                  type: string;
-                  attributes: Record<string, any>;
-                }) => (
+                (result: SubtitleSearchResult) => (
                   <div key={result.id} style={{ display: "flex", gap: "4px" }}>
                     <ActionIcon
                       disabled={!this.props.haveLock()}
-                      onClick={async (e) => {
-                        const resp = await fetch(
-                          serverPath +
-                            "/downloadSubtitles?file_id=" +
-                            result.attributes.files[0]?.file_id,
-                        );
-                        const data = await resp.json();
-                        this.props.socket.emit(
-                          "CMD:subtitle",
-                          serverPath + data.link,
-                        );
+                      onClick={async () => {
+                        const fileId = result.attributes.files?.[0]?.file_id;
+                        if (!fileId) return;
+                        try {
+                          const resp = await fetch(
+                            serverPath +
+                              "/downloadSubtitles?file_id=" +
+                              encodeURIComponent(fileId),
+                          );
+                          if (!resp.ok) throw new Error("Download failed");
+                          const data = await resp.json();
+                          if (data?.link) {
+                            this.props.socket.emit(
+                              "CMD:subtitle",
+                              serverPath + data.link,
+                            );
+                          }
+                        } catch (err) {
+                          console.error("Download subtitle failed:", err);
+                          this.setState({
+                            searchError: "Failed to download subtitle.",
+                          });
+                        }
                       }}
                     >
                       <IconDownload />

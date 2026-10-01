@@ -11,6 +11,8 @@ import {
 } from "../SearchResult/SearchResult";
 import { MetadataContext } from "../../MetadataContext";
 import { IconBrandYoutubeFilled, IconMovie } from "@tabler/icons-react";
+import { USER_MESSAGES, sanitizeServerErrorMessage } from "../../utils/userMessages";
+import { showUserMessage } from "../../utils/toast";
 
 interface SearchComponentProps {
   setMedia: (value: string) => void;
@@ -52,24 +54,41 @@ export class SearchComponent extends React.Component<SearchComponentProps> {
   };
 
   onSelectItem = async (result: SearchResult) => {
-    this.props.setShowMultiSelect(true);
-    let response = await fetch(
-      this.context.streamPath +
-        "/data?torrent=" +
-        encodeURIComponent(result.magnet!),
-    );
-    let metadata = await response.json();
-    // console.log(metadata);
-    const multiStreamSelection = metadata.files.map((file: any, i: number) => ({
-      ...file,
-      url:
+    try {
+      if (!this.context.streamPath || !result.magnet) {
+        showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: "Invalid stream or torrent source." });
+        return;
+      }
+      this.props.setShowMultiSelect(true);
+      const response = await fetch(
         this.context.streamPath +
-        "/stream?torrent=" +
-        encodeURIComponent(result.magnet!) +
-        "&fileIndex=" +
-        i,
-    }));
-    this.props.setFileSelection(multiStreamSelection);
+          "/data?torrent=" +
+          encodeURIComponent(result.magnet),
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch torrent information.");
+      }
+      const metadata = (await response.json()) as { files?: Array<{ name: string; length: number; [key: string]: unknown }> };
+      if (!metadata || !Array.isArray(metadata.files)) {
+        throw new Error("Torrent contains no playable files.");
+      }
+      const multiStreamSelection = metadata.files.map((file, i: number) => ({
+        ...file,
+        url:
+          this.context.streamPath +
+          "/stream?torrent=" +
+          encodeURIComponent(result.magnet!) +
+          "&fileIndex=" +
+          i,
+      }));
+      this.props.setFileSelection(multiStreamSelection as []);
+    } catch (err: unknown) {
+      console.error("Torrent metadata fetch failed:", err);
+      this.props.setShowMultiSelect(false);
+      const raw = err instanceof Error ? err.message : "Failed to load torrent metadata.";
+      const sanitized = sanitizeServerErrorMessage(raw);
+      showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
+    }
   };
 
   render() {
@@ -113,7 +132,7 @@ export class SearchComponent extends React.Component<SearchComponentProps> {
         leftSection={this.state.loading ? <Loader size="sm" /> : icon}
         placeholder={placeholder}
         onSearchChange={debounce(this.doSearch, 500)}
-        onKeyDown={(e: any) => {
+        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
           if (e.key === "Enter") {
             this.onSelectItem({
               magnet: this.state.inputMedia,

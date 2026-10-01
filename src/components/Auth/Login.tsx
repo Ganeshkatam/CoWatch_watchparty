@@ -16,6 +16,7 @@ import { supabase } from "../../utils/supabaseClient";
 import config from "../../config";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { USER_MESSAGES } from "../../utils/userMessages";
 
 export const Login = () => {
   const [email, setEmail] = useState("");
@@ -43,7 +44,7 @@ export const Login = () => {
       setError("Email provider is not supported. Please use an approved provider.");
       history.replace(location.pathname);
     } else if (errorCode === "otp_expired" || errorDesc?.includes("expired") || errorDesc?.includes("token")) {
-      setError("Your confirmation or password reset link has expired. Please sign in or request a new link.");
+      setError(USER_MESSAGES.AUTH_RESET_TOKEN_EXPIRED.message);
       history.replace(location.pathname);
     } else if (errorParam === "access_denied" && errorDesc) {
       setError(decodeURIComponent(errorDesc.replace(/\+/g, " ")));

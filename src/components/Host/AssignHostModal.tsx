@@ -121,6 +121,12 @@ export const AssignHostModal: React.FC<AssignHostModalProps> = ({
         )}
       </div>
 
+      {candidates.length > 0 && !selectedClientId && (
+        <Text size="xs" c="orange" mt="xs">
+          Please choose someone to become the new host.
+        </Text>
+      )}
+
       <div className={styles.actionRow}>
         <Button variant="subtle" color="gray" size="sm" onClick={onClose} disabled={hostOp.isPending}>
           Cancel

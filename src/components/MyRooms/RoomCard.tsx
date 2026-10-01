@@ -52,7 +52,8 @@ import {
   isTerminalRoom,
   apiFetch,
 } from "../../utils/utils";
-import { sanitizeServerErrorMessage } from "../../utils/userMessages";
+import { sanitizeServerErrorMessage, USER_MESSAGES } from "../../utils/userMessages";
+import { showUserMessage } from "../../utils/toast";
 import { supabase, getAccessToken } from "../../utils/supabaseClient";
 import styles from "./MyRooms.module.css";
 
@@ -749,6 +750,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const [inviteModalOpened, setInviteModalOpened] = useState(false);
   const [stopModalOpened, setStopModalOpened] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [infoModalAction, setInfoModalAction] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedPasscode, setCopiedPasscode] = useState(false);
@@ -787,6 +789,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   };
 
   const handleStopSession = async () => {
+    setStopError(null);
     setIsStopping(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -807,8 +810,10 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       } else {
         window.location.reload();
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Error stopping room session:", e);
+      const raw = e instanceof Error ? e.message : "Failed to stop room session";
+      setStopError(sanitizeServerErrorMessage(raw));
     } finally {
       setIsStopping(false);
     }
@@ -822,11 +827,16 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     const file = event.target.files?.[0];
     if (!file || !onUpdateCover) return;
 
+    if (file.size >= 1 * 1024 * 1024) {
+      showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: "Cover photo must be less than 1MB." });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setIsUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
-      if (file.size >= 1 * 1024 * 1024) throw new Error("Cover photo must be less than 1MB.");
 
       const fileExt = file.name.split('.').pop();
       const safeRoomId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
@@ -837,8 +847,11 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
 
       const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
       onUpdateCover(room.roomId, `${publicUrlData.publicUrl}?t=${Date.now()}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to upload cover", e);
+      const raw = e instanceof Error ? e.message : "Failed to upload cover photo";
+      const sanitized = sanitizeServerErrorMessage(raw);
+      showUserMessage({ ...USER_MESSAGES.GENERIC_ACTION_FAILED, message: sanitized });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -999,6 +1012,8 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
     setInviteModalOpened,
     stopModalOpened,
     setStopModalOpened,
+    stopError,
+    setStopError,
     handleConfirmDelete,
     handleStopSession,
     copiedUrl,
@@ -1022,12 +1037,14 @@ const StopRoomConfirmModal = ({
   onClose,
   onConfirm,
   isStopping,
+  stopError,
 }: {
   room: RoomSummary;
   opened: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
   isStopping: boolean;
+  stopError?: string | null;
 }) => {
   return (
     <Modal
@@ -1044,6 +1061,11 @@ const StopRoomConfirmModal = ({
       size={MODAL_SIZES.sm}
     >
       <Stack gap="md">
+        {stopError && (
+          <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+            {stopError}
+          </Alert>
+        )}
         <Text size="sm">
           Are you sure you want to stop the current watch session for <Text span fw={600}>"{room.roomTitle || room.roomId}"</Text>?
         </Text>
@@ -1268,9 +1290,13 @@ const GridRoomCard = ({
       <StopRoomConfirmModal
         room={room}
         opened={actions.stopModalOpened}
-        onClose={() => actions.setStopModalOpened(false)}
+        onClose={() => {
+          actions.setStopModalOpened(false);
+          actions.setStopError(null);
+        }}
         onConfirm={actions.handleStopSession}
         isStopping={actions.isStopping}
+        stopError={actions.stopError}
       />
 
       <InfoActionModal
@@ -1520,9 +1546,13 @@ const StackRoomCard = ({
       <StopRoomConfirmModal
         room={room}
         opened={actions.stopModalOpened}
-        onClose={() => actions.setStopModalOpened(false)}
+        onClose={() => {
+          actions.setStopModalOpened(false);
+          actions.setStopError(null);
+        }}
         onConfirm={actions.handleStopSession}
         isStopping={actions.isStopping}
+        stopError={actions.stopError}
       />
 
       <InfoActionModal

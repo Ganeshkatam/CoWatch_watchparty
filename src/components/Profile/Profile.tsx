@@ -36,6 +36,7 @@ import {
 import { useAppearance } from "../../theme/ThemeProvider";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
 import { NotificationPreferencesSection } from "./NotificationPreferencesSection";
+import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import styles from "./Profile.module.css";
 
 const AppearanceSelector = () => {
@@ -70,6 +71,7 @@ export const Profile: React.FC = () => {
   const [displayName, setDisplayName] = useState("");
   const [originalDisplayName, setOriginalDisplayName] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
 
   // Preference switches
@@ -81,8 +83,11 @@ export const Profile: React.FC = () => {
 
   // Modals & alerts
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [resetDisabled, setResetDisabled] = useState(false);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
+  const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
@@ -144,14 +149,16 @@ export const Profile: React.FC = () => {
 
   const resetPassword = async () => {
     try {
+      setResetErrorMessage(null);
+      setResetSuccessMessage(null);
       if (context.user?.email) {
         await supabase.auth.resetPasswordForEmail(context.user.email);
         setResetDisabled(true);
         setResetSuccessMessage(`Password reset link sent to ${context.user.email}. Please check your inbox.`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn("Reset password error:", e);
-      setAvatarError(e?.message || "Failed to send password reset email.");
+      setResetErrorMessage(e instanceof Error ? e.message : "Failed to send password reset email.");
     }
   };
 
@@ -228,8 +235,16 @@ export const Profile: React.FC = () => {
 
   const saveDisplayName = async () => {
     if (!context.user) return;
+    setNameError(null);
     const trimmed = displayName.trim();
-    if (trimmed.length > 50) return;
+    if (!trimmed) {
+      setNameError("Display name cannot be empty.");
+      return;
+    }
+    if (trimmed.length > 50) {
+      setNameError("Display name must be 50 characters or less.");
+      return;
+    }
 
     const fallbackName =
       context.user?.user_metadata?.display_name?.trim() ||
@@ -255,12 +270,14 @@ export const Profile: React.FC = () => {
       } catch (authErr) {
         console.warn("Failed to sync auth display name:", authErr);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Failed to save display name:", error);
       setDisplayName(prevName || "");
       setOriginalDisplayName(prevName || "");
       setIsEditingName(true);
       context.setMetadata({ displayName: prevName });
+      const raw = error instanceof Error ? error.message : "Failed to save display name";
+      setNameError(sanitizeServerErrorMessage(raw));
     }
   };
 
@@ -296,16 +313,21 @@ export const Profile: React.FC = () => {
   };
 
   const deleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
     try {
       await apiFetch("/api/account/delete", {
         method: "POST",
         requireAuth: true,
       });
-    } catch (e) {
+      await supabase.auth.signOut({ scope: "local" });
+      window.location.href = "/";
+    } catch (e: unknown) {
       console.warn("Failed to delete account on server:", e);
+      setIsDeletingAccount(false);
+      const raw = e instanceof Error ? e.message : "Failed to delete account";
+      setDeleteAccountError(sanitizeServerErrorMessage(raw));
     }
-    await supabase.auth.signOut({ scope: "local" });
-    window.location.href = "/";
   };
 
   if (!parsedAccount.isCanonicalPath) {
@@ -330,13 +352,21 @@ export const Profile: React.FC = () => {
       {/* Account Deletion Confirmation Modal */}
       <Modal
         opened={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteAccountError(null);
+        }}
         title="Delete Your Account"
         centered
         size={MODAL_SIZES.sm}
         overlayProps={{ blur: 5, color: "var(--overlay-scrim)", opacity: 1 }}
       >
         <div style={{ padding: "10px 0" }}>
+          {deleteAccountError && (
+            <Alert color="red" variant="light" mb="md" icon={<IconAlertTriangle size={16} />}>
+              {deleteAccountError}
+            </Alert>
+          )}
           <p style={{ color: "var(--text-primary)", marginBottom: "10px" }}>
             Are you sure you want to delete your account? This action is permanent and cannot be undone.
           </p>
@@ -344,10 +374,18 @@ export const Profile: React.FC = () => {
             This permanently deletes your CoWatch account, profile, preferences, and uploaded profile picture.
           </p>
           <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-            <Button variant="subtle" color="gray" onClick={() => setDeleteConfirmOpen(false)}>
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                setDeleteAccountError(null);
+              }}
+              disabled={isDeletingAccount}
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={deleteAccount}>
+            <Button color="red" onClick={deleteAccount} loading={isDeletingAccount}>
               Yes, Delete My Account
             </Button>
           </div>
@@ -555,12 +593,17 @@ export const Profile: React.FC = () => {
                           <TextInput
                             autoFocus
                             value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
+                            error={nameError}
+                            onChange={(e) => {
+                              setDisplayName(e.target.value);
+                              if (nameError) setNameError(null);
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 saveDisplayName();
                               } else if (e.key === "Escape") {
                                 setDisplayName(originalDisplayName);
+                                setNameError(null);
                                 setIsEditingName(false);
                               }
                             }}
@@ -582,6 +625,7 @@ export const Profile: React.FC = () => {
                             color="gray"
                             onClick={() => {
                               setDisplayName(originalDisplayName);
+                              setNameError(null);
                               setIsEditingName(false);
                             }}
                             className={styles.actionButton}
@@ -754,6 +798,17 @@ export const Profile: React.FC = () => {
             {/* View: Security */}
             {isSecurity && (
               <>
+                {resetErrorMessage && (
+                  <Alert
+                    icon={<IconAlertTriangle size={16} />}
+                    title="Password Reset Failed"
+                    color="red"
+                    withCloseButton
+                    onClose={() => setResetErrorMessage(null)}
+                  >
+                    {resetErrorMessage}
+                  </Alert>
+                )}
                 {resetSuccessMessage && (
                   <Alert
                     icon={<IconCheck size={16} />}

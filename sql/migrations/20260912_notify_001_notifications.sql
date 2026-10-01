@@ -40,7 +40,6 @@ INSERT INTO public.notification_type_registry (type, description, email_eligible
   ('ROOM_ENDING',        'A room is expiring soon (advance notice)',                  false, true,  'room'),
   ('ROOM_ENDED',         'A room the user owned or participated in has ended',        false, true,  'room'),
   ('MODERATION_ACTION',  'User was removed from or warned about a room',             false, true,  'moderation'),
-  ('VBROWSER_FAILURE',   'Virtual browser session encountered an error',              false, true,  'infrastructure'),
   ('SYSTEM_ANNOUNCEMENT','Platform-wide announcement from the CoWatch team',          true,  true,  'system')
 ON CONFLICT (type) DO UPDATE SET
   description      = excluded.description,

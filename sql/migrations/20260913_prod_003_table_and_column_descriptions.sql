@@ -27,8 +27,7 @@ COMMENT ON COLUMN public.account_room_limits.override_watch_rooms IS 'Explicit m
 COMMENT ON COLUMN public.account_room_limits.override_permanent_rooms IS 'Explicit manual limit override for maximum permanent persistent rooms.';
 COMMENT ON COLUMN public.account_room_limits.override_participant_capacity IS 'Explicit manual limit override for maximum participants per room.';
 COMMENT ON COLUMN public.account_room_limits.override_room_duration_hours IS 'Explicit manual limit override for maximum active room session duration in hours.';
-COMMENT ON COLUMN public.account_room_limits.override_vbrowser_allowed IS 'Explicit manual override enabling or disabling virtual browser capability.';
-COMMENT ON COLUMN public.account_room_limits.override_vbrowser_concurrency IS 'Explicit manual limit override for concurrent virtual browser sessions.';
+
 
 -- 3. account_room_usage
 COMMENT ON TABLE public.account_room_usage IS 'Per-account active room counters used for atomic concurrency quota enforcement.';
@@ -271,85 +270,10 @@ COMMENT ON COLUMN public.subscription_plans.max_watch_rooms IS 'Maximum concurre
 COMMENT ON COLUMN public.subscription_plans.max_permanent_rooms IS 'Maximum permanent persistent rooms allowed under this plan.';
 COMMENT ON COLUMN public.subscription_plans.max_participant_capacity IS 'Maximum participant capacity ceiling per room for this tier.';
 COMMENT ON COLUMN public.subscription_plans.max_room_duration_hours IS 'Maximum active session duration in hours before automatic expiration.';
-COMMENT ON COLUMN public.subscription_plans.is_vbrowser_allowed IS 'Whether virtual cloud browsers are unlocked for this tier.';
-COMMENT ON COLUMN public.subscription_plans.max_vbrowser_concurrency IS 'Maximum concurrent virtual browsers allowed under this plan.';
 COMMENT ON COLUMN public.subscription_plans.is_active IS 'Whether this plan tier is actively available for subscription.';
 COMMENT ON COLUMN public.subscription_plans.created_at IS 'Timestamp when the plan tier was registered.';
 COMMENT ON COLUMN public.subscription_plans.updated_at IS 'Timestamp of the latest tier configuration update.';
 
--- 21. vbrowser
-COMMENT ON TABLE public.vbrowser IS 'Virtual browser cloud container instances, states, and connectivity endpoints.';
-COMMENT ON COLUMN public.vbrowser.id IS 'Sequential numeric identifier for the VM container record.';
-COMMENT ON COLUMN public.vbrowser.pool IS 'Name of the allocation pool hosting this VM (e.g. HetznerLargeUS).';
-COMMENT ON COLUMN public.vbrowser.vmid IS 'Provider-specific VM container identifier.';
-COMMENT ON COLUMN public.vbrowser.state IS 'Container provisioning state (staging, available, used, terminating).';
-COMMENT ON COLUMN public.vbrowser."creationTime" IS 'Timestamp when the VM container was created.';
-COMMENT ON COLUMN public.vbrowser."heartbeatTime" IS 'Timestamp of the latest heartbeat signal from the VM container.';
-COMMENT ON COLUMN public.vbrowser."assignTime" IS 'Timestamp when the VM container was assigned to a room.';
-COMMENT ON COLUMN public.vbrowser."roomId" IS 'Room identifier currently using this virtual browser.';
-COMMENT ON COLUMN public.vbrowser.uid IS 'User ID of the participant controlling the virtual browser.';
-COMMENT ON COLUMN public.vbrowser.data IS 'Provider connection endpoints, port mappings, and WebRTC candidate data.';
-COMMENT ON COLUMN public.vbrowser.retries IS 'Counter tracking provisioning health-check retry attempts.';
-COMMENT ON COLUMN public.vbrowser.pass IS 'Access credential for the remote Neko/vBrowser session.';
-COMMENT ON COLUMN public.vbrowser.image IS 'Container image tag or snapshot ID deployed to this VM.';
-COMMENT ON COLUMN public.vbrowser.provider_id IS 'Foreign key reference to vbrowser_providers.';
-COMMENT ON COLUMN public.vbrowser.pool_id IS 'Foreign key reference to vbrowser_pools.';
-COMMENT ON COLUMN public.vbrowser.expires_at IS 'Lease expiration timestamp for automatic VM reclamation.';
-COMMENT ON COLUMN public.vbrowser.released_at IS 'Timestamp when the VM container was returned to the pool or terminated.';
-
--- 22. vbrowser_pools
-COMMENT ON TABLE public.vbrowser_pools IS 'Virtual browser capacity pools partitioned by region, size, and provider.';
-COMMENT ON COLUMN public.vbrowser_pools.id IS 'Unique identifier for the VM pool (e.g. hetzner-us-standard).';
-COMMENT ON COLUMN public.vbrowser_pools.provider_id IS 'Reference to the cloud infrastructure provider hosting this pool.';
-COMMENT ON COLUMN public.vbrowser_pools.region IS 'Cloud data center region code (e.g. us-east, eu-central).';
-COMMENT ON COLUMN public.vbrowser_pools.is_large IS 'Whether this pool provides high-memory large VM instances.';
-COMMENT ON COLUMN public.vbrowser_pools.min_size IS 'Target warm standby container pool size.';
-COMMENT ON COLUMN public.vbrowser_pools.limit_size IS 'Maximum container pool capacity ceiling.';
-COMMENT ON COLUMN public.vbrowser_pools.enabled IS 'Operational toggle enabling or disabling pool allocations.';
-COMMENT ON COLUMN public.vbrowser_pools.config IS 'Pool-specific infrastructure configuration and scaling parameters.';
-COMMENT ON COLUMN public.vbrowser_pools.created_at IS 'Timestamp when the pool was provisioned.';
-COMMENT ON COLUMN public.vbrowser_pools.updated_at IS 'Timestamp of the latest pool configuration update.';
-COMMENT ON COLUMN public.vbrowser_pools.lifecycle IS 'Pool management lifecycle mode (static, autoscale, drain).';
-COMMENT ON COLUMN public.vbrowser_pools.max_sessions_per_user IS 'Maximum concurrent VM sessions per user in this pool.';
-COMMENT ON COLUMN public.vbrowser_pools.max_sessions_per_room IS 'Maximum concurrent VM sessions per room in this pool.';
-COMMENT ON COLUMN public.vbrowser_pools.max_large_sessions IS 'Cap on large VM sessions concurrently active in this pool.';
-COMMENT ON COLUMN public.vbrowser_pools.max_session_duration_seconds IS 'Maximum session lease duration in seconds.';
-COMMENT ON COLUMN public.vbrowser_pools.max_large_session_duration_seconds IS 'Maximum large session lease duration in seconds.';
-
--- 23. vbrowser_providers
-COMMENT ON TABLE public.vbrowser_providers IS 'Cloud VM infrastructure providers and API credentials.';
-COMMENT ON COLUMN public.vbrowser_providers.id IS 'Provider identifier (e.g. hetzner, azure, digitalocean).';
-COMMENT ON COLUMN public.vbrowser_providers.display_name IS 'Human-readable name of the cloud provider.';
-COMMENT ON COLUMN public.vbrowser_providers.provider_type IS 'Provider driver implementation (hetzner, azure, docker_local).';
-COMMENT ON COLUMN public.vbrowser_providers.enabled IS 'Operational toggle enabling or disabling this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.config IS 'Encrypted API credentials, endpoint URLs, and resource groups.';
-COMMENT ON COLUMN public.vbrowser_providers.created_at IS 'Timestamp when the provider was configured.';
-COMMENT ON COLUMN public.vbrowser_providers.updated_at IS 'Timestamp of the latest provider credential or setting update.';
-COMMENT ON COLUMN public.vbrowser_providers.lifecycle IS 'Provider operational state (active, degraded, disabled).';
-COMMENT ON COLUMN public.vbrowser_providers.max_concurrent_sessions IS 'Global concurrency ceiling across all pools on this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.max_sessions_per_user IS 'Per-user concurrency cap across this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.max_sessions_per_room IS 'Per-room concurrency cap across this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.max_large_sessions IS 'Large instance concurrency limit across this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.max_session_duration_seconds IS 'Maximum VM session duration permitted by this provider.';
-COMMENT ON COLUMN public.vbrowser_providers.max_large_session_duration_seconds IS 'Maximum large VM session duration permitted by this provider.';
-
--- 24. vbrowser_reservations
-COMMENT ON TABLE public.vbrowser_reservations IS 'Ephemeral virtual browser lease reservations and lifecycle state machines.';
-COMMENT ON COLUMN public.vbrowser_reservations.id IS 'Unique identifier for the reservation request.';
-COMMENT ON COLUMN public.vbrowser_reservations.provider_id IS 'Target cloud provider executing the reservation.';
-COMMENT ON COLUMN public.vbrowser_reservations.pool_id IS 'Target pool fulfilling the reservation.';
-COMMENT ON COLUMN public.vbrowser_reservations.room_id IS 'Room identifier requesting the virtual browser.';
-COMMENT ON COLUMN public.vbrowser_reservations.user_id IS 'User identifier requesting the virtual browser.';
-COMMENT ON COLUMN public.vbrowser_reservations.is_large IS 'Whether a large instance was requested.';
-COMMENT ON COLUMN public.vbrowser_reservations.status IS 'Reservation lifecycle state (pending, assigned, active, released, failed).';
-COMMENT ON COLUMN public.vbrowser_reservations.assigned_at IS 'Timestamp when a VM container was assigned to this reservation.';
-COMMENT ON COLUMN public.vbrowser_reservations.heartbeat_at IS 'Timestamp of the latest active session heartbeat.';
-COMMENT ON COLUMN public.vbrowser_reservations.expires_at IS 'Scheduled lease expiration timestamp.';
-COMMENT ON COLUMN public.vbrowser_reservations.released_at IS 'Timestamp when the reservation concluded.';
-COMMENT ON COLUMN public.vbrowser_reservations.failure_reason IS 'Error description if VM provisioning failed.';
-COMMENT ON COLUMN public.vbrowser_reservations.operation_id IS 'Idempotency tracking identifier for the allocation operation.';
-COMMENT ON COLUMN public.vbrowser_reservations.vmid IS 'Container VM identifier assigned to fulfill the reservation.';
-COMMENT ON COLUMN public.vbrowser_reservations.created_at IS 'Timestamp when the reservation was initiated.';
 
 -- 25. webhook_events
 COMMENT ON TABLE public.webhook_events IS 'Inbound delivery webhook event ledger for idempotency and status synchronization.';

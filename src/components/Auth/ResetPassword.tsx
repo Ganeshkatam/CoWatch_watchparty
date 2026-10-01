@@ -14,10 +14,12 @@ import { IconShieldCheck } from "@tabler/icons-react";
 import { supabase } from "../../utils/supabaseClient";
 import styles from "./AuthShell.module.css";
 import { useDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { USER_MESSAGES } from "../../utils/userMessages";
 
 export const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmError, setConfirmError] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const history = useHistory();
@@ -38,7 +40,7 @@ export const ResetPassword = () => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        setError("Invalid or expired password reset link. Please request a new one.");
+        setError(USER_MESSAGES.AUTH_RESET_TOKEN_EXPIRED.message);
       }
     };
     checkSession();
@@ -47,9 +49,10 @@ export const ResetPassword = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setConfirmError("");
     
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setConfirmError("Passwords do not match");
       return;
     }
 
@@ -61,9 +64,9 @@ export const ResetPassword = () => {
       
       // Successfully updated password, show success state
       setSuccess(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Password update error:", err);
-      setError(err.message);
+      setError(err instanceof Error ? err.message : "Failed to update password.");
     }
   };
 
@@ -120,9 +123,18 @@ export const ResetPassword = () => {
               placeholder="Confirm new password"
               required
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              error={confirmError || undefined}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                if (confirmError) setConfirmError("");
+              }}
             />
-            <Button fullWidth type="submit" mt="md" disabled={!!error && error.includes("Invalid")}>
+            <Button
+              fullWidth
+              type="submit"
+              mt="md"
+              disabled={!!error && error === USER_MESSAGES.AUTH_RESET_TOKEN_EXPIRED.message}
+            >
               Update password
             </Button>
           </form>

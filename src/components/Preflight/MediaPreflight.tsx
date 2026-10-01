@@ -10,6 +10,7 @@ import {
   Tooltip,
   Popover,
   Select,
+  Alert,
 } from "@mantine/core";
 import {
   IconArrowRight,
@@ -115,6 +116,7 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
 
   // Diagnostics (Non-blocking)
   const [autoplayDiag, setAutoplayDiag] = useState<AutoplayDiagnosticResult | null>(null);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
 
   useDocumentMetadata({
     title: roomInfo?.roomTitle
@@ -231,6 +233,7 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
         stopMediaStream(previewStream);
         setPreviewStream(null);
       }
+      setDeviceError(null);
       return;
     }
 
@@ -264,6 +267,7 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
         }
 
         setPreviewStream(stream);
+        setDeviceError(null);
 
         // Re-enumerate to get updated labels once permissions are granted
         const updated = await enumerateMediaDevices();
@@ -275,6 +279,9 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
       } catch (err) {
         console.warn("Could not acquire preview stream:", err);
         if (isCancelled) return;
+        setDeviceError(
+          "Camera or microphone access was blocked. Please check your browser address bar permissions to allow access."
+        );
         if (isCameraOn && isMicOn) {
           // Fallback to audio-only if camera failed
           try {
@@ -288,6 +295,7 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
             if (!isCancelled) {
               setPreviewStream(audioOnly);
               setIsCameraOn(false);
+              setDeviceError("Camera access was blocked. Microphone is enabled.");
             }
           } catch {
             setIsCameraOn(false);
@@ -445,6 +453,19 @@ export const MediaPreflight: React.FC<MediaPreflightProps> = ({
                 PREVIEW
               </Badge>
             </div>
+
+            {deviceError && (
+              <Alert
+                color="orange"
+                variant="light"
+                mb="sm"
+                icon={<IconAlertTriangle size={16} />}
+                withCloseButton
+                onClose={() => setDeviceError(null)}
+              >
+                {deviceError}
+              </Alert>
+            )}
 
             {/* Video Preview Box */}
             <div className={styles.previewWrapper}>

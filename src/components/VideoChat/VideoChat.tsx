@@ -26,6 +26,7 @@ import {
 } from "@tabler/icons-react";
 import styles from "./VideoChat.module.css";
 import { InviteModal } from "../Modal/InviteModal";
+import { showUserMessage } from "../../utils/toast";
 
 interface VideoChatProps {
   socket: Socket;
@@ -55,8 +56,11 @@ export class VideoChatErrorBoundary extends React.Component<
 > {
   state = { hasError: false, error: null };
 
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error: error?.message || "Video chat error" };
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      hasError: true,
+      error: error instanceof Error ? error.message : "Video chat error",
+    };
   }
 
   componentDidCatch(error: any, errorInfo: any) {
@@ -83,6 +87,22 @@ export class VideoChatErrorBoundary extends React.Component<
     }
     return this.props.children;
   }
+}
+
+function getMediaDeviceErrorMessage(err: unknown, deviceType: "camera" | "microphone"): string {
+  if (err && typeof err === "object" && "name" in err) {
+    const errorName = (err as { name: unknown }).name;
+    if (errorName === "NotAllowedError" || errorName === "PermissionDeniedError") {
+      return `Access to your ${deviceType} was denied. Please check your browser permissions.`;
+    }
+    if (errorName === "NotFoundError" || errorName === "DevicesNotFoundError") {
+      return `No ${deviceType} device was found on your system.`;
+    }
+    if (errorName === "NotReadableError" || errorName === "TrackStartError") {
+      return `Your ${deviceType} is already in use by another application.`;
+    }
+  }
+  return `Unable to access ${deviceType}. Please check browser permissions.`;
 }
 
 interface PeerAudioNodes {
@@ -571,8 +591,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
         const newTrack = stream.getVideoTracks()[0];
         ourStream.addTrack(newTrack);
         this.addTrackToAllPCs(newTrack);
-      } catch (e) {
+      } catch (e: unknown) {
         console.warn("Failed to acquire video track dynamically", e);
+        showUserMessage({
+          message: getMediaDeviceErrorMessage(e, "camera"),
+          severity: "warning",
+          presentation: "toast",
+          duration: 4000,
+          action: "none",
+        });
       }
     }
     this.forceUpdate();
@@ -604,8 +631,15 @@ export class VideoChat extends React.Component<VideoChatProps> {
         const newTrack = stream.getAudioTracks()[0];
         ourStream.addTrack(newTrack);
         this.addTrackToAllPCs(newTrack);
-      } catch (e) {
+      } catch (e: unknown) {
         console.warn("Failed to acquire audio track dynamically", e);
+        showUserMessage({
+          message: getMediaDeviceErrorMessage(e, "microphone"),
+          severity: "warning",
+          presentation: "toast",
+          duration: 4000,
+          action: "none",
+        });
       }
     }
     this.emitUserMute();

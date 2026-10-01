@@ -11,6 +11,8 @@ import {
   Paper,
   ActionIcon,
   Tooltip,
+  Alert,
+  Stack,
 } from "@mantine/core";
 import {
   IconArrowLeft,
@@ -152,6 +154,7 @@ export const RoomDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(true);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -277,16 +280,18 @@ export const RoomDetails = () => {
   const handleDelete = async () => {
     if (!room) return;
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       await apiFetch(`/deleteRoom?roomId=${encodeURIComponent(room.roomId)}`, {
         method: "DELETE",
         requireAuth: true,
       });
       history.push("/myrooms");
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      console.error("Failed to delete room:", e);
       setIsDeleting(false);
-      setDeleteConfirm(false);
+      const raw = e instanceof Error ? e.message : "Failed to delete room";
+      setDeleteError(sanitizeServerErrorMessage(raw));
     }
   };
 
@@ -951,18 +956,41 @@ export const RoomDetails = () => {
       </div>
 
       {/* DELETE CONFIRMATION MODAL */}
-      <Modal opened={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Delete Room" centered size={MODAL_SIZES.sm}>
-        <Text size="sm" mb="lg">
-          Are you sure you want to delete <strong>{room.roomTitle || room.roomId}</strong> forever? You will not be able to get it back.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setDeleteConfirm(false)}>
-            Keep Room
-          </Button>
-          <Button color="red" onClick={handleDelete} loading={isDeleting}>
-            Delete Room
-          </Button>
-        </Group>
+      <Modal
+        opened={deleteConfirm}
+        onClose={() => {
+          setDeleteConfirm(false);
+          setDeleteError(null);
+        }}
+        title="Delete Room"
+        centered
+        size={MODAL_SIZES.sm}
+      >
+        <Stack gap="md">
+          {deleteError && (
+            <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              {deleteError}
+            </Alert>
+          )}
+          <Text size="sm">
+            Are you sure you want to delete <strong>{room.roomTitle || room.roomId}</strong> forever? You will not be able to get it back.
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setDeleteConfirm(false);
+                setDeleteError(null);
+              }}
+              disabled={isDeleting}
+            >
+              Keep Room
+            </Button>
+            <Button color="red" onClick={handleDelete} loading={isDeleting}>
+              Delete Room
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       {inviteModalOpened && (

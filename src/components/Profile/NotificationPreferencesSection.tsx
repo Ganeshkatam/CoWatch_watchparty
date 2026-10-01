@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Switch, Loader, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconX } from "@tabler/icons-react";
 import { apiFetch } from "../../utils/utils";
 import type { NotificationPreferences } from "../Notifications/notificationTypes";
 import styles from "./Profile.module.css";
@@ -48,13 +48,6 @@ export const NotificationPreferencesSection: React.FC = () => {
 
       if (data?.preferences) {
         setPreferences(data.preferences);
-        notifications.show({
-          title: "Preference Saved",
-          message: "Notification preference successfully updated.",
-          color: "violet",
-          icon: <IconCheck size={16} />,
-          autoClose: 2000,
-        });
       } else {
         throw new Error("Failed to persist preference");
       }

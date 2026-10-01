@@ -15,7 +15,6 @@ import {
   NumberInput,
   Slider,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import {
   IconCirclePlusFilled,
   IconArrowLeft,
@@ -142,6 +141,8 @@ export const Create = () => {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [coverPhotoFile, setCoverPhotoFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState<string>("");
+  const [titleError, setTitleError] = useState<string>("");
 
   useEffect(() => {
     if (!coverPhotoFile) {
@@ -264,12 +265,13 @@ export const Create = () => {
   }, [passcode]);
 
   const handleSelectPreset = (presetId: string) => {
-    if (selectedPreset === presetId && !coverPhotoFile) {
+    if (selectedPreset === presetId) {
       setSelectedPreset(null);
     } else {
       setSelectedPreset(presetId);
       setCoverPhotoFile(null);
       setCoverPreview(null);
+      setCoverError("");
     }
   };
 
@@ -277,17 +279,14 @@ export const Create = () => {
     if (!file) {
       setCoverPhotoFile(null);
       setCoverPreview(null);
+      setCoverError("");
       return;
     }
     if (file.size >= 1 * 1024 * 1024) {
-      notifications.show({
-        title: "File Too Large",
-        message: "Room picture must be less than 1MB.",
-        color: "red",
-        autoClose: 4000,
-      });
+      setCoverError("Room picture must be less than 1MB.");
       return;
     }
+    setCoverError("");
     setSelectedPreset(null);
     setCoverPhotoFile(file);
   };
@@ -296,6 +295,7 @@ export const Create = () => {
     setCoverPhotoFile(null);
     setCoverPreview(null);
     setSelectedPreset(null);
+    setCoverError("");
   };
 
   const handleRegeneratePasscode = () => {
@@ -323,11 +323,11 @@ export const Create = () => {
       return;
     }
     if (!roomTitle.trim()) {
-      setError("Room title is required.");
+      setTitleError("Room title is required.");
       return;
     }
     if (passcode.length !== 8) {
-      setError("Passcode must be strictly 8 characters long.");
+      setPasscodeError("Passcode must be strictly 8 characters long.");
       return;
     }
     if (passcodeError) {
@@ -574,7 +574,11 @@ export const Create = () => {
                     withAsterisk
                     placeholder="e.g. My Watch Party"
                     value={roomTitle}
-                    onChange={(e) => setRoomTitle(e.target.value)}
+                    error={titleError || undefined}
+                    onChange={(e) => {
+                      setRoomTitle(e.target.value);
+                      if (titleError) setTitleError("");
+                    }}
                     maxLength={50}
                     size="md"
                   />
@@ -936,11 +940,17 @@ export const Create = () => {
                               </Button>
                             )}
                           </div>
-                          <Text size="xs" c="dimmed">
-                            {coverPhotoFile
-                              ? coverPhotoFile.name
-                              : "Recommended: JPG, PNG, or WebP (less than 1MB)"}
-                          </Text>
+                          {coverError ? (
+                            <Text size="xs" c="red" fw={500}>
+                              {coverError}
+                            </Text>
+                          ) : (
+                            <Text size="xs" c="dimmed">
+                              {coverPhotoFile
+                                ? coverPhotoFile.name
+                                : "Recommended: JPG, PNG, or WebP (less than 1MB)"}
+                            </Text>
+                          )}
                         </div>
                       </div>
                     </div>

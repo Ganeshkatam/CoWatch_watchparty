@@ -44,10 +44,12 @@ export class HTML implements Player {
       if (leftVideo.src !== src) {
         leftVideo.src = src;
       }
-      leftVideo.currentTime = time;
+      if (typeof time === "number" && Number.isFinite(time) && time >= 0) {
+        leftVideo.currentTime = time;
+      }
       try {
         if ("autoPictureInPicture" in leftVideo) {
-          (leftVideo as any).autoPictureInPicture = pipManager.isSmartPiPEnabled();
+          (leftVideo as unknown as { autoPictureInPicture?: boolean }).autoPictureInPicture = pipManager.isSmartPiPEnabled();
         }
       } catch {
         // Progressive enhancement fallback

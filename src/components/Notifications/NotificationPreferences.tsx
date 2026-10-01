@@ -15,7 +15,7 @@ import {
   Button,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
 import type { NotificationPreferences as PreferencesType } from './notificationTypes';
 
 interface NotificationPreferencesModalProps {
@@ -38,15 +38,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
     const success = await onUpdate({ [key]: value });
     setIsSaving(false);
 
-    if (success) {
-      notifications.show({
-        title: 'Preferences Updated',
-        message: 'Your notification delivery settings have been saved.',
-        color: 'violet',
-        icon: <IconCheck size={16} />,
-        autoClose: 2500,
-      });
-    } else {
+    if (!success) {
       notifications.show({
         title: 'Update Failed',
         message: 'Could not save notification preferences. Please try again.',

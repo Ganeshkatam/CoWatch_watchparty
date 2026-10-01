@@ -452,7 +452,7 @@ class CoWatch extends React.Component {
                       terms_agreed: true,
                       terms_agreed_at: new Date().toISOString(),
                     },
-                  }).catch((err: any) => console.warn("Could not sync OAuth terms agreement to metadata:", err));
+                  }).catch((err: unknown) => console.warn("Could not sync OAuth terms agreement to metadata:", err));
                 }
                 window.sessionStorage?.removeItem("cowatch_signup_terms_agreed");
                 window.sessionStorage?.removeItem("cowatch_signup_age_eligible_expires_at");
@@ -462,7 +462,7 @@ class CoWatch extends React.Component {
                     title: "Welcome to CoWatch",
                     message: `Signed in successfully with ${providerName}.`,
                     color: "teal",
-                    autoClose: 4500,
+                    autoClose: 2500,
                   });
                 }, 250);
               }
