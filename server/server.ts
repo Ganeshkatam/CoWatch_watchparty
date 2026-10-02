@@ -15,7 +15,6 @@ import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./
 import { postgres, upsertObject } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
-import { gzipSync } from "node:zlib";
 import { resolveShard } from "./utils/resolveShard.ts";
 import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { getStats } from "./utils/getStats.ts";
@@ -52,6 +51,7 @@ import { authenticateOperator } from "./utils/operatorAuth.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
 import { profileRouter } from "./routes/profile.ts";
+import { createSubtitleRouter } from "./routes/subtitleRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -519,139 +519,8 @@ app.get("/ping", (_req, res) => {
   res.json("pong");
 });
 
-// Data's already compressed so go before the compression middleware
-app.get("/subtitle/:hash", async (req, res) => {
-  const key = "subtitle:" + req.params.hash;
-  const buf = await edgeRedis.execute("subtitle", "getBuffer", (c) => c.getBuffer(key));
-  if (!buf) {
-    res.status(404).end("not found");
-    return;
-  }
-  await edgeRedis.execute("subtitle", "expire", (c) => c.expire(key, 24 * 60 * 60));
-  res.setHeader("Content-Encoding", "gzip");
-  res.end(buf);
-});
-
+app.use(createSubtitleRouter());
 app.use(compression());
-
-app.post("/subtitle", async (req, res) => {
-  const data = req.body;
-  if (!edgeRedis.client) {
-    return;
-  }
-  // calculate hash, gzip and save to redis
-  const hash = crypto
-    .createHash("sha256")
-    .update(data, "utf8")
-    .digest()
-    .toString("hex");
-  let gzipData = gzipSync(data);
-  edgeRedis.execute("subtitle", "setex", (c) => c.setex("subtitle:" + hash, 24 * 60 * 60, gzipData));
-  redisCount("subUploads");
-  res.json({ hash });
-});
-
-app.get("/downloadSubtitles", async (req, res) => {
-  // Request the URL from OS
-  try {
-    const urlResp = await axios<{ link: string }>({
-      url: "https://api.opensubtitles.com/api/v1/download",
-      method: "POST",
-      headers: {
-        "User-Agent": "cowatch v1",
-        "Api-Key": config.OPENSUBTITLES_KEY,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        // 'Authorization': 'Bearer ' + config.OPENSUBTITLES_KEY,
-      },
-      data: {
-        file_id: req.query.file_id,
-        // sub_format: 'srt',
-      },
-    });
-    redisCount("subDownloadsOS");
-    if (!edgeRedis.client) {
-      // Return the direct link to the user, will work for about 3 hours
-      res.json(urlResp.data);
-      return;
-    }
-    // Cache the contents in Redis (longer retention)
-    const subResp = await axios.get(urlResp.data.link, {
-      responseType: "arraybuffer",
-    });
-    const data = subResp.data;
-    const hash = crypto
-      .createHash("sha256")
-      .update(data, "utf8")
-      .digest()
-      .toString("hex");
-    let gzipData = gzipSync(data);
-    edgeRedis.execute("subtitle", "setex", (c) => c.setex("subtitle:" + hash, 24 * 60 * 60, gzipData));
-    res.json({ link: "/subtitle/" + hash });
-  } catch (e) {
-    if (isAxiosError(e)) {
-      console.log(e.response);
-    }
-    throw e;
-  }
-});
-
-app.get("/searchSubtitles", async (req, res) => {
-  try {
-    const title = req.query.title ? String(req.query.title) : "";
-    const url = req.query.url ? String(req.query.url) : "";
-    let subUrl = "";
-    if (url) {
-      const validation = await validateExternalUrl(url, ["https:", "http:"]);
-      if (!validation.valid) {
-        res.status(400).json({ error: "INVALID_URL", message: validation.reason || "Disallowed target URL" });
-        return;
-      }
-      const startResp = await safeExternalGet(url, {
-        headers: { Range: "bytes=0-65535" },
-        maxBytes: 128 * 1024,
-        timeoutMs: 5000,
-        allowedProtocols: ["https:", "http:"],
-      });
-      const start = startResp.data;
-      const contentRange = startResp.headers["content-range"] || "";
-      const sizeMatch = contentRange.match(/\/(\d+)$/);
-      const size = sizeMatch ? Number(sizeMatch[1]) : 0;
-      let end: Buffer = Buffer.alloc(0);
-      if (size > 65536) {
-        const endResp = await safeExternalGet(url, {
-          headers: { Range: `bytes=${size - 65536}-` },
-          maxBytes: 128 * 1024,
-          timeoutMs: 5000,
-          allowedProtocols: ["https:", "http:"],
-        });
-        end = endResp.data;
-      }
-      const hash = computeOpenSubtitlesHash(start, end, size);
-      subUrl = `https://api.opensubtitles.com/api/v1/subtitles?moviehash=${hash}&languages=en`;
-    } else if (title) {
-      subUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(title)}&languages=en`;
-    }
-    if (!subUrl) {
-      res.json([]);
-      return;
-    }
-    const response = await axios.get(subUrl, {
-      headers: {
-        "User-Agent": "cowatch v1",
-        "Api-Key": config.OPENSUBTITLES_KEY,
-      },
-      timeout: 5000,
-    });
-    const subtitles = response.data;
-    res.json(subtitles?.data || []);
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Subtitle search failed";
-    console.error("searchSubtitles error:", message);
-    res.json([]);
-  }
-  redisCount("subSearchesOS");
-});
 
 app.get("/stats", async (req, res) => {
   const auth = await authenticateOperator(req);
@@ -3522,19 +3391,3 @@ async function minuteMetrics() {
   }
 }
 
-function computeOpenSubtitlesHash(first: Buffer, last: Buffer, size: number) {
-  // console.log(first.length, last.length, size);
-  let temp = BigInt(size);
-  process(first);
-  process(last);
-
-  temp = temp & BigInt("0xffffffffffffffff");
-  return temp.toString(16).padStart(16, "0");
-
-  function process(chunk: Buffer) {
-    for (let i = 0; i < chunk.length; i += 8) {
-      const long = chunk.readBigUInt64LE(i);
-      temp += long;
-    }
-  }
-}
