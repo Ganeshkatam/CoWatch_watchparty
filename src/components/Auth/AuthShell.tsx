@@ -10,7 +10,13 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
   const location = useLocation();
   const path = location.pathname;
 
-  let title = "Watch together.<br />Anywhere.";
+  let title: React.ReactNode = (
+    <>
+      Watch together.
+      <br />
+      Anywhere.
+    </>
+  );
   let description = "Create a room, invite your friends, and watch together from anywhere.";
   let features = (
     <div className={styles.brandFeatures}>
@@ -62,10 +68,9 @@ export const AuthShell: React.FC<AuthShellProps> = ({ children }) => {
       <div className={styles.authBgOverlay} />
       <div className={styles.authLayout}>
         <div className={styles.brandPanel}>
-          <div
-            className={styles.brandTitle}
-            dangerouslySetInnerHTML={{ __html: title }}
-          />
+          <div className={styles.brandTitle}>
+            {title}
+          </div>
           <div className={styles.brandDescription}>
             {description}
           </div>

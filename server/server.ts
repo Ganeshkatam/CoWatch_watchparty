@@ -381,12 +381,16 @@ app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  if (process.env.NODE_ENV === "production") {
+  const isProd = process.env.NODE_ENV === "production";
+  if (isProd) {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
+  const scriptSrc = isProd
+    ? "script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com";
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com",
+    scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",

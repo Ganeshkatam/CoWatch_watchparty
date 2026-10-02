@@ -6,7 +6,11 @@
 import type { Pool } from "pg";
 import type { DatabasePool } from "../../db.ts";
 import { LocalMediaPeerRegistry } from "./LocalMediaPeerRegistry.ts";
-import { LocalMediaSession, type ServerLocalMediaManifest } from "./LocalMediaSession.ts";
+import {
+  LocalMediaSession,
+  validateLocalMediaManifest,
+  type ServerLocalMediaManifest,
+} from "./LocalMediaSession.ts";
 import { LocalMediaSignaling, type SignalMessagePayload } from "./LocalMediaSignaling.ts";
 
 function toUuid(id: string): string {
@@ -48,22 +52,28 @@ export class LocalMediaAuthority {
     roomId: string,
     userId: string,
     isHost: boolean,
-    manifest: ServerLocalMediaManifest
+    manifest: unknown
   ): Promise<LocalMediaSession | null> {
     if (!isHost) {
       console.warn(`Non-host ${userId} attempted to announce local media session in room ${roomId}`);
       return null;
     }
 
-    const contentFingerprint =
-      manifest.contentFingerprint ||
-      (typeof (manifest as any).contentHash === "string" ? (manifest as any).contentHash.trim() : "") ||
-      "";
-    manifest.contentFingerprint = contentFingerprint;
-    manifest.ownerId = userId;
-    delete (manifest as any).contentHash;
+    const validation = validateLocalMediaManifest(manifest);
+    if (!validation.valid) {
+      console.warn(
+        `Rejected invalid local media manifest in room ${roomId} by user ${userId}: ${validation.reason}`
+      );
+      return null;
+    }
 
-    const session = new LocalMediaSession(manifest);
+    const validatedManifest: ServerLocalMediaManifest = {
+      ...validation.sanitized!,
+      roomId,
+      ownerId: userId,
+    };
+
+    const session = new LocalMediaSession(validatedManifest);
     this.sessions.set(roomId, session);
 
     let registry = this.registries.get(roomId);
@@ -75,10 +85,10 @@ export class LocalMediaAuthority {
 
     if (this.db) {
       try {
-        const validMediaId = toUuid(manifest.mediaId);
-        const validOwnerId = toUuid(userId || manifest.ownerId);
+        const validMediaId = toUuid(validatedManifest.mediaId);
+        const validOwnerId = toUuid(userId || validatedManifest.ownerId);
 
-        await (this.db as any).query(
+        await (this.db as DatabasePool).query(
           `INSERT INTO public.room_media_sessions (
             media_id, room_id, owner_user_id, status, filename, mime_type, byte_size,
             duration_seconds, codec, container, content_hash, chunk_size, total_chunks
@@ -90,15 +100,15 @@ export class LocalMediaAuthority {
             validMediaId,
             roomId,
             validOwnerId,
-            manifest.filename,
-            manifest.mimeType,
-            manifest.byteLength,
-            manifest.durationSeconds || 0,
-            manifest.codec || "",
-            manifest.container || "mp4",
-            manifest.contentFingerprint,
-            manifest.chunkSize,
-            manifest.totalChunks,
+            validatedManifest.filename,
+            validatedManifest.mimeType,
+            validatedManifest.byteLength,
+            validatedManifest.durationSeconds || 0,
+            validatedManifest.codec || "",
+            validatedManifest.container || "mp4",
+            validatedManifest.contentFingerprint,
+            validatedManifest.chunkSize,
+            validatedManifest.totalChunks,
           ]
         );
       } catch (err) {
@@ -106,7 +116,7 @@ export class LocalMediaAuthority {
       }
     }
 
-    this.signaling.broadcastSession(roomId, manifest);
+    this.signaling.broadcastSession(roomId, validatedManifest);
     return session;
   }
 

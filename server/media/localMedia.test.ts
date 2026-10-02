@@ -7,7 +7,12 @@
 
 import { LocalMediaAuthority } from "./local/LocalMediaAuthority.ts";
 import { LocalMediaPeerRegistry, HEARTBEAT_TIMEOUT_MS } from "./local/LocalMediaPeerRegistry.ts";
-import { LocalMediaSession, type ServerLocalMediaManifest } from "./local/LocalMediaSession.ts";
+import {
+  LocalMediaSession,
+  validateLocalMediaManifest,
+  MANIFEST_LIMITS,
+  type ServerLocalMediaManifest,
+} from "./local/LocalMediaSession.ts";
 import { LocalMediaSignaling } from "./local/LocalMediaSignaling.ts";
 
 class MockDatabase {
@@ -467,8 +472,82 @@ async function runLocalMediaServerTests() {
   );
   console.log("  PASS [Case 20: Stale epoch availability excluded from election]");
 
+  // --- DATA-001: Local Media Manifest Constraint & Sanitization Suite ---
+  console.log("\n--- DATA-001: Manifest Metadata Validation & Boundary Hardening ---");
+
+  // Case 21: Rejection of oversized byteLength (>10GB)
+  const oversizedManifest = {
+    ...baseManifest,
+    byteLength: 11 * 1024 * 1024 * 1024, // 11 GB
+  };
+  const oversizedValidation = validateLocalMediaManifest(oversizedManifest);
+  assert(oversizedValidation.valid === false, "Case 21.1: validateLocalMediaManifest rejects >10GB payload");
+  const oversizedAnnounce = await authority.announceSession("room_gamma", "host_user_1", true, oversizedManifest);
+  assert(oversizedAnnounce === null, "Case 21.2: Authority fail-closed rejects oversized manifest");
+  console.log("  PASS [Case 21: Rejection of oversized byteLength (>10GB)]");
+
+  // Case 22: Rejection of invalid chunkSize (<16KB or >8MB)
+  const tooSmallChunkManifest = {
+    ...baseManifest,
+    chunkSize: 1024, // 1 KB, below 16 KB minimum
+  };
+  const tooSmallResult = validateLocalMediaManifest(tooSmallChunkManifest);
+  assert(tooSmallResult.valid === false, "Case 22.1: Rejects chunkSize < 16KB");
+
+  const tooLargeChunkManifest = {
+    ...baseManifest,
+    chunkSize: 16 * 1024 * 1024, // 16 MB, above 8 MB maximum
+  };
+  const tooLargeResult = validateLocalMediaManifest(tooLargeChunkManifest);
+  assert(tooLargeResult.valid === false, "Case 22.2: Rejects chunkSize > 8MB");
+  console.log("  PASS [Case 22: Rejection of invalid chunkSize boundaries]");
+
+  // Case 23: Rejection of mismatched or impossible totalChunks count
+  const mismatchedChunksManifest = {
+    ...baseManifest,
+    byteLength: 10485760, // 10MB
+    chunkSize: 262144, // 256KB => expected 40 chunks
+    totalChunks: 9999, // Wildly mismatched
+  };
+  const mismatchResult = validateLocalMediaManifest(mismatchedChunksManifest);
+  assert(mismatchResult.valid === false, "Case 23: Rejects mismatched totalChunks vs byteLength/chunkSize");
+  console.log("  PASS [Case 23: Rejection of mismatched totalChunks count]");
+
+  // Case 24: Rejection of invalid / missing mediaId or empty objects
+  assert(validateLocalMediaManifest(null).valid === false, "Case 24.1: Rejects null manifest");
+  assert(validateLocalMediaManifest({}).valid === false, "Case 24.2: Rejects empty object manifest");
+  assert(
+    validateLocalMediaManifest({ ...baseManifest, mediaId: "" }).valid === false,
+    "Case 24.3: Rejects empty mediaId"
+  );
+  console.log("  PASS [Case 24: Rejection of invalid / missing mediaId and non-object manifests]");
+
+  // Case 25: Filename path-traversal and control character sanitization
+  const dirtyFilenameManifest = {
+    ...baseManifest,
+    filename: "../../../etc/passwd\0evil.mp4",
+  };
+  const sanitizedResult = validateLocalMediaManifest(dirtyFilenameManifest);
+  assert(sanitizedResult.valid === true, "Case 25.1: Validates dirty filename with sanitization");
+  assert(
+    !sanitizedResult.sanitized?.filename.includes("/") &&
+      !sanitizedResult.sanitized?.filename.includes("\\") &&
+      !sanitizedResult.sanitized?.filename.includes("\0"),
+    "Case 25.2: Directory traversal slashes and null bytes stripped from filename"
+  );
+  console.log("  PASS [Case 25: Filename path-traversal and control character sanitization]");
+
+  // Case 26: Rejection of excessive durationSeconds (>24 hours)
+  const excessiveDurationManifest = {
+    ...baseManifest,
+    durationSeconds: 100000, // > 86400s
+  };
+  const durationResult = validateLocalMediaManifest(excessiveDurationManifest);
+  assert(durationResult.valid === false, "Case 26: Rejects duration > 24 hours (86400s)");
+  console.log("  PASS [Case 26: Rejection of excessive durationSeconds (>24 hours)]");
+
   console.log("\n================================================================");
-  console.log("ALL 20 LOCAL-MEDIA-001 (AUD-005 & AUD-004) TESTS PASSED!");
+  console.log("ALL 26 LOCAL-MEDIA-001 (AUD-005, AUD-004 & DATA-001) TESTS PASSED!");
   console.log("================================================================");
 }
 
