@@ -3,14 +3,20 @@
  * Relays WebRTC SDP offers/answers and ICE candidates securely between room participants.
  */
 
-import { Namespace, Server, Socket } from "socket.io";
+import type { Namespace, Server, Socket } from "socket.io";
+import type { ServerLocalMediaManifest } from "./LocalMediaSession.ts";
 
 export interface SignalMessagePayload {
   roomId: string;
   fromPeerId: string;
   toPeerId: string;
-  signal: any;
+  signal: unknown;
   epoch: number;
+}
+
+export interface SignalingSocketContext {
+  id?: string;
+  uid?: string;
 }
 
 export class LocalMediaSignaling {
@@ -21,7 +27,7 @@ export class LocalMediaSignaling {
   }
 
   public relaySignal(
-    socket: Socket,
+    _socket: Socket | SignalingSocketContext | null | undefined,
     targetSocketId: string,
     payload: SignalMessagePayload
   ): boolean {
@@ -37,8 +43,8 @@ export class LocalMediaSignaling {
     return true;
   }
 
-  public broadcastSession(roomId: string, manifest: any): void {
-    if (typeof (this.io as any).to === "function") {
+  public broadcastSession(roomId: string, manifest: ServerLocalMediaManifest): void {
+    if ("to" in this.io && typeof (this.io as { to: unknown }).to === "function") {
       this.io.to(roomId).emit("LOCAL_MEDIA_ANNOUNCE", {
         manifest,
       });
@@ -50,7 +56,7 @@ export class LocalMediaSignaling {
   }
 
   public broadcastUnavailable(roomId: string, mediaId: string): void {
-    if (typeof (this.io as any).to === "function") {
+    if ("to" in this.io && typeof (this.io as { to: unknown }).to === "function") {
       this.io.to(roomId).emit("LOCAL_MEDIA_UNAVAILABLE", {
         mediaId,
       });
@@ -61,7 +67,7 @@ export class LocalMediaSignaling {
     }
   }
 
-  public sendSessionToSocket(targetSocketId: string, manifest: any): void {
+  public sendSessionToSocket(targetSocketId: string, manifest: ServerLocalMediaManifest): void {
     if (!targetSocketId) return;
     this.io.to(targetSocketId).emit("LOCAL_MEDIA_ANNOUNCE", {
       manifest,

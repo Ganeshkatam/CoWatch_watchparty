@@ -2,11 +2,11 @@ import { postgres } from "./utils/postgres.ts";
 import type { Pool, PoolClient } from "pg";
 
 export interface DatabaseClient {
-  query<T = any>(text: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
+  query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number }>;
 }
 
 export interface DatabaseTransaction extends DatabaseClient {
-  query<T = any>(text: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
+  query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number }>;
 }
 
 export interface DatabasePool extends DatabaseClient {
@@ -28,19 +28,21 @@ export async function transaction<T>(
     throw new Error("Database pool unavailable");
   }
 
-  if (typeof (targetPool as DatabasePool).transaction === "function") {
-    return (targetPool as DatabasePool).transaction!(fn);
+  const candidatePool = targetPool as DatabasePool | Pool;
+
+  if ("transaction" in candidatePool && typeof candidatePool.transaction === "function") {
+    return candidatePool.transaction(fn);
   }
 
-  if (typeof (targetPool as any).connect === "function") {
-    const client: PoolClient = await (targetPool as any).connect();
+  if ("connect" in candidatePool && typeof candidatePool.connect === "function") {
+    const client: PoolClient = await candidatePool.connect();
     try {
-      await (client as any).query("BEGIN");
+      await client.query("BEGIN");
       const result = await fn(client as unknown as DatabaseTransaction);
-      await (client as any).query("COMMIT");
+      await client.query("COMMIT");
       return result;
     } catch (err) {
-      await (client as any).query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => {});
       throw err;
     } finally {
       client.release();
@@ -48,13 +50,14 @@ export async function transaction<T>(
   }
 
   // Fallback for simple mock clients without connection management
-  await (targetPool as any).query("BEGIN").catch(() => {});
+  const fallbackClient = targetPool as DatabaseClient;
+  await fallbackClient.query("BEGIN").catch(() => {});
   try {
-    const result = await fn(targetPool as unknown as DatabaseTransaction);
-    await (targetPool as any).query("COMMIT").catch(() => {});
+    const result = await fn(fallbackClient as unknown as DatabaseTransaction);
+    await fallbackClient.query("COMMIT").catch(() => {});
     return result;
   } catch (err) {
-    await (targetPool as any).query("ROLLBACK").catch(() => {});
+    await fallbackClient.query("ROLLBACK").catch(() => {});
     throw err;
   }
 }

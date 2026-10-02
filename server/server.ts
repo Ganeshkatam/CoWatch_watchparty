@@ -1,6 +1,6 @@
 import config from "./config.ts"; // force reload
 import fs from "node:fs";
-import express, { type Response } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import bodyParser from "body-parser";
 import compression from "compression";
 import cors from "cors";
@@ -56,7 +56,7 @@ import { registerNotificationNamespace } from "./notifications/notificationSocke
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
-import { startEmailWorker } from "./notifications/emailWorker.ts";
+import { startEmailWorker, stopEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
 import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
 
@@ -67,6 +67,51 @@ import {
   purgeFailedOutboxRows,
 } from "./notifications/emailOutbox.ts";
 import { validateExternalUrl, safeExternalGet } from "./utils/ssrfValidator.ts";
+
+export class ServerLifecycleManager {
+  private intervals: NodeJS.Timeout[] = [];
+  private isShuttingDown = false;
+
+  public registerInterval(fn: () => void | Promise<void>, intervalMs: number): NodeJS.Timeout {
+    const timer = setInterval(() => {
+      if (this.isShuttingDown) return;
+      try {
+        const result = fn();
+        if (result && typeof (result as Promise<void>).catch === "function") {
+          (result as Promise<void>).catch((err) => {
+            console.error("[LIFECYCLE] Interval async error:", err);
+          });
+        }
+      } catch (err) {
+        console.error("[LIFECYCLE] Interval sync error:", err);
+      }
+    }, intervalMs);
+    this.intervals.push(timer);
+    return timer;
+  }
+
+  public clearAll(): void {
+    for (const timer of this.intervals) {
+      clearInterval(timer);
+    }
+    this.intervals = [];
+  }
+
+  public markShuttingDown(): void {
+    this.isShuttingDown = true;
+    this.clearAll();
+  }
+
+  public get activeIntervalsCount(): number {
+    return this.intervals.length;
+  }
+
+  public get isShuttingDownState(): boolean {
+    return this.isShuttingDown;
+  }
+}
+
+export const serverLifecycle = new ServerLifecycleManager();
 
 let isShuttingDown = false;
 
@@ -86,6 +131,14 @@ export async function handleFatalError(
     return;
   }
   isShuttingDown = true;
+
+  // Immediately cancel all background intervals and background workers
+  serverLifecycle.markShuttingDown();
+  try {
+    stopEmailWorker();
+  } catch (workerErr) {
+    console.error("[LIFECYCLE] Error stopping email worker:", workerErr);
+  }
 
   // Bounded failsafe timer: guarantee process termination within 4 seconds
   const failsafeTimer = setTimeout(() => {
@@ -324,11 +377,11 @@ dynamicRoomNsp.use(async (socket, next) => {
   }
 });
 // Following functions iterate over in-memory rooms
-setInterval(minuteMetrics, 60 * 1000);
-setInterval(checkIdleRooms, 30 * 1000);
-setInterval(saveRooms, 15 * 1000);
-setInterval(expireRooms, 60 * 1000);
-setInterval(checkEndingSoonRooms, 60 * 1000);
+serverLifecycle.registerInterval(minuteMetrics, 60 * 1000);
+serverLifecycle.registerInterval(checkIdleRooms, 30 * 1000);
+serverLifecycle.registerInterval(saveRooms, 15 * 1000);
+serverLifecycle.registerInterval(expireRooms, 60 * 1000);
+serverLifecycle.registerInterval(checkEndingSoonRooms, 60 * 1000);
 // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
 EmailProviderRegistry.validateActiveProvider()
   .then((provider) => {
@@ -347,7 +400,7 @@ startEmailWorker();
 // NOTIFY-001A: Authoritative retention maintenance (every 1 hour)
 // Invariant: UNREAD notifications are NEVER purged; only expired READ notifications and aged outbox records.
 const retentionInterval = 60 * 60 * 1000;
-setInterval(async () => {
+serverLifecycle.registerInterval(async () => {
   try {
     const readPurged = await purgeReadNotificationsExpired();
     const sentRetentionDays = Number(config.EMAIL_SENT_RETENTION_DAYS) || 14;
@@ -404,7 +457,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-function requireInternalAuth(req: any, res: any, next: any) {
+function requireInternalAuth(req: Request, res: Response, next: NextFunction): void {
   const secret = config.INTERNAL_API_SECRET;
   if (!secret) {
     const clientIp = String(req.ip || req.socket?.remoteAddress || "");

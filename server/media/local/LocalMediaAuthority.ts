@@ -175,7 +175,7 @@ export class LocalMediaAuthority {
       }
     }
 
-    return this.signaling.relaySignal(socket as any, targetSocketId, payload);
+    return this.signaling.relaySignal(socket, targetSocketId, payload);
   }
 
   public registerPeer(roomId: string, userId: string, peerId: string, socketId: string): void {

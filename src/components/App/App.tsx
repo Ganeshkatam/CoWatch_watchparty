@@ -1976,7 +1976,20 @@ export class App extends React.Component<AppProps, AppState> {
         );
         if (msgIndex >= 0) {
           const chat = [...this.state.chat];
-          chat[msgIndex] = { ...chat[msgIndex], ...data };
+          chat[msgIndex] = { ...chat[msgIndex], ...data, persistFailed: false };
+          this.setState({ chat });
+        }
+      });
+      socket.on("REC:messagePersistFailed", (data: { clientMessageId?: string; error?: string; timestamp?: string }) => {
+        if (!isCurrentGeneration() || !data) return;
+        const msgIndex = this.state.chat.findIndex(
+          (m) =>
+            (data.clientMessageId && m.clientMessageId && m.clientMessageId === data.clientMessageId) ||
+            (data.timestamp && m.timestamp === data.timestamp)
+        );
+        if (msgIndex >= 0) {
+          const chat = [...this.state.chat];
+          chat[msgIndex] = { ...chat[msgIndex], persistFailed: true };
           this.setState({ chat });
         }
       });

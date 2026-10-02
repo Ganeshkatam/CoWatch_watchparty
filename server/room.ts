@@ -608,7 +608,7 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
-    this.localMediaSignaling = new LocalMediaSignaling(this.io.of(this.roomId) as any);
+    this.localMediaSignaling = new LocalMediaSignaling(this.io.of(this.roomId));
     this.localMediaAuthority = new LocalMediaAuthority(postgres, this.localMediaSignaling);
 
     if (roomData) {
@@ -1867,6 +1867,16 @@ export class Room {
         }
       }).catch((err) => {
         console.error("Background message persist error:", err);
+        const failurePayload = {
+          clientMessageId: chatMsg.clientMessageId,
+          roomId: this.roomId,
+          userId: socket?.uid,
+          error: "PERSISTENCE_FAILED",
+          timestamp: chatWithTime.timestamp,
+        };
+        socket?.emit?.("REC:messagePersistFailed", failurePayload);
+        socket?.emit?.("ROOM_MESSAGE_ERROR", failurePayload);
+        this.io.of(this.roomId).emit("REC:messagePersistFailed", failurePayload);
       });
     }
   };

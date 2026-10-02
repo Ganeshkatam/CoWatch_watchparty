@@ -56,6 +56,7 @@ interface ChatMessage extends ChatMessageBase {
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  persistFailed?: boolean;
 }
 
 interface Settings {
