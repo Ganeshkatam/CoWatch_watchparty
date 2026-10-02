@@ -2722,7 +2722,16 @@ export class Room {
         if (currentActualUsers.length === 0 && this.status === "active") {
           this.status = "inactive";
           this.lastUpdateTime = new Date();
-          this.io.of(this.roomId).emit("ROOM_SESSION_STOPPED");
+          this.io.of(this.roomId).emit("SIGNAL:terminateAndExit", {
+            roomId: this.roomId,
+            reason: "host_stopped_permanent",
+            isPermanent: true,
+          });
+          this.io.of(this.roomId).emit("ROOM_SESSION_STOPPED", {
+            isPermanent: true,
+            status: "inactive",
+            roomId: this.roomId,
+          });
 
           if (postgres) {
             await postgres.query(

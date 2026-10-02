@@ -58,6 +58,7 @@ import { RoomRecoveryOverlay } from "../Room/RoomRecoveryOverlay";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import { setDocumentMetadata } from "../../utils/useDocumentMetadata";
+import { terminateAllMedia } from "../../utils/mediaPreflight";
 import {
   updateMediaSessionMetadata,
   updateMediaSessionPlaybackState,
@@ -817,6 +818,8 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   componentWillUnmount() {
+    terminateAllMedia();
+    this.stopPublishingLocalStream();
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
@@ -1396,32 +1399,13 @@ export class App extends React.Component<AppProps, AppState> {
           this.setState({ overlayMsg: getAdmissionErrorMessage(errMsg), state: "connected", initStage: "degraded" });
         }
       });
+      socket.on("SIGNAL:terminateAndExit", (data?: { isPermanent?: boolean; reason?: PostRoomExitReason }) => {
+        if (!isCurrentGeneration()) return;
+        this.handleAuthoritativeRoomTermination(data);
+      });
       socket.on("ROOM_SESSION_STOPPED", (data?: { isPermanent?: boolean; status?: string }) => {
         if (!isCurrentGeneration()) return;
-        if (this.state.isHostSessionEnded || this.isRoomOwner()) {
-          return;
-        }
-        this.stopWaitingPoll();
-        this.socket?.disconnect();
-        const isPerm = Boolean(data?.isPermanent ?? this.state.isPermanentRoom);
-        const ctx: PostRoomContext = {
-          reason: isPerm ? "host_stopped_permanent" : "host_ended_temporary",
-          roomId: this.state.roomId,
-          roomTitle: this.state.roomTitle,
-          isPermanent: isPerm,
-          isHost: false,
-          durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
-          participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
-          mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
-        };
-        savePostRoomContext(ctx);
-        this.setState({
-          isHostSessionEnded: true,
-          isHostSessionPermanent: isPerm,
-          isPermanentRoom: isPerm,
-          isWaitingForHost: false,
-          overlayMsg: "",
-        });
+        this.handleAuthoritativeRoomTermination(data);
       });
       socket.on("REC:sessionStarted", () => {
         if (!isCurrentGeneration()) return;
@@ -1519,6 +1503,8 @@ export class App extends React.Component<AppProps, AppState> {
       socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", (data?: { message?: string }) => {
         if (!isCurrentGeneration()) return;
+        terminateAllMedia();
+        this.stopPublishingLocalStream();
         clearAdmissionSession(this.state.roomId);
         const ctx: PostRoomContext = {
           reason: "kicked",
@@ -1539,6 +1525,8 @@ export class App extends React.Component<AppProps, AppState> {
       });
       socket.on("banned", (data?: { message?: string }) => {
         if (!isCurrentGeneration()) return;
+        terminateAllMedia();
+        this.stopPublishingLocalStream();
         clearAdmissionSession(this.state.roomId);
         const ctx: PostRoomContext = {
           reason: "kicked",
@@ -3754,6 +3742,8 @@ export class App extends React.Component<AppProps, AppState> {
       // Mark as intentional exit to bypass reconnection loops
       this.setState({ leavingRoom: true });
 
+      terminateAllMedia();
+      this.stopPublishingLocalStream();
       this.socket.disconnect();
       const isPerm = Boolean(this.state.isPermanentRoom || this.state.isHostSessionPermanent);
       const isHost = Boolean(this.state.isHost || this.isRoomOwner());
@@ -3776,6 +3766,61 @@ export class App extends React.Component<AppProps, AppState> {
       }
     })();
     return this.cleanExitPromise;
+  };
+
+  private handleAuthoritativeRoomTermination = (data?: {
+    isPermanent?: boolean;
+    reason?: PostRoomExitReason;
+    status?: string;
+  }) => {
+    // 1. Immediately terminate and release all camera, microphone, and WebRTC tracks on participant hardware
+    terminateAllMedia();
+    this.stopPublishingLocalStream();
+
+    // If host already initiated exit or user is the room owner navigating themselves, avoid duplicate push
+    if (this.state.leavingRoom || this.isRoomOwner()) {
+      return;
+    }
+
+    // 2. Stop waiting poll and clear admission
+    this.stopWaitingPoll();
+    clearAdmissionSession(this.state.roomId);
+
+    // 3. Mark leavingRoom to halt reconnection loops and disconnect socket
+    this.setState({
+      leavingRoom: true,
+      isHostSessionEnded: true,
+      isWaitingForHost: false,
+      overlayMsg: "",
+    });
+    try {
+      this.socket?.disconnect();
+    } catch (err) {
+      console.warn("Error disconnecting socket during room termination:", err);
+    }
+
+    // 4. Construct and save post-room context
+    const isPerm = Boolean(data?.isPermanent ?? this.state.isPermanentRoom);
+    const reason: PostRoomExitReason =
+      data?.reason ?? (isPerm ? "host_stopped_permanent" : "host_ended_temporary");
+    const ctx: PostRoomContext = {
+      reason,
+      roomId: this.state.roomId,
+      roomTitle: this.state.roomTitle,
+      isPermanent: isPerm,
+      isHost: false,
+      durationSeconds: Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000)),
+      participantCount: Math.max(this.peakParticipantCount, this.state.participants.length),
+      mediaTitle: this.state.roomMedia ? this.getMediaDisplayName(this.state.roomMedia) : undefined,
+    };
+    savePostRoomContext(ctx);
+
+    // 5. Instantly exit the room to the post-room screen without requiring any manual modal interaction
+    if (this.props.history) {
+      this.props.history.push("/room-ended", ctx);
+    } else {
+      window.location.replace("/room-ended");
+    }
   };
 
   private handleHostEndSessionAuthoritative = async () => {
@@ -3810,6 +3855,8 @@ export class App extends React.Component<AppProps, AppState> {
 
       // Close sockets and set leavingRoom
       this.setState({ leavingRoom: true, isEndSessionConfirmOpen: false });
+      terminateAllMedia();
+      this.stopPublishingLocalStream();
       this.socket?.disconnect();
 
       // Construct host PostRoomContext using authoritative state returned by the operation

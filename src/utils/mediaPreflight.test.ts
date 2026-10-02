@@ -3,6 +3,7 @@ import {
   enumerateMediaDevices,
   queryMediaPermissions,
   stopMediaStream,
+  terminateAllMedia,
   testAutoplayDiagnostic,
   probeWebRtcDiagnostic,
   createMicVolumeMonitor,
@@ -257,6 +258,57 @@ async function runMediaPreflightTests() {
 
     (globalThis as any).AudioContext = originalAudioContext;
     console.log("✓ playSpeakerTestSound tests passed.");
+  }
+
+  // 8. terminateAllMedia test
+  {
+    let videoChatStopped = false;
+    let track1Stopped = false;
+    let track2Stopped = false;
+    let remoteTrackStopped = false;
+    let pcClosed = false;
+
+    (globalThis as any).window = {
+      cowatch: {
+        videoChat: {
+          stopWebRTC: (_isUnmounting: boolean) => {
+            videoChatStopped = true;
+          },
+        },
+        ourStream: {
+          getTracks: () => [
+            { stop: () => { track1Stopped = true; } },
+            { stop: () => { track2Stopped = true; } },
+          ],
+        },
+        remoteStreams: {
+          peer1: {
+            getTracks: () => [
+              { stop: () => { remoteTrackStopped = true; } },
+            ],
+          },
+        },
+        videoPCs: {
+          peer1: {
+            close: () => { pcClosed = true; },
+          },
+        },
+      },
+    };
+
+    terminateAllMedia();
+
+    assert.strictEqual(videoChatStopped, true, "videoChat.stopWebRTC must be called");
+    assert.strictEqual(track1Stopped, true, "Local stream track 1 must be stopped");
+    assert.strictEqual(track2Stopped, true, "Local stream track 2 must be stopped");
+    assert.strictEqual(remoteTrackStopped, true, "Remote stream track must be stopped");
+    assert.strictEqual(pcClosed, true, "RTCPeerConnection must be closed");
+    assert.strictEqual((globalThis as any).window.cowatch.ourStream, undefined, "ourStream must be cleared");
+    assert.deepStrictEqual((globalThis as any).window.cowatch.remoteStreams, {}, "remoteStreams must be cleared");
+    assert.deepStrictEqual((globalThis as any).window.cowatch.videoPCs, {}, "videoPCs must be cleared");
+
+    delete (globalThis as any).window;
+    console.log("✓ terminateAllMedia tests passed.");
   }
 
   console.log("All MediaPreflight tests completed successfully!");

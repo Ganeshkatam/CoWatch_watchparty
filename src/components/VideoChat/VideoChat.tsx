@@ -347,6 +347,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
   }
 
   componentWillUnmount() {
+    this.stopWebRTC(true);
     this.socket?.off("signal", this.handleSignal);
     this.audioBooster.detachAll();
     if (typeof window !== "undefined" && window.cowatch) {
@@ -542,26 +543,39 @@ export class VideoChat extends React.Component<VideoChatProps> {
     }
   };
 
-  stopWebRTC = () => {
+  stopWebRTC = (unmountOption?: boolean | React.SyntheticEvent) => {
+    const isUnmounting = unmountOption === true;
     try {
       this.audioBooster.detachAll();
-      const ourStream = window.cowatch.ourStream;
-      const videoPCs = window.cowatch.videoPCs;
+      const ourStream = window.cowatch?.ourStream;
+      const videoPCs = window.cowatch?.videoPCs;
       if (ourStream) {
         ourStream.getTracks().forEach((track) => {
-          track.stop();
+          try {
+            track.stop();
+          } catch (e) {
+            console.warn("Failed to stop track:", e);
+          }
         });
       }
-      window.cowatch.ourStream = undefined;
-      window.cowatch.remoteStreams = {};
-      Object.keys(videoPCs).forEach((key) => {
-        try {
-          videoPCs[key]?.close();
-        } catch (e) { }
-        delete videoPCs[key];
-      });
-      this.socket?.emit("CMD:leaveVideo");
-      this.forceUpdate();
+      if (window.cowatch) {
+        window.cowatch.ourStream = undefined;
+        window.cowatch.remoteStreams = {};
+      }
+      if (videoPCs) {
+        Object.keys(videoPCs).forEach((key) => {
+          try {
+            videoPCs[key]?.close();
+          } catch (e) { }
+          delete videoPCs[key];
+        });
+      }
+      try {
+        this.socket?.emit("CMD:leaveVideo");
+      } catch (e) { }
+      if (!isUnmounting) {
+        this.forceUpdate();
+      }
     } catch (err) {
       console.error("Critical error in stopWebRTC:", err);
     }

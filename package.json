@@ -55,6 +55,7 @@
     "test:zero-client-db": "tsx src/utils/zeroClientDatabase.test.ts",
     "test:release-matrix": "tsx server/releaseValidationMatrix.test.ts",
     "test:chat-persistence": "tsx server/chat/chatPersistenceFailure.test.ts",
+    "test:room-termination": "tsx server/roomTermination.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

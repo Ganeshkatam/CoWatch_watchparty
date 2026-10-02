@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button, Text, Title, Badge } from "@mantine/core";
 import {
@@ -17,6 +17,7 @@ import {
   PostRoomAction,
   PostRoomContext,
 } from "../../utils/postRoomContext";
+import { terminateAllMedia } from "../../utils/mediaPreflight";
 import styles from "./PostRoom.module.css";
 
 interface PostRoomProps {
@@ -59,6 +60,10 @@ export const PostRoom: React.FC<PostRoomProps> = ({ location: propLocation }) =>
     description: presentation.message,
     noIndex: true,
   });
+
+  useEffect(() => {
+    terminateAllMedia();
+  }, []);
 
   return (
     <div className={styles.pageWrapper}>

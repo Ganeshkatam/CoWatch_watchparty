@@ -2999,6 +2999,13 @@ app.post("/endRoom", async (req, res) => {
       memoryRoom.status = newStatus;
       memoryRoom.isPermanent = isPermanent;
 
+      // Internal control signal to participant devices to terminate media and exit room immediately
+      io.of(memoryRoom.roomId).emit("SIGNAL:terminateAndExit", {
+        roomId,
+        reason: isPermanent ? "host_stopped_permanent" : "host_ended_temporary",
+        isPermanent,
+      });
+
       // Explicit notification to all connected clients before disconnecting
       io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED", {
         isPermanent,
@@ -3014,8 +3021,13 @@ app.post("/endRoom", async (req, res) => {
           : 'This watch party has been ended by the host.',
       });
 
-
-      memoryRoom.disconnectAllSockets();
+      setTimeout(() => {
+        try {
+          memoryRoom.disconnectAllSockets();
+        } catch (e) {
+          console.warn("[endRoom] Error disconnecting sockets:", e);
+        }
+      }, 100);
     }
 
     res.json({
@@ -3086,6 +3098,16 @@ app.delete("/deleteRoom", async (req, res) => {
 
     // Clean up memory structures ONLY after authoritative DB deletion succeeds
     if (memoryRoom) {
+      io.of(memoryRoom.roomId).emit("SIGNAL:terminateAndExit", {
+        roomId,
+        reason: "unavailable",
+        isPermanent: false,
+      });
+      io.of(memoryRoom.roomId).emit("ROOM_SESSION_STOPPED", {
+        isPermanent: false,
+        status: "ended",
+        roomId,
+      });
       memoryRoom.disconnectAllSockets();
       rooms.delete(roomId);
       unregisterRoomNamespace(roomId);

@@ -223,6 +223,44 @@ export function stopMediaStream(stream: MediaStream | null | undefined): void {
 }
 
 /**
+ * Unconditionally stop and release all local media streams, tracks,
+ * peer connections, and audio boosters associated with CoWatch.
+ */
+export function terminateAllMedia(): void {
+  try {
+    if (typeof window !== "undefined" && (window as any).cowatch) {
+      const cowatch = (window as any).cowatch;
+      if (cowatch.videoChat?.stopWebRTC) {
+        try {
+          cowatch.videoChat.stopWebRTC(true);
+        } catch (e) {
+          console.warn("Error stopping videoChat WebRTC:", e);
+        }
+      }
+      if (cowatch.ourStream) {
+        stopMediaStream(cowatch.ourStream);
+        cowatch.ourStream = undefined;
+      }
+      if (cowatch.remoteStreams) {
+        Object.values(cowatch.remoteStreams).forEach((s: any) => stopMediaStream(s));
+        cowatch.remoteStreams = {};
+      }
+      if (cowatch.videoPCs) {
+        Object.keys(cowatch.videoPCs).forEach((k) => {
+          try {
+            cowatch.videoPCs[k]?.close();
+          } catch {}
+          delete cowatch.videoPCs[k];
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("Error in terminateAllMedia:", err);
+  }
+}
+
+
+/**
  * Creates a volume level monitor on an audio track using Web Audio API.
  * Returns an unbind/cleanup function.
  * Audio is strictly NEVER connected to audioContext.destination to prevent loopback.
