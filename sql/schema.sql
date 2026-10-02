@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS public.room_quota_events (
   event_type text NOT NULL,
   created_at timestamptz DEFAULT now() NOT NULL,
   metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-  CONSTRAINT room_quota_events_event_type_check CHECK (event_type = ANY (ARRAY['CREATED'::text, 'DELETED'::text, 'EXPIRED'::text, 'ENDED'::text, 'PERMANENCE_CHANGED'::text, 'REJECTED'::text, 'PURGED'::text])),
+  CONSTRAINT room_quota_events_event_type_check CHECK (event_type = ANY (ARRAY['CREATED'::text, 'DELETED'::text, 'EXPIRED'::text, 'ENDED'::text, 'SESSION_STOPPED'::text, 'PERMANENCE_CHANGED'::text, 'REJECTED'::text, 'PURGED'::text])),
   CONSTRAINT room_quota_events_account_id_fkey FOREIGN KEY (account_id) REFERENCES profiles(id) ON DELETE CASCADE,
   CONSTRAINT room_quota_events_room_id_fkey FOREIGN KEY (room_id) REFERENCES rooms("roomId") ON DELETE SET NULL,
   CONSTRAINT room_quota_events_pkey PRIMARY KEY (id)

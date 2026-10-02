@@ -2973,8 +2973,14 @@ app.post("/endRoom", async (req, res) => {
         [decoded.uid, roomId]
       );
       endResult = qRes.rows?.[0]?.result as { status?: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired'; isPermanent?: boolean } | undefined ?? null;
-    } catch {
-      res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[endRoom] DB error executing end_room_authoritative:", errMsg);
+      if (errMsg.includes("ROOM_NOT_FOUND")) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Only the room host or owner can end this room" } });
+        return;
+      }
+      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Failed to end room session" } });
       return;
     }
 
