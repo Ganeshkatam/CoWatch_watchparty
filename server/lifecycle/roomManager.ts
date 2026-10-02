@@ -37,10 +37,10 @@ export class RoomLifecycleManager {
         participantsLocked: room.participantsLocked,
       },
       playlist: room.playlist,
-      nameMap: (room as any).nameMap,
-      pictureMap: (room as any).pictureMap,
-      subtitle: (room as any).subtitle,
-      loop: (room as any).loop,
+      nameMap: room.nameMap,
+      pictureMap: room.pictureMap,
+      subtitle: room.subtitle,
+      loop: room.loop,
       video: room.video || undefined,
       videoTS: room.videoTS,
       paused: room.paused,
@@ -97,8 +97,9 @@ export class RoomLifecycleManager {
         return { evacuated: false, reason: "ROOM_NOT_FOUND" };
       }
 
-      const currentDbRevision = res.rows[0].lifecycle_revision || 1;
-      const currentStatus = res.rows[0].status;
+      const firstRow = res.rows[0] as { lifecycle_revision?: number; status?: string } | undefined;
+      const currentDbRevision = firstRow?.lifecycle_revision || 1;
+      const currentStatus = firstRow?.status;
 
       if (currentStatus !== "active") {
         return { evacuated: false, reason: "ROOM_NOT_ACTIVE" };
@@ -140,10 +141,10 @@ export class RoomLifecycleManager {
       this.inMemoryRooms.delete(roomId);
 
       return { evacuated: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Failed DB write halts evacuation, keeping room resident in memory
       console.error(`Failed to unload room ${roomId}:`, err);
-      return { evacuated: false, reason: "DB_WRITE_FAILED", error: err.message };
+      return { evacuated: false, reason: "DB_WRITE_FAILED", error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -173,7 +174,7 @@ export class RoomLifecycleManager {
 
       const expiredRoomIds: string[] = [];
       if (res.rows && res.rows.length > 0) {
-        for (const row of res.rows) {
+        for (const row of res.rows as Array<{ roomId: string }>) {
           const roomId = row.roomId;
           await this.db.query(
             `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE "roomId" = $1`,

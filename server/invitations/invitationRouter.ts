@@ -167,9 +167,23 @@ export interface InvitationAdmissionContext {
   };
   callerUid: string;
   sessionId: string;
-  pool: { query: (text: string, params?: any[]) => Promise<any> };
-  roomLookup?: (roomId: string) => any;
-  memoryRooms?: Map<string, any>;
+  pool: {
+    query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>;
+    connect?: () => Promise<{
+      query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>;
+      release?: () => void;
+    }>;
+  };
+  roomLookup?: (roomId: string) => InvitationRoomLike | undefined;
+  memoryRooms?: Map<string, InvitationRoomLike>;
+}
+
+export interface InvitationRoomLike {
+  isHostUid?: (uid: string) => boolean;
+  currentHostUid?: string;
+  maxParticipants?: number;
+  isRoomFull?: (isHost: boolean, sessionId: string, callerUid?: string) => boolean;
+  admittedMembers?: Set<string>;
 }
 
 export interface InvitationAdmissionResult {
@@ -252,9 +266,9 @@ export async function executeInvitationAdmission(
   }
 
   // 7. Atomic transactional boundary: claim invitation and establish durable admission
-  const hasPoolConnect = typeof (pool as any).connect === 'function';
-  if (hasPoolConnect) {
-    const client = await (pool as any).connect();
+  const hasPoolConnect = typeof pool.connect === 'function';
+  if (hasPoolConnect && pool.connect) {
+    const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
@@ -301,7 +315,7 @@ export async function executeInvitationAdmission(
       } catch {}
       throw txErr;
     } finally {
-      client.release();
+      client.release?.();
     }
   } else {
     // Non-pooled fallback (e.g. mock test pool)

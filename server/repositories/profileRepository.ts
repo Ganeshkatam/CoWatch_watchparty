@@ -43,8 +43,9 @@ export class ProfileRepository {
   private getDb(client?: PostgresClient): PostgresClient {
     const db = client || postgres;
     if (!db) {
-      const err = new Error("PostgreSQL client unavailable");
-      (err as any).code = "SERVICE_UNAVAILABLE";
+      const err = Object.assign(new Error("PostgreSQL client unavailable"), {
+        code: "SERVICE_UNAVAILABLE",
+      });
       throw err;
     }
     return db;

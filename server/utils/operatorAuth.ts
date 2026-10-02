@@ -20,9 +20,18 @@ export interface OperatorAuthResult {
   operatorId?: string;
 }
 
+export interface SupabaseAuthAdminLike {
+  auth: {
+    getUser: (token: string) => Promise<{
+      data: { user: { id: string; app_metadata?: { role?: string; is_admin?: boolean } } | null };
+      error: unknown;
+    }>;
+  };
+}
+
 export async function authenticateOperator(
-  req: Request | { headers?: Record<string, any> },
-  customSupabaseClient?: any
+  req: Request | { headers?: Record<string, string | string[] | undefined> },
+  customSupabaseClient?: SupabaseAuthAdminLike
 ): Promise<OperatorAuthResult> {
   // Enforce: Operator keys are accepted EXCLUSIVELY via HTTP headers.
   // Query parameters (?key=...) are strictly forbidden to prevent credential leakage in logs, history, and referrers.

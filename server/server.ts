@@ -3097,19 +3097,19 @@ app.post("/endRoom", async (req, res) => {
     }
 
     // 1. Authoritative DB transition: atomic decision on status ('inactive' for permanent, 'ended' for temporary)
-    let endResult: any = null;
+    let endResult: { status?: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired'; isPermanent?: boolean } | null = null;
     try {
       const qRes = await postgres.query(
         `SELECT public.end_room_authoritative($1, $2, 'host') AS result`,
         [decoded.uid, roomId]
       );
-      endResult = qRes.rows?.[0]?.result;
-    } catch (dbErr: any) {
+      endResult = qRes.rows?.[0]?.result as { status?: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired'; isPermanent?: boolean } | undefined ?? null;
+    } catch {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }
 
-    const newStatus: string = endResult?.status || 'ended';
+    const newStatus: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired' = endResult?.status === 'inactive' ? 'inactive' : 'ended';
     const isPermanent: boolean = Boolean(endResult?.isPermanent);
 
     if (!isPermanent && postgres) {
@@ -3121,7 +3121,7 @@ app.post("/endRoom", async (req, res) => {
 
     // 2. Broadcast ROOM_SESSION_STOPPED and system message, stop VM, then disconnect
     if (memoryRoom) {
-      memoryRoom.status = newStatus as any;
+      memoryRoom.status = newStatus;
       memoryRoom.isPermanent = isPermanent;
 
       // Explicit notification to all connected clients before disconnecting

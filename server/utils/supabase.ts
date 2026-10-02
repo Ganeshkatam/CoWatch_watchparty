@@ -49,7 +49,18 @@ export async function validateToken(token: string, requireConfirmation: boolean 
  * Supabase Auth user subject (user.id). Any caller-supplied UID parameter is strictly
  * checked against user.id and rejected on mismatch.
  */
-export async function validateUserToken(uidOrToken: string, token?: string, requireConfirmation: boolean = true) {
+export interface ValidatedUserToken {
+  uid: string;
+  email?: string;
+  email_verified: boolean;
+  user_metadata?: Record<string, unknown>;
+}
+
+export async function validateUserToken(
+  uidOrToken: string,
+  token?: string,
+  requireConfirmation: boolean = true
+): Promise<ValidatedUserToken | "EMAIL_NOT_VERIFIED" | undefined> {
   const actualToken = token || uidOrToken;
   const claimedUid = token ? uidOrToken : undefined;
   if (!supabaseUrl || !supabaseSecretKey || !actualToken) {
@@ -73,7 +84,12 @@ export async function validateUserToken(uidOrToken: string, token?: string, requ
       }
     }
 
-    return { uid: user.id, email: user.email, email_verified: user.email_confirmed_at != null };
+    return {
+      uid: user.id,
+      email: user.email,
+      email_verified: user.email_confirmed_at != null,
+      user_metadata: user.user_metadata as Record<string, unknown> | undefined,
+    };
   } catch (e) {
     console.log(e);
     return undefined;

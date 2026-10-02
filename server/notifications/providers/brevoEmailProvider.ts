@@ -60,10 +60,17 @@ export class BrevoEmailProvider implements EmailProvider {
       return err;
     }
 
-    const anyErr = err as any;
-    if (isAxiosError(err) || (anyErr && typeof anyErr === 'object' && ('response' in anyErr || 'code' in anyErr))) {
-      const status = anyErr.response?.status ?? 0;
-      const data = anyErr.response?.data;
+    interface HttpErrorLike {
+      response?: { status?: number; data?: unknown };
+      code?: string;
+      message?: string;
+    }
+
+    const errLike = (typeof err === "object" && err !== null) ? (err as HttpErrorLike) : undefined;
+    if (isAxiosError(err) || (errLike && (errLike.response !== undefined || errLike.code !== undefined))) {
+      const status = errLike?.response?.status ?? 0;
+      const data = errLike?.response?.data;
+      const code = errLike?.code;
 
       if (status === 429) {
         return new EmailProviderError(`Brevo rate limited (HTTP 429)`, {
@@ -92,12 +99,12 @@ export class BrevoEmailProvider implements EmailProvider {
         });
       }
 
-      if (status >= 500 || status === 0 || anyErr.code === 'ECONNABORTED' || anyErr.code === 'ETIMEDOUT') {
-        return new EmailProviderError(`Brevo server or network timeout (${status || anyErr.code})`, {
+      if (status >= 500 || status === 0 || code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
+        return new EmailProviderError(`Brevo server or network timeout (${status || code})`, {
           category: 'TRANSIENT',
           provider: this.name,
           code: 'BREVO_TRANSIENT_FAILURE',
-          details: data ?? anyErr.message,
+          details: data ?? errLike?.message,
         });
       }
 

@@ -251,7 +251,7 @@ export async function updateDeliveryStatusByProviderMessageId(
   }
 
   let whereClause = 'WHERE provider_message_id = $1';
-  const params: any[] = extraColumnClause
+  const params: unknown[] = extraColumnClause
     ? [providerMessageId, status, timestamp]
     : [providerMessageId, status];
 

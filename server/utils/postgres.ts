@@ -1,26 +1,31 @@
-import { Pool, type PoolClient, type QueryResult } from "pg";
+import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 import config from "../config.ts";
 
 export type PostgresClient = Pool | PoolClient;
+
+export interface ExtendedPoolConfig extends PoolConfig {
+  prepareThreshold?: number;
+}
 
 export let postgres: Pool | undefined = undefined;
 if (config.DATABASE_URL) {
   postgres = createPool(config.DATABASE_URL);
 }
 
-export function setPostgresForTesting(pool: any): void {
-  postgres = pool;
+export function setPostgresForTesting(pool: Pool | { query: (...args: any[]) => Promise<any> } | null | undefined): void {
+  postgres = (pool as Pool) || undefined;
 }
 
 function createPool(connectionString: string): Pool {
-  const pool = new Pool({
+  const poolConfig: ExtendedPoolConfig = {
     connectionString,
     ssl: { rejectUnauthorized: false },
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     prepareThreshold: 0,
-  } as any);
+  };
+  const pool = new Pool(poolConfig);
 
   // Handle errors on idle clients in the pool to prevent unhandled ECONNRESET crashes
   pool.on("error", (err) => {
@@ -47,7 +52,7 @@ export async function updateObject(
   table: string,
   object: AnyDict,
   condition: AnyDict,
-): Promise<QueryResult<any>> {
+): Promise<QueryResult<Record<string, unknown>>> {
   const columns = Object.keys(object);
   const values = Object.values(object);
   // TODO support compound conditions, not just one
@@ -68,7 +73,7 @@ export async function insertObject(
   postgres: PostgresClient,
   table: string,
   object: AnyDict,
-): Promise<QueryResult<any>> {
+): Promise<QueryResult<Record<string, unknown>>> {
   const columns = Object.keys(object);
   const values = Object.values(object);
   let query = `INSERT INTO ${table} (${columns.map((c) => `"${c}"`).join(",")})
@@ -84,7 +89,7 @@ export async function upsertObject(
   table: string,
   object: AnyDict,
   conflict: BooleanDict,
-): Promise<QueryResult<any>> {
+): Promise<QueryResult<Record<string, unknown>>> {
   const columns = Object.keys(object);
   const values = Object.values(object);
   let query = `INSERT INTO ${table} (${columns.map((c) => `"${c}"`).join(",")})

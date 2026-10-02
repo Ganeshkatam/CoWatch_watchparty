@@ -121,7 +121,11 @@ export async function runWorkerCycle(): Promise<void> {
             idempotencyKey: job.provider_idempotency_key ?? `notify-email:${job.id}`,
           });
 
-          const messageId = result.providerMessageId || (result as any).messageId || `sent:${job.id}`;
+          const messageId =
+            result.providerMessageId ||
+            (result && typeof result === "object" && "messageId" in result
+              ? String((result as { messageId?: unknown }).messageId)
+              : `sent:${job.id}`);
           await markOutboxSent(job.id, messageId, jobProvider.name);
           console.log(`[EmailWorker] Sent job ${job.id} via ${jobProvider.name} (profile ${profile.id}): ${messageId}`);
         } catch (err) {

@@ -89,8 +89,9 @@ export async function consumeRateLimitToken(
       remaining: Number(row.remaining) || 0,
       retryAfterSeconds: Number(row.retry_after_seconds) || 0,
     };
-  } catch (err: any) {
-    if (err && (err.code === '42883' || err.code === '42P01')) {
+  } catch (err: unknown) {
+    const errCode = (err as { code?: string })?.code;
+    if (errCode === '42883' || errCode === '42P01') {
       dbFunctionUnavailable = true;
       console.warn('[DurableRateLimit] PostgreSQL rate limit function/table unavailable, tripping circuit breaker to in-memory fallback.');
     } else {

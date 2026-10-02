@@ -9,7 +9,7 @@ import { notificationService } from "../notifications/notificationService.ts";
 import config from "../config.ts";
 
 export interface DatabasePool {
-  query<T = any>(text: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
+  query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number }>;
 }
 
 export class AdmissionCoordinator {
@@ -53,11 +53,11 @@ export class AdmissionCoordinator {
         };
       }
 
-      const row = res.rows[0];
+      const row = res.rows[0] as Record<string, unknown>;
       let status: RoomLifecycleStatus = (row.status as RoomLifecycleStatus) || "inactive";
       const isPermanent = Boolean(row.isPermanent);
-      const expiresAt = row.expiresAt ? new Date(row.expiresAt).getTime() : null;
-      const ownerId = row.owner_id;
+      const expiresAt = row.expiresAt ? new Date(row.expiresAt as string).getTime() : null;
+      const ownerId = row.owner_id as string | undefined;
       const isActorOwner = Boolean((actor.uid && actor.uid === ownerId) || actor.isOwner);
 
       // 1. Expiration check on ephemeral rooms
@@ -143,13 +143,13 @@ export class AdmissionCoordinator {
         status: "active",
         roomRow: row,
       };
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Error evaluating room admission:", e);
       return {
         allowed: false,
         status: "inactive",
         reason: "DB_UNAVAILABLE",
-        error: e.message,
+        error: e instanceof Error ? e.message : String(e),
       };
     }
   }
@@ -162,7 +162,13 @@ export class AdmissionCoordinator {
     if (!this.db) return { extended: false, newExpiresAt: null, error: "DB_UNAVAILABLE" };
 
     try {
-      const res = await this.db.query(
+      const res = await this.db.query<{
+        roomId: string;
+        status: string;
+        expiresAt: string | Date | null;
+        creationTime: string | Date | null;
+        isPermanent: boolean | null;
+      }>(
         `SELECT "roomId", status, "expiresAt", "creationTime", "isPermanent"
          FROM rooms
          WHERE "roomId" = $1
@@ -196,8 +202,8 @@ export class AdmissionCoordinator {
       );
 
       return { extended: true, newExpiresAt: targetDate };
-    } catch (e: any) {
-      return { extended: false, newExpiresAt: null, error: e.message };
+    } catch (e: unknown) {
+      return { extended: false, newExpiresAt: null, error: e instanceof Error ? e.message : String(e) };
     }
   }
 }

@@ -31,6 +31,12 @@ import { notificationService } from "./notifications/notificationService.ts";
 import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
 import { LocalMediaSignaling } from "./media/local/LocalMediaSignaling.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
+export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
+  return Object.assign(new Error(code), {
+    data: { code, message },
+  });
+}
+
 export interface RoomMessageRow {
   id: string;
   roomId: string;
@@ -38,7 +44,7 @@ export interface RoomMessageRow {
   message: string;
   message_type: 'user' | 'system';
   event_type: string | null;
-  metadata: any | null;
+  metadata: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date | null;
   profile_name?: string;
@@ -52,7 +58,7 @@ export async function persistRoomMessage(
   message: string,
   messageType: 'user' | 'system' = 'user',
   eventType: string | null = null,
-  metadata: any | null = null,
+  metadata: Record<string, unknown> | null = null,
   clientMessageId: string | null = null
 ): Promise<RoomMessageRow | null> {
   if (!postgres) return null;
@@ -92,7 +98,7 @@ export async function loadRoomMessages(roomId: string, limit: number = 50, befor
       LEFT JOIN profiles p ON rm.user_id = p.id
       WHERE rm.room_id = $1
     `;
-    const params: any[] = [roomId];
+    const params: unknown[] = [roomId];
 
     if (beforeCursor) {
       if (typeof beforeCursor === 'string') {
@@ -189,8 +195,8 @@ export class Room {
   public paused = false;
   public loop = false;
   private chat: ChatMessage[] = [];
-  private nameMap: StringDict = {};
-  private pictureMap: StringDict = {};
+  public nameMap: StringDict = {};
+  public pictureMap: StringDict = {};
   private uidToNameMap: StringDict = {};
   private uidToPictureMap: StringDict = {};
 
@@ -258,6 +264,10 @@ export class Room {
     if (clientId && this.bannedIdentities.has(clientId)) return true;
     if (uid && this.bannedIdentities.has(uid)) return true;
     return false;
+  };
+
+  public addBannedIdentity = (identity: string): void => {
+    if (identity) this.bannedIdentities.add(identity);
   };
 
   public hasParticipantUid = (uid: string): boolean => {
@@ -776,33 +786,18 @@ export class Room {
           );
           if (banRes.rowCount && banRes.rowCount > 0) {
             if (authUid) this.bannedIdentities.add(authUid);
-            const err = new Error("BANNED_FROM_ROOM");
-            (err as any).data = {
-              code: "BANNED_FROM_ROOM",
-              message: "You have been removed from this room and cannot rejoin.",
-            };
-            next(err);
+            next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
             return;
           }
         } catch (dbErr) {
           console.error("Failed to check room_bans in postgres:", dbErr);
-          const err = new Error("SERVICE_UNAVAILABLE");
-          (err as any).data = {
-            code: "SERVICE_UNAVAILABLE",
-            message: "Unable to verify authorization state. Please try again.",
-          };
-          next(err);
+          next(makeHandshakeError("SERVICE_UNAVAILABLE", "Unable to verify authorization state. Please try again."));
           return;
         }
       }
 
       if (this.isBanned(clientId, authUid)) {
-        const err = new Error("BANNED_FROM_ROOM");
-        (err as any).data = {
-          code: "BANNED_FROM_ROOM",
-          message: "You have been removed from this room and cannot rejoin.",
-        };
-        next(err);
+        next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
         return;
       }
 
@@ -813,12 +808,7 @@ export class Room {
       if (this.participantsLocked && !isOwner) {
         const isAdmitted = this.verifyAdmittedSession(sessionId, authUid);
         if (!isAdmitted) {
-          const err = new Error("PARTICIPANTS_LOCKED");
-          (err as any).data = {
-            code: "PARTICIPANTS_LOCKED",
-            message: "This room is currently locked to existing participants.",
-          };
-          next(err);
+          next(makeHandshakeError("PARTICIPANTS_LOCKED", "This room is currently locked to existing participants."));
           return;
         }
       }
@@ -827,12 +817,7 @@ export class Room {
       // Flow: Creds -> Lock Policy -> Existing Session -> Capacity Check -> ADMIT or ROOM_FULL
       // - If room is full, reject with ROOM_FULL unless owner or existing admitted session reconnecting
       if (this.isRoomFull(isOwner, sessionId, authUid)) {
-        const err = new Error("ROOM_FULL");
-        (err as any).data = {
-          code: "ROOM_FULL",
-          message: "This room has reached its participant limit.",
-        };
-        next(err);
+        next(makeHandshakeError("ROOM_FULL", "This room has reached its participant limit."));
         return;
       }
 
@@ -999,7 +984,10 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        this.playVideo(socket, (data as any)?.operationId);
+        const opId = (typeof data === "object" && data !== null && "operationId" in data)
+          ? String((data as { operationId?: unknown }).operationId)
+          : undefined;
+        this.playVideo(socket, opId);
       });
       socket.on("CMD:pause", (data?: unknown) => {
         if (!validateNotExpired()) return;
@@ -1010,7 +998,10 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        this.pauseVideo(socket, (data as any)?.operationId);
+        const opId = (typeof data === "object" && data !== null && "operationId" in data)
+          ? String((data as { operationId?: unknown }).operationId)
+          : undefined;
+        this.pauseVideo(socket, opId);
       });
       socket.on("CMD:seek", (data: unknown) => {
         if (!validateNotExpired()) return;
@@ -1021,7 +1012,19 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        this.seekVideo(socket, data as any);
+        let seekPayload: number | { time: number; operationId?: string };
+        if (typeof data === "number") {
+          seekPayload = data;
+        } else if (typeof data === "object" && data !== null && "time" in data) {
+          const d = data as { time: unknown; operationId?: unknown };
+          seekPayload = {
+            time: Number(d.time) || 0,
+            operationId: d.operationId ? String(d.operationId) : undefined,
+          };
+        } else {
+          seekPayload = Number(data) || 0;
+        }
+        this.seekVideo(socket, seekPayload);
       });
       socket.on("CMD:playbackRate", (data: unknown) => {
         if (!validateNotExpired()) return;
@@ -1032,7 +1035,19 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        this.setPlaybackRate(socket, data as any);
+        let ratePayload: number | { rate: number; operationId?: string };
+        if (typeof data === "number") {
+          ratePayload = data;
+        } else if (typeof data === "object" && data !== null && "rate" in data) {
+          const d = data as { rate: unknown; operationId?: unknown };
+          ratePayload = {
+            rate: Number(d.rate) || 1,
+            operationId: d.operationId ? String(d.operationId) : undefined,
+          };
+        } else {
+          ratePayload = Number(data) || 1;
+        }
+        this.setPlaybackRate(socket, ratePayload);
       });
       socket.on("CMD:loop", (data: unknown) => {
         if (!validateNotExpired()) return;
@@ -1130,7 +1145,7 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        const locked = Boolean((data as any)?.locked);
+        const locked = Boolean((data as { locked?: unknown })?.locked);
         await this.setParticipantsLock(socket, locked);
       });
       socket.on("CMD:askHost", () => {

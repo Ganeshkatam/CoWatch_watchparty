@@ -158,6 +158,11 @@ export function verifyAdmissionToken(
   return { valid: true, payload };
 }
 
+export interface AdmissionMemoryRoom {
+  maxParticipants?: number | null;
+  isRoomFull?: (isHost: boolean, sessionId?: string, callerUid?: string) => boolean;
+}
+
 export interface IssueRoomAdmissionTokenParams {
   roomId: string;
   callerUid: string;
@@ -170,9 +175,9 @@ export interface IssueRoomAdmissionTokenParams {
     expiresAt?: string | null;
     participants_locked?: boolean | null;
     max_participants?: number | null;
-    [key: string]: any;
+    [key: string]: unknown;
   };
-  memoryRoom?: any;
+  memoryRoom?: AdmissionMemoryRoom;
   isHost: boolean;
   ttlSeconds?: number;
   isRestoration?: boolean;

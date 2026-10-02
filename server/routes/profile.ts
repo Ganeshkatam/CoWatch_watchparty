@@ -1,5 +1,5 @@
 import express from "express";
-import { validateUserToken } from "../utils/supabase.ts";
+import { validateUserToken, type ValidatedUserToken } from "../utils/supabase.ts";
 import { consumeRateLimitToken } from "../utils/durableRateLimit.ts";
 import {
   validateProfilePatch,
@@ -35,10 +35,10 @@ profileRouter.get("/profile", async (req: express.Request, res: express.Response
     return;
   }
 
-  let decoded: any;
+  let decoded: ValidatedUserToken;
   try {
-    decoded = await validateUserToken("", token, false);
-    if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token, false);
+    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
@@ -47,6 +47,7 @@ profileRouter.get("/profile", async (req: express.Request, res: express.Response
       });
       return;
     }
+    decoded = validated;
   } catch {
     res.status(401).json({
       error: {
@@ -78,12 +79,13 @@ profileRouter.get("/profile", async (req: express.Request, res: express.Response
       decoded.email
     );
     res.status(200).json({ profile });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorObj = err as { statusCode?: number; code?: string; message?: string };
     console.error("GET /api/profile error:", err);
-    res.status(err.statusCode || 500).json({
+    res.status(errorObj.statusCode || 500).json({
       error: {
-        code: err.code || "INTERNAL_SERVER_ERROR",
-        message: err.message || "An unexpected error occurred loading profile",
+        code: errorObj.code || "INTERNAL_SERVER_ERROR",
+        message: errorObj.message || "An unexpected error occurred loading profile",
       },
     });
   }
@@ -106,10 +108,10 @@ profileRouter.patch("/profile", async (req: express.Request, res: express.Respon
     return;
   }
 
-  let decoded: any;
+  let decoded: ValidatedUserToken;
   try {
-    decoded = await validateUserToken("", token, false);
-    if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token, false);
+    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
@@ -118,6 +120,7 @@ profileRouter.patch("/profile", async (req: express.Request, res: express.Respon
       });
       return;
     }
+    decoded = validated;
   } catch {
     res.status(401).json({
       error: {
@@ -152,7 +155,7 @@ profileRouter.patch("/profile", async (req: express.Request, res: express.Respon
   try {
     const updated = await profileService.updateProfile(decoded.uid, validation.data);
     res.status(200).json({ profile: updated });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof ProfileDomainError) {
       res.status(err.statusCode).json({
         error: {
@@ -188,10 +191,10 @@ profileRouter.get("/users/:userId/public-profile", async (req: express.Request, 
     return;
   }
 
-  let decoded: any;
+  let decoded: ValidatedUserToken;
   try {
-    decoded = await validateUserToken("", token, false);
-    if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token, false);
+    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
@@ -200,6 +203,7 @@ profileRouter.get("/users/:userId/public-profile", async (req: express.Request, 
       });
       return;
     }
+    decoded = validated;
   } catch {
     res.status(401).json({
       error: {
@@ -238,7 +242,7 @@ profileRouter.get("/users/:userId/public-profile", async (req: express.Request, 
   try {
     const publicProfile = await profileService.getPublicProfile(userId);
     res.status(200).json({ profile: publicProfile });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof ProfileDomainError) {
       res.status(err.statusCode).json({
         error: {

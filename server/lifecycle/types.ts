@@ -29,7 +29,7 @@ export interface RoomSnapshot {
   timeline: TimelineSnapshot;
   settings: RoomSettingsSnapshot;
   locks: RoomLocksSnapshot;
-  playlist?: any[];
+  playlist?: unknown[];
   nameMap?: Record<string, string>;
   pictureMap?: Record<string, string>;
   subtitle?: string;
@@ -54,7 +54,7 @@ export interface AdmissionResult {
   status: RoomLifecycleStatus;
   reason?: "ROOM_NOT_FOUND" | "ROOM_EXPIRED" | "ROOM_ENDED" | "ROOM_SCHEDULED_NOT_STARTED" | "ROOM_INACTIVE" | "INVALID_PASSCODE" | "BANNED" | "ROOM_FULL" | "DB_UNAVAILABLE";
   isColdStart?: boolean;
-  roomRow?: any;
+  roomRow?: Record<string, unknown>;
   error?: string;
 }
 
@@ -68,14 +68,14 @@ export const isTerminalRoom = (
     isPermanent?: boolean | null;
     status?: string | null;
     expiresAt?: string | null;
-    [key: string]: any;
+    [key: string]: unknown;
   } | null,
   now: number = Date.now()
 ): boolean => {
   if (!room) return false;
   if (room.isPermanent) return false;
   if (room.status === "ended" || room.status === "expired") return true;
-  const expiry = room.expiresAt || (room as any)?.expiresAt;
+  const expiry = room.expiresAt;
   if (expiry && new Date(expiry).getTime() <= now) return true;
   return false;
 };

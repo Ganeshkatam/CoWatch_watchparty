@@ -125,7 +125,7 @@ export function isValidUuid(id: string): boolean {
  * Validates the body of a PATCH /api/profile request.
  * Enforces explicit rejection of unknown and protected fields.
  */
-export function validateProfilePatch(body: any): ValidationResult<ProfilePatchInput> {
+export function validateProfilePatch(body: unknown): ValidationResult<ProfilePatchInput> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return {
       success: false,
@@ -136,7 +136,8 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
     };
   }
 
-  const keys = Object.keys(body);
+  const payload = body as Record<string, unknown>;
+  const keys = Object.keys(payload);
   if (keys.length === 0) {
     return {
       success: false,
@@ -172,8 +173,8 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
   const sanitized: ProfilePatchInput = {};
 
   // 2. Attribute-specific validations
-  if (body.display_name !== undefined) {
-    if (typeof body.display_name !== "string") {
+  if (payload.display_name !== undefined) {
+    if (typeof payload.display_name !== "string") {
       return {
         success: false,
         error: {
@@ -182,7 +183,7 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
         },
       };
     }
-    const trimmed = body.display_name.trim();
+    const trimmed = payload.display_name.trim();
     if (trimmed.length < 1 || trimmed.length > 50) {
       return {
         success: false,
@@ -195,8 +196,8 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
     sanitized.display_name = trimmed;
   }
 
-  if (body.username !== undefined) {
-    if (typeof body.username !== "string") {
+  if (payload.username !== undefined) {
+    if (typeof payload.username !== "string") {
       return {
         success: false,
         error: {
@@ -205,7 +206,7 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
         },
       };
     }
-    const trimmed = body.username.trim();
+    const trimmed = payload.username.trim();
     if (!USERNAME_REGEX.test(trimmed)) {
       return {
         success: false,
@@ -218,11 +219,11 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
     sanitized.username = trimmed;
   }
 
-  if (body.avatar_url !== undefined) {
-    if (body.avatar_url === null) {
+  if (payload.avatar_url !== undefined) {
+    if (payload.avatar_url === null) {
       sanitized.avatar_url = null;
-    } else if (typeof body.avatar_url === "string") {
-      const trimmed = body.avatar_url.trim();
+    } else if (typeof payload.avatar_url === "string") {
+      const trimmed = payload.avatar_url.trim();
       if (!isValidAvatarUrl(trimmed)) {
         return {
           success: false,
@@ -244,8 +245,8 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
     }
   }
 
-  if (body.pref_appearance_mode !== undefined) {
-    if (!["light", "mantine", "system"].includes(body.pref_appearance_mode)) {
+  if (payload.pref_appearance_mode !== undefined) {
+    if (payload.pref_appearance_mode !== "light" && payload.pref_appearance_mode !== "mantine" && payload.pref_appearance_mode !== "system") {
       return {
         success: false,
         error: {
@@ -254,7 +255,7 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
         },
       };
     }
-    sanitized.pref_appearance_mode = body.pref_appearance_mode;
+    sanitized.pref_appearance_mode = payload.pref_appearance_mode;
   }
 
   const booleanPrefs = [
@@ -266,8 +267,8 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
   ] as const;
 
   for (const pref of booleanPrefs) {
-    if (body[pref] !== undefined) {
-      if (typeof body[pref] !== "boolean") {
+    if (payload[pref] !== undefined) {
+      if (typeof payload[pref] !== "boolean") {
         return {
           success: false,
           error: {
@@ -276,7 +277,7 @@ export function validateProfilePatch(body: any): ValidationResult<ProfilePatchIn
           },
         };
       }
-      sanitized[pref] = body[pref];
+      sanitized[pref] = payload[pref] as boolean;
     }
   }
 

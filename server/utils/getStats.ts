@@ -60,7 +60,7 @@ export async function getStats() {
 
 
       let rosterLength = 0;
-      let roster: any[] = [];
+      let roster: unknown[] = [];
       const batchData = batchPresence[dbRoom.roomId];
       if (batchData) {
         try {

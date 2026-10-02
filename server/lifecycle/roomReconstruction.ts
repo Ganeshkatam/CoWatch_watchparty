@@ -1,8 +1,23 @@
-import { CURRENT_SCHEMA_VERSION, type RoomSnapshot } from "./types.ts";
+import { CURRENT_SCHEMA_VERSION, type RoomSnapshot, type RoomLifecycleStatus } from "./types.ts";
 import { TimelineAuthority } from "../timelineAuthority.ts";
 import { Room } from "../room.ts";
 import { Server } from "socket.io";
 import type { DatabasePool } from "./admissionCoordinator.ts";
+
+export type ReconstructRoomInput = PersistentRoom | {
+  roomId: string;
+  data?: unknown;
+  status?: string;
+  owner_id?: string;
+  isPermanent?: boolean | null;
+  expiresAt?: string | Date | null;
+  startedAt?: string | Date | null;
+  roomTitle?: string | null;
+  roomDescription?: string | null;
+  mediaPath?: string | null;
+  participants_locked?: boolean | null;
+  max_participants?: number | null;
+};
 
 export class RoomReconstructor {
   private db: DatabasePool | null;
@@ -12,7 +27,7 @@ export class RoomReconstructor {
   }
 
   public async reconstructRoom(
-    row: any,
+    row: ReconstructRoomInput,
     io: Server
   ): Promise<{ room: Room; snapshot?: RoomSnapshot; error?: string }> {
     const rawData = row.data;
@@ -30,14 +45,14 @@ export class RoomReconstructor {
     const room = new Room(io, roomId, snapshot ? JSON.stringify(snapshot) : undefined);
 
     // Hydrate lifecycle properties
-    room.status = row.status || "active";
+    room.status = (row.status as RoomLifecycleStatus) || "active";
     room.owner_id = row.owner_id || "";
     room.isPermanent = Boolean(row.isPermanent);
     room.expiresAt = row.expiresAt ? new Date(row.expiresAt) : undefined;
     room.startedAt = row.startedAt ? new Date(row.startedAt) : undefined;
     room.roomTitle = row.roomTitle || undefined;
     room.roomDescription = row.roomDescription || undefined;
-    room.mediaPath = row.mediaPath || undefined;
+    room.mediaPath = (row as { mediaPath?: string | null }).mediaPath || undefined;
     room.participantsLocked = Boolean(row.participants_locked);
     room.maxParticipants = typeof row.max_participants === "number" ? row.max_participants : 10;
 
@@ -68,9 +83,9 @@ export class RoomReconstructor {
           [roomId]
         );
         if (bansRes.rows) {
-          for (const b of bansRes.rows) {
-            if (b.client_identity) (room as any).bannedIdentities?.add(b.client_identity);
-            if (b.user_id) (room as any).bannedIdentities?.add(b.user_id);
+          for (const b of bansRes.rows as Array<{ client_identity?: string; user_id?: string }>) {
+            if (b.client_identity) room.addBannedIdentity(b.client_identity);
+            if (b.user_id) room.addBannedIdentity(b.user_id);
           }
         }
       } catch (err) {

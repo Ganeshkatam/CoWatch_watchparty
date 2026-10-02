@@ -12,7 +12,7 @@ async function statsTimeSeries() {
     try {
       const stats = await getStats();
 
-      const datapoint: AnyDict = {
+      const datapoint: Record<string, unknown> = {
         time: new Date(),
         currentUsers: stats.counts.currentUsers,
 
@@ -30,8 +30,9 @@ async function statsTimeSeries() {
         await c.lpush("timeSeries", JSON.stringify(datapoint));
         await c.ltrim("timeSeries", 0, 288);
       });
-    } catch (e: any) {
-      console.warn(`[TIMESERIES] %s when collecting stats`, e.code);
+    } catch (e: unknown) {
+      const errCode = (e as { code?: string })?.code || "UNKNOWN";
+      console.warn(`[TIMESERIES] %s when collecting stats`, errCode);
     }
     console.timeEnd("timeSeries");
   }

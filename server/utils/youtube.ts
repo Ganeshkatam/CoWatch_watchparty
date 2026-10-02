@@ -263,12 +263,19 @@ export const scrapeYoutubeSearch = async (
       if (invRes.ok) {
         const invData = await invRes.json();
         if (Array.isArray(invData) && invData.length > 0) {
-          const items: PlaylistVideo[] = invData.map((d: any) => ({
-            url: `https://www.youtube.com/watch?v=${d.videoId}`,
+          interface InvidiousVideoItem {
+            videoId?: string;
+            title?: string;
+            videoThumbnails?: Array<{ url?: string }>;
+            author?: string;
+            lengthSeconds?: number | string;
+          }
+          const items: PlaylistVideo[] = invData.map((d: InvidiousVideoItem) => ({
+            url: `https://www.youtube.com/watch?v=${d.videoId || ""}`,
             name: d.title || "YouTube Video",
             img:
               d.videoThumbnails?.[0]?.url ||
-              `https://i.ytimg.com/vi/${d.videoId}/hqdefault.jpg`,
+              `https://i.ytimg.com/vi/${d.videoId || ""}/hqdefault.jpg`,
             channel: d.author || "YouTube",
             duration: Number(d.lengthSeconds) || 0,
             type: "youtube",
