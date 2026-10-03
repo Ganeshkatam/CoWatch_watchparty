@@ -895,23 +895,23 @@ async function runTests() {
   }
   console.log(`✓ 8.4 RoomAction Exhaustiveness Verified: All ${definedActions.length} RoomActions accounted for and gated in pure matrix`);
 
-  // --- 8.5: REST Mutating Route Authorization Firewall ---
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server/server.ts'), 'utf-8');
   const notificationRouterSource = fs.readFileSync(path.join(projectRoot, 'server/notifications/notificationRouter.ts'), 'utf-8');
   const operatorRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/operatorRouter.ts'), 'utf-8');
+  const roomLifecycleRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/roomLifecycleRouter.ts'), 'utf-8');
 
   const REST_MUTATING_ENDPOINTS = [
     { name: '/updateRoomSettings', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/updateRoomCover', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
-    { name: '/extendRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
-    { name: '/startRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
-    { name: '/endRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
-    { name: '/deleteRoom', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/extendRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/startRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/endRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/deleteRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/api/notifications/invite', source: notificationRouterSource, requiresJwt: true, requiresHostOrOwner: true },
   ];
 
   for (const ep of REST_MUTATING_ENDPOINTS) {
-    const epRegex = new RegExp(`app\\.(?:post|put|delete|patch)\\(\\s*["']${ep.name}["']([\\s\\S]*?)(?:app\\.(?:get|post|put|delete|patch)|router\\.)`, 'm');
+    const epRegex = new RegExp(`(?:app|router)\\.(?:post|put|delete|patch)\\(\\s*["']${ep.name}["']([\\s\\S]*?)(?:(?:app|router)\\.(?:get|post|put|delete|patch)|router\\.|return\\s+router)`, 'm');
     const matchedContent = ep.name.includes('/api/notifications')
       ? ep.source
       : ep.source.match(epRegex)?.[1] || '';
