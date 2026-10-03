@@ -9,7 +9,7 @@ import http from "node:http";
 import { Server } from "socket.io";
 import { Room } from "./room.ts";
 import { metricsRedis, edgeRedis, redisCount, redisEdge } from "./utils/redis.ts";
-import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
+import { deleteUser, validateUserToken, supabaseAdmin } from "./utils/supabase.ts";
 
 import { postgres } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
@@ -17,10 +17,7 @@ import crypto from "node:crypto";
 import { resolveShard } from "./utils/resolveShard.ts";
 import { RoomReconstructor } from "./lifecycle/roomReconstruction.ts";
 import { RoomLifecycleManager } from "./lifecycle/roomManager.ts";
-import { checkRateLimit, recordAttempt } from "./utils/rateLimit.ts";
-import { sendDuplicateSignupSecurityAlert } from "./notifications/securityAlerts.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
-import { isAllowedEmailDomain } from "./utils/emailDomain.ts";
 import { profileRouter } from "./routes/profile.ts";
 import { createSubtitleRouter } from "./routes/subtitleRouter.ts";
 import { createFeedbackRouter } from "./routes/feedbackRouter.ts";
@@ -34,6 +31,7 @@ import { createRoomOwnerInspectionRouter } from "./routes/roomOwnerInspectionRou
 import { createPublicUtilityRouter } from "./routes/publicUtilityRouter.ts";
 import { createInternalOperationsRouter } from "./routes/internalOperationsRouter.ts";
 import { createMediaProxyRouter } from "./routes/mediaProxyRouter.ts";
+import { createAuthAccountRouter } from "./routes/authAccountRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -472,123 +470,8 @@ app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
 app.use(createRoomOwnerInspectionRouter({ postgres }));
 app.use(createPublicUtilityRouter({ postgres }));
 
-app.post("/api/auth/validate-email", async (req, res) => {
-  const email = req.body?.email;
-  if (!email || typeof email !== "string") {
-    res.status(400).json({ error: "Email is required" });
-    return;
-  }
-  const isAllowed = isAllowedEmailDomain(email);
-  if (!isAllowed) {
-    res.status(400).json({ error: "Email provider is not supported." });
-    return;
-  }
-  res.json({ valid: true });
-});
-
-app.post("/api/auth/duplicate-signup-alert", async (req, res) => {
-  try {
-    const rawEmail = req.body?.email;
-    if (!rawEmail || typeof rawEmail !== "string") {
-      res.json({ success: true });
-      return;
-    }
-
-    const email = rawEmail.trim().toLowerCase();
-    if (!isAllowedEmailDomain(email)) {
-      res.json({ success: true });
-      return;
-    }
-
-    const clientIp = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
-    const userAgent = String(req.headers["user-agent"] || "");
-
-    // Rate limit per email (max 3 in 15 min) and per IP (max 10 in 10 min) to prevent abuse
-    const emailRateLimit = await checkRateLimit(`dup-signup:email:${email}`, 3, 15 * 60);
-    const ipRateLimit = await checkRateLimit(`dup-signup:ip:${clientIp || 'unknown'}`, 10, 10 * 60);
-
-    if (!emailRateLimit.allowed || !ipRateLimit.allowed) {
-      res.json({ success: true });
-      return;
-    }
-
-    await recordAttempt(`dup-signup:email:${email}`, 15 * 60);
-    await recordAttempt(`dup-signup:ip:${clientIp || 'unknown'}`, 10 * 60);
-
-    // Verify whether account exists before sending notification
-    const existingUser = await getUserByEmail(email);
-    if (!existingUser) {
-      // Do not send alert if user does not exist (prevents unsolicited notifications)
-      res.json({ success: true });
-      return;
-    }
-
-    // Trigger security alert email asynchronously without blocking the client response
-    sendDuplicateSignupSecurityAlert({
-      email,
-      ipAddress: clientIp || undefined,
-      userAgent: userAgent || undefined,
-      attemptedAt: new Date(),
-    }).catch((err) => {
-      console.error("[Auth] Duplicate signup alert dispatch error:", err);
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("[Auth] Duplicate signup alert handler exception:", err);
-    res.json({ success: true });
-  }
-});
-
-app.post("/api/account/delete", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
-    const token = authHeader.split(" ")[1];
-
-    // Authenticate and get uid
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) {
-      res.status(401).json({ error: "Invalid token" });
-      return;
-    }
-    const uid = user.id;
-
-    // Clean up Storage (avatars bucket)
-    const { data: existingFiles, error: listError } = await supabaseAdmin.storage.from("avatars").list(uid);
-    if (listError) {
-      console.error("Storage list error during account deletion:", listError);
-      res.status(500).json({ error: "Failed to list avatars" });
-      return;
-    }
-
-    if (existingFiles && existingFiles.length > 0) {
-      const filesToRemove = existingFiles.map((f: any) => `${uid}/${f.name}`);
-      const { error: removeError } = await supabaseAdmin.storage.from("avatars").remove(filesToRemove);
-      if (removeError) {
-        console.error("Storage remove error during account deletion:", removeError);
-        res.status(500).json({ error: "Failed to delete avatars" });
-        return;
-      }
-    }
-
-    // Delete Auth User (Postgres handles cascades automatically)
-    const { error: deleteError } = await deleteUser(uid);
-    if (deleteError) {
-      console.error("Auth delete error during account deletion:", deleteError);
-      res.status(500).json({ error: "Failed to delete auth user" });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (e: any) {
-    console.error("Error during account deletion:", e);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+// AUTH & ACCOUNT SELF-SERVICE: Handled by modular router (routes/authAccountRouter.ts)
+app.use(createAuthAccountRouter());
 
 // FEEDBACK & ABUSE REPORTING: Handled by modular router mounted above (routes/feedbackRouter.ts)
 

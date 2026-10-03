@@ -134,18 +134,24 @@ async function runDuplicateSignupSecurityTests() {
   console.log("Case 4: Verifying server route registration for /api/auth/duplicate-signup-alert...");
   const serverPath = path.join(rootDir, "server", "server.ts");
   const serverContent = fs.readFileSync(serverPath, "utf-8");
+  const routerPath = path.join(rootDir, "server", "routes", "authAccountRouter.ts");
+  const routerContent = fs.readFileSync(routerPath, "utf-8");
 
   assert.ok(
-    serverContent.includes('app.post("/api/auth/duplicate-signup-alert"'),
-    "server.ts must expose POST /api/auth/duplicate-signup-alert"
+    serverContent.includes("createAuthAccountRouter"),
+    "server.ts must mount createAuthAccountRouter"
   );
   assert.ok(
-    serverContent.includes("checkRateLimit"),
-    "server.ts duplicate-signup-alert route must be protected by rate limits"
+    routerContent.includes('router.post("/api/auth/duplicate-signup-alert"'),
+    "authAccountRouter.ts must expose POST /api/auth/duplicate-signup-alert"
   );
   assert.ok(
-    serverContent.includes("getUserByEmail"),
-    "server.ts duplicate-signup-alert must verify user existence before dispatching notification"
+    routerContent.includes("checkRateLimit"),
+    "authAccountRouter.ts duplicate-signup-alert route must be protected by rate limits"
+  );
+  assert.ok(
+    routerContent.includes("getUserByEmail"),
+    "authAccountRouter.ts duplicate-signup-alert must verify user existence before dispatching notification"
   );
   console.log("  [PASS] Server route is registered with rate limiting and database verification.");
 
