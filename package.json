@@ -40,6 +40,7 @@
     "test:room-lifecycle-router": "tsx server/routes/roomLifecycleRouter.test.ts",
     "test:room-config-router": "tsx server/routes/roomConfigRouter.test.ts",
     "test:room-admission-router": "tsx server/routes/roomAdmissionRouter.test.ts",
+    "test:room-discovery-router": "tsx server/routes/roomDiscoveryRouter.test.ts",
     "test:navigation": "tsx src/utils/navigationPolicy.test.ts",
     "test:update-policy": "tsx src/utils/updatePolicy.test.ts",
     "test:delivery-profiles": "tsx server/deliveryProfiles.test.ts",

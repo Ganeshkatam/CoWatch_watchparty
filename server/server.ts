@@ -31,6 +31,7 @@ import { createMediaMetadataRouter } from "./routes/mediaMetadataRouter.ts";
 import { createRoomLifecycleRouter } from "./routes/roomLifecycleRouter.ts";
 import { createRoomConfigRouter } from "./routes/roomConfigRouter.ts";
 import { createRoomAdmissionRouter } from "./routes/roomAdmissionRouter.ts";
+import { createRoomDiscoveryRouter } from "./routes/roomDiscoveryRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -506,6 +507,7 @@ app.use(createMediaMetadataRouter({ postgres }));
 app.use(createRoomLifecycleRouter({ rooms, io, postgres, getOrCreateRoom, unregisterRoomNamespace }));
 app.use(createRoomConfigRouter({ rooms, io, postgres }));
 app.use(createRoomAdmissionRouter({ rooms, postgres, getOrCreateRoom }));
+app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
 
 app.post("/api/auth/validate-email", async (req, res) => {
   const email = req.body?.email;
@@ -771,104 +773,8 @@ app.get("/roomData/:roomId", async (req, res) => {
   res.json(result.rows[0].data);
 });
 
-app.get("/roomInfo/:roomId", async (req, res) => {
-  const rawRoomId = req.params.roomId;
-  if (!rawRoomId || typeof rawRoomId !== "string") {
-    res.status(400).json({ error: "Missing room identifier" });
-    return;
-  }
-  const cleanRoomId = sanitizeRoomId(rawRoomId);
-
-  // Attempt to decode caller token if provided strictly via Authorization header
-  let callerUid: string | undefined;
-  const token = extractBearerToken(req);
-
-  if (token) {
-    try {
-      const decoded = await validateUserToken("", token);
-      if (decoded && decoded !== "EMAIL_NOT_VERIFIED") {
-        callerUid = decoded.uid;
-      }
-    } catch {
-      // Best-effort session check
-    }
-  }
-
-  try {
-    const result = await postgres?.query(
-      `SELECT r."roomId", r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
-              (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
-              p.display_name as "hostName"
-       FROM rooms r
-       LEFT JOIN profiles p ON r.owner_id = p.id
-       WHERE r."roomId" = $1`,
-      [cleanRoomId],
-    );
-
-    if (!result || result.rows.length === 0) {
-      res.status(404).json({ error: "Room not found" });
-      return;
-    }
-
-    const row = result.rows[0];
-
-    // Compute derived status if expired
-    let derivedStatus = row.status;
-    if ((row.status === "active" || row.status === "inactive") && !row.isPermanent && row.expiresAt) {
-      const expiresAt = new Date(row.expiresAt).getTime();
-      if (expiresAt <= Date.now()) {
-        derivedStatus = "expired";
-      }
-    }
-
-    const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
-    let isHost = isOwner;
-    let memoryRoom = rooms.get(cleanRoomId);
-    if (!memoryRoom) {
-      memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
-    }
-    let isHostPresent = false;
-    if (memoryRoom && typeof memoryRoom.isHostPresent === "function") {
-      isHostPresent = memoryRoom.isHostPresent();
-    }
-    if (memoryRoom && callerUid) {
-      if (typeof memoryRoom.isHostUid === "function") {
-        isHost = isHost || memoryRoom.isHostUid(callerUid);
-      } else if (memoryRoom.currentHostUid) {
-        isHost = isHost || memoryRoom.currentHostUid === callerUid;
-      }
-    }
-
-    // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
-    res.json({
-      roomId: row.roomId,
-      roomTitle: row.roomTitle || row.roomId,
-      roomDescription: row.roomDescription || "",
-      coverPhoto: row.coverPhoto || null,
-      status: derivedStatus,
-      requiresPasscode: Boolean(row.requiresPasscode),
-      participantsLocked: Boolean(row.participants_locked),
-      maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
-      isOwner,
-      isHost,
-      owner_id: isOwner ? row.owner_id : null,
-      isHostPresent: Boolean(isHostPresent),
-      hostName: row.hostName || "Host",
-      isPermanent: Boolean(row.isPermanent),
-    });
-  } catch (err) {
-    console.error("Error fetching roomInfo:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
+// ROOM DISCOVERY: Handled by modular router mounted above (routes/roomDiscoveryRouter.ts)
 // ROOM ADMISSION: Handled by modular router mounted above (routes/roomAdmissionRouter.ts)
-
-app.get("/resolveShard/:roomId", async (req, res) => {
-  const cleanRoomId = sanitizeRoomId(req.params.roomId);
-  const shardNum = resolveShard(cleanRoomId);
-  res.send(String(config.SHARD ? shardNum : ""));
-});
 
 app.get("/listRooms", async (req, res) => {
   try {
