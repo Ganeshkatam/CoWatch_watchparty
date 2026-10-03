@@ -15,7 +15,6 @@ import { postgres } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
 import { resolveShard } from "./utils/resolveShard.ts";
-import { makeUserName } from "./utils/moniker.ts";
 import { RoomReconstructor } from "./lifecycle/roomReconstruction.ts";
 import { RoomLifecycleManager } from "./lifecycle/roomManager.ts";
 import { checkRateLimit, recordAttempt } from "./utils/rateLimit.ts";
@@ -32,6 +31,7 @@ import { createRoomConfigRouter } from "./routes/roomConfigRouter.ts";
 import { createRoomAdmissionRouter } from "./routes/roomAdmissionRouter.ts";
 import { createRoomDiscoveryRouter } from "./routes/roomDiscoveryRouter.ts";
 import { createRoomOwnerInspectionRouter } from "./routes/roomOwnerInspectionRouter.ts";
+import { createPublicUtilityRouter } from "./routes/publicUtilityRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -509,6 +509,7 @@ app.use(createRoomConfigRouter({ rooms, io, postgres }));
 app.use(createRoomAdmissionRouter({ rooms, postgres, getOrCreateRoom }));
 app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
 app.use(createRoomOwnerInspectionRouter({ postgres }));
+app.use(createPublicUtilityRouter({ postgres }));
 
 app.post("/api/auth/validate-email", async (req, res) => {
   const email = req.body?.email;
@@ -677,75 +678,7 @@ app.delete("/deleteAccount", async (req, res) => {
 
 
 
-function sanitizeActionUrl(url?: string | null): string | null {
-  if (!url || typeof url !== "string") {
-    return null;
-  }
-  const trimmed = url.trim();
-  // Allow internal relative paths starting with a single '/'
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\")) {
-    return trimmed;
-  }
-  // Allow absolute https:// URLs (and http:// in dev)
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol === "https:" || (config.NODE_ENV === "development" && parsed.protocol === "http:")) {
-      return trimmed;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-app.get("/announcements", async (_req, res) => {
-  if (!postgres) {
-    console.warn("[WARNING]: postgres not configured, returning empty announcements");
-    res.json({ announcements: [] });
-    return;
-  }
-
-  try {
-    const result = await postgres.query(`
-      SELECT
-        id,
-        title,
-        body,
-        level,
-        action_label,
-        action_url,
-        published_at,
-        updated_at
-      FROM public.announcements
-      WHERE is_active = true
-        AND published_at <= NOW()
-      ORDER BY published_at DESC
-      LIMIT 10
-    `);
-
-    const announcements = (result.rows || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      body: row.body,
-      level: row.level,
-      action_label: row.action_label || null,
-      action_url: sanitizeActionUrl(row.action_url),
-      published_at: row.published_at,
-      updated_at: row.updated_at,
-    }));
-
-    res.json({ announcements });
-  } catch (err: any) {
-    console.warn("[WARNING]: Failed to fetch announcements:", err.message);
-    res.json({ announcements: [] });
-  }
-});
-
-// ROOM OWNER INSPECTION: Handled by modular router mounted above (routes/roomOwnerInspectionRouter.ts)
-
-app.get("/generateName", async (req, res) => {
-  res.send(makeUserName());
-});
+// PUBLIC CONTENT & UTILITIES: Handled by modular router mounted above (routes/publicUtilityRouter.ts)
 
 // Proxy video segments
 app.get("/proxy/*splat", async (req, res) => {
