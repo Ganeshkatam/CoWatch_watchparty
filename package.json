@@ -44,6 +44,7 @@
     "test:room-owner-inspection-router": "tsx server/routes/roomOwnerInspectionRouter.test.ts",
     "test:public-utility-router": "tsx server/routes/publicUtilityRouter.test.ts",
     "test:internal-operations-router": "tsx server/routes/internalOperationsRouter.test.ts",
+    "test:media-proxy-router": "tsx server/routes/mediaProxyRouter.test.ts",
     "test:navigation": "tsx src/utils/navigationPolicy.test.ts",
     "test:update-policy": "tsx src/utils/updatePolicy.test.ts",
     "test:delivery-profiles": "tsx server/deliveryProfiles.test.ts",
