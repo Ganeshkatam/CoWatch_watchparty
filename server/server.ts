@@ -32,15 +32,13 @@ import { createRoomAdmissionRouter } from "./routes/roomAdmissionRouter.ts";
 import { createRoomDiscoveryRouter } from "./routes/roomDiscoveryRouter.ts";
 import { createRoomOwnerInspectionRouter } from "./routes/roomOwnerInspectionRouter.ts";
 import { createPublicUtilityRouter } from "./routes/publicUtilityRouter.ts";
+import { createInternalOperationsRouter } from "./routes/internalOperationsRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { startEmailWorker, stopEmailWorker } from "./notifications/emailWorker.ts";
 import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
-import { providerWebhookRouter } from "./notifications/webhooks/providerWebhookRouter.ts";
-
-import { getNotificationHealthReport } from "./notifications/notificationTelemetry.ts";
 import {
   purgeReadNotificationsExpired,
   purgeSentOutboxRows,
@@ -437,26 +435,6 @@ app.use((_req, res, next) => {
   next();
 });
 
-function requireInternalAuth(req: Request, res: Response, next: NextFunction): void {
-  const secret = config.INTERNAL_API_SECRET;
-  if (!secret) {
-    const clientIp = String(req.ip || req.socket?.remoteAddress || "");
-    const isLoopback = clientIp.includes("127.0.0.1") || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
-    if (!isLoopback && process.env.NODE_ENV === "production") {
-      res.status(403).json({ error: "FORBIDDEN: Internal endpoint accessible only via loopback or INTERNAL_API_SECRET" });
-      return;
-    }
-    return next();
-  }
-
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : req.headers["x-internal-secret"];
-  if (token !== secret) {
-    res.status(401).json({ error: "UNAUTHORIZED: Valid INTERNAL_API_SECRET required" });
-    return;
-  }
-  next();
-}
 
 function extractBearerToken(req: express.Request): string | undefined {
   const authHeader = req.headers.authorization;
@@ -480,25 +458,8 @@ app.use("/api/invitations", createInvitationRouter({ roomLookup: (roomId) => roo
 app.use("/api", profileRouter);
 app.use(createFeedbackRouter({ postgres, supabaseAdmin }));
 
-// NOTIFY-002: Universal Provider Delivery Webhook Ingress (POST /internal/webhooks/email/:provider)
-app.post("/internal/webhooks/email/:provider", async (req, res) => {
-  await providerWebhookRouter.handleWebhook(req, res);
-});
-
-
-// NOTIFY-001A & NOTIFY-004: Database-derived Notification Health Probe (locked behind internal boundary)
-app.get("/internal/health/notifications", requireInternalAuth, async (_req, res) => {
-  try {
-    const report = await getNotificationHealthReport();
-    res.json(report);
-  } catch (err: any) {
-    res.status(500).json({ error: "HEALTH_CHECK_FAILED", details: err?.message });
-  }
-});
-
-app.get("/ping", (_req, res) => {
-  res.json("pong");
-});
+// INTERNAL OPERATIONS & HEALTH: Handled by modular router (routes/internalOperationsRouter.ts)
+app.use(createInternalOperationsRouter());
 
 app.use(createSubtitleRouter());
 app.use(compression());
