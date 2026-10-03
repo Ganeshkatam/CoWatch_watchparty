@@ -899,10 +899,11 @@ async function runTests() {
   const notificationRouterSource = fs.readFileSync(path.join(projectRoot, 'server/notifications/notificationRouter.ts'), 'utf-8');
   const operatorRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/operatorRouter.ts'), 'utf-8');
   const roomLifecycleRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/roomLifecycleRouter.ts'), 'utf-8');
+  const roomConfigRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/roomConfigRouter.ts'), 'utf-8');
 
   const REST_MUTATING_ENDPOINTS = [
-    { name: '/updateRoomSettings', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
-    { name: '/updateRoomCover', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/updateRoomSettings', source: roomConfigRouterSource, requiresJwt: true, requiresHostOrOwner: true },
+    { name: '/updateRoomCover', source: roomConfigRouterSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/extendRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/startRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
     { name: '/endRoom', source: roomLifecycleRouterSource, requiresJwt: true, requiresHostOrOwner: true },
