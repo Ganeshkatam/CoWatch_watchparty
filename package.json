@@ -35,6 +35,7 @@
     "test:domain-events": "tsx server/notifications/domainEvents.integration.test.ts",
     "test:reports": "tsx server/reports.adversarial.test.ts",
     "test:feedback-router": "tsx server/routes/feedbackRouter.test.ts",
+    "test:operator-router": "tsx server/routes/operatorRouter.test.ts",
     "test:navigation": "tsx src/utils/navigationPolicy.test.ts",
     "test:update-policy": "tsx src/utils/updatePolicy.test.ts",
     "test:delivery-profiles": "tsx server/deliveryProfiles.test.ts",

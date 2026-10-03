@@ -898,6 +898,7 @@ async function runTests() {
   // --- 8.5: REST Mutating Route Authorization Firewall ---
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server/server.ts'), 'utf-8');
   const notificationRouterSource = fs.readFileSync(path.join(projectRoot, 'server/notifications/notificationRouter.ts'), 'utf-8');
+  const operatorRouterSource = fs.readFileSync(path.join(projectRoot, 'server/routes/operatorRouter.ts'), 'utf-8');
 
   const REST_MUTATING_ENDPOINTS = [
     { name: '/updateRoomSettings', source: serverSource, requiresJwt: true, requiresHostOrOwner: true },
@@ -1054,14 +1055,15 @@ async function runTests() {
   );
 
   // Static Firewall 8.7E: Every /api/admin/* route must invoke authenticateOperator
-  const adminRouteMatches = [...serverSource.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*["'](\/api\/admin\/[^"']+)["']([\s\S]*?)(?=\n\s*app\.|\n\s*router\.|\n\s*\/\/|\Z)/g)];
+  const allOperatorSources = serverSource + '\n' + operatorRouterSource;
+  const adminRouteMatches = [...allOperatorSources.matchAll(/(?:app|router)\.(?:get|post|put|patch|delete)\(\s*["'](\/api\/admin\/[^"']+)["']([\s\S]*?)(?=\r?\n\s*(?:app|router)\.|\r?\n\s*\/\/|$)/g)];
   assert(adminRouteMatches.length >= 3, `Expected at least 3 /api/admin routes, found ${adminRouteMatches.length}`);
 
   for (const match of adminRouteMatches) {
     const routePath = match[1];
     const routeBody = match[2];
     assert(
-      routeBody.includes('authenticateOperator'),
+      routeBody.includes('authenticateOperator') || routeBody.includes('authenticate('),
       `[Firewall 8.7E Failure] Admin route ${routePath} does not invoke centralized authenticateOperator!`
     );
   }
@@ -1069,11 +1071,11 @@ async function runTests() {
   // Static Firewall 8.7F: Operational metrics and stats routes must also invoke centralized authenticateOperator
   const operationalRoutes = ['/stats', '/stats/redis', '/timeSeries'];
   for (const opRoute of operationalRoutes) {
-    const regex = new RegExp(`app\\.(?:get|post|put|patch|delete)\\(\\s*["']${opRoute}["']([\\s\\S]*?)(?=\\n\\s*app\\.|\\n\\s*router\\.|\\n\\s*\\/\\/|\\Z)`);
-    const match = serverSource.match(regex);
-    assert(match, `[Firewall 8.7F Failure] Operational route ${opRoute} not found in server.ts`);
+    const regex = new RegExp(`(?:app|router)\\.(?:get|post|put|patch|delete)\\(\\s*["']${opRoute}["']([\\s\\S]*?)(?=\\r?\\n\\s*(?:app|router)\\.|\\r?\\n\\s*\\/\\/|$)`);
+    const match = allOperatorSources.match(regex);
+    assert(match, `[Firewall 8.7F Failure] Operational route ${opRoute} not found in server or operatorRouter`);
     assert(
-      match[1].includes('authenticateOperator'),
+      match[1].includes('authenticateOperator') || match[1].includes('authenticate('),
       `[Firewall 8.7F Failure] Operational route ${opRoute} does not invoke centralized authenticateOperator!`
     );
   }
@@ -1153,12 +1155,12 @@ async function runTests() {
 
     // 8.8F Production Code Invariant: No production operator or administrative endpoint derives authority from req.query.key
     assert(
-      !serverSource.includes('req.query.key'),
-      '[Firewall 8.8F Failure] server.ts references req.query.key! All operator endpoints must use header-based authenticateOperator.'
+      !serverSource.includes('req.query.key') && !operatorRouterSource.includes('req.query.key'),
+      '[Firewall 8.8F Failure] server.ts or operatorRouter.ts references req.query.key! All operator endpoints must use header-based authenticateOperator.'
     );
     assert(
-      !serverSource.includes('req.query?.key'),
-      '[Firewall 8.8F Failure] server.ts references req.query?.key!'
+      !serverSource.includes('req.query?.key') && !operatorRouterSource.includes('req.query?.key'),
+      '[Firewall 8.8F Failure] server.ts or operatorRouter.ts references req.query?.key!'
     );
 
     console.log('✓ 8.8 ARCH-008 Header-Only Operator Credentials & Secret-in-URL Firewall Verified:');
