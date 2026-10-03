@@ -7,12 +7,11 @@ import cors from "cors";
 import https from "node:https";
 import http from "node:http";
 import { Server } from "socket.io";
-import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
 import { metricsRedis, edgeRedis, redisCount, redisEdge } from "./utils/redis.ts";
 import { deleteUser, validateUserToken, supabaseAdmin, getUserByEmail } from "./utils/supabase.ts";
 
-import { postgres, upsertObject } from "./utils/postgres.ts";
+import { postgres } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
 import { resolveShard } from "./utils/resolveShard.ts";
@@ -43,6 +42,7 @@ import { profileRouter } from "./routes/profile.ts";
 import { createSubtitleRouter } from "./routes/subtitleRouter.ts";
 import { createFeedbackRouter } from "./routes/feedbackRouter.ts";
 import { createOperatorRouter } from "./routes/operatorRouter.ts";
+import { createMediaMetadataRouter } from "./routes/mediaMetadataRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -514,6 +514,7 @@ app.get("/ping", (_req, res) => {
 app.use(createSubtitleRouter());
 app.use(compression());
 app.use(createOperatorRouter({ postgres }));
+app.use(createMediaMetadataRouter({ postgres }));
 
 app.post("/api/auth/validate-email", async (req, res) => {
   const email = req.body?.email;
@@ -637,36 +638,7 @@ app.post("/api/account/delete", async (req, res) => {
 
 // OPERATOR & ADMIN ENDPOINTS: Handled by modular router mounted above (routes/operatorRouter.ts)
 
-app.get("/youtube", async (req, res) => {
-  if (typeof req.query.q === "string") {
-    try {
-      redisCount("youtubeSearch");
-      const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : undefined;
-      const result = await searchYoutube(req.query.q, pageToken);
-      if (req.query.paginated === "1" || req.query.pageToken) {
-        res.json({
-          items: result.items,
-          nextPageToken: result.nextPageToken,
-        });
-      } else {
-        res.json(result.items);
-      }
-    } catch {
-      res.status(500).json({ error: "youtube error" });
-    }
-  } else {
-    res.status(500).json({ error: "query must be a string" });
-  }
-});
-
-app.get("/youtubePlaylist/:playlistId", async (req, res) => {
-  try {
-    const items = await youtubePlaylist(req.params.playlistId);
-    res.json(items);
-  } catch {
-    res.status(500).json({ error: "youtube error" });
-  }
-});
+// MEDIA METADATA & YOUTUBE: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
 
 // Response shape for GET /roomEntitlements.
 // Numeric fields are narrowed with Number() — never bare "as number" casts.
@@ -1277,44 +1249,7 @@ app.delete("/deleteAccount", async (req, res) => {
   res.json({});
 });
 
-app.get("/metadata", async (req, res) => {
-  const token = extractBearerToken(req);
-  let decoded: { uid: string; email?: string; email_verified?: boolean } | undefined;
-  if (token) {
-    const valResult = await validateUserToken("", token);
-    if (valResult === "EMAIL_NOT_VERIFIED") {
-      res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
-      return;
-    }
-    if (valResult) {
-      decoded = valResult;
-    }
-  }
-
-  const beta =
-    decoded?.email != null &&
-    Boolean(config.BETA_USER_EMAILS.split(",").includes(decoded?.email));
-  const streamPath = beta ? config.STREAM_PATH : undefined;
-  // Available to all authenticated users
-  const convertPath = decoded ? config.CONVERT_PATH : undefined;
-
-  // log metrics but don't wait for it
-  if (postgres && decoded?.uid) {
-    upsertObject(
-      postgres,
-      "active_user",
-      { uid: decoded?.uid, lastActiveTime: new Date() },
-      { uid: true },
-    ).catch((e: any) => {
-      console.warn("[WARNING]: active_user upsert failed:", e.message);
-    });
-  }
-  res.json({
-    beta,
-    streamPath,
-    convertPath,
-  });
-});
+// RUNTIME CLIENT METADATA: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
 
 
 

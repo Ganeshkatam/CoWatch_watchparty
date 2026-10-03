@@ -36,6 +36,7 @@
     "test:reports": "tsx server/reports.adversarial.test.ts",
     "test:feedback-router": "tsx server/routes/feedbackRouter.test.ts",
     "test:operator-router": "tsx server/routes/operatorRouter.test.ts",
+    "test:media-metadata-router": "tsx server/routes/mediaMetadataRouter.test.ts",
     "test:navigation": "tsx src/utils/navigationPolicy.test.ts",
     "test:update-policy": "tsx src/utils/updatePolicy.test.ts",
     "test:delivery-profiles": "tsx server/deliveryProfiles.test.ts",
