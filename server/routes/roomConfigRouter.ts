@@ -422,8 +422,12 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       res.status(401).json({ error: { code: "FORBIDDEN", message: "Authentication required" } });
       return;
     }
-    const decoded = await validateUserToken("", token, false);
-    if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    const decoded = await validateUserToken("", token);
+    if (decoded === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+      return;
+    }
+    if (!decoded) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }
@@ -492,8 +496,12 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       res.status(401).json({ error: "Authentication required" });
       return;
     }
-    const decoded = await validateUserToken("", token, false);
-    if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
+    const decoded = await validateUserToken("", token);
+    if (decoded === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email verification is required." } });
+      return;
+    }
+    if (!decoded) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       return;
     }

@@ -93,7 +93,13 @@ async function runAuthMatrixTests() {
   supabaseAdmin.auth.getUser = (async (token: string) => {
     if (token && token.startsWith('user-')) {
       return {
-        data: { user: { id: token, email: `${token}@example.com` } as any },
+        data: { user: { id: token, email: `${token}@example.com`, email_confirmed_at: '2026-01-01' } as any },
+        error: null,
+      };
+    }
+    if (token === 'unverified-user') {
+      return {
+        data: { user: { id: 'unverified-user', email: 'unverified@example.com', email_confirmed_at: null } as any },
         error: null,
       };
     }
@@ -122,6 +128,12 @@ async function runAuthMatrixTests() {
     // Unauthenticated GET /api/notifications
     const unauthRes = await fetch(`${baseUrl}/api/notifications`);
     assert(unauthRes.status === 401, 'Unauthenticated request to list notifications must return 401');
+
+    // Unverified user attempting to access notifications
+    const unverifiedRes = await fetch(`${baseUrl}/api/notifications`, {
+      headers: { Authorization: 'Bearer unverified-user' },
+    });
+    assert(unverifiedRes.status === 403, 'Unverified email must return 403 on /api/notifications');
 
     // User A attempting to modify User B's preferences by injecting user_id
     const idorPrefRes = await fetch(`${baseUrl}/api/notifications/preferences`, {

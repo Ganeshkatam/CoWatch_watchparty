@@ -41,7 +41,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       return;
     }
 
-    const decoded = await validateToken("", token, false);
+    const decoded = await validateToken("", token);
     if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
       res.status(403).json({ error: "Unauthorized or unverified email" });
       return;

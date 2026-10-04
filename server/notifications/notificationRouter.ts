@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import express, { type Request, type Response, type RequestHandler } from 'express';
-import { supabaseAdmin } from '../utils/supabase.ts';
+import { supabaseAdmin, validateToken } from '../utils/supabase.ts';
 import { postgres } from '../utils/postgres.ts';
 import config from '../config.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
@@ -72,29 +72,31 @@ export function resetInviteRateLimitsForTesting(): void {
 // Auth middleware helper (reuse pattern from existing endpoints)
 // ---------------------------------------------------------------------------
 
-async function extractVerifiedUid(req: Request): Promise<string | null> {
+async function extractVerifiedCaller(req: Request): Promise<{ uid: string } | 'EMAIL_NOT_VERIFIED' | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
-  const token = authHeader.split(' ')[1];
-  try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    return user.id;
-  } catch {
-    return null;
-  }
+  const token = authHeader.split(' ')[1]?.trim();
+  if (!token) return null;
+  const validated = await validateToken(token, true);
+  if (validated === 'EMAIL_NOT_VERIFIED') return 'EMAIL_NOT_VERIFIED';
+  if (!validated) return null;
+  return { uid: validated.uid };
 }
 
 function requireAuth(
   handler: (req: Request, res: Response, uid: string) => Promise<void>,
 ): RequestHandler {
   return async (req, res) => {
-    const uid = await extractVerifiedUid(req);
-    if (!uid) {
+    const caller = await extractVerifiedCaller(req);
+    if (caller === 'EMAIL_NOT_VERIFIED') {
+      res.status(403).json({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email verification is required.' } });
+      return;
+    }
+    if (!caller || !caller.uid) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    await handler(req, res, uid);
+    await handler(req, res, caller.uid);
   };
 }
 

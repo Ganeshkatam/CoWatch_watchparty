@@ -202,6 +202,9 @@ async function runProfileContractTests() {
       if (token === validTokenUserB) {
         return { data: { user: { id: userBId, email: "bob@example.com", email_confirmed_at: "2026-01-01" } }, error: null };
       }
+      if (token === "unverified_token") {
+        return { data: { user: { id: "unverified-id", email: "unverified@example.com", email_confirmed_at: null } }, error: null };
+      }
       return { data: { user: null }, error: new Error("Invalid token") };
     }) as any;
   }
@@ -235,6 +238,15 @@ async function runProfileContractTests() {
         headers: { Authorization: "Bearer invalid_garbage_token" },
       });
       assert(res.status === 401, 4, "Invalid token returns 401 Unauthorized");
+    }
+
+    // Test 4b: Unverified token returns 403
+    {
+      const res = await fetch(`${baseUrl}/api/profile`, {
+        headers: { Authorization: "Bearer unverified_token" },
+      });
+      const body = await res.json();
+      assert(res.status === 403 && body?.error?.code === "EMAIL_NOT_VERIFIED", 4, "Unverified token returns 403 EMAIL_NOT_VERIFIED");
     }
 
     // Test 5: Authenticated User A loads canonical profile

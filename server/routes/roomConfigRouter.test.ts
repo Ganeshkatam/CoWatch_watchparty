@@ -359,6 +359,11 @@ async function runRoomConfigRouterTests() {
     const noAuthCover = await makeRequest("POST", "/updateRoomCover", { roomId: "r1", coverPhoto: "img.jpg" });
     test("POST /updateRoomCover: 401 on missing token", noAuthCover.status === 401);
 
+    const unverifiedCover = await makeRequest("POST", "/updateRoomCover", { roomId: "r1", coverPhoto: "img.jpg" }, {
+      Authorization: "Bearer token-unverified",
+    });
+    test("POST /updateRoomCover: 403 on unverified email", unverifiedCover.status === 403 && unverifiedCover.json?.error?.code === "EMAIL_NOT_VERIFIED");
+
     const missingParamsCover = await makeRequest("POST", "/updateRoomCover", { roomId: "" }, {
       Authorization: "Bearer token-alice",
     });
@@ -411,6 +416,11 @@ async function runRoomConfigRouterTests() {
 
     const noAuthSettings = await makeRequest("POST", "/updateRoomSettings", { roomId: "r1" });
     test("POST /updateRoomSettings: 401 on missing token", noAuthSettings.status === 401);
+
+    const unverifiedSettings = await makeRequest("POST", "/updateRoomSettings", { roomId: "r1", roomTitle: "Test", isPermanent: false, isChatDisabled: false }, {
+      Authorization: "Bearer token-unverified",
+    });
+    test("POST /updateRoomSettings: 403 on unverified email", unverifiedSettings.status === 403 && unverifiedSettings.json?.error?.code === "EMAIL_NOT_VERIFIED");
 
     const badPayloadSettings = await makeRequest("POST", "/updateRoomSettings", {
       roomId: "r1",

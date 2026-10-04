@@ -37,8 +37,17 @@ profileRouter.get("/profile", async (req: express.Request, res: express.Response
 
   let decoded: ValidatedUserToken;
   try {
-    const validated = await validateUserToken("", token, false);
-    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token);
+    if (validated === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({
+        error: {
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Email verification is required.",
+        },
+      });
+      return;
+    }
+    if (!validated) {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
@@ -110,8 +119,17 @@ profileRouter.patch("/profile", async (req: express.Request, res: express.Respon
 
   let decoded: ValidatedUserToken;
   try {
-    const validated = await validateUserToken("", token, false);
-    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token);
+    if (validated === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({
+        error: {
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Email verification is required.",
+        },
+      });
+      return;
+    }
+    if (!validated) {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
@@ -193,8 +211,17 @@ profileRouter.get("/users/:userId/public-profile", async (req: express.Request, 
 
   let decoded: ValidatedUserToken;
   try {
-    const validated = await validateUserToken("", token, false);
-    if (!validated || validated === "EMAIL_NOT_VERIFIED") {
+    const validated = await validateUserToken("", token);
+    if (validated === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({
+        error: {
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Email verification is required.",
+        },
+      });
+      return;
+    }
+    if (!validated) {
       res.status(401).json({
         error: {
           code: "INVALID_TOKEN",
