@@ -8,8 +8,8 @@ import https from "node:https";
 import http from "node:http";
 import { Server } from "socket.io";
 import { Room } from "./room.ts";
-import { metricsRedis, edgeRedis, redisCount, redisEdge } from "./utils/redis.ts";
-import { deleteUser, validateUserToken, supabaseAdmin } from "./utils/supabase.ts";
+import { metricsRedis, edgeRedis, redisEdge } from "./utils/redis.ts";
+import { supabaseAdmin } from "./utils/supabase.ts";
 
 import { postgres } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
@@ -32,6 +32,7 @@ import { createPublicUtilityRouter } from "./routes/publicUtilityRouter.ts";
 import { createInternalOperationsRouter } from "./routes/internalOperationsRouter.ts";
 import { createMediaProxyRouter } from "./routes/mediaProxyRouter.ts";
 import { createAuthAccountRouter } from "./routes/authAccountRouter.ts";
+import { createAccountTeardownRouter } from "./routes/accountTeardownRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -434,14 +435,7 @@ app.use((_req, res, next) => {
 });
 
 
-function extractBearerToken(req: express.Request): string | undefined {
-  const authHeader = req.headers.authorization;
-  if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7).trim();
-    return token || undefined;
-  }
-  return undefined;
-}
+
 
 app.use(
   bodyParser.json({
@@ -481,42 +475,8 @@ app.use(createAuthAccountRouter());
 
 // ROOM CONFIGURATION: Handled by modular router mounted above (routes/roomConfigRouter.ts)
 
-app.delete("/deleteAccount", async (req, res) => {
-  const token = extractBearerToken(req);
-  if (!token) {
-    res.status(401).json({ error: "invalid user token" });
-    return;
-  }
-  const decoded = await validateUserToken("", token, false);
-  if (!decoded || decoded === "EMAIL_NOT_VERIFIED") {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (postgres) {
-    // Authoritatively purge all rooms under lock, retaining policy and zeroed usage row
-    const purgeRes = await postgres.query(
-      "SELECT public.purge_account_rooms_authoritative($1) AS deleted_ids",
-      [decoded.uid]
-    );
-    const deletedIds: string[] = purgeRes.rows?.[0]?.deleted_ids || [];
-    for (const rId of deletedIds) {
-      const memRoom = rooms.get(rId);
-      if (memRoom) {
-        memRoom.destroy();
-        rooms.delete(rId);
-        unregisterRoomNamespace(rId);
-      }
-    }
-
-    // Delete linked accounts
-    await postgres.query("DELETE FROM link_account WHERE uid = $1", [
-      decoded.uid,
-    ]);
-  }
-  await deleteUser(decoded.uid);
-  redisCount("deleteAccount");
-  res.json({});
-});
+// DESTRUCTIVE ACCOUNT TEARDOWN: Handled by modular router (routes/accountTeardownRouter.ts)
+app.use(createAccountTeardownRouter({ rooms, postgres, unregisterRoomNamespaceFn: unregisterRoomNamespace }));
 
 // RUNTIME CLIENT METADATA: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
 
