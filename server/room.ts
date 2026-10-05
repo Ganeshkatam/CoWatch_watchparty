@@ -29,7 +29,7 @@ import twitch from "twitch-m3u8";
 import { TimelineAuthority } from "./timelineAuthority.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
-import { LocalMediaSignaling } from "./media/local/LocalMediaSignaling.ts";
+import { RoomSignalingCoordinator } from "./room/roomSignalingCoordinator.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -236,8 +236,10 @@ export class Room {
   private bannedIdentities: Set<string> = new Set();
   private processedOperations: Map<string, { operationId: string; timestamp: number }[]> = new Map();
   public timeline: TimelineAuthority = new TimelineAuthority();
-  private localMediaSignaling: LocalMediaSignaling;
-  public localMediaAuthority: LocalMediaAuthority;
+  public signalingCoordinator: RoomSignalingCoordinator;
+  public get localMediaAuthority(): LocalMediaAuthority {
+    return this.signalingCoordinator.localMediaAuthority;
+  }
 
   public hasProcessedOperation = (clientId: string, operationId?: string): boolean => {
     if (!operationId || !clientId) return false;
@@ -618,8 +620,16 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
-    this.localMediaSignaling = new LocalMediaSignaling(this.io.of(this.roomId));
-    this.localMediaAuthority = new LocalMediaAuthority(postgres, this.localMediaSignaling);
+    this.signalingCoordinator = new RoomSignalingCoordinator({
+      roomId: this.roomId,
+      io: this.io,
+      socketIdMap: this.socketIdMap,
+      roster: this.roster,
+      postgres,
+      getRosterForApp: () => this.getRosterForApp(),
+      setMediaSource: (socket, mediaUrl) => this.cmdHost(socket, mediaUrl),
+      buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
+    });
 
     if (roomData) {
       this.deserialize(roomData);
@@ -839,7 +849,7 @@ export class Room {
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
       const effectiveUserId = socket.uid || clientId;
-      this.localMediaAuthority.registerPeer(this.roomId, effectiveUserId, clientId, socket.id);
+      this.signalingCoordinator.registerPeer(clientId, effectiveUserId, socket.id);
       const initialName = this.nameMap[clientId] || (socket.uid ? this.uidToNameMap[socket.uid] : undefined);
       const initialPicture = this.pictureMap[clientId] || (socket.uid ? this.uidToPictureMap[socket.uid] : undefined);
       const existingUser = this.roster.find(user => user.id === clientId);
@@ -1096,8 +1106,8 @@ export class Room {
         }));
         socket.emit("ROOM_MESSAGES", formattedMessages.reverse());
       });
-      socket.on("CMD:joinVideo", () => validateNotExpired() && this.joinVideo(socket));
-      socket.on("CMD:leaveVideo", () => validateNotExpired() && this.leaveVideo(socket));
+      socket.on("CMD:joinVideo", () => validateNotExpired() && this.signalingCoordinator.joinVideo(socket));
+      socket.on("CMD:leaveVideo", () => validateNotExpired() && this.signalingCoordinator.leaveVideo(socket));
       socket.on("CMD:joinScreenShare", (data) => {
         if (!validateNotExpired()) return;
         const context = this.buildAuthorizationContext(socket);
@@ -1107,12 +1117,12 @@ export class Room {
           socket.emit("errorMessage", "FORBIDDEN");
           return;
         }
-        this.joinScreenSharing(socket, data);
+        this.signalingCoordinator.joinScreenSharing(socket, data);
       });
       socket.on("CMD:userMute", (data: unknown) =>
-        validateNotExpired() && this.setUserMute(socket, data),
+        validateNotExpired() && this.signalingCoordinator.setUserMute(socket, data),
       );
-      socket.on("CMD:leaveScreenShare", () => validateNotExpired() && this.leaveScreenSharing(socket));
+      socket.on("CMD:leaveScreenShare", () => validateNotExpired() && this.signalingCoordinator.leaveScreenSharing(socket));
 
       socket.on("CMD:subtitle", (data: unknown) => {
         if (!validateNotExpired()) return;
@@ -1282,81 +1292,26 @@ export class Room {
       });
 
       socket.on("signal", (data: unknown) =>
-        validateNotExpired() && this.sendSignal(socket, data, "signal"),
+        validateNotExpired() && this.signalingCoordinator.sendSignal(socket, data, "signal"),
       );
       socket.on("signalSS", (data: unknown) =>
-        validateNotExpired() && this.sendSignal(socket, data, "signalSS"),
+        validateNotExpired() && this.signalingCoordinator.sendSignal(socket, data, "signalSS"),
       );
 
       // LOCAL-MEDIA-001: P2P Local Media distribution commands
       socket.on("CMD_LOCAL_MEDIA_ANNOUNCE", async (data: { roomId: string; manifest: ServerLocalMediaManifest }) => {
         if (!validateNotExpired()) return;
-        const context = this.buildAuthorizationContext(socket);
-        const auth = pureAuthorizeRoomAction(context, "room:set_media");
-        if (!auth.allowed) {
-          socket.emit("CMD:error", { code: "FORBIDDEN" });
-          return;
-        }
-        const userId = socket.uid || clientId;
-        const session = await this.localMediaAuthority.announceSession(
-          this.roomId,
-          userId,
-          auth.allowed,
-          data?.manifest
-        );
-        if (session) {
-          this.cmdHost(socket, "localmedia://" + data.manifest.mediaId);
-        }
+        await this.signalingCoordinator.handleLocalMediaAnnounce(socket, data);
       });
 
       socket.on("CMD_LOCAL_MEDIA_SIGNAL", (data: any) => {
         if (!validateNotExpired()) return;
-        if (!data || typeof data !== "object") return;
-
-        // 1. Authoritative sender identity: sender's registered peerId (clientId) in this room
-        const senderPeerId = clientId;
-        const targetPeerId = data.toPeerId;
-        if (!targetPeerId || typeof targetPeerId !== "string") return;
-
-        // 2. Validate target socket belongs to this room
-        const targetSocketId = this.socketIdMap[targetPeerId];
-        if (!targetSocketId) return;
-
-        // Ensure target is still connected in this room's namespace
-        const targetSocket = this.io.of(this.roomId).sockets.get(targetSocketId);
-        if (!targetSocket) return;
-
-        // 3. Construct authoritative relay payload
-        const relayPayload = {
-          roomId: this.roomId,
-          fromPeerId: senderPeerId, // Server enforced, ignoring data.fromPeerId
-          toPeerId: targetPeerId,
-          signal: data.signal,
-          epoch: typeof data.epoch === "number" ? data.epoch : 1,
-        };
-
-        this.localMediaAuthority.handleSignalRelay(
-          socket,
-          targetSocketId,
-          relayPayload,
-          data.mediaId
-        );
+        this.signalingCoordinator.handleLocalMediaSignal(socket, data);
       });
 
       socket.on("CMD_LOCAL_MEDIA_AVAILABILITY", (data: any) => {
         if (!validateNotExpired()) return;
-        if (!data || typeof data !== "object") return;
-        const { mediaId, epoch, availableChunksCount, contiguousThrough } = data;
-        if (!mediaId || typeof mediaId !== "string" || typeof epoch !== "number") return;
-
-        this.localMediaAuthority.updatePeerAvailability(
-          this.roomId,
-          clientId,
-          mediaId,
-          epoch,
-          availableChunksCount,
-          contiguousThrough
-        );
+        this.signalingCoordinator.handleLocalMediaAvailability(socket, data);
       });
 
       // Resolve profile for authenticated socket
@@ -1561,7 +1516,7 @@ export class Room {
       clearTimeout(this.inactivityTimeout);
       this.inactivityTimeout = undefined;
     }
-    this.localMediaAuthority.terminateSession(this.roomId);
+    this.signalingCoordinator.terminateSession();
   };
 
   public getRosterForStats = () => {
@@ -1773,7 +1728,7 @@ export class Room {
       return;
     }
     if (this.video?.startsWith("localmedia://") && !data?.startsWith("localmedia://")) {
-      this.localMediaAuthority.terminateSession(this.roomId);
+      this.signalingCoordinator.terminateSession();
     }
     this.video = data;
     this.paused = false;
@@ -2481,79 +2436,7 @@ export class Room {
     this.io.of(this.roomId).emit("REC:removeReaction", reaction);
   };
 
-  private joinVideo = async (socket: Socket) => {
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isVideoChat = true;
-      redisCount("videoChatStarts");
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
 
-  private leaveVideo = async (socket: Socket) => {
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isVideoChat = false;
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
-  private setUserMute = (socket: Socket, raw: unknown) => {
-    const data = raw as { isMuted: boolean };
-    if (!data) {
-      return;
-    }
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isMuted = data.isMuted;
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
-  private joinScreenSharing = (socket: Socket, raw: unknown) => {
-    const data = raw as { file: boolean; mediasoup?: boolean };
-    if (!data) {
-      return;
-    }
-    const sharer = this.getRosterForApp().find((user) => user.isScreenShare);
-    if (sharer) {
-      // Someone's already sharing
-      socket.emit(
-        "errorMessage",
-        "There is already an active share in this room",
-      );
-      return;
-    }
-    let mediasoupSuffix = "";
-    if (data?.mediasoup) {
-      // TODO validate the user has permissions to ask for a mediasoup
-      // TODO set up the room on the remote server rather than letting the remote server create
-      mediasoupSuffix =
-        "@" + config.MEDIASOUP_SERVER + "/" + crypto.randomUUID();
-      redisCount("mediasoupStarts");
-    }
-    if (data && data.file) {
-      this.cmdHost(socket, "fileshare://" + socket.clientId + mediasoupSuffix);
-      redisCount("fileShareStarts");
-    } else {
-      this.cmdHost(
-        socket,
-        "screenshare://" + socket.clientId + mediasoupSuffix,
-      );
-      redisCount("screenShareStarts");
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
-  private leaveScreenSharing = (socket: Socket) => {
-    const sharer = this.getRosterForApp().find((user) => user.isScreenShare);
-    if (!sharer || sharer?.id !== socket.clientId) {
-      socket.emit("errorMessage", "Not the active sharer");
-      return;
-    }
-    this.cmdHost(socket, "");
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
 
 
 
@@ -2693,25 +2576,7 @@ export class Room {
     socket.emit("errorMessage", "Room settings cannot be changed via socket.");
   };
 
-  private sendSignal = (
-    socket: Socket,
-    raw: unknown,
-    eventName: "signal" | "signalSS",
-  ) => {
-    const data = raw as { to: string; msg: string; sharer?: boolean };
-    if (!data) {
-      return;
-    }
-    const fromClientId = socket.clientId;
-    const toId = this.socketIdMap[data.to];
-    if (toId) {
-      this.io.of(this.roomId).to(toId).emit(eventName, {
-        from: fromClientId,
-        msg: data.msg,
-        sharer: data.sharer,
-      });
-    }
-  };
+
 
   public scheduleInactivityTimeoutIfNeeded = (): void => {
     const actualUsers = this.roster.filter((p) => !p.isScreenShare);
@@ -2758,7 +2623,7 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
-      this.localMediaAuthority.unregisterPeer(this.roomId, clientId, socket.id);
+      this.signalingCoordinator.unregisterPeer(clientId, socket.id);
 
       // Transition admitted participant to disconnected state with timestamp for grace period
       const admittedRecord = this.admittedParticipants.get(clientId);
