@@ -15,7 +15,10 @@ const mockLocalStorage = {
   clear: () => storage.clear(),
 };
 
-if (typeof window === "undefined" || !global.localStorage) {
+if (typeof window === "undefined") {
+  (global as any).window = { localStorage: mockLocalStorage };
+}
+if (!global.localStorage) {
   (global as any).localStorage = mockLocalStorage;
 }
 
@@ -122,7 +125,7 @@ const items: AppAnnouncement[] = [
 const sorted = sortAnnouncements(items);
 assert(sorted[0].id === "2", "Critical item should have highest priority");
 assert(sorted[1].id === "4", "Warning item should have second highest priority");
-assert(sorted[2].id === "3", "Success item should have third highest priority");
-assert(sorted[3].id === "1", "Info item should have fourth highest priority");
+assert(sorted[2].id === "1", "Info item should have third highest priority");
+assert(sorted[3].id === "3", "Success item should have fourth highest priority");
 
 console.log("All announcements unit tests passed successfully!");

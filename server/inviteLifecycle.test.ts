@@ -183,7 +183,7 @@ async function runInviteLifecycleTests() {
     if (token && token.startsWith('bearer-')) {
       const uid = token.replace('bearer-', '');
       if (mockDb.profiles.has(uid)) {
-        return { data: { user: { id: uid, email: `${uid}@example.com` } as any }, error: null };
+        return { data: { user: { id: uid, email: `${uid}@example.com`, email_confirmed_at: '2026-01-01T00:00:00Z' } as any }, error: null };
       }
     }
     return { data: { user: null }, error: new Error('Invalid token') as any };

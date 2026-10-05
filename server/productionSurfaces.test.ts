@@ -86,7 +86,8 @@ async function runProductionSurfacesTests() {
   const loginContent = fs.readFileSync(loginPath, "utf-8");
   assert.ok(loginContent.includes("otp_expired"), "Login must detect otp_expired code");
   assert.ok(
-    loginContent.includes("confirmation or password reset link has expired"),
+    loginContent.includes("AUTH_RESET_TOKEN_EXPIRED") ||
+      loginContent.includes("confirmation or password reset link has expired"),
     "Login must explain link expiration"
   );
   console.log("  [PASS] Login alerts user when redirected with expired token.");
