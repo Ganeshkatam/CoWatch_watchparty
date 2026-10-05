@@ -164,26 +164,27 @@ export const Create = () => {
     setEntitlementLoading(true);
     setEntitlementError(false);
 
-    const token = getAccessToken();
     let cancelled = false;
-    fetch(`${serverPath}/roomEntitlements`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => {
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) throw new Error("No token available");
+        const r = await fetch(`${serverPath}/roomEntitlements`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<RoomEntitlement>;
-      })
-      .then((data) => {
+        const data = (await r.json()) as RoomEntitlement;
         if (!cancelled) setEntitlement(data);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setEntitlementError(true);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setEntitlementLoading(false);
-      });
+      }
+    })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   // All UI constraints derived from a single memo — no scattered fallback literals.
