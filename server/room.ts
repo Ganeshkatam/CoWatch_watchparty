@@ -32,6 +32,13 @@ import {
   type AdmittedParticipantRecord,
   ADMISSION_DISCONNECT_GRACE_MS,
 } from "./room/roomAdmissionCoordinator.ts";
+import {
+  RoomHostCoordinator,
+  type HostMode,
+  type HostTransitionReason,
+  HostTransitionUnavailableError,
+  type HostAuthorityPayload,
+} from "./room/roomHostCoordinator.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -39,8 +46,15 @@ export function makeHandshakeError(code: string, message: string): Error & { dat
   });
 }
 
-export type { RoomMessageRow, AdmittedParticipantRecord };
-export { persistRoomMessage, loadRoomMessages, ADMISSION_DISCONNECT_GRACE_MS, RoomAdmissionCoordinator };
+export type { RoomMessageRow, AdmittedParticipantRecord, HostMode, HostTransitionReason, HostAuthorityPayload };
+export {
+  persistRoomMessage,
+  loadRoomMessages,
+  ADMISSION_DISCONNECT_GRACE_MS,
+  RoomAdmissionCoordinator,
+  HostTransitionUnavailableError,
+  RoomHostCoordinator,
+};
 
 
 // Extend the interface
@@ -49,32 +63,6 @@ declare module "socket.io" {
     clientId: string;
     uid: string;
   }
-}
-
-export type HostMode = "owner" | "temporary" | "none";
-export type HostTransitionReason =
-  | "explicit_transfer"
-  | "failover"
-  | "owner_regain"
-  | "initial"
-  | "room_empty";
-
-export class HostTransitionUnavailableError extends Error {
-  public readonly code = "HOST_TRANSITION_UNAVAILABLE" as const;
-
-  public constructor(message = "Host transition is temporarily unavailable.") {
-    super(message);
-    this.name = "HostTransitionUnavailableError";
-  }
-}
-
-export interface HostAuthorityPayload {
-  hostId: string;
-  hostClientId: string;
-  mode: HostMode;
-  reason: HostTransitionReason;
-  hostName?: string;
-  isOwner?: boolean;
 }
 
 export const EMPTY_ROOM_INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds
@@ -156,10 +144,30 @@ export class Room {
   public expiresAt: Date | undefined = undefined;
   public startedAt: Date | undefined = undefined;
   public owner_id: string = '';
-  public currentHostClientId: string = '';
-  public currentHostUid: string = '';
-  public hostMode: HostMode = "none";
-  public hostEpoch: number = 1;
+  public get currentHostClientId(): string {
+    return this.hostCoordinator.currentHostClientId;
+  }
+  public set currentHostClientId(val: string) {
+    this.hostCoordinator.currentHostClientId = val;
+  }
+  public get currentHostUid(): string {
+    return this.hostCoordinator.currentHostUid;
+  }
+  public set currentHostUid(val: string) {
+    this.hostCoordinator.currentHostUid = val;
+  }
+  public get hostMode(): HostMode {
+    return this.hostCoordinator.hostMode;
+  }
+  public set hostMode(val: HostMode) {
+    this.hostCoordinator.hostMode = val;
+  }
+  public get hostEpoch(): number {
+    return this.hostCoordinator.hostEpoch;
+  }
+  public set hostEpoch(val: number) {
+    this.hostCoordinator.hostEpoch = val;
+  }
   public get admittedMembers(): Set<string> {
     return this.admissionCoordinator.admittedMembers;
   }
@@ -202,6 +210,7 @@ export class Room {
   public moderationCoordinator: RoomModerationCoordinator;
   public playbackCoordinator: RoomPlaybackCoordinator;
   public admissionCoordinator: RoomAdmissionCoordinator;
+  public hostCoordinator: RoomHostCoordinator;
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
@@ -343,10 +352,7 @@ export class Room {
   };
 
   public isHostUid = (uid: string): boolean => {
-    if (!uid) return false;
-    if (this.owner_id && this.owner_id === uid) return true;
-    if (this.currentHostUid && this.currentHostUid === uid) return true;
-    return false;
+    return this.hostCoordinator.isHostUid(uid);
   };
 
   public isHostPresent = (): boolean => {
@@ -366,80 +372,13 @@ export class Room {
   };
 
   public getHostMode = (): HostMode => {
-    if (!this.currentHostUid && !this.currentHostClientId) {
-      return "none";
-    }
-    const isOwner = Boolean(this.owner_id && this.currentHostUid && this.currentHostUid === this.owner_id);
-    return isOwner ? "owner" : "temporary";
+    return this.hostCoordinator.getHostMode();
   };
 
   public withHostTransitionLease = async <T>(
     action: () => Promise<T>,
   ): Promise<T> => {
-    const isMultiInstance = Boolean(
-      config.REDIS_CORE_URL || (config.NODE_ENV !== "production" && config.REDIS_URL),
-    );
-
-    if (!isMultiInstance) {
-      return action();
-    }
-
-    const availability = redisCore.getAvailability();
-
-    if (!availability.available) {
-      throw new HostTransitionUnavailableError(
-        `Redis is unavailable: ${availability.reason}`,
-      );
-    }
-
-    const leaseKey = `room:host:${this.roomId}`;
-    const leaseVal =
-      `${process.pid}:${Date.now()}:${randomUUID()}`;
-
-    let acquired = false;
-
-    try {
-      acquired = await redisCore.setLease(
-        leaseKey,
-        leaseVal,
-        5,
-      );
-    } catch (error: unknown) {
-      console.warn(
-        `[REDIS LEASE ERROR] Failed to acquire host lease in room ${this.roomId}`,
-        error,
-      );
-
-      throw new HostTransitionUnavailableError();
-    }
-
-    if (!acquired) {
-      throw new HostTransitionUnavailableError(
-        "Unable to acquire the host transition lease.",
-      );
-    }
-
-    try {
-      return await action();
-    } finally {
-      try {
-        const released = await redisCore.delLease(
-          leaseKey,
-          leaseVal,
-        );
-
-        if (!released) {
-          console.warn(
-            `[REDIS LEASE WARNING] Lease ownership changed before release for room ${this.roomId}`,
-          );
-        }
-      } catch (error: unknown) {
-        console.warn(
-          `[REDIS LEASE RELEASE ERROR] Failed to release host lease in room ${this.roomId}`,
-          error,
-        );
-      }
-    }
+    return this.hostCoordinator.withHostTransitionLease(action);
   };
 
   public verifyAdmittedSession = (sessionHint?: string, uid?: string): boolean => {
@@ -470,6 +409,27 @@ export class Room {
       getUidToNameMap: () => this.uidToNameMap,
       getUidToPictureMap: () => this.uidToPictureMap,
       getRoster: () => this.roster,
+    });
+
+    this.hostCoordinator = new RoomHostCoordinator({
+      roomId: this.roomId,
+      io: this.io,
+      getOwnerId: () => this.owner_id,
+      getClientToUidMap: () => this.clientToUidMap,
+      getNameMap: () => this.nameMap,
+      isParticipantEligibleForHost: (clientId) => this.admissionCoordinator.isParticipantEligibleForHost(clientId),
+      getEligibleParticipants: (excludeClientId) => this.admissionCoordinator.getEligibleParticipants(excludeClientId),
+      buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
+      authorizeRoomAction: (params) => this.authorizeRoomAction(params),
+      addChatMessage: (socket, chatMsg) => this.addChatMessage(socket, chatMsg),
+      getRoomStateBroadcastDetails: () => ({
+        isChatDisabled: this.isChatDisabled,
+        roomTitle: this.roomTitle,
+        roomDescription: this.roomDescription,
+        mediaPath: this.mediaPath,
+        participantsLocked: this.participantsLocked,
+        maxParticipants: this.maxParticipants,
+      }),
     });
 
     this.signalingCoordinator = new RoomSignalingCoordinator({
@@ -760,14 +720,8 @@ export class Room {
         this.clientToUidMap[clientId] = socket.uid;
       }
 
-      // Check if this socket is the room owner (creator) returning to the room
-      if (socket.uid && this.owner_id && socket.uid === this.owner_id) {
-        await this.reclaimHostForOwner(socket);
-      } else if (!this.currentHostUid && socket.uid) {
-        // Initial room participant becomes host ONLY IF authenticated with verified UID
-        this.currentHostUid = socket.uid;
-        this.currentHostClientId = clientId;
-      }
+      // Initial host or owner reclaim handling
+      await this.hostCoordinator.handleInitialHost(socket, clientId);
 
       // Authoritative Session Activation on Host Entry:
       // When the authenticated owner or authorized host enters Watch, transition an inactive
@@ -1449,98 +1403,23 @@ export class Room {
   };
 
   public isHost = (socket: Socket | null | undefined): boolean => {
-    if (!socket?.uid || !this.currentHostUid) return false;
-    return socket.uid === this.currentHostUid;
+    return this.hostCoordinator.isHost(socket);
   };
 
   public getHostDisplayName = (): string => {
-    if (this.currentHostClientId && this.nameMap[this.currentHostClientId]) {
-      return this.nameMap[this.currentHostClientId];
-    }
-    return "Host";
+    return this.hostCoordinator.getHostDisplayName();
   };
 
-  public broadcastHostChange = (reason: HostTransitionReason) => {
-    const mode = this.getHostMode();
-    this.hostMode = mode;
-    const isOwner = mode === "owner";
-    const hostId = this.currentHostUid || this.currentHostClientId;
-    const hostPayload: HostAuthorityPayload = {
-      hostId,
-      hostClientId: this.currentHostClientId,
-      mode,
-      reason,
-      hostName: this.getHostDisplayName(),
-      isOwner,
-    };
-    this.io.of(this.roomId).emit("REC:hostAuthority", hostPayload);
-    this.io.of(this.roomId).emit("REC:hostChange", hostPayload);
+  public getHostAuthorityPayload = (reason: HostTransitionReason = "initial"): HostAuthorityPayload => {
+    return this.hostCoordinator.getHostAuthorityPayload(reason);
+  };
 
-    if ((reason === "failover" || reason === "explicit_transfer") && this.currentHostUid) {
-      const transferId = randomUUID();
-      notificationService
-        .notifyUser({
-          userId: this.currentHostUid,
-          type: "ROOM_HOST_TRANSFER",
-          title: "Host role assigned",
-          body: `You are now the host of room ${this.roomId}.`,
-          metadata: {
-            roomId: this.roomId,
-            action: "open_room",
-            targetUrl: `/room/${encodeURIComponent(this.roomId)}`,
-            reason,
-            hostEpoch: this.hostEpoch,
-          },
-          eventId: `ROOM_HOST_TRANSFER:${this.roomId}:${this.currentHostUid}`,
-        })
-        .catch((err) => console.error("[Notification] Failed to notify new host:", err));
-    }
-    this.io.of(this.roomId).emit("REC:getRoomState", {
-      owner: this.owner_id,
-      currentHostId: hostId,
-      currentHostClientId: this.currentHostClientId,
-      hostName: this.getHostDisplayName(),
-      hostMode: mode,
-      isHost: false, // Per-socket value evaluated in getRoomState()
-      isChatDisabled: this.isChatDisabled,
-      roomTitle: this.roomTitle,
-      roomDescription: this.roomDescription,
-      mediaPath: this.mediaPath,
-      participantsLocked: this.participantsLocked,
-      maxParticipants: this.maxParticipants,
-    });
+  public broadcastHostChange = (reason: HostTransitionReason): void => {
+    this.hostCoordinator.broadcastHostChange(reason);
   };
 
   public reclaimHostForOwner = async (ownerSocket: Socket): Promise<boolean> => {
-    if (!this.owner_id || ownerSocket.uid !== this.owner_id) return false;
-    if (this.currentHostClientId === ownerSocket.clientId && this.hostMode === "owner") {
-      return true;
-    }
-
-    try {
-      return await this.withHostTransitionLease(async () => {
-        const previousHostClientId = this.currentHostClientId;
-        this.hostEpoch += 1;
-        this.currentHostClientId = ownerSocket.clientId;
-        this.currentHostUid = ownerSocket.uid;
-        this.clientToUidMap[ownerSocket.clientId] = ownerSocket.uid;
-        this.hostMode = "owner";
-
-        this.broadcastHostChange("owner_regain");
-        if (previousHostClientId && previousHostClientId !== ownerSocket.clientId) {
-          const chatMsg = {
-            id: ownerSocket.clientId,
-            cmd: "system",
-            msg: "The room creator has returned and resumed hosting.",
-          };
-          this.addChatMessage(ownerSocket, chatMsg);
-        }
-        return true;
-      });
-    } catch (err: any) {
-      console.warn(`[RECLAIM HOST WARNING] Failed to reclaim host in room ${this.roomId}:`, err.message);
-      return false;
-    }
+    return this.hostCoordinator.reclaimHostForOwner(ownerSocket);
   };
 
   public transferHost = async (
@@ -1553,41 +1432,7 @@ export class Room {
       socket.emit("CMD:error", { code: "FORBIDDEN" });
       return { success: false, error: "FORBIDDEN" };
     }
-    if (!targetClientId) {
-      return { success: false, error: "TARGET_REQUIRED" };
-    }
-    if (targetClientId === socket.clientId) {
-      return { success: false, error: "CANNOT_TRANSFER_TO_SELF" };
-    }
-    if (!this.isParticipantEligibleForHost(targetClientId)) {
-      return { success: false, error: "TARGET_NOT_ELIGIBLE" };
-    }
-
-    return await this.withHostTransitionLease(async () => {
-      // Re-verify under distributed lease
-      if (!this.isHost(socket)) {
-        return { success: false, error: "NOT_HOST" };
-      }
-      if (!this.isParticipantEligibleForHost(targetClientId)) {
-        return { success: false, error: "TARGET_NOT_ELIGIBLE" };
-      }
-
-      const previousHostName = this.getHostDisplayName();
-      this.hostEpoch += 1;
-      this.currentHostClientId = targetClientId;
-      this.currentHostUid = this.clientToUidMap[targetClientId] || "";
-      this.hostMode = this.getHostMode();
-      const newHostName = this.getHostDisplayName();
-
-      this.broadcastHostChange("explicit_transfer");
-      const chatMsg = {
-        id: socket.clientId,
-        cmd: "system",
-        msg: `${previousHostName} transferred host authority to ${newHostName}.`,
-      };
-      this.addChatMessage(socket, chatMsg);
-      return { success: true };
-    });
+    return this.hostCoordinator.transferHost(socket, targetClientId);
   };
 
   public assignHost = (socket: Socket, newHostClientId: string): boolean => {
@@ -1600,10 +1445,15 @@ export class Room {
       socket.emit("errorMessage", "FORBIDDEN");
       return false;
     }
-    this.transferHost(socket, newHostClientId).catch((err) => {
-      socket.emit("errorMessage", err.message || "Failed to assign host.");
-    });
-    return true;
+    return this.hostCoordinator.assignHost(socket, newHostClientId);
+  };
+
+  public handleHostDisconnect = async (departingClientId: string): Promise<void> => {
+    return this.hostCoordinator.handleHostDisconnect(departingClientId);
+  };
+
+  public handleInitialHost = async (socket: Socket, clientId: string): Promise<void> => {
+    return this.hostCoordinator.handleInitialHost(socket, clientId);
   };
 
 
@@ -2057,36 +1907,7 @@ export class Room {
       }
 
       if (wasHost) {
-        this.withHostTransitionLease(async () => {
-          const eligible = this.getEligibleParticipants(clientId);
-          if (eligible.length > 0) {
-            // Deterministic lowest admissionSequence ASC
-            const nextHost = eligible[0];
-            const oldHostName = this.getHostDisplayName();
-            this.hostEpoch += 1;
-            this.currentHostClientId = nextHost.clientId;
-            this.currentHostUid = this.clientToUidMap[nextHost.clientId] || "";
-            this.hostMode = this.getHostMode();
-            const newHostName = this.getHostDisplayName();
-
-            this.broadcastHostChange("failover");
-            const chatMsg = {
-              id: nextHost.clientId,
-              cmd: "system",
-              msg: `${oldHostName} disconnected. ${newHostName} is now the temporary room host.`,
-            };
-            this.addChatMessage(null, chatMsg);
-          } else {
-            // No eligible participants remaining
-            this.hostEpoch += 1;
-            this.currentHostClientId = "";
-            this.currentHostUid = "";
-            this.hostMode = "none";
-            this.broadcastHostChange("room_empty");
-          }
-        }).catch((err) => {
-          console.error("Failed during host failover transition:", err);
-        });
+        this.hostCoordinator.handleHostDisconnect(clientId);
       }
       this.scheduleInactivityTimeoutIfNeeded();
     }
