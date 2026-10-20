@@ -1,5 +1,4 @@
 import config from "./config.ts";
-import axios from "axios";
 import { Server, Socket } from "socket.io";
 import { randomUUID } from "crypto";
 import { getUser, validateToken } from "./utils/supabase.ts";
@@ -16,18 +15,10 @@ import { getStartOfDay } from "./utils/time.ts";
 import { postgres } from "./utils/postgres.ts";
 import { isBcryptHash, decryptPasscodeForOwner } from "./utils/roomPasscode.ts";
 import { verifyAdmissionToken, fingerprintToken } from "./utils/admissionToken.ts";
-import {
-  fetchYoutubeVideo,
-  getYoutubeVideoID,
-  normalizeYouTubeUrl,
-  isYouTube,
-} from "./utils/youtube.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
-import { findPlaylistVideoByUrl } from "./utils/playlist.ts";
-//@ts-expect-error
-import twitch from "twitch-m3u8";
 import { TimelineAuthority } from "./timelineAuthority.ts";
 import { notificationService } from "./notifications/notificationService.ts";
+import { RoomPlaybackCoordinator } from "./room/roomPlaybackCoordinator.ts";
 import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
 import { RoomSignalingCoordinator } from "./room/roomSignalingCoordinator.ts";
 import {
@@ -106,18 +97,38 @@ export interface AuthorizeActionParams {
 }
 
 export class Room {
-  sendRoster() {
-    throw new Error("Method not implemented.");
-  }
+  public sendRoster = () => {
+    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
+  };
   // Serialized state
-  public video: string | null = "";
+  public get video(): string | null {
+    return this.playbackCoordinator.video;
+  }
+  public set video(val: string | null) {
+    this.playbackCoordinator.video = val || "";
+  }
   public get videoTS(): number {
-    return this.timeline.getCanonicalTime();
+    return this.playbackCoordinator.videoTS;
   }
   public subtitle = "";
-  public playbackRate = 1;
-  public paused = false;
-  public loop = false;
+  public get playbackRate(): number {
+    return this.playbackCoordinator.playbackRate;
+  }
+  public set playbackRate(val: number) {
+    this.playbackCoordinator.playbackRate = val;
+  }
+  public get paused(): boolean {
+    return this.playbackCoordinator.paused;
+  }
+  public set paused(val: boolean) {
+    this.playbackCoordinator.paused = val;
+  }
+  public get loop(): boolean {
+    return this.playbackCoordinator.loop;
+  }
+  public set loop(val: boolean) {
+    this.playbackCoordinator.loop = val;
+  }
   private chat: ChatMessage[] = [];
   public nameMap: StringDict = {};
   public pictureMap: StringDict = {};
@@ -126,13 +137,23 @@ export class Room {
 
   public creator: string | undefined = undefined; // email of the user who created the room (just used for stats)
   public lock: string | undefined = undefined; // uid of the user who locked the room
-  public playlist: PlaylistVideo[] = [];
+  public get playlist(): PlaylistVideo[] {
+    return this.playbackCoordinator.playlist;
+  }
+  public set playlist(val: PlaylistVideo[]) {
+    this.playbackCoordinator.playlist = val;
+  }
 
   // Non-serialized state
   public roomId: string;
   public roster: User[] = [];
-  private lastTsMap = Date.now();
-  private tsMap: NumberDict = {};
+  public get lastTsMap(): number {
+    return this.playbackCoordinator.lastTsMap;
+  }
+  public set lastTsMap(val: number) {
+    this.playbackCoordinator.lastTsMap = val;
+  }
+  public tsMap: NumberDict = {};
   private io: Server;
   private socketIdMap: StringDict = {};
   private tsInterval: NodeJS.Timeout | undefined = undefined;
@@ -159,9 +180,21 @@ export class Room {
   private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
   private bannedIdentities: Set<string> = new Set();
   private processedOperations: Map<string, { operationId: string; timestamp: number }[]> = new Map();
-  public timeline: TimelineAuthority = new TimelineAuthority();
+  public get timeline(): TimelineAuthority {
+    return this.playbackCoordinator.timeline;
+  }
+  public set timeline(val: TimelineAuthority) {
+    this.playbackCoordinator.timeline = val;
+  }
+  public get preventTSUpdate(): boolean {
+    return this.playbackCoordinator.preventTSUpdate;
+  }
+  public set preventTSUpdate(val: boolean) {
+    this.playbackCoordinator.preventTSUpdate = val;
+  }
   public signalingCoordinator: RoomSignalingCoordinator;
   public moderationCoordinator: RoomModerationCoordinator;
+  public playbackCoordinator: RoomPlaybackCoordinator;
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
@@ -533,7 +566,6 @@ export class Room {
     }
     return this.verifyAdmittedSession(clientIdOrSessionHint);
   };
-  private preventTSUpdate = false;
   // Not really a queue since there's no ordering, we just retry as long as this is set
   // If we want a real queue then we need external processing of the jobs and a way to update the room from outside
 
@@ -576,6 +608,22 @@ export class Room {
       recordProcessedOperation: (clientId, opId) => this.recordProcessedOperation(clientId, opId),
       buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
       authorizeRoomAction: (params) => this.authorizeRoomAction(params),
+    });
+
+    this.playbackCoordinator = new RoomPlaybackCoordinator({
+      roomId: this.roomId,
+      io: this.io,
+      tsMap: this.tsMap,
+      canControlPlayback: (socket) => this.canControlPlayback(socket),
+      hasProcessedOperation: (clientId, opId) => this.hasProcessedOperation(clientId, opId),
+      recordProcessedOperation: (clientId, opId) => this.recordProcessedOperation(clientId, opId),
+      addChatMessage: (socket, chatMsg) => this.addChatMessage(socket, chatMsg),
+      terminateSignalingSession: () => this.signalingCoordinator.terminateSession(),
+      sendRoster: () => this.sendRoster(),
+      getHostState: () => this.getHostState(),
+      resetSubtitle: () => {
+        this.subtitle = "";
+      },
     });
 
     if (roomData) {
@@ -1670,35 +1718,8 @@ export class Room {
 
 
 
-  private cmdHost = (socket: Socket | null, data: string) => {
-    if (data && data.length > 50000) {
-      return;
-    }
-    if (this.video?.startsWith("localmedia://") && !data?.startsWith("localmedia://")) {
-      this.signalingCoordinator.terminateSession();
-    }
-    this.video = data;
-    this.paused = false;
-    this.subtitle = "";
-    this.loop = false;
-    this.playbackRate = 1;
-    this.timeline.setMediaSource(data);
-    this.tsMap = {};
-    this.preventTSUpdate = true;
-    setTimeout(() => (this.preventTSUpdate = false), 1000);
-    this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
-    this.io.of(this.roomId).emit("REC:host", this.getHostState());
-    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
-    if (socket && data) {
-      const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
-      this.addChatMessage(socket, chatMsg);
-    }
-    if (data === "") {
-      this.playlistNext(null);
-    }
-
-    // Resend the roster (updates screenshare state etc)
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
+  public cmdHost = (socket: Socket | null, data: string) => {
+    this.playbackCoordinator.cmdHost(socket, data);
   };
 
   /**
@@ -1774,156 +1795,23 @@ export class Room {
   };
 
   private startHosting = async (socket: Socket, data: string) => {
-
-    redisCount("urlStarts");
-    if (config.STREAM_PATH && data?.startsWith(config.STREAM_PATH)) {
-      redisCount("streamStarts");
-    }
-    if (config.CONVERT_PATH && data?.startsWith(config.CONVERT_PATH)) {
-      redisCount("convertStarts");
-    }
-    // If a reddit URL, extract video URL
-    if (
-      data?.startsWith("https://www.reddit.com") ||
-      data?.startsWith("https://old.reddit.com") ||
-      data?.startsWith("https://reddit.com")
-    ) {
-      if (data.endsWith("/")) {
-        // Remove trailing slash
-        data = data.slice(0, -1);
-      }
-      data = data + ".json";
-      // Extract fallback_url
-      const resp = await axios.get(data);
-      const json = resp.data;
-      let reddit_m3u8 =
-        json?.[0]?.data?.children?.[0]?.data?.secure_media?.reddit_video
-          ?.hls_url;
-      let reddit_mp4 =
-        json?.[0]?.data?.children?.[0]?.data?.secure_media?.reddit_video
-          ?.fallback_url;
-      // prefer reddit m3u8 streams over the mp4 links as the m3u8 streams contain audio.
-      data = reddit_m3u8 || reddit_mp4 || data;
-    } else if (
-      data?.startsWith("https://www.twitch.tv") ||
-      data?.startsWith("https://twitch.tv")
-    ) {
-      try {
-        // Extract m3u8 data
-        // Note this won't work directly since Twitch will reject requests from the wrong origin--need to proxy the m3u8 playlist
-        const channel = data.split("/").slice(-1)[0];
-        const isStream = isNaN(Number(channel));
-        let streams = [];
-        if (isStream) {
-          streams = await twitch.getStream(channel);
-        } else {
-          streams = await twitch.getVod(channel);
-        }
-        // console.log(streams);
-        const target =
-          streams.find((str: any) => str.quality.includes("(source)")) ||
-          streams[0];
-        const parsed = new URL(target?.url);
-        const newUrl = new URL(config.TWITCH_PROXY_PATH);
-        newUrl.pathname = "/proxy" + parsed.pathname;
-        newUrl.searchParams.set("host", parsed.host);
-        newUrl.searchParams.set("displayName", data);
-        newUrl.search = newUrl.searchParams.toString();
-        data = newUrl.toString();
-      } catch (e) {
-        console.warn(e);
-      }
-    } else if (isYouTube(data)) {
-      data = normalizeYouTubeUrl(data);
-    }
-    this.cmdHost(socket, data);
+    await this.playbackCoordinator.startHosting(socket, data);
   };
 
   private playlistNext = (raw: unknown) => {
-    const data = raw ? String(raw) : null;
-    // Clients may pass the URL that should be the current one.
-    // If we've already advanced the playlist, we can ignore duplicate calls
-    if (
-      data &&
-      this.video &&
-      data !== this.video &&
-      getYoutubeVideoID(data) !== getYoutubeVideoID(this.video)
-    ) {
-      // Validation didn't match
-      return;
-    }
-    const next = this.playlist.shift();
-    this.io.of(this.roomId).emit("playlist", this.playlist);
-    if (next) {
-      this.cmdHost(null, next.url);
-    }
+    this.playbackCoordinator.playlistNext(raw);
   };
 
   public playlistAdd = async (socket: Socket | null, data: string) => {
-    if (data && data.length > 20000) {
-      return;
-    }
-    redisCount("playlistAdds");
-    const youtubeVideoId = getYoutubeVideoID(data);
-    const targetUrl = youtubeVideoId ? normalizeYouTubeUrl(data) : data;
-    const item: PlaylistVideo = {
-      name: data,
-      channel: youtubeVideoId ? "YouTube" : "Video URL",
-      duration: 0,
-      url: targetUrl,
-      type: youtubeVideoId ? "youtube" : data.startsWith("magnet:") ? "magnet" : "file",
-    };
-    let video: PlaylistVideo | null = null;
-    const existing = findPlaylistVideoByUrl(this.playlist, targetUrl);
-    if (existing) {
-      video = { ...existing };
-    } else {
-      try {
-        if (youtubeVideoId) {
-          video = await fetchYoutubeVideo(youtubeVideoId);
-        }
-      } catch (e) {
-        // Failed to fetch YouTube video info but can still add the URL
-        console.warn(e);
-      }
-    }
-    if (video) {
-      this.playlist.push(video);
-    } else {
-      this.playlist.push(item);
-    }
-    this.io.of(this.roomId).emit("playlist", this.playlist);
-    const clientId = socket?.clientId;
-    if (clientId) {
-      const chatMsg = {
-        id: clientId,
-        cmd: "playlistAdd",
-        msg: data,
-      };
-      this.addChatMessage(socket, chatMsg);
-    }
-    if (!this.video) {
-      this.playlistNext(null);
-    }
+    await this.playbackCoordinator.playlistAdd(socket, data);
   };
 
   private playlistDelete = (index: number) => {
-    if (index !== -1) {
-      this.playlist.splice(index, 1);
-      this.io.of(this.roomId).emit("playlist", this.playlist);
-    }
+    this.playbackCoordinator.playlistDelete(index);
   };
 
   private playlistMove = (raw: unknown) => {
-    const data = raw as { index: number; toIndex: number };
-    if (!data) {
-      return;
-    }
-    if (data.index !== -1) {
-      const items = this.playlist.splice(data.index, 1);
-      this.playlist.splice(data.toIndex, 0, items[0]);
-      this.io.of(this.roomId).emit("playlist", this.playlist);
-    }
+    this.playbackCoordinator.playlistMove(raw);
   };
 
   public playVideo = (socket: Socket, operationId?: string) => {
@@ -1931,21 +1819,7 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    if (this.hasProcessedOperation(socket.clientId, operationId)) {
-      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
-      return;
-    }
-    this.recordProcessedOperation(socket.clientId, operationId);
-    this.timeline.play();
-    this.paused = false;
-    socket.broadcast.emit("REC:play", this.video);
-    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
-    const chatMsg = {
-      id: socket.clientId,
-      cmd: "play",
-      msg: this.tsMap[socket.clientId]?.toString(),
-    };
-    this.addChatMessage(socket, chatMsg);
+    this.playbackCoordinator.playVideo(socket, operationId);
   };
 
   public pauseVideo = (socket: Socket, operationId?: string) => {
@@ -1953,21 +1827,7 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    if (this.hasProcessedOperation(socket.clientId, operationId)) {
-      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
-      return;
-    }
-    this.recordProcessedOperation(socket.clientId, operationId);
-    this.timeline.pause();
-    this.paused = true;
-    socket.broadcast.emit("REC:pause");
-    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
-    const chatMsg = {
-      id: socket.clientId,
-      cmd: "pause",
-      msg: this.tsMap[socket.clientId]?.toString(),
-    };
-    this.addChatMessage(socket, chatMsg);
+    this.playbackCoordinator.pauseVideo(socket, operationId);
   };
 
   public startSession = async (socket: Socket): Promise<void> => {
@@ -2037,22 +1897,7 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    const rawTarget = typeof data === "object" ? Number(data?.time) : Number(data);
-    const operationId = typeof data === "object" ? data?.operationId : undefined;
-    if (String(rawTarget).length > 100 || !Number.isFinite(rawTarget)) {
-      return;
-    }
-    if (this.hasProcessedOperation(socket.clientId, operationId)) {
-      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
-      return;
-    }
-    this.recordProcessedOperation(socket.clientId, operationId);
-    const targetTime = Math.max(0, rawTarget);
-    this.timeline.seek(targetTime);
-    socket.broadcast.emit("REC:seek", targetTime);
-    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
-    const chatMsg = { id: socket.clientId, cmd: "seek", msg: targetTime?.toString() };
-    this.addChatMessage(socket, chatMsg);
+    this.playbackCoordinator.seekVideo(socket, data);
   };
 
   public setPlaybackRate = (socket: Socket, data: number | { rate: number; operationId?: string }) => {
@@ -2060,49 +1905,15 @@ export class Room {
       socket.emit("CMD:error", "Playback controls are locked to the host.");
       return;
     }
-    const rawRate = typeof data === "object" ? Number(data?.rate) : Number(data);
-    const operationId = typeof data === "object" ? data?.operationId : undefined;
-    if (String(rawRate).length > 100 || !Number.isFinite(rawRate) || rawRate <= 0 || rawRate > 16) {
-      return;
-    }
-    if (this.hasProcessedOperation(socket.clientId, operationId)) {
-      socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
-      return;
-    }
-    this.recordProcessedOperation(socket.clientId, operationId);
-    this.timeline.setPlaybackRate(rawRate);
-    this.playbackRate = rawRate;
-    this.io.of(this.roomId).emit("REC:playbackRate", rawRate);
-    this.io.of(this.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload(undefined, undefined, operationId));
-    const chatMsg = {
-      id: socket.clientId,
-      cmd: "playbackRate",
-      msg: rawRate?.toString(),
-    };
-    this.addChatMessage(socket, chatMsg);
+    this.playbackCoordinator.setPlaybackRate(socket, data);
   };
 
   private setLoop = (data: boolean) => {
-    if (String(data).length > 100) {
-      return;
-    }
-    this.loop = data;
-    this.io.of(this.roomId).emit("REC:loop", data);
+    this.playbackCoordinator.setLoop(data);
   };
 
   private setTimestamp = (socket: Socket, data: number) => {
-    if (String(data).length > 100 || typeof data !== "number" || !Number.isFinite(data)) {
-      return;
-    }
-    // Prevent lagging TS updates from the old video from messing up our timestamps
-    if (this.preventTSUpdate) {
-      return;
-    }
-    // AUD-006: CMD:ts is strictly non-authoritative client telemetry for presence / roster display.
-    // It NEVER mutates this.videoTS or this.timeline.
-    const sanitizedTs = Math.max(0, Math.round(data * 100) / 100);
-    const timeSinceTsMap = Date.now() - this.lastTsMap;
-    this.tsMap[socket.clientId] = sanitizedTs - timeSinceTsMap / 1000 + 1;
+    this.playbackCoordinator.setTimestamp(socket, data);
   };
 
   private isValidChatMessage = (msg: string | undefined) => {
