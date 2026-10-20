@@ -30,6 +30,12 @@ import { TimelineAuthority } from "./timelineAuthority.ts";
 import { notificationService } from "./notifications/notificationService.ts";
 import { LocalMediaAuthority } from "./media/local/LocalMediaAuthority.ts";
 import { RoomSignalingCoordinator } from "./room/roomSignalingCoordinator.ts";
+import {
+  RoomModerationCoordinator,
+  persistRoomMessage,
+  loadRoomMessages,
+  type RoomMessageRow,
+} from "./room/roomModerationCoordinator.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -37,90 +43,8 @@ export function makeHandshakeError(code: string, message: string): Error & { dat
   });
 }
 
-export interface RoomMessageRow {
-  id: string;
-  roomId: string;
-  user_id: string | null;
-  message: string;
-  message_type: 'user' | 'system';
-  event_type: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: Date;
-  updated_at: Date | null;
-  profile_name?: string;
-  profile_picture?: string;
-  is_deleted?: boolean;
-}
-
-export async function persistRoomMessage(
-  roomId: string,
-  userId: string,
-  message: string,
-  messageType: 'user' | 'system' = 'user',
-  eventType: string | null = null,
-  metadata: Record<string, unknown> | null = null,
-  clientMessageId: string | null = null
-): Promise<RoomMessageRow | null> {
-  if (!postgres) return null;
-
-  try {
-    const result = await postgres.query(
-      `INSERT INTO room_messages (room_id, user_id, message, message_type, event_type, metadata, client_message_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (room_id, user_id, client_message_id) DO NOTHING
-       RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
-      [roomId, userId, message, messageType, eventType, metadata, clientMessageId]
-    );
-    if (result.rowCount === 0 && clientMessageId) {
-      // Duplicate client_message_id for this room/user, fetch the existing one
-      const existingResult = await postgres.query(
-        `SELECT id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
-         FROM room_messages
-         WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3`,
-        [roomId, userId, clientMessageId]
-      );
-      return existingResult.rows[0] || null;
-    }
-    return result.rows[0];
-  } catch (e) {
-    console.error("Failed to persist room message:", e);
-    return null;
-  }
-}
-
-export async function loadRoomMessages(roomId: string, limit: number = 50, beforeCursor?: string | { createdAt: string; id: string }): Promise<RoomMessageRow[]> {
-  if (!postgres) return [];
-
-  try {
-    let query = `
-      SELECT rm.id, rm.room_id as "roomId", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
-      FROM room_messages rm
-      LEFT JOIN profiles p ON rm.user_id = p.id
-      WHERE rm.room_id = $1
-    `;
-    const params: unknown[] = [roomId];
-
-    if (beforeCursor) {
-      if (typeof beforeCursor === 'string') {
-        query += ` AND rm.created_at < $2`;
-        params.push(beforeCursor);
-      } else {
-        query += ` AND (rm.created_at, rm.id) < ($2, $3)`;
-        params.push(beforeCursor.createdAt);
-        params.push(beforeCursor.id);
-      }
-    }
-
-    query += ` ORDER BY rm.created_at DESC, rm.id DESC LIMIT $${params.length + 1}`;
-    params.push(limit);
-
-    const result = await postgres.query(query, params);
-    return result.rows.reverse(); // Return in chronological order
-  } catch (e) {
-    console.error("Failed to load room messages:", e);
-    return [];
-  }
-}
+export type { RoomMessageRow };
+export { persistRoomMessage, loadRoomMessages };
 
 
 // Extend the interface
@@ -237,6 +161,7 @@ export class Room {
   private processedOperations: Map<string, { operationId: string; timestamp: number }[]> = new Map();
   public timeline: TimelineAuthority = new TimelineAuthority();
   public signalingCoordinator: RoomSignalingCoordinator;
+  public moderationCoordinator: RoomModerationCoordinator;
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
@@ -629,6 +554,28 @@ export class Room {
       getRosterForApp: () => this.getRosterForApp(),
       setMediaSource: (socket, mediaUrl) => this.cmdHost(socket, mediaUrl),
       buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
+    });
+
+    this.moderationCoordinator = new RoomModerationCoordinator({
+      roomId: this.roomId,
+      io: this.io,
+      socketIdMap: this.socketIdMap,
+      tsMap: this.tsMap,
+      nameMap: this.nameMap,
+      pictureMap: this.pictureMap,
+      clientToUidMap: this.clientToUidMap,
+      bannedIdentities: this.bannedIdentities,
+      admittedParticipants: this.admittedParticipants,
+      admittedMembers: this.admittedMembers,
+      postgres,
+      getHostEpoch: () => this.hostEpoch,
+      getIsChatDisabled: () => Boolean(this.isChatDisabled),
+      canModerate: (socket) => this.canModerate(socket),
+      sendRoster: () => this.sendRoster(),
+      hasProcessedOperation: (clientId, opId) => this.hasProcessedOperation(clientId, opId),
+      recordProcessedOperation: (clientId, opId) => this.recordProcessedOperation(clientId, opId),
+      buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
+      authorizeRoomAction: (params) => this.authorizeRoomAction(params),
     });
 
     if (roomData) {
@@ -1779,76 +1726,7 @@ export class Room {
   };
 
   public addChatMessage = async (socket: Socket | null, chatMsg: ChatMessageBase) => {
-    if (this.isChatDisabled && !chatMsg.cmd) {
-      return;
-    }
-    const chatWithTime: ChatMessage = {
-      ...chatMsg,
-      timestamp: new Date().toISOString(),
-      videoTS: socket?.clientId ? this.tsMap[socket.clientId] : undefined,
-      name: socket?.clientId ? this.nameMap[socket.clientId] : undefined,
-      picture: socket?.clientId ? this.pictureMap[socket.clientId] : undefined,
-    };
-
-    // Determine persistence rules
-    const isCmd = Boolean(chatMsg.cmd);
-    const messageType = isCmd ? 'system' : 'user';
-    const eventType = isCmd ? chatMsg.cmd : null;
-
-    // Every persisted message must have a user_id
-    if (!socket?.uid) {
-      if (!isCmd && socket) {
-        socket.emit("ROOM_MESSAGE", {
-          cmd: "system",
-          msg: "You must be logged in to send messages.",
-          timestamp: new Date().toISOString()
-        });
-      }
-      // System events without a uid are still emitted live but never persisted
-      this.io.of(this.roomId).emit("REC:chat", chatWithTime);
-      this.io.of(this.roomId).emit("ROOM_MESSAGE", chatWithTime);
-      return;
-    }
-
-    // Broadcast immediately in realtime to all clients in the room (zero latency)
-    this.io.of(this.roomId).emit("REC:chat", { ...chatWithTime, userId: socket.uid });
-    this.io.of(this.roomId).emit("ROOM_MESSAGE", { ...chatWithTime, userId: socket.uid });
-
-    // Persist asynchronously in the background so database latency never blocks the live realtime WebSocket loop
-    const shouldPersist = !isCmd || (isCmd && ['room.inactive', 'room.reactivated', 'room.expired'].includes(chatMsg.cmd!));
-    if (shouldPersist) {
-      persistRoomMessage(
-        this.roomId,
-        socket.uid,
-        chatMsg.msg || "",
-        messageType,
-        eventType,
-        { clientId: socket?.clientId, videoTS: chatWithTime.videoTS, name: socket?.clientId ? this.nameMap[socket.clientId] : undefined, picture: socket?.clientId ? this.pictureMap[socket.clientId] : undefined },
-        chatMsg.clientMessageId
-      ).then((dbRow) => {
-        if (dbRow?.id) {
-          const persistedUpdate = {
-            ...chatWithTime,
-            dbId: dbRow.id,
-            userId: socket?.uid,
-          };
-          this.io.of(this.roomId).emit("REC:messagePersisted", persistedUpdate);
-          this.io.of(this.roomId).emit("ROOM_MESSAGE_EDITED", persistedUpdate);
-        }
-      }).catch((err) => {
-        console.error("Background message persist error:", err);
-        const failurePayload = {
-          clientMessageId: chatMsg.clientMessageId,
-          roomId: this.roomId,
-          userId: socket?.uid,
-          error: "PERSISTENCE_FAILED",
-          timestamp: chatWithTime.timestamp,
-        };
-        socket?.emit?.("REC:messagePersistFailed", failurePayload);
-        socket?.emit?.("ROOM_MESSAGE_ERROR", failurePayload);
-        this.io.of(this.roomId).emit("REC:messagePersistFailed", failurePayload);
-      });
-    }
+    return this.moderationCoordinator.addChatMessage(socket, chatMsg);
   };
 
   private changeUserName = (socket: Socket, data: string) => {
@@ -2232,13 +2110,6 @@ export class Room {
   };
 
   private sendChatMessage = (socket: Socket, raw: unknown) => {
-    // Support legacy string and V2 object chat payloads.
-    const payload = typeof raw === "string" ? { msg: raw } : raw;
-    if (!payload || typeof payload !== "object") {
-      return;
-    }
-
-    // Step 1: Pure authorization for chat:send
     const context = this.buildAuthorizationContext(socket);
     const auth = pureAuthorizeRoomAction(context, "chat:send");
     if (!auth.allowed) {
@@ -2246,155 +2117,17 @@ export class Room {
       socket.emit("errorMessage", "FORBIDDEN");
       return;
     }
-
-    // Validate supported fields.
-    const data = payload as Record<string, unknown>;
-
-    // Step 2: Explicitly reject any client-supplied userId, uid, roomId, or author spoofing
-    if (data.userId || data.uid || data.roomId || data.author) {
-      socket.emit("CMD:error", { code: "FORBIDDEN" });
-      socket.emit("errorMessage", "FORBIDDEN");
-      return;
-    }
-
-    const msg = typeof data.msg === "string" ? data.msg : undefined;
-    const replyToId =
-      typeof data.replyToId === "string" ? data.replyToId : undefined;
-    const replyToTimestamp =
-      typeof data.replyToTimestamp === "string"
-        ? data.replyToTimestamp
-        : undefined;
-    const clientMessageId = typeof data.clientMessageId === "string" ? data.clientMessageId : undefined;
-
-    if (!msg || !this.isValidChatMessage(msg)) {
-      return;
-    }
-
-    // Require both reply fields or neither.
-    if (Boolean(replyToId) !== Boolean(replyToTimestamp)) {
-      return;
-    }
-
-    const baseMsg: ChatMessageBase = { id: socket.clientId, msg, clientMessageId };
-    const emitChatMessage = (chatMsg: ChatMessageBase) => {
-      redisCount("chatMessages");
-      this.addChatMessage(socket, chatMsg);
-    };
-
-    // No reply metadata -> regular message.
-    if (!replyToId || !replyToTimestamp) {
-      emitChatMessage(baseMsg);
-      return;
-    }
-
-    emitChatMessage({
-      ...baseMsg,
-      replyToId,
-      replyToTimestamp,
-      replyToUserId: replyToId,
-      replyToMsg: "",
-    });
+    this.moderationCoordinator.sendChatMessage(socket, raw);
   };
 
   private editMessage = async (socket: Socket, raw: unknown) => {
-    if (!socket.uid) {
+    const context = this.buildAuthorizationContext(socket);
+    const auth = pureAuthorizeRoomAction(context, "chat:edit");
+    if (!auth.allowed) {
       socket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    const data = raw as { messageId: string; newMessage: string };
-    if (!data || typeof data.messageId !== 'string' || typeof data.newMessage !== 'string') return;
-    const trimmedMsg = data.newMessage.trim();
-    if (trimmedMsg.length === 0 || trimmedMsg.length > 50000) return;
-
-    if (!postgres) return;
-
-    const context = this.buildAuthorizationContext(socket);
-    const hostEpochSnapshot = context.hostEpoch;
-
-    try {
-      // Step 1: Fetch target message to verify room and authorship
-      const existing = await postgres.query(
-        `SELECT id, room_id, user_id FROM room_messages WHERE id = $1`,
-        [data.messageId]
-      );
-      if (existing.rowCount === 0) {
-        socket.emit("CMD:error", { code: "FORBIDDEN" });
-        return;
-      }
-      const targetRow = existing.rows[0];
-
-      // Step 2: Host epoch revalidation after async retrieval
-      if (this.hostEpoch !== hostEpochSnapshot) {
-        socket.emit("CMD:error", { code: "FORBIDDEN" });
-        return;
-      }
-
-      // Step 3: Pure authorization - Author ONLY. Neither Host nor Owner can edit other users' messages!
-      const target: ActionTarget = {
-        targetMessage: {
-          id: targetRow.id,
-          roomId: targetRow.room_id,
-          authorUid: targetRow.user_id,
-        },
-      };
-      const auth = pureAuthorizeRoomAction(context, "chat:edit", target);
-      if (!auth.allowed) {
-        socket.emit("CMD:error", { code: "FORBIDDEN" });
-        return;
-      }
-
-      // Step 4: Mutate atomically
-      const isHostOrOwner = context.isHost || context.isOwner;
-      const query = isHostOrOwner
-        ? `
-          UPDATE room_messages
-          SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_id = $3 AND message_type = 'user'
-          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
-        `
-        : `
-          UPDATE room_messages
-          SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_id = $3 AND user_id = $4 AND message_type = 'user'
-          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
-        `;
-      const queryParams = isHostOrOwner
-        ? [trimmedMsg, data.messageId, this.roomId]
-        : [trimmedMsg, data.messageId, this.roomId, socket.uid];
-      const result = await postgres.query(query, queryParams);
-
-      if (result.rowCount === 0) {
-        socket.emit("CMD:error", { code: "FORBIDDEN" });
-        return;
-      }
-
-      const row = result.rows[0];
-      let profile_name, profile_picture;
-      const profileResult = await postgres.query('SELECT display_name, avatar_url FROM profiles WHERE id = $1', [row.user_id]);
-      if ((profileResult.rowCount ?? 0) > 0) {
-        profile_name = profileResult.rows[0].display_name;
-        profile_picture = profileResult.rows[0].avatar_url;
-      }
-
-      const updatedMsg = {
-        id: row.metadata?.clientId || 'unknown',
-        msg: row.message,
-        cmd: row.event_type || undefined,
-        timestamp: row.created_at.toISOString(),
-        videoTS: row.metadata?.videoTS,
-        dbId: row.id,
-        name: profile_name || row.metadata?.name,
-        picture: profile_picture || row.metadata?.picture,
-        userId: row.user_id || undefined,
-        updatedAt: row.updated_at.toISOString(),
-      };
-
-      this.io.of(this.roomId).emit("REC:editMessage", updatedMsg);
-      this.io.of(this.roomId).emit("ROOM_MESSAGE_EDITED", updatedMsg);
-    } catch (e) {
-      console.error("Failed to edit message in postgres:", e);
-      socket.emit("CMD:error", { code: "FORBIDDEN" });
-    }
+    await this.moderationCoordinator.editMessage(socket, raw, context);
   };
 
   private addReaction = (socket: Socket, raw: unknown) => {
@@ -2404,17 +2137,7 @@ export class Room {
       socket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    const data = raw as { value: string; msgId: string; msgTimestamp: string };
-    if (!data || !data.value || !data.msgId || !data.msgTimestamp) {
-      return;
-    }
-    // Emojis can be multiple bytes
-    if (data.value.length > 8) {
-      return;
-    }
-    const reaction: Reaction = { user: socket.clientId, ...data };
-    redisCount("addReaction");
-    this.io.of(this.roomId).emit("REC:addReaction", reaction);
+    this.moderationCoordinator.addReaction(socket, raw);
   };
 
   private removeReaction = (socket: Socket, raw: unknown) => {
@@ -2424,16 +2147,7 @@ export class Room {
       socket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    const data = raw as { value: string; msgId: string; msgTimestamp: string };
-    if (!data || !data.value || !data.msgId || !data.msgTimestamp) {
-      return;
-    }
-    // Emojis can be multiple bytes
-    if (data.value.length > 8) {
-      return;
-    }
-    const reaction: Reaction = { user: socket.clientId, ...data };
-    this.io.of(this.roomId).emit("REC:removeReaction", reaction);
+    this.moderationCoordinator.removeReaction(socket, raw);
   };
 
 
@@ -2704,67 +2418,7 @@ export class Room {
       actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    if (!targetIdentity) return;
-
-    if (this.hasProcessedOperation(actorSocket.clientId, operationId)) {
-      return;
-    }
-    this.recordProcessedOperation(actorSocket.clientId, operationId);
-
-    this.admittedParticipants.delete(targetIdentity);
-
-    const targetSocketId = this.socketIdMap[targetIdentity];
-    const targetSocket = targetSocketId
-      ? this.io.of(this.roomId).sockets.get(targetSocketId)
-      : undefined;
-
-    if (targetSocket) {
-      targetSocket.emit("kicked", {
-        code: "KICKED_FROM_ROOM",
-        message: "You were removed from the room by the host.",
-      });
-      targetSocket.disconnect(true);
-    }
-
-    this.sendRoster();
-    this.io.of(this.roomId).emit("REC:participantKicked", {
-      eventId: randomUUID(),
-      roomId: this.roomId,
-      targetUserId: targetIdentity,
-      kickedBy: actorSocket.clientId,
-      reason,
-      timestamp: Date.now(),
-    });
-
-    const targetUid = this.clientToUidMap[targetIdentity] || targetSocket?.uid;
-    if (targetUid) {
-      this.admittedMembers.delete(targetUid);
-      if (postgres) {
-        postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_id = $1 AND user_id = $2::uuid`,
-          [this.roomId, targetUid]
-        ).catch((err) => console.warn("[Admission] Failed to revoke admission on kick in DB:", err));
-      }
-      const moderationEventId = operationId || randomUUID();
-      notificationService
-        .notifyUser({
-          userId: targetUid,
-          type: "MODERATION_ACTION",
-          title: "Removed from room",
-          body: reason
-            ? `You were removed from room ${this.roomId}: ${reason}`
-            : `You were removed from room ${this.roomId} by the host.`,
-          metadata: {
-            roomId: this.roomId,
-            action: "go_home",
-            targetUrl: "/home",
-            moderationType: "kick",
-            moderationEventId,
-          },
-          eventId: `MODERATION_ACTION:${moderationEventId}`,
-        })
-        .catch((err) => console.error("[Notification] Failed to notify kicked user:", err));
-    }
+    await this.moderationCoordinator.kickUser(actorSocket, targetIdentity, reason, operationId);
   };
 
   public banUser = async (
@@ -2783,95 +2437,7 @@ export class Room {
       actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    if (!targetIdentity) return;
-
-    if (this.hasProcessedOperation(actorSocket.clientId, operationId)) {
-      return;
-    }
-    this.recordProcessedOperation(actorSocket.clientId, operationId);
-
-    // Record in L1 cache
-    this.bannedIdentities.add(targetIdentity);
-    const targetUid = this.clientToUidMap[targetIdentity];
-    if (targetUid) {
-      this.bannedIdentities.add(targetUid);
-    }
-
-    // Remove from admitted participants
-    this.admittedParticipants.delete(targetIdentity);
-
-    if (targetUid) {
-      this.admittedMembers.delete(targetUid);
-      if (postgres) {
-        postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_id = $1 AND user_id = $2::uuid`,
-          [this.roomId, targetUid]
-        ).catch((err) => console.warn("[Admission] Failed to revoke admission on ban in DB:", err));
-      }
-      const moderationEventId = operationId || randomUUID();
-      notificationService
-        .notifyUser({
-          userId: targetUid,
-          type: "MODERATION_ACTION",
-          title: "Banned from room",
-          body: reason
-            ? `You have been banned from room ${this.roomId}: ${reason}`
-            : `You have been banned from room ${this.roomId} by the host.`,
-          metadata: {
-            roomId: this.roomId,
-            action: "go_home",
-            targetUrl: "/home",
-            moderationType: "ban",
-            moderationEventId,
-          },
-          eventId: `MODERATION_ACTION:${moderationEventId}`,
-        })
-        .catch((err) => console.error("[Notification] Failed to notify banned user:", err));
-    }
-
-    // Persist to PostgreSQL room_bans table
-    if (postgres) {
-      try {
-        await postgres.query(
-          `INSERT INTO room_bans (room_id, client_identity, user_id, banned_by, reason)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (room_id, client_identity) DO NOTHING`,
-          [
-            this.roomId,
-            targetIdentity,
-            targetUid || null,
-            actorSocket.clientId || actorSocket.uid || "host",
-            reason || null,
-          ]
-        );
-      } catch (err) {
-        console.error("Failed to persist room ban in database:", err);
-      }
-    }
-
-    // Eject target socket if currently connected
-    const targetSocketId = this.socketIdMap[targetIdentity];
-    const targetSocket = targetSocketId
-      ? this.io.of(this.roomId).sockets.get(targetSocketId)
-      : undefined;
-
-    if (targetSocket) {
-      targetSocket.emit("banned", {
-        code: "BANNED_FROM_ROOM",
-        message: "You have been removed from this room and cannot rejoin.",
-      });
-      targetSocket.disconnect(true);
-    }
-
-    this.sendRoster();
-    this.io.of(this.roomId).emit("REC:participantBanned", {
-      eventId: randomUUID(),
-      roomId: this.roomId,
-      targetUserId: targetIdentity,
-      bannedBy: actorSocket.clientId,
-      reason,
-      timestamp: Date.now(),
-    });
+    await this.moderationCoordinator.banUser(actorSocket, targetIdentity, reason, operationId);
   };
 
   public disconnectAllSockets = () => {
@@ -2879,174 +2445,14 @@ export class Room {
   };
 
   public deleteChatMessages = async (actorSocket: Socket, raw: unknown) => {
-    const data = raw as {
-      operationId?: string;
-      messageIds?: string[];
-      author?: string;
-      timestamp?: string;
-    };
-    if (!data) return;
-
-    if (this.hasProcessedOperation(actorSocket.clientId, data.operationId)) {
+    const context = this.buildAuthorizationContext(actorSocket);
+    const auth = pureAuthorizeRoomAction(context, "chat:delete_own");
+    if (!auth.allowed && !context.isHost && !context.isOwner) {
+      actorSocket.emit("errorMessage", "FORBIDDEN");
+      actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
       return;
     }
-    this.recordProcessedOperation(actorSocket.clientId, data.operationId);
-
-    if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
-      const context = this.buildAuthorizationContext(actorSocket);
-      const hostEpochSnapshot = context.hostEpoch;
-      const uniqueIds = [...new Set(data.messageIds)];
-
-      if (postgres) {
-        const client = await postgres.connect();
-        try {
-          await client.query("BEGIN");
-
-          // Row lock target messages within the scope of this room
-          const checkRes = await client.query(
-            `SELECT id, room_id, user_id, metadata FROM room_messages 
-             WHERE id = ANY($1::uuid[]) AND room_id = $2 
-             FOR UPDATE`,
-            [uniqueIds, this.roomId]
-          );
-
-          // All-or-nothing check: if row count does not match requested unique IDs, foreign or non-existent IDs are present
-          if (checkRes.rows.length !== uniqueIds.length) {
-            await client.query("ROLLBACK");
-            actorSocket.emit("errorMessage", "FORBIDDEN");
-            actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
-            return;
-          }
-
-          // Host epoch revalidation after async row acquisition
-          if (this.hostEpoch !== hostEpochSnapshot) {
-            await client.query("ROLLBACK");
-            actorSocket.emit("errorMessage", "FORBIDDEN");
-            actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
-            return;
-          }
-
-          // Authorize every message individually
-          for (const row of checkRes.rows) {
-            const isOwn = Boolean(actorSocket.uid && row.user_id && actorSocket.uid === row.user_id);
-            const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
-            const target: ActionTarget = {
-              targetMessage: {
-                id: row.id,
-                roomId: row.room_id,
-                authorUid: row.user_id,
-              },
-            };
-            const auth = pureAuthorizeRoomAction(context, action, target);
-            if (!auth.allowed) {
-              await client.query("ROLLBACK");
-              actorSocket.emit("errorMessage", "FORBIDDEN");
-              actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
-              return; // All-or-nothing guarantee: zero rows modified on partial denial
-            }
-          }
-
-          await client.query(
-            `UPDATE room_messages 
-             SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
-             WHERE room_id = $1 AND id = ANY($3::uuid[])`,
-            [this.roomId, actorSocket.clientId || actorSocket.uid || "host", uniqueIds]
-          );
-
-          await client.query("COMMIT");
-        } catch (err) {
-          await client.query("ROLLBACK").catch(() => { });
-          console.error("Failed transactional batch deleteChatMessages:", err);
-          actorSocket.emit("errorMessage", "FORBIDDEN");
-          actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
-          return;
-        } finally {
-          client.release();
-        }
-      } else {
-        // Fallback in memory without postgres
-        const isHost = this.canModerate(actorSocket);
-        if (!isHost) {
-          actorSocket.emit("errorMessage", "FORBIDDEN");
-          actorSocket.emit("CMD:error", { code: "FORBIDDEN" });
-          return;
-        }
-      }
-
-      this.io.of(this.roomId).emit("REC:chatMessagesDeleted", {
-        eventId: randomUUID(),
-        roomId: this.roomId,
-        messageIds: uniqueIds,
-        deletedBy: actorSocket.clientId,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Legacy author/timestamp handling
-    if (!data.timestamp && !data.author) {
-      // Clear all -> requires chat:clear
-      const auth = this.authorizeRoomAction({ actorSocket, action: "chat:clear" });
-      if (!auth.allowed) {
-        actorSocket.emit("errorMessage", "FORBIDDEN");
-        return; // Zero mutation on denial
-      }
-      if (postgres) {
-        await postgres.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1`, [this.roomId]);
-      }
-    } else if (data.timestamp && data.author) {
-      // Delete specific message by author/timestamp
-      const isOwn = (actorSocket.clientId && data.author === actorSocket.clientId) || (actorSocket.uid && data.author === actorSocket.uid);
-      const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
-      const auth = this.authorizeRoomAction({
-        actorSocket,
-        action,
-        targetMessageAuthorId: data.author,
-      });
-      if (!auth.allowed) {
-        actorSocket.emit("errorMessage", "FORBIDDEN");
-        return; // Zero mutation on denial
-      }
-      if (postgres) {
-        await postgres.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
-          [this.roomId, data.author, data.timestamp]
-        );
-      }
-    } else if (data.author) {
-      // Delete by author
-      const isOwn = (actorSocket.clientId && data.author === actorSocket.clientId) || (actorSocket.uid && data.author === actorSocket.uid);
-      const action: RoomAction = isOwn ? "chat:delete_own" : "chat:delete_other";
-      const auth = this.authorizeRoomAction({
-        actorSocket,
-        action,
-        targetMessageAuthorId: data.author,
-      });
-      if (!auth.allowed) {
-        actorSocket.emit("errorMessage", "FORBIDDEN");
-        return; // Zero mutation on denial
-      }
-      if (postgres) {
-        await postgres.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`,
-          [this.roomId, data.author]
-        );
-      }
-    }
-
-    // Refresh for everyone (legacy UI sync)
-    const recentMessages = await loadRoomMessages(this.roomId, 50);
-    const formattedMessages = recentMessages.map((row: any) => ({
-      id: row.metadata?.clientId || row.user_id,
-      msg: row.is_deleted ? "This message was deleted." : row.message,
-      cmd: row.event_type || undefined,
-      timestamp: row.created_at.toISOString(),
-      videoTS: row.metadata?.videoTS,
-      dbId: row.id,
-      isDeleted: Boolean(row.is_deleted),
-    }));
-    this.io.of(this.roomId).emit("chatinit", formattedMessages.reverse());
-    this.io.of(this.roomId).emit("ROOM_MESSAGES", formattedMessages);
+    await this.moderationCoordinator.deleteChatMessages(actorSocket, raw, context);
   };
 }
 
