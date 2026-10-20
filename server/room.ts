@@ -27,6 +27,11 @@ import {
   loadRoomMessages,
   type RoomMessageRow,
 } from "./room/roomModerationCoordinator.ts";
+import {
+  RoomAdmissionCoordinator,
+  type AdmittedParticipantRecord,
+  ADMISSION_DISCONNECT_GRACE_MS,
+} from "./room/roomAdmissionCoordinator.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -34,8 +39,8 @@ export function makeHandshakeError(code: string, message: string): Error & { dat
   });
 }
 
-export type { RoomMessageRow };
-export { persistRoomMessage, loadRoomMessages };
+export type { RoomMessageRow, AdmittedParticipantRecord };
+export { persistRoomMessage, loadRoomMessages, ADMISSION_DISCONNECT_GRACE_MS, RoomAdmissionCoordinator };
 
 
 // Extend the interface
@@ -72,18 +77,6 @@ export interface HostAuthorityPayload {
   isOwner?: boolean;
 }
 
-export interface AdmittedParticipantRecord {
-  sessionId: string;
-  uid?: string;
-  admittedAt: number;
-  lastConnectedAt: number;
-  lastDisconnectedAt?: number;
-  state: 'connected' | 'disconnected';
-  admissionSequence: number;
-  isKicked?: boolean;
-}
-
-export const ADMISSION_DISCONNECT_GRACE_MS = 10 * 60 * 1000; // 10 minutes
 export const EMPTY_ROOM_INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds
 
 export type { RoomAction, AuthorizationContext, ActionTarget, AuthorizationResult };
@@ -167,17 +160,30 @@ export class Room {
   public currentHostUid: string = '';
   public hostMode: HostMode = "none";
   public hostEpoch: number = 1;
-  public admittedMembers: Set<string> = new Set();
-  private nextAdmissionSequence: number = 1;
+  public get admittedMembers(): Set<string> {
+    return this.admissionCoordinator.admittedMembers;
+  }
   private clientToUidMap: StringDict = {};
   public roomTitle: string | undefined = undefined;
   public roomDescription: string | undefined = undefined;
   public mediaPath: string | undefined = undefined;
   public isPermanent: boolean = false;
   public lastUpdateTime: Date = new Date();
-  public participantsLocked: boolean = false;
-  public maxParticipants: number = 10;
-  private admittedParticipants: Map<string, AdmittedParticipantRecord> = new Map();
+  public get participantsLocked(): boolean {
+    return this.admissionCoordinator.participantsLocked;
+  }
+  public set participantsLocked(val: boolean) {
+    this.admissionCoordinator.participantsLocked = val;
+  }
+  public get maxParticipants(): number {
+    return this.admissionCoordinator.maxParticipants;
+  }
+  public set maxParticipants(val: number) {
+    this.admissionCoordinator.maxParticipants = val;
+  }
+  public get admittedParticipants(): Map<string, AdmittedParticipantRecord> {
+    return this.admissionCoordinator.admittedParticipants;
+  }
   private bannedIdentities: Set<string> = new Set();
   private processedOperations: Map<string, { operationId: string; timestamp: number }[]> = new Map();
   public get timeline(): TimelineAuthority {
@@ -195,6 +201,7 @@ export class Room {
   public signalingCoordinator: RoomSignalingCoordinator;
   public moderationCoordinator: RoomModerationCoordinator;
   public playbackCoordinator: RoomPlaybackCoordinator;
+  public admissionCoordinator: RoomAdmissionCoordinator;
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
@@ -231,15 +238,7 @@ export class Room {
   };
 
   public hasParticipantUid = (uid: string): boolean => {
-    if (!uid) return false;
-    if (this.owner_id && this.owner_id === uid) return true;
-    if (this.admittedMembers.has(uid)) return true;
-    for (const rec of this.admittedParticipants.values()) {
-      if (rec.uid === uid && rec.state === 'connected' && !rec.isKicked) {
-        return true;
-      }
-    }
-    return false;
+    return this.admissionCoordinator.hasParticipantUid(uid);
   };
 
   public buildAuthorizationContext = (socket: Socket | null | undefined): AuthorizationContext => {
@@ -332,82 +331,15 @@ export class Room {
   };
 
   public isRoomFull = (isOwner?: boolean, sessionHint?: string, uid?: string): boolean => {
-    if (isOwner) return false;
-    // Reconnecting participant with server-recognized session does not consume an extra slot
-    if (this.verifyAdmittedSession(sessionHint, uid)) {
-      return false;
-    }
-
-    // Active admitted participants calculation: connected or within 10-minute grace period
-    const now = Date.now();
-    let activeAdmittedCount = 0;
-    for (const [, rec] of this.admittedParticipants.entries()) {
-      if (rec.state === 'connected') {
-        activeAdmittedCount++;
-      } else if (rec.state === 'disconnected' && rec.lastDisconnectedAt) {
-        if (now - rec.lastDisconnectedAt <= ADMISSION_DISCONNECT_GRACE_MS) {
-          activeAdmittedCount++;
-        }
-      }
-    }
-
-    return activeAdmittedCount >= this.maxParticipants;
+    return this.admissionCoordinator.isRoomFull(isOwner, sessionHint, uid);
   };
 
-  public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string) => {
-    if (!clientId) return;
-    const now = Date.now();
-
-    // Clean up any stale participant records for the same sessionId to prevent duplicates
-    if (sessionId) {
-      for (const [oldClientId, rec] of this.admittedParticipants.entries()) {
-        if (oldClientId !== clientId && rec.sessionId === sessionId) {
-          if (this.nameMap[oldClientId] && !this.nameMap[clientId]) {
-            this.nameMap[clientId] = this.nameMap[oldClientId];
-          }
-          if (this.pictureMap[oldClientId] && !this.pictureMap[clientId]) {
-            this.pictureMap[clientId] = this.pictureMap[oldClientId];
-          }
-          this.admittedParticipants.delete(oldClientId);
-        }
-      }
-    }
-
-    if (uid) {
-      if (this.uidToNameMap[uid] && !this.nameMap[clientId]) {
-        this.nameMap[clientId] = this.uidToNameMap[uid];
-      }
-      if (this.uidToPictureMap[uid] && !this.pictureMap[clientId]) {
-        this.pictureMap[clientId] = this.uidToPictureMap[uid];
-      }
-    }
-
-    const existing = this.admittedParticipants.get(clientId);
-    const admissionSequence = existing?.admissionSequence || (this.nextAdmissionSequence++);
-    this.admittedParticipants.set(clientId, {
-      sessionId: sessionId || "",
-      uid: uid || existing?.uid || undefined,
-      admittedAt: existing?.admittedAt || now,
-      lastConnectedAt: now,
-      lastDisconnectedAt: undefined,
-      state: 'connected',
-      admissionSequence,
-      isKicked: existing?.isKicked || false,
-    });
+  public recordAdmittedParticipant = (clientId: string, sessionId?: string, uid?: string): void => {
+    this.admissionCoordinator.recordAdmittedParticipant(clientId, sessionId, uid);
   };
 
   public isParticipantEligibleForHost = (clientId: string): boolean => {
-    if (!clientId) return false;
-    const inRoster = this.roster.some((u) => u.id === clientId);
-    if (!inRoster) return false;
-    const rec = this.admittedParticipants.get(clientId);
-    if (!rec || rec.state !== 'connected') return false;
-    if (rec.isKicked) return false;
-    if (!rec.sessionId) return false;
-    // Must be authenticated with verified UID to hold host authority
-    const uid = rec.uid || this.clientToUidMap[clientId];
-    if (!uid) return false;
-    return true;
+    return this.admissionCoordinator.isParticipantEligibleForHost(clientId);
   };
 
   public isHostUid = (uid: string): boolean => {
@@ -418,44 +350,19 @@ export class Room {
   };
 
   public isHostPresent = (): boolean => {
-    if (this.currentHostClientId) {
-      const rec = this.admittedParticipants.get(this.currentHostClientId);
-      if (rec && rec.state === 'connected' && !rec.isKicked) {
-        return true;
-      }
-    }
-    if (this.owner_id) {
-      for (const rec of this.admittedParticipants.values()) {
-        if (rec.uid === this.owner_id && rec.state === 'connected' && !rec.isKicked) {
-          return true;
-        }
-      }
-    }
-    return false;
+    return this.admissionCoordinator.isHostPresent();
   };
 
   public getConnectedParticipantUids = (): string[] => {
-    const uids = new Set<string>();
-    if (this.owner_id) uids.add(this.owner_id);
-    for (const rec of this.admittedParticipants.values()) {
-      if (rec.uid && rec.state === 'connected' && !rec.isKicked) {
-        uids.add(rec.uid);
-      }
-    }
-    return Array.from(uids);
+    return this.admissionCoordinator.getConnectedParticipantUids();
   };
 
   public getEligibleParticipants = (excludeClientId?: string): { clientId: string; record: AdmittedParticipantRecord }[] => {
-    const eligible: { clientId: string; record: AdmittedParticipantRecord }[] = [];
-    for (const [cId, rec] of this.admittedParticipants.entries()) {
-      if (excludeClientId && cId === excludeClientId) continue;
-      if (this.isParticipantEligibleForHost(cId)) {
-        eligible.push({ clientId: cId, record: rec });
-      }
-    }
-    // Monotonically increasing admission sequence: lowest sequence ASC = highest failover priority
-    eligible.sort((a, b) => a.record.admissionSequence - b.record.admissionSequence);
-    return eligible;
+    return this.admissionCoordinator.getEligibleParticipants(excludeClientId);
+  };
+
+  public removeParticipant = (clientId: string, uid?: string): void => {
+    this.admissionCoordinator.removeParticipant(clientId, uid);
   };
 
   public getHostMode = (): HostMode => {
@@ -536,35 +443,11 @@ export class Room {
   };
 
   public verifyAdmittedSession = (sessionHint?: string, uid?: string): boolean => {
-    if (uid) {
-      if (this.owner_id && uid === this.owner_id) return true;
-      if (this.admittedMembers.has(uid)) return true;
-      if (this.hasParticipantUid(uid)) return true;
-    }
-    if (!sessionHint) return false;
-    const now = Date.now();
-    for (const [cId, record] of this.admittedParticipants.entries()) {
-      if (record.sessionId === sessionHint) {
-        if (record.isKicked) return false;
-        if (record.state === 'connected') return true;
-        if (record.state === 'disconnected' && record.lastDisconnectedAt) {
-          if (now - record.lastDisconnectedAt <= ADMISSION_DISCONNECT_GRACE_MS) {
-            return true;
-          } else {
-            this.admittedParticipants.delete(cId);
-            return false;
-          }
-        }
-      }
-    }
-    return false;
+    return this.admissionCoordinator.verifyAdmittedSession(sessionHint, uid);
   };
 
   public verifyAdmittedParticipant = (clientIdOrSessionHint: string, sessionId?: string): boolean => {
-    if (sessionId) {
-      return this.verifyAdmittedSession(sessionId);
-    }
-    return this.verifyAdmittedSession(clientIdOrSessionHint);
+    return this.admissionCoordinator.verifyAdmittedParticipant(clientIdOrSessionHint, sessionId);
   };
   // Not really a queue since there's no ordering, we just retry as long as this is set
   // If we want a real queue then we need external processing of the jobs and a way to update the room from outside
@@ -577,6 +460,18 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
+    this.admissionCoordinator = new RoomAdmissionCoordinator({
+      roomId: this.roomId,
+      getOwnerId: () => this.owner_id,
+      getCurrentHostClientId: () => this.currentHostClientId,
+      getClientToUidMap: () => this.clientToUidMap,
+      getNameMap: () => this.nameMap,
+      getPictureMap: () => this.pictureMap,
+      getUidToNameMap: () => this.uidToNameMap,
+      getUidToPictureMap: () => this.uidToPictureMap,
+      getRoster: () => this.roster,
+    });
+
     this.signalingCoordinator = new RoomSignalingCoordinator({
       roomId: this.roomId,
       io: this.io,
@@ -597,8 +492,8 @@ export class Room {
       pictureMap: this.pictureMap,
       clientToUidMap: this.clientToUidMap,
       bannedIdentities: this.bannedIdentities,
-      admittedParticipants: this.admittedParticipants,
-      admittedMembers: this.admittedMembers,
+      admittedParticipants: this.admissionCoordinator.admittedParticipants,
+      admittedMembers: this.admissionCoordinator.admittedMembers,
       postgres,
       getHostEpoch: () => this.hostEpoch,
       getIsChatDisabled: () => Boolean(this.isChatDisabled),
@@ -632,12 +527,7 @@ export class Room {
 
     this.tsInterval = setInterval(async () => {
       // Scavenge stale disconnected participant admissions beyond grace period
-      const now = Date.now();
-      for (const [cId, rec] of this.admittedParticipants.entries()) {
-        if (rec.state === 'disconnected' && rec.lastDisconnectedAt && (now - rec.lastDisconnectedAt > ADMISSION_DISCONNECT_GRACE_MS)) {
-          this.admittedParticipants.delete(cId);
-        }
-      }
+      this.admissionCoordinator.scavengeDisconnectedParticipants(Date.now());
       // console.log(roomId, this.video, this.roster, this.tsMap, this.nameMap);
       // Clean up the data of users who aren't in the room anymore
       const memberIds = this.roster.map((p) => p.id);
@@ -2151,11 +2041,7 @@ export class Room {
       this.signalingCoordinator.unregisterPeer(clientId, socket.id);
 
       // Transition admitted participant to disconnected state with timestamp for grace period
-      const admittedRecord = this.admittedParticipants.get(clientId);
-      if (admittedRecord) {
-        admittedRecord.state = 'disconnected';
-        admittedRecord.lastDisconnectedAt = Date.now();
-      }
+      this.admissionCoordinator.handleParticipantDisconnect(clientId);
 
       // Auto-release lock when the departing socket is the current lock holder.
       // This prevents remaining participants from being frozen behind an orphaned lock.
