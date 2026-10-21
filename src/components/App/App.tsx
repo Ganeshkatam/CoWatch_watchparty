@@ -104,6 +104,7 @@ import {
   USER_MESSAGES,
   getAdmissionErrorMessage,
   sanitizeServerErrorMessage,
+  sanitizeServerUserMessage,
   getHostTransferredPublicMessage,
   type FeedbackContext,
   type FeedbackType,
@@ -2691,7 +2692,9 @@ export class App extends React.Component<AppProps, AppState> {
       } catch (err) {
         console.error("Failed to start local media share:", err);
         this.setLoadingFalse();
-        showUserMessage(USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED);
+        const rawErrMsg = err instanceof Error ? err.message : (typeof err === "string" ? err : "");
+        const userMsg = rawErrMsg ? sanitizeServerUserMessage(rawErrMsg) : USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED;
+        showUserMessage(userMsg.presentation === "toast" ? userMsg : USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED);
       }
     }
   };

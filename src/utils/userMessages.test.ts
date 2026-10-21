@@ -145,7 +145,17 @@ for (const sample of leakedSamples) {
   assertEqual(sanitized.severity, "error", "Fallback error severity");
   assertEqual(sanitized.action, "retry", "Fallback action is retry");
 }
-console.log("✓ PASS: Technical keywords, SQL, UUIDs, stack traces, and internal codes strictly stripped.");
+// 7. Local Media Format Guidance Sanitization
+const probeContainerError = "Media is not formatted for direct MSE streaming (non-fragmented container). Please use WebRTC screenshare or convert to WebM/fMP4.";
+const sanitizedProbeError = sanitizeServerUserMessage(probeContainerError);
+assertEqual(
+  sanitizedProbeError.message,
+  USER_MESSAGES.LOCAL_MEDIA_FORMAT_UNSUPPORTED.message,
+  "Probe container error maps to clear user guidance"
+);
+assertEqual(sanitizedProbeError.severity, "warning", "Format guidance severity is warning");
+assertEqual(sanitizedProbeError.presentation, "toast", "Format guidance presentation is toast");
+console.log("✓ PASS: Local media container compatibility errors mapped to actionable user guidance.");
 
 console.log("----------------------------------------------------------------");
 console.log("ALL USERMSG-002 TESTS PASSED WITH ZERO FAILURES.");

@@ -265,6 +265,13 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "retry",
     duration: 4000,
   },
+  LOCAL_MEDIA_FORMAT_UNSUPPORTED: {
+    message: "This video file is not formatted for browser streaming. Please share via Screenshare or convert to WebM.",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 5000,
+  },
 
 
   // DB Failures & Timeouts (never imply server rejection)
@@ -510,6 +517,16 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
   }
 
   const trimmed = raw.trim();
+
+  // Recognized safe local media format guidance
+  if (
+    trimmed.includes("non-fragmented container") ||
+    trimmed.includes("direct MSE streaming") ||
+    trimmed.includes("convert to WebM") ||
+    trimmed.includes("No compatible MSE video codec")
+  ) {
+    return USER_MESSAGES.LOCAL_MEDIA_FORMAT_UNSUPPORTED;
+  }
 
   // Security barrier: Filter out any internal infrastructure, transport, or database leaks
   const technicalTermsPattern =
