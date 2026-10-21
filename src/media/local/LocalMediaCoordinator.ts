@@ -236,6 +236,7 @@ export class LocalMediaCoordinator {
   private heartbeatTimer: any = null;
   private lastKnownTime: number = 0;
   private lastError: string | null = null;
+  private hostReconnectAttempts: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
 
   constructor(
@@ -476,12 +477,60 @@ export class LocalMediaCoordinator {
         onAvailabilityReceived: (senderId, availableChunks) => {
           this.scheduler?.updatePeerAvailability(senderId, availableChunks);
         },
+        onConnectionFailed: (peerId, reason) => {
+          this.handlePeerFailure(peerId, reason);
+        },
       },
     );
 
     this.peers.set(targetPeerId, peer);
     this.scheduler?.registerPeer(peer);
     return peer;
+  }
+
+  private handlePeerFailure(peerId: string, reason: string): void {
+    console.warn(`[LOCAL_MEDIA] Peer ${peerId} connection failed: ${reason}`);
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    peer.close();
+    this.peers.delete(peerId);
+    this.scheduler?.unregisterPeer(peerId);
+
+    // Check if host seed peer failed for participant
+    const isHostSeed = this.manifest && peerId === this.manifest.ownerId;
+    if (this.role === "PARTICIPANT_PEER" && isHostSeed) {
+      // Attempt one recovery reconnection before declaring terminal failure
+      if (this.hostReconnectAttempts < 1) {
+        this.hostReconnectAttempts++;
+        console.log(
+          `[LOCAL_MEDIA] Attempting recovery reconnect to host seed ${peerId} (attempt 1/1)`,
+        );
+        const retryPeer = this.createPeer(peerId, true);
+        retryPeer.startNegotiation().catch((err) => {
+          console.warn("[LOCAL_MEDIA] Reconnect startNegotiation failed:", err);
+        });
+        this.notifyState();
+        return;
+      }
+    }
+
+    // If no remaining active/connected peers and buffer is not complete, report actionable error
+    const hasUsablePeers = Array.from(this.peers.values()).some(
+      (p) => p.isReady() || !p.hasFailed(),
+    );
+
+    const totalChunks = this.manifest?.totalChunks ?? 0;
+    const availableChunks = this.cache?.getAvailableChunks().length ?? 0;
+    const isFullyBuffered = totalChunks > 0 && availableChunks >= totalChunks;
+
+    if (!hasUsablePeers && !isFullyBuffered && this.role === "PARTICIPANT_PEER") {
+      this.lastError =
+        "Unable to connect to the video sharer. Your network or firewall may be restricting direct P2P connections. Please ask the host to use Screenshare instead.";
+      this.notifyState();
+    } else {
+      this.notifyState();
+    }
   }
 
   private handleChunkReceived(chunkIndex: number, data: Uint8Array): void {
@@ -652,6 +701,7 @@ export class LocalMediaCoordinator {
     this.objectUrl = null;
     this.lastKnownTime = 0;
     this.lastError = null;
+    this.hostReconnectAttempts = 0;
     this.role = "IDLE";
     this.notifyState();
   }

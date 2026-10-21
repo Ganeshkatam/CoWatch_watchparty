@@ -15,6 +15,20 @@ export interface DataChannelMessage {
 export type ChunkReceivedCallback = (chunkIndex: number, data: Uint8Array) => void;
 export type ChunkRequestedCallback = (peerId: string, chunkIndices: number[]) => void;
 export type AvailabilityReceivedCallback = (peerId: string, availableChunks: number[]) => void;
+export type ConnectionFailedCallback = (peerId: string, reason: string) => void;
+
+export interface LocalMediaPeerCallbacks {
+  onChunkReceived?: ChunkReceivedCallback;
+  onChunkRequested?: ChunkRequestedCallback;
+  onAvailabilityReceived?: AvailabilityReceivedCallback;
+  onConnectionFailed?: ConnectionFailedCallback;
+}
+
+export interface LocalMediaPeerOptions {
+  pc?: RTCPeerConnection;
+  negotiationTimeoutMs?: number;
+  disconnectGraceMs?: number;
+}
 
 export class LocalMediaPeer {
   public readonly peerId: string;
@@ -25,7 +39,14 @@ export class LocalMediaPeer {
   private onChunkReceived?: ChunkReceivedCallback;
   private onChunkRequested?: ChunkRequestedCallback;
   private onAvailabilityReceived?: AvailabilityReceivedCallback;
+  private onConnectionFailed?: ConnectionFailedCallback;
   private isConnected: boolean = false;
+  private isFailed: boolean = false;
+
+  private connectionTimer: any = null;
+  private disconnectGraceTimer: any = null;
+  private readonly negotiationTimeoutMs: number;
+  private readonly disconnectGraceMs: number;
 
   // Backpressure thresholds (64KB low, 1MB high)
   private readonly HIGH_WATERMARK = 1024 * 1024;
@@ -35,11 +56,8 @@ export class LocalMediaPeer {
     peerId: string,
     isInitiator: boolean,
     onSignal: (signalData: any) => void,
-    callbacks?: {
-      onChunkReceived?: ChunkReceivedCallback;
-      onChunkRequested?: ChunkRequestedCallback;
-      onAvailabilityReceived?: AvailabilityReceivedCallback;
-    }
+    callbacks?: LocalMediaPeerCallbacks,
+    options?: LocalMediaPeerOptions,
   ) {
     this.peerId = peerId;
     this.isInitiator = isInitiator;
@@ -47,10 +65,20 @@ export class LocalMediaPeer {
     this.onChunkReceived = callbacks?.onChunkReceived;
     this.onChunkRequested = callbacks?.onChunkRequested;
     this.onAvailabilityReceived = callbacks?.onAvailabilityReceived;
+    this.onConnectionFailed = callbacks?.onConnectionFailed;
 
-    this.pc = new RTCPeerConnection({
-      iceServers: iceServers(),
-    });
+    this.negotiationTimeoutMs = options?.negotiationTimeoutMs ?? 15000;
+    this.disconnectGraceMs = options?.disconnectGraceMs ?? 5000;
+
+    if (options?.pc) {
+      this.pc = options.pc;
+    } else if (typeof RTCPeerConnection !== "undefined") {
+      this.pc = new RTCPeerConnection({
+        iceServers: iceServers(),
+      });
+    } else {
+      this.pc = {} as any;
+    }
 
     this.setupPeerConnection();
 
@@ -65,7 +93,7 @@ export class LocalMediaPeer {
 
   private setupPeerConnection(): void {
     this.pc.onicecandidate = (event) => {
-      if (event.candidate) {
+      if (event.candidate && !this.isFailed) {
         this.onSignal({ candidate: event.candidate });
       }
     };
@@ -75,8 +103,87 @@ export class LocalMediaPeer {
     };
 
     this.pc.onconnectionstatechange = () => {
-      this.isConnected = this.pc.connectionState === "connected";
+      this.handleConnectionStateChange();
     };
+
+    this.pc.oniceconnectionstatechange = () => {
+      this.handleConnectionStateChange();
+    };
+  }
+
+  private handleConnectionStateChange(): void {
+    if (this.isFailed) return;
+
+    const state = this.pc.connectionState;
+    const iceState = this.pc.iceConnectionState;
+
+    if (state === "connected" && iceState !== "failed") {
+      this.clearDisconnectGraceTimer();
+      this.isConnected = true;
+      if (this.dc?.readyState === "open") {
+        this.clearNegotiationTimer();
+      }
+    } else if (state === "failed" || iceState === "failed") {
+      this.reportFailure(`WebRTC connection failed (state: ${state}, ice: ${iceState})`);
+    } else if (state === "disconnected" || iceState === "disconnected") {
+      this.isConnected = false;
+      if (!this.disconnectGraceTimer && !this.isFailed) {
+        this.disconnectGraceTimer = setTimeout(() => {
+          this.disconnectGraceTimer = null;
+          if (this.isFailed) return;
+          const curState = this.pc.connectionState;
+          const curIceState = this.pc.iceConnectionState;
+          if (curState === "disconnected" || curIceState === "disconnected") {
+            this.reportFailure("Peer disconnected and failed to recover within grace period");
+          }
+        }, this.disconnectGraceMs);
+      }
+    } else if (state === "closed" || iceState === "closed") {
+      this.isConnected = false;
+    }
+  }
+
+  private clearNegotiationTimer(): void {
+    if (this.connectionTimer) {
+      clearTimeout(this.connectionTimer);
+      this.connectionTimer = null;
+    }
+  }
+
+  private clearDisconnectGraceTimer(): void {
+    if (this.disconnectGraceTimer) {
+      clearTimeout(this.disconnectGraceTimer);
+      this.disconnectGraceTimer = null;
+    }
+  }
+
+  private clearTimers(): void {
+    this.clearNegotiationTimer();
+    this.clearDisconnectGraceTimer();
+  }
+
+  private startNegotiationTimeout(): void {
+    if (this.connectionTimer || this.isFailed || this.isConnected) return;
+    this.connectionTimer = setTimeout(() => {
+      this.connectionTimer = null;
+      if (!this.isConnected && !this.isFailed) {
+        this.reportFailure(`Negotiation timeout: peer did not connect within ${this.negotiationTimeoutMs}ms`);
+      }
+    }, this.negotiationTimeoutMs);
+  }
+
+  private reportFailure(reason: string): void {
+    if (this.isFailed) return;
+    this.isFailed = true;
+    this.clearTimers();
+    this.isConnected = false;
+    try {
+      this.dc?.close();
+    } catch {}
+    try {
+      this.pc.close();
+    } catch {}
+    this.onConnectionFailed?.(this.peerId, reason);
   }
 
   private setupDataChannel(dc: RTCDataChannel): void {
@@ -85,6 +192,7 @@ export class LocalMediaPeer {
 
     this.dc.onopen = () => {
       console.log(`[LOCAL_MEDIA] DataChannel OPEN with peer ${this.peerId}`);
+      this.clearTimers();
       this.isConnected = true;
     };
 
@@ -103,20 +211,31 @@ export class LocalMediaPeer {
   }
 
   public async startNegotiation(): Promise<void> {
-    if (!this.isInitiator) return;
-
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    this.onSignal({ sdp: this.pc.localDescription });
+    if (!this.isInitiator || this.isFailed) return;
+    this.startNegotiationTimeout();
+    try {
+      const offer = await this.pc.createOffer();
+      if (this.isFailed) return;
+      await this.pc.setLocalDescription(offer);
+      if (this.isFailed) return;
+      this.onSignal({ sdp: this.pc.localDescription });
+    } catch (err: any) {
+      this.reportFailure(`Negotiation offer creation failed: ${err?.message || err}`);
+    }
   }
 
   public async handleSignal(signalData: any): Promise<void> {
+    if (this.isFailed) return;
     try {
       if (signalData.sdp) {
         await this.pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+        if (this.isFailed) return;
         if (signalData.sdp.type === "offer") {
+          this.startNegotiationTimeout();
           const answer = await this.pc.createAnswer();
+          if (this.isFailed) return;
           await this.pc.setLocalDescription(answer);
+          if (this.isFailed) return;
           this.onSignal({ sdp: this.pc.localDescription });
         }
       } else if (signalData.candidate) {
@@ -212,10 +331,20 @@ export class LocalMediaPeer {
   }
 
   public isReady(): boolean {
-    return this.isConnected && this.dc?.readyState === "open";
+    return !this.isFailed && this.isConnected && this.dc?.readyState === "open";
+  }
+
+  public hasFailed(): boolean {
+    return this.isFailed;
+  }
+
+  public getIsConnected(): boolean {
+    return this.isConnected;
   }
 
   public close(): void {
+    this.clearTimers();
+    this.isFailed = true;
     try {
       this.dc?.close();
     } catch {}
@@ -225,3 +354,4 @@ export class LocalMediaPeer {
     this.isConnected = false;
   }
 }
+
