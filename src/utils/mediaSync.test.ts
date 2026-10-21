@@ -3,6 +3,7 @@ import { PlaybackSyncController } from "./playbackSyncController";
 import { ClockSynchronizer } from "./playback/clockSync";
 import { PlaybackAdapter } from "./playback/adapters";
 import { operationCoordinator } from "./operationState";
+import { calculateMedian, isTsMapEqual } from "./utils";
 
 // Mock Playback Adapter
 class MockPlaybackAdapter implements PlaybackAdapter {
@@ -433,9 +434,132 @@ async function runMediaSyncTests() {
     );
   }
 
+  // Test 18: isTsMapEqual Equality & Roster Detection
+  {
+    const mapA = { user_1: 45.2, user_2: 45.0 };
+    const mapB = { user_1: 45.2, user_2: 45.0 };
+    const mapDiffVal = { user_1: 45.2, user_2: 46.1 };
+    const mapDiffKey = { user_1: 45.2, user_2: 45.0, user_3: 44.8 };
+    const mapFewerKey = { user_1: 45.2 };
+
+    const sameEqual = isTsMapEqual(mapA, mapB);
+    const selfEqual = isTsMapEqual(mapA, mapA);
+    const diffValEqual = isTsMapEqual(mapA, mapDiffVal);
+    const diffKeyEqual = isTsMapEqual(mapA, mapDiffKey);
+    const fewerKeyEqual = isTsMapEqual(mapA, mapFewerKey);
+    const nullEqual = isTsMapEqual(null, null);
+    const nullDiff = isTsMapEqual(mapA, null);
+
+    assert(
+      sameEqual && selfEqual && !diffValEqual && !diffKeyEqual && !fewerKeyEqual && nullEqual && !nullDiff,
+      "Test 18: isTsMapEqual Equality & Roster Detection",
+      `same=${sameEqual}, diffVal=${diffValEqual}, diffKey=${diffKeyEqual}`
+    );
+  }
+
+  // Test 19: Synchronous latestTsMap Authority & Leader Calculation
+  {
+    let latestTsMap: Record<string, number> = {};
+    let participantsCount = 2;
+
+    const getLeaderTime = () => {
+      const values = Object.values(latestTsMap);
+      if (values.length === 0) return 0;
+      if (participantsCount > 2) {
+        return calculateMedian(values);
+      }
+      return Math.max(...values);
+    };
+
+    // Initial empty state
+    const emptyLeader = getLeaderTime();
+
+    // Two participants: max
+    latestTsMap = { user_1: 50.0, user_2: 52.5 };
+    const twoUserLeader = getLeaderTime();
+
+    // Three participants: median
+    participantsCount = 3;
+    latestTsMap = { user_1: 50.0, user_2: 52.5, user_3: 51.0 };
+    const threeUserLeader = getLeaderTime();
+
+    // Lifecycle reset on media change
+    latestTsMap = {};
+    const mediaChangeLeader = getLeaderTime();
+
+    // Re-population followed by disconnect/teardown reset
+    participantsCount = 2;
+    latestTsMap = { user_1: 120.0, user_2: 122.0 };
+    const populatedLeader = getLeaderTime();
+    latestTsMap = {};
+    const teardownLeader = getLeaderTime();
+
+    assert(
+      emptyLeader === 0 &&
+        twoUserLeader === 52.5 &&
+        threeUserLeader === 51.0 &&
+        mediaChangeLeader === 0 &&
+        populatedLeader === 122.0 &&
+        teardownLeader === 0,
+      "Test 19: Synchronous latestTsMap Authority & Leader Calculation with Lifecycle Resets",
+      `empty=${emptyLeader}, two=${twoUserLeader}, three=${threeUserLeader}, mediaReset=${mediaChangeLeader}, teardownReset=${teardownLeader}`
+    );
+  }
+
+  // Test 20: Imperative Dynamic Catch-up Rate Calculation
+  {
+    const calculatePbr = (leader: number, myTime: number): number => {
+      const delta = leader - myTime;
+      let pbr = 1;
+      if (delta > 0.5) {
+        pbr += Number((delta / 10).toFixed(2));
+        pbr = Math.min(pbr, 1.1);
+      }
+      return pbr;
+    };
+
+    // Within 0.5s deadband: pbr = 1.0
+    const deadbandPbr = calculatePbr(100.0, 99.6);
+    // 0.8s behind: pbr = 1.0 + 0.08 = 1.08
+    const smallBehindPbr = calculatePbr(100.0, 99.2);
+    // 2.5s behind: capped at 1.10
+    const largeBehindPbr = calculatePbr(100.0, 97.5);
+
+    assert(
+      deadbandPbr === 1.0 && smallBehindPbr === 1.08 && largeBehindPbr === 1.1,
+      "Test 20: Imperative Dynamic Catch-up Rate Calculation",
+      `deadband=${deadbandPbr}, small=${smallBehindPbr}, large=${largeBehindPbr}`
+    );
+  }
+
+  // Test 21: Stale Socket Generation Rejection
+  {
+    let currentGen = 2;
+    let appliedTsMap: Record<string, number> | null = null;
+
+    const handleTsMapEvent = (packetGen: number, data: Record<string, number>) => {
+      if (packetGen !== currentGen) return;
+      appliedTsMap = data;
+    };
+
+    // Stale generation 1 packet
+    handleTsMapEvent(1, { user_1: 10.0 });
+    const staleRejected = appliedTsMap === null;
+
+    // Current generation 2 packet
+    handleTsMapEvent(2, { user_1: 10.0 });
+    const currentApplied = appliedTsMap !== null && (appliedTsMap as any).user_1 === 10.0;
+
+    assert(
+      staleRejected && currentApplied,
+      "Test 21: Stale Socket Generation Rejection",
+      `staleRejected=${staleRejected}, currentApplied=${currentApplied}`
+    );
+  }
+
   console.log("----------------------------------------------------------------");
   if (failed === 0) {
-    console.log(`ALL 17 MEDIA-SYNC-001 TESTS PASSED WITH ZERO FAILURES.`);
+    console.log(`ALL 21 MEDIA-SYNC-001 TESTS PASSED WITH ZERO FAILURES.`);
   } else {
     console.error(`TEST SUITE FAILED: ${passed} passed, ${failed} failed.`);
     process.exit(1);

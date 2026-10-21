@@ -851,6 +851,22 @@ export function calculateMedian(array: number[]): number {
   return 0;
 }
 
+export function isTsMapEqual(
+  prev: NumberDict | null | undefined,
+  next: NumberDict | null | undefined,
+): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (let i = 0; i < nextKeys.length; i++) {
+    const key = nextKeys[i];
+    if (prev[key] !== next[key]) return false;
+  }
+  return true;
+}
+
 type ResolvedProfile = {
   displayName: string;
   avatarUrl: string | null;

@@ -11,6 +11,7 @@ import {
   openFileSelector,
   getOrCreateSessionId,
   calculateMedian,
+  isTsMapEqual,
   isYouTube,
   getYoutubeVideoID,
   normalizeYouTubeUrl,
@@ -279,6 +280,7 @@ export class App extends React.Component<AppProps, AppState> {
   private socketConnecting: boolean = false;
   private sessionStartTime: number = Date.now();
   private peakParticipantCount: number = 1;
+  private latestTsMap: NumberDict = {};
   state: AppState = {
     state: "starting",
     initStage: "booting",
@@ -446,6 +448,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.localMediaCoordinator.reset();
       this.localMediaCoordinator = null;
     }
+    this.latestTsMap = {};
   };
 
   checkAndAdvanceToReady = () => {
@@ -1226,6 +1229,7 @@ export class App extends React.Component<AppProps, AppState> {
         this.hasAttemptedSocketRestore = false;
         this.hasAttemptedNamespaceRetry = false;
         operationCoordinator.beginConnectionEpoch();
+        this.latestTsMap = {};
         console.log(`[ADMISSION_TRACE:G] Socket CONNECTED successfully for room=${cleanRoomId}`);
         console.log(`[MEDIA_TRACE:H] Video stream re-acquisition check: ourStreamPresent=${Boolean(window.cowatch?.ourStream)}`);
         this.setState({ initStage: "synchronizing" });
@@ -1415,6 +1419,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
       socket.on("disconnect", (reason) => {
         if (!isCurrentGeneration()) return;
+        this.latestTsMap = {};
         this.socketConnecting = false;
         operationCoordinator.markTransportDisconnected("Socket disconnected");
         if (this.state.isHostSessionEnded || this.state.isWaitingForHost || this.state.leavingRoom) {
@@ -1656,6 +1661,9 @@ export class App extends React.Component<AppProps, AppState> {
         }
 
         const mediaChanged = this.state.roomMedia !== currentMedia;
+        if (mediaChanged) {
+          this.latestTsMap = {};
+        }
         this.setState(
           {
             roomMedia: currentMedia,
@@ -2042,40 +2050,49 @@ export class App extends React.Component<AppProps, AppState> {
       });
       socket.on("REC:tsMap", (data: NumberDict) => {
         if (!isCurrentGeneration()) return;
-        this.setState({ tsMap: data }, () => {
-          // Dynamic playback rate based on timestamps
-          // Disable for sharing types where the users can have different timestamps
-          // e.g. screenshare, fileshare, .m3u8 HLS streams
-          // Also not necessary for WebRTC sharing since it should be close to realtime
-          if (
-            !this.state.roomPaused &&
-            !this.state.isLiveStream &&
-            this.hasDuration() &&
-            this.state.roomPlaybackRate === 0
-          ) {
-            const leader = this.getLeaderTime();
-            const delta = leader - (data[this.state.myClientId] || 0);
-            // Set leader pbr to 1
-            let pbr = 1;
-            // Add .01 pbr for each 100ms delay
-            if (delta > 0.5) {
-              pbr += Number((delta / 10).toFixed(2));
-              pbr = Math.min(pbr, 1.1);
-            }
-            // console.log(delta, pbr);
-            if (this.Player().getPlaybackRate() !== pbr) {
-              this.Player().setPlaybackRate(pbr);
-            }
+        if (!data || typeof data !== "object") return;
+
+        this.latestTsMap = data;
+
+        // Dynamic playback rate based on timestamps
+        // Disable for sharing types where the users can have different timestamps
+        // e.g. screenshare, fileshare, .m3u8 HLS streams
+        // Also not necessary for WebRTC sharing since it should be close to realtime
+        if (
+          !this.state.roomPaused &&
+          !this.state.isLiveStream &&
+          this.hasDuration() &&
+          this.state.roomPlaybackRate === 0
+        ) {
+          const leader = this.getLeaderTime();
+          const delta = leader - (data[this.state.myClientId] || 0);
+          // Set leader pbr to 1
+          let pbr = 1;
+          // Add .01 pbr for each 100ms delay
+          if (delta > 0.5) {
+            pbr += Number((delta / 10).toFixed(2));
+            pbr = Math.min(pbr, 1.1);
           }
-          if (this.state.roomSubtitle) {
-            const sharer = this.state.participants.find((p) => p.isScreenShare);
-            if (sharer && sharer.id !== this.state.myClientId) {
-              // Sync only if someone is sharing and it's not us
-              const sharerTime = this.state.tsMap[sharer.id];
+          // console.log(delta, pbr);
+          if (this.Player().getPlaybackRate() !== pbr) {
+            this.Player().setPlaybackRate(pbr);
+          }
+        }
+        if (this.state.roomSubtitle) {
+          const sharer = this.state.participants.find((p) => p.isScreenShare);
+          if (sharer && sharer.id !== this.state.myClientId) {
+            // Sync only if someone is sharing and it's not us
+            const sharerTime = data[sharer.id];
+            if (typeof sharerTime === "number") {
               this.Player().syncSubtitles(sharerTime);
             }
           }
-        });
+        }
+
+        // Shallow equality guard: only trigger React re-render if keys or timestamps differ
+        if (!isTsMapEqual(this.state.tsMap, data)) {
+          this.setState({ tsMap: data });
+        }
       });
       socket.on("REC:nameMap", (data: StringDict) => {
         if (!isCurrentGeneration()) return;
@@ -3659,10 +3676,18 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   getLeaderTime = () => {
-    if (this.state.participants.length > 2) {
-      return calculateMedian(Object.values(this.state.tsMap));
+    const tsMap =
+      this.latestTsMap && Object.keys(this.latestTsMap).length > 0
+        ? this.latestTsMap
+        : this.state.tsMap;
+    const values = Object.values(tsMap);
+    if (values.length === 0) {
+      return 0;
     }
-    return Math.max(...Object.values(this.state.tsMap));
+    if (this.state.participants.length > 2) {
+      return calculateMedian(values);
+    }
+    return Math.max(...values);
   };
 
   onVideoEnded = (url: string) => {
