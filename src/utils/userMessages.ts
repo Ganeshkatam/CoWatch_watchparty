@@ -13,7 +13,6 @@
  *    presentation mode, action binding, and duration.
  */
 
-import { platform } from "os";
 import type { RoomInitStage } from "./operationState";
 
 export type MessageSeverity = "info" | "success" | "warning" | "error";
