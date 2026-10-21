@@ -1499,7 +1499,6 @@ export class App extends React.Component<AppProps, AppState> {
         }
       };
 
-      socket.on("REC:hostChange", handleHostUpdate);
       socket.on("REC:hostAuthority", handleHostUpdate);
       socket.on("kicked", (data?: { message?: string }) => {
         if (!isCurrentGeneration()) return;

@@ -1457,6 +1457,14 @@ export class Room {
     this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
     if (this.isHost(socket)) {
+      this.io.of(this.roomId).emit("REC:hostAuthority", {
+        hostId: this.currentHostUid || this.currentHostClientId,
+        hostClientId: this.currentHostClientId,
+        mode: this.getHostMode(),
+        reason: "name_update",
+        hostName: data,
+        isOwner: this.getHostMode() === "owner",
+      });
       this.io.of(this.roomId).emit("REC:hostChange", {
         hostId: this.currentHostUid,
         hostClientId: this.currentHostClientId,
