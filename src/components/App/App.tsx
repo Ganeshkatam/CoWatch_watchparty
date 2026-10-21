@@ -5,6 +5,8 @@ import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
   iceServers,
+  prewarmIceServers,
+  clearIceServersCache,
   isMobile,
   serverPath,
   testAutoplay,
@@ -449,6 +451,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.localMediaCoordinator = null;
     }
     this.latestTsMap = {};
+    clearIceServersCache(this.state.roomId || this.props.urlRoomId);
   };
 
   checkAndAdvanceToReady = () => {
@@ -1176,6 +1179,13 @@ export class App extends React.Component<AppProps, AppState> {
         },
       });
       this.socket = socket;
+      void prewarmIceServers({
+        roomId: cleanRoomId,
+        token: token || undefined,
+        admissionToken: routeAdmissionToken || undefined,
+        callerUid: uid || undefined,
+        sessionId: authSessionId || undefined,
+      });
 
       socket.on("REC:assignedClientId", (assignedClientId: string) => {
         if (!isCurrentGeneration()) return;

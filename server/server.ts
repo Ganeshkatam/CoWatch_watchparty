@@ -34,6 +34,7 @@ import { createInternalOperationsRouter } from "./routes/internalOperationsRoute
 import { createMediaProxyRouter } from "./routes/mediaProxyRouter.ts";
 import { createAuthAccountRouter } from "./routes/authAccountRouter.ts";
 import { createAccountTeardownRouter } from "./routes/accountTeardownRouter.ts";
+import { createIceServersRouter } from "./routes/iceServersRouter.ts";
 import { registerNotificationNamespace } from "./notifications/notificationSocketNamespace.ts";
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
@@ -444,6 +445,7 @@ app.use(createRoomAdmissionRouter({ rooms, postgres, getOrCreateRoom }));
 app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
 app.use(createRoomOwnerInspectionRouter({ postgres }));
 app.use(createPublicUtilityRouter({ postgres }));
+app.use(createIceServersRouter({ rooms, postgres }));
 
 // AUTH & ACCOUNT SELF-SERVICE: Handled by modular router (routes/authAccountRouter.ts)
 app.use(createAuthAccountRouter());

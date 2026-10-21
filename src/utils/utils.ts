@@ -193,7 +193,7 @@ export function shuffle(array: any[]) {
   }
 }
 
-export const iceServers = (): RTCIceServer[] => {
+export const getDefaultIceServers = (): RTCIceServer[] => {
   if (typeof import.meta !== "undefined" && import.meta.env?.VITE_ICE_SERVERS) {
     try {
       const parsed = JSON.parse(import.meta.env.VITE_ICE_SERVERS);
@@ -234,6 +234,238 @@ export const iceServers = (): RTCIceServer[] => {
     },
   ];
 };
+
+export interface CachedIceEntry {
+  iceServers: RTCIceServer[];
+  expiresAt: number;
+  refreshTimer?: any;
+  retryTimer?: any;
+  retryAttempt?: number;
+}
+
+export interface PrewarmIceOptions {
+  roomId?: string;
+  token?: string;
+  admissionToken?: string;
+  callerUid?: string;
+  sessionId?: string;
+  forceRefresh?: boolean;
+}
+
+const iceCacheByContext = new Map<string, CachedIceEntry>();
+const contextGenerationMap = new Map<string, number>();
+let activeContextKey: string = "default";
+const inflightPrewarmPromises = new Map<string, Promise<RTCIceServer[]>>();
+
+export const iceServers = (contextKey?: string): RTCIceServer[] => {
+  const key = contextKey || activeContextKey || "default";
+  const entry = iceCacheByContext.get(key);
+  if (entry) {
+    // If expired, immediately purge to prevent passing expired credentials to RTCPeerConnection
+    if (Date.now() >= entry.expiresAt) {
+      if (entry.refreshTimer) clearTimeout(entry.refreshTimer);
+      if (entry.retryTimer) clearTimeout(entry.retryTimer);
+      iceCacheByContext.delete(key);
+      return getDefaultIceServers();
+    }
+    return entry.iceServers;
+  }
+  return getDefaultIceServers();
+};
+
+export async function getIceServersAsync(contextKey?: string): Promise<RTCIceServer[]> {
+  const key = contextKey || activeContextKey || "default";
+  const inflight = inflightPrewarmPromises.get(key);
+  if (inflight) {
+    try {
+      return await inflight;
+    } catch {
+      return iceServers(key);
+    }
+  }
+  return iceServers(key);
+}
+
+export function clearIceServersCache(target?: string): void {
+  const clearEntryTimers = (entry: CachedIceEntry) => {
+    if (entry.refreshTimer) {
+      clearTimeout(entry.refreshTimer);
+      entry.refreshTimer = undefined;
+    }
+    if (entry.retryTimer) {
+      clearTimeout(entry.retryTimer);
+      entry.retryTimer = undefined;
+    }
+  };
+
+  if (target) {
+    const keysToDelete: string[] = [];
+    for (const [key, entry] of iceCacheByContext.entries()) {
+      // Exact match or prefix match (e.g. "room_1" matches "room_1:user_1:sess_1")
+      if (key === target || key.startsWith(target + ":")) {
+        clearEntryTimers(entry);
+        keysToDelete.push(key);
+      }
+    }
+    for (const k of keysToDelete) {
+      iceCacheByContext.delete(k);
+    }
+
+    // Invalidate per-context generations and in-flight promises matching target
+    for (const key of Array.from(contextGenerationMap.keys())) {
+      if (key === target || key.startsWith(target + ":")) {
+        contextGenerationMap.set(key, (contextGenerationMap.get(key) || 0) + 1);
+      }
+    }
+    for (const key of Array.from(inflightPrewarmPromises.keys())) {
+      if (key === target || key.startsWith(target + ":")) {
+        inflightPrewarmPromises.delete(key);
+      }
+    }
+    contextGenerationMap.set(target, (contextGenerationMap.get(target) || 0) + 1);
+
+    if (activeContextKey === target || activeContextKey.startsWith(target + ":")) {
+      activeContextKey = "default";
+    }
+  } else {
+    for (const entry of iceCacheByContext.values()) {
+      clearEntryTimers(entry);
+    }
+    iceCacheByContext.clear();
+    inflightPrewarmPromises.clear();
+    for (const k of contextGenerationMap.keys()) {
+      contextGenerationMap.set(k, (contextGenerationMap.get(k) || 0) + 1);
+    }
+    activeContextKey = "default";
+  }
+}
+
+export async function prewarmIceServers(options: PrewarmIceOptions = {}): Promise<RTCIceServer[]> {
+  const roomId = options.roomId?.trim() || "";
+  const callerUid = options.callerUid?.trim() || "";
+  const sessionId = options.sessionId?.trim() || "";
+  const contextKey = `${roomId || "global"}:${callerUid || "anon"}:${sessionId || "nosess"}`;
+  activeContextKey = contextKey;
+
+  const currentGen = (contextGenerationMap.get(contextKey) || 0) + 1;
+  contextGenerationMap.set(contextKey, currentGen);
+
+  const now = Date.now();
+  const existing = iceCacheByContext.get(contextKey);
+  // Return cached credentials if valid for at least 15 more minutes, unless forceRefresh is requested
+  if (!options.forceRefresh && existing && existing.expiresAt > now + 15 * 60 * 1000) {
+    return existing.iceServers;
+  }
+
+  // Request coalescing: share in-flight fetch promise for identical authorization context
+  const inflight = inflightPrewarmPromises.get(contextKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (options.token) {
+        headers["Authorization"] = `Bearer ${options.token}`;
+      }
+      if (options.admissionToken) {
+        headers["X-Admission-Token"] = options.admissionToken;
+      }
+      if (roomId) {
+        headers["X-Room-Id"] = roomId;
+      }
+      if (callerUid) {
+        headers["X-Caller-Uid"] = callerUid;
+      }
+      if (sessionId) {
+        headers["X-Session-Id"] = sessionId;
+      }
+
+      const res = await fetch("/api/media/ice-servers", { headers });
+      if (!res.ok) {
+        throw new Error(`HTTP_${res.status}`);
+      }
+      const data = await res.json();
+      if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+        // Validate generation: drop late response if context was torn down during in-flight fetch
+        if (contextGenerationMap.get(contextKey) !== currentGen) {
+          return getDefaultIceServers();
+        }
+
+        const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : now + (data.ttlSeconds || 10800) * 1000;
+        const oldEntry = iceCacheByContext.get(contextKey);
+        if (oldEntry?.refreshTimer) clearTimeout(oldEntry.refreshTimer);
+        if (oldEntry?.retryTimer) clearTimeout(oldEntry.retryTimer);
+
+        // Schedule background refresh 15 minutes before expiration (minimum 30 seconds from now)
+        const refreshDelayMs = Math.max(30000, expiresAt - now - 15 * 60 * 1000);
+        let refreshTimer: any;
+        const timerHost = typeof window !== "undefined" ? window : globalThis;
+        if (typeof timerHost.setTimeout === "function") {
+          refreshTimer = timerHost.setTimeout(() => {
+            prewarmIceServers({ ...options, forceRefresh: true }).catch((err) => {
+              console.warn("[ICE] Scheduled refresh failed:", err);
+            });
+          }, refreshDelayMs);
+        }
+
+        iceCacheByContext.set(contextKey, {
+          iceServers: data.iceServers,
+          expiresAt,
+          refreshTimer,
+          retryAttempt: 0,
+        });
+
+        return data.iceServers;
+      }
+    } catch (err) {
+      console.warn("[ICE] Failed to prewarm ICE servers; falling back to default:", err);
+      if (contextGenerationMap.get(contextKey) !== currentGen) {
+        return getDefaultIceServers();
+      }
+
+      const current = iceCacheByContext.get(contextKey);
+      if (current) {
+        const currentNow = Date.now();
+        if (currentNow >= current.expiresAt) {
+          // Hard expiry reached: purge dead credentials immediately so they are never served
+          if (current.refreshTimer) clearTimeout(current.refreshTimer);
+          if (current.retryTimer) clearTimeout(current.retryTimer);
+          iceCacheByContext.delete(contextKey);
+        } else {
+          // Bounded exponential backoff retry while credentials remain valid
+          // Backoff delays: 30s, 60s, 120s (max 3 attempts)
+          const retryAttempt = current.retryAttempt ?? 0;
+          const retryDelays = [30000, 60000, 120000];
+          const nextDelay = retryDelays[Math.min(retryAttempt, retryDelays.length - 1)];
+
+          // Only retry if next attempt occurs at least 30s before hard expiration
+          if (retryAttempt < 3 && currentNow + nextDelay < current.expiresAt - 30000) {
+            if (current.retryTimer) {
+              clearTimeout(current.retryTimer);
+            }
+            const timerHost = typeof window !== "undefined" ? window : globalThis;
+            if (typeof timerHost.setTimeout === "function") {
+              current.retryTimer = timerHost.setTimeout(() => {
+                prewarmIceServers({ ...options, forceRefresh: true }).catch((e) => {
+                  console.warn("[ICE] Retry refresh failed:", e);
+                });
+              }, nextDelay);
+            }
+            current.retryAttempt = retryAttempt + 1;
+          }
+        }
+      }
+    } finally {
+      inflightPrewarmPromises.delete(contextKey);
+    }
+    return iceServers(contextKey);
+  })();
+
+  inflightPrewarmPromises.set(contextKey, fetchPromise);
+  return fetchPromise;
+}
 
 export const serverCandidates: string[] = (() => {
   if (typeof window !== "undefined") {

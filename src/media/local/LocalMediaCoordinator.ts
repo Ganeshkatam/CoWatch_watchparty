@@ -14,6 +14,7 @@ import {
 import { LocalMediaPeer } from "./LocalMediaPeer";
 import { LocalMediaScheduler } from "./LocalMediaScheduler";
 import { LocalMediaSource } from "./LocalMediaSource";
+import { getIceServersAsync } from "../../utils/utils";
 
 export type LocalMediaRole = "HOST_SEED" | "PARTICIPANT_PEER" | "IDLE";
 
@@ -302,7 +303,8 @@ export class LocalMediaCoordinator {
                 this.peers.clear();
                 this.scheduler?.reset();
                 if (normalized.ownerId && normalized.ownerId !== this.userId) {
-                  const peer = this.createPeer(normalized.ownerId, true);
+                  const resolvedServers = await getIceServersAsync();
+                  const peer = this.createPeer(normalized.ownerId, true, resolvedServers);
                   await peer.startNegotiation();
                 }
                 this.notifyState();
@@ -346,7 +348,8 @@ export class LocalMediaCoordinator {
         if (data.toPeerId === this.userId) {
           let peer = this.peers.get(data.fromPeerId);
           if (!peer) {
-            peer = this.createPeer(data.fromPeerId, false);
+            const resolvedServers = await getIceServersAsync();
+            peer = this.createPeer(data.fromPeerId, false, resolvedServers);
           }
           await peer.handleSignal(data.signal);
         }
@@ -444,7 +447,8 @@ export class LocalMediaCoordinator {
 
     // 4. Connect to host seed
     if (manifest.ownerId && manifest.ownerId !== this.userId) {
-      const peer = this.createPeer(manifest.ownerId, true);
+      const resolvedServers = await getIceServersAsync();
+      const peer = this.createPeer(manifest.ownerId, true, resolvedServers);
       await peer.startNegotiation();
     }
 
@@ -455,6 +459,7 @@ export class LocalMediaCoordinator {
   private createPeer(
     targetPeerId: string,
     isInitiator: boolean,
+    iceServers?: RTCIceServer[],
   ): LocalMediaPeer {
     const peer = new LocalMediaPeer(
       targetPeerId,
@@ -480,6 +485,9 @@ export class LocalMediaCoordinator {
         onConnectionFailed: (peerId, reason) => {
           this.handlePeerFailure(peerId, reason);
         },
+      },
+      {
+        iceServers,
       },
     );
 

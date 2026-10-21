@@ -26,6 +26,7 @@ export interface LocalMediaPeerCallbacks {
 
 export interface LocalMediaPeerOptions {
   pc?: RTCPeerConnection;
+  iceServers?: RTCIceServer[];
   negotiationTimeoutMs?: number;
   disconnectGraceMs?: number;
 }
@@ -74,7 +75,7 @@ export class LocalMediaPeer {
       this.pc = options.pc;
     } else if (typeof RTCPeerConnection !== "undefined") {
       this.pc = new RTCPeerConnection({
-        iceServers: iceServers(),
+        iceServers: options?.iceServers ?? iceServers(),
       });
     } else {
       this.pc = {} as any;

@@ -103,11 +103,31 @@ const defaults = {
   SSL_CRT_FILE: "", // Optional, Filename of SSL cert (to use https for local development)
   STATS_KEY: "", // Secret string to validate viewing stats
   CUSTOM_SETTINGS_HOSTNAME: "", // Hostname to send different config settings to client
+
+  // ==========================================
+  // TURN Relay Configuration (Coturn RFC 5766)
+  // ==========================================
+  TURN_SHARED_SECRET: "", // Shared secret key for HMAC-SHA1 credential generation
+  TURN_HOST: "", // FQDN or IP of the TURN server (e.g. turn.cowatch.tv)
+  TURN_PORT_UDP: 3478, // Standard TURN UDP port (default 3478)
+  TURN_PORT_TLS: 443, // Secure TURN TLS/TURNS port (default 443)
+  TURN_FALLBACK_STUN_URLS: "stun:stun.l.google.com:19302", // Comma-delimited list of fallback STUN servers
 };
 
 const resolvedConfig = {
   ...defaults,
   ...process.env,
 };
+
+// Validate TURN configuration
+if (resolvedConfig.NODE_ENV === "production") {
+  if (resolvedConfig.TURN_SHARED_SECRET && !resolvedConfig.TURN_HOST) {
+    console.error("[CONFIG ERROR] TURN_SHARED_SECRET is configured but TURN_HOST is missing. Relay credential generation will fail.");
+  } else if (!resolvedConfig.TURN_SHARED_SECRET && resolvedConfig.TURN_HOST) {
+    console.error("[CONFIG ERROR] TURN_HOST is configured but TURN_SHARED_SECRET is missing. Relay credential generation will fail.");
+  } else if (!resolvedConfig.TURN_SHARED_SECRET && !resolvedConfig.TURN_HOST) {
+    console.warn("[CONFIG WARN] TURN_HOST and TURN_SHARED_SECRET are not set in production. WebRTC will operate STUN-only without relay fallback.");
+  }
+}
 
 export default resolvedConfig;
