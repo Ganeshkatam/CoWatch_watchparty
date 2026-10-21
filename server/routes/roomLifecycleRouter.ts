@@ -212,6 +212,11 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
           startedBy: decoded.uid,
         });
         memoryRoom.scheduleInactivityTimeoutIfNeeded();
+        if (result.transitioned !== false && typeof memoryRoom.dispatchRoomStartedNotification === "function") {
+          memoryRoom.dispatchRoomStartedNotification(decoded.uid, result.lifecycleEventId).catch((err: any) =>
+            console.error(`[LifecycleRouter] Background notification error for ${memoryRoom.roomId}:`, err)
+          );
+        }
       }
 
       res.json({ success: true, status: 'active' });

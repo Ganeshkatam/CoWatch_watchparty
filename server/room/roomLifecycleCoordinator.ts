@@ -1,6 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { Server, Socket } from "socket.io";
 import { TimelineAuthority } from "../timelineAuthority.ts";
 import { postgres as defaultPostgres } from "../utils/postgres.ts";
+import { notificationService } from "../notifications/notificationService.ts";
+import { NotificationType } from "../notifications/notificationTypes.ts";
+import config from "../config.ts";
 
 export const EMPTY_ROOM_INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds
 
@@ -46,6 +50,7 @@ export interface RoomLifecycleDependencies {
   scavengeDisconnectedParticipants: (now: number) => void;
   terminateSignalingSession: () => void;
   addChatMessage: (socket: Socket | null, chatMsg: ChatMessageBase) => Promise<any>;
+  getConnectedParticipantUids?: () => string[];
 }
 
 export class RoomLifecycleCoordinator {
@@ -146,6 +151,12 @@ export class RoomLifecycleCoordinator {
             startedBy: socket.uid,
           });
           this.scheduleInactivityTimeoutIfNeeded();
+
+          if (res.transitioned !== false) {
+            this.dispatchRoomStartedNotification(socket.uid, res.lifecycleEventId).catch((err) =>
+              console.error(`[Lifecycle] Background notification error for ${this.deps.roomId}:`, err)
+            );
+          }
         } else if (res?.status === "expired") {
           this.deps.setStatus("expired");
         }
@@ -212,9 +223,122 @@ export class RoomLifecycleCoordinator {
       });
 
       this.scheduleInactivityTimeoutIfNeeded();
+
+      if (res.transitioned !== false) {
+        this.dispatchRoomStartedNotification(socket.uid, res.lifecycleEventId).catch((err) =>
+          console.error(`[Lifecycle] Background notification error for ${this.deps.roomId}:`, err)
+        );
+      }
     } catch (err) {
       console.error("CMD:startSession failed:", err);
       socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
+    }
+  };
+
+  public dispatchRoomStartedNotification = async (
+    actorUid: string,
+    lifecycleEventId?: string | null
+  ): Promise<void> => {
+    if (!this.postgres) return;
+
+    // Explicitly non-transitioning CAS invocations must never trigger notification
+    if (lifecycleEventId === null) return;
+
+    try {
+      let sessionId = lifecycleEventId;
+      if (!sessionId) {
+        const eventRes = await this.postgres.query(
+          `SELECT id FROM public.room_lifecycle_events
+           WHERE "roomId" = $1 AND event = 'room.status_changed' AND "newStatus" = 'active'
+           ORDER BY timestamp DESC LIMIT 1`,
+          [this.deps.roomId]
+        );
+        sessionId = eventRes?.rows?.[0]?.id;
+      }
+
+      if (!sessionId) {
+        // Fallback for mocks and unit tests
+        sessionId = randomUUID();
+      }
+
+      const roomRes = await this.postgres.query(
+        `SELECT "roomTitle" FROM public.rooms WHERE "roomId" = $1 LIMIT 1`,
+        [this.deps.roomId]
+      );
+      const roomTitle = roomRes?.rows?.[0]?.roomTitle || this.deps.roomId;
+
+      const [invitesRes, admissionsRes] = await Promise.all([
+        this.postgres.query(
+          `SELECT target_user_id AS user_id
+           FROM public.room_invitations
+           WHERE room_id = $1
+             AND target_user_id IS NOT NULL
+             AND revoked_at IS NULL
+             AND (expires_at IS NULL OR expires_at > now())`,
+          [this.deps.roomId]
+        ),
+        this.postgres.query(
+          `SELECT user_id
+           FROM public.room_admissions
+           WHERE room_id = $1
+             AND revoked_at IS NULL`,
+          [this.deps.roomId]
+        ),
+      ]);
+
+      const candidateUserIds = new Set<string>();
+      for (const row of invitesRes?.rows || []) {
+        if (row.user_id) candidateUserIds.add(String(row.user_id));
+      }
+      for (const row of admissionsRes?.rows || []) {
+        if (row.user_id) candidateUserIds.add(String(row.user_id));
+      }
+
+      if (actorUid) {
+        candidateUserIds.delete(actorUid);
+      }
+
+      if (this.deps.getConnectedParticipantUids) {
+        for (const uid of this.deps.getConnectedParticipantUids()) {
+          candidateUserIds.delete(uid);
+        }
+      }
+
+      if (candidateUserIds.size === 0) {
+        return;
+      }
+
+      const participantUserIds = Array.from(candidateUserIds);
+      const appUrl = config.APP_URL || "";
+      const roomUrl = appUrl
+        ? `${appUrl}/watch/${encodeURIComponent(this.deps.roomId)}`
+        : `/watch/${encodeURIComponent(this.deps.roomId)}`;
+
+      await notificationService.notifyRoomParticipants({
+        roomId: this.deps.roomId,
+        ownerUserId: this.deps.getOwnerId(),
+        participantUserIds,
+        type: NotificationType.ROOM_STARTED,
+        title: "Room Started",
+        body: `The room "${roomTitle}" has started. Join now to watch together!`,
+        metadata: {
+          roomId: this.deps.roomId,
+          action: "open_room",
+          sessionId,
+          targetUrl: `/watch/${encodeURIComponent(this.deps.roomId)}`,
+        },
+        eventIdPrefix: `ROOM_STARTED:${this.deps.roomId}:${sessionId}`,
+        emailTemplateKey: "ROOM_STARTED",
+        emailPayload: {
+          roomTitle,
+          roomUrl,
+        },
+      });
+    } catch (err) {
+      console.error(
+        `[Lifecycle] Failed to dispatch ROOM_STARTED notification for ${this.deps.roomId}:`,
+        err
+      );
     }
   };
 

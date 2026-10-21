@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { notificationService } from './notificationService.ts';
 import { NotificationType } from './notificationTypes.ts';
 import { resolveNotificationAction } from '../../src/utils/notificationAction.ts';
+import { RoomLifecycleCoordinator } from '../room/roomLifecycleCoordinator.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -79,6 +80,170 @@ async function runDomainEventTests() {
   assert(actionStarted.action === 'open_room', 'ROOM_STARTED action must be open_room');
   assert(actionStarted.url === `/watch/${roomId}`, 'ROOM_STARTED url must target /watch/:roomId');
   console.log('  PASS: ROOM_STARTED uses authoritative session boundary with open_room action');
+
+  // ---------------------------------------------------------------------------
+  // Case 2B: ROOM_STARTED Dispatcher Integration & Exclusion Invariants
+  // ---------------------------------------------------------------------------
+  console.log('Case 2B: Testing ROOM_STARTED dispatcher, recipient selection, exclusions, and failure isolation...');
+  const originalNotifyRoomParticipants = notificationService.notifyRoomParticipants;
+  const dispatchedCalls: any[] = [];
+  notificationService.notifyRoomParticipants = async (params: any) => {
+    dispatchedCalls.push(params);
+  };
+
+  try {
+    const mockPostgres = {
+      query: async (sql: string, _params?: any[]) => {
+        if (sql.includes('public.rooms')) {
+          return { rows: [{ roomTitle: 'Cyber Cinema' }] };
+        }
+        if (sql.includes('public.room_invitations')) {
+          return {
+            rows: [
+              { user_id: 'user-invite-1' },
+              { user_id: 'user-shared-2' },
+            ],
+          };
+        }
+        if (sql.includes('public.room_admissions')) {
+          return {
+            rows: [
+              { user_id: 'user-admit-3' },
+              { user_id: 'user-shared-2' },
+              { user_id: 'user-online-4' },
+              { user_id: 'owner-uid-1' },
+            ],
+          };
+        }
+        if (sql.includes('public.set_room_activity_authoritative')) {
+          return {
+            rows: [
+              {
+                result: {
+                  roomId: 'test-room-1',
+                  status: 'active',
+                  transitioned: true,
+                  lifecycleEventId: 'session-uuid-777',
+                  expiresAt: null,
+                  isPermanent: true,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+
+    let mockStatus: any = 'inactive';
+    const mockDeps: any = {
+      roomId: 'test-room-1',
+      io: { of: () => ({ emit: () => {} }) },
+      getPostgres: () => mockPostgres,
+      getStatus: () => mockStatus,
+      setStatus: (s: any) => { mockStatus = s; },
+      getExpiresAt: () => undefined,
+      setExpiresAt: () => {},
+      getLastUpdateTime: () => new Date(),
+      setLastUpdateTime: () => {},
+      getOwnerId: () => 'owner-uid-1',
+      getCurrentHostUid: () => 'owner-uid-1',
+      isHostUid: (uid: string) => uid === 'owner-uid-1',
+      getRoster: () => [],
+      getConnectedParticipantUids: () => ['user-online-4', 'owner-uid-1'],
+      getTsMap: () => ({}),
+      getVideo: () => null,
+      setVideo: () => {},
+      getVideoTS: () => 0,
+      getSubtitle: () => '',
+      setSubtitle: () => {},
+      getPlaybackRate: () => 1,
+      setPlaybackRate: () => {},
+      getPaused: () => true,
+      setPaused: () => {},
+      getLoop: () => false,
+      setLoop: () => {},
+      getNameMap: () => ({}),
+      setNameMap: () => {},
+      getPictureMap: () => ({}),
+      setPictureMap: () => {},
+      getLock: () => undefined,
+      setLock: () => {},
+      getCreator: () => 'owner-uid-1',
+      setCreator: () => {},
+      getPlaylist: () => [],
+      setPlaylist: () => {},
+      getTimeline: () => ({ generateSyncPayload: () => ({}) }),
+      setTimeline: () => {},
+      setLastTsMap: () => {},
+      scavengeDisconnectedParticipants: () => {},
+      terminateSignalingSession: () => {},
+      addChatMessage: async () => {},
+    };
+
+    const coordinator = new RoomLifecycleCoordinator(mockDeps);
+
+    // 1. Direct dispatcher test with exclusions
+    await coordinator.dispatchRoomStartedNotification('owner-uid-1', 'session-uuid-777');
+    assert(dispatchedCalls.length === 1, 'Dispatcher must invoke notifyRoomParticipants exactly once');
+    const call = dispatchedCalls[0];
+    assert(call.roomId === 'test-room-1', 'Notification roomId must match');
+    assert(call.type === 'ROOM_STARTED', 'Notification type must be ROOM_STARTED');
+    assert(call.emailTemplateKey === 'ROOM_STARTED', 'Email template key must be ROOM_STARTED');
+    assert(call.metadata.sessionId === 'session-uuid-777', 'SessionId must match authoritative transition UUID');
+    assert(call.eventIdPrefix === 'ROOM_STARTED:test-room-1:session-uuid-777', 'EventIdPrefix must be deterministic');
+
+    // Invariant: owner/initiator excluded
+    assert(!call.participantUserIds.includes('owner-uid-1'), 'Initiating actor must be excluded from recipients');
+    // Invariant: connected participant excluded
+    assert(!call.participantUserIds.includes('user-online-4'), 'Connected participants must be excluded from recipients');
+    // Invariant: deduplicated union of invitations and admissions included
+    assert(call.participantUserIds.includes('user-invite-1'), 'Valid invitee must be included');
+    assert(call.participantUserIds.includes('user-shared-2'), 'Shared invitee/member must be included exactly once');
+    assert(call.participantUserIds.includes('user-admit-3'), 'Admitted member must be included');
+    assert(call.participantUserIds.length === 3, 'Recipient set must contain exactly the 3 eligible users');
+
+    // 2. Duplicate activation suppression
+    dispatchedCalls.length = 0;
+    await coordinator.dispatchRoomStartedNotification('owner-uid-1', null);
+    assert(dispatchedCalls.length === 0, 'No notification must be dispatched when lifecycleEventId is null (already active)');
+
+    // 3. Failure isolation
+    notificationService.notifyRoomParticipants = async () => {
+      throw new Error('Database connection interrupted');
+    };
+    let dispatchFailed = false;
+    try {
+      await coordinator.dispatchRoomStartedNotification('owner-uid-1', 'session-uuid-888');
+    } catch {
+      dispatchFailed = true;
+    }
+    assert(dispatchFailed === false, 'Notification dispatch error must be caught and isolated without throwing');
+
+    // 4. Test activation paths trigger notification
+    dispatchedCalls.length = 0;
+    notificationService.notifyRoomParticipants = async (params: any) => {
+      dispatchedCalls.push(params);
+    };
+
+    // Path A: handleHostEntryActivation
+    mockStatus = 'inactive';
+    const mockSocket: any = { uid: 'owner-uid-1', clientId: 'client-1' };
+    await coordinator.handleHostEntryActivation(mockSocket);
+    await new Promise((r) => setTimeout(r, 10));
+    assert(dispatchedCalls.length === 1, 'handleHostEntryActivation must trigger background notification dispatch');
+
+    // Path B: startSession
+    dispatchedCalls.length = 0;
+    mockStatus = 'scheduled';
+    await coordinator.startSession(mockSocket);
+    await new Promise((r) => setTimeout(r, 10));
+    assert(dispatchedCalls.length === 1, 'startSession must trigger background notification dispatch');
+
+    console.log('  PASS: ROOM_STARTED dispatcher, recipient deduplication, exclusions, duplicate suppression, and failure isolation verified');
+  } finally {
+    notificationService.notifyRoomParticipants = originalNotifyRoomParticipants;
+  }
 
   // ---------------------------------------------------------------------------
   // Case 3: ROOM_ENDING Concurrency-Safe Claim Simulation

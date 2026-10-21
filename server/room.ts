@@ -557,6 +557,7 @@ export class Room {
       scavengeDisconnectedParticipants: (now) => this.admissionCoordinator.scavengeDisconnectedParticipants(now),
       terminateSignalingSession: () => this.signalingCoordinator.terminateSession(),
       addChatMessage: (socket, chatMsg) => this.addChatMessage(socket, chatMsg),
+      getConnectedParticipantUids: () => this.getConnectedParticipantUids(),
     });
 
     if (roomData) {
@@ -1529,6 +1530,10 @@ export class Room {
 
   public startSession = async (socket: Socket): Promise<void> => {
     return this.lifecycleCoordinator.startSession(socket);
+  };
+
+  public dispatchRoomStartedNotification = (actorUid: string, lifecycleEventId?: string | null): Promise<void> => {
+    return this.lifecycleCoordinator.dispatchRoomStartedNotification(actorUid, lifecycleEventId);
   };
 
   public seekVideo = (socket: Socket, data: number | { time: number; operationId?: string }) => {

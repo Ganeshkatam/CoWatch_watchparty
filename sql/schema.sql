@@ -1668,6 +1668,7 @@ DECLARE
   v_room public.rooms%ROWTYPE;
   v_usage RECORD;
   v_new_status text := p_status;
+  v_lifecycle_event_id uuid := NULL;
 BEGIN
   IF p_status NOT IN ('active', 'inactive') THEN
     RAISE EXCEPTION 'INVALID_STATUS';
@@ -1723,7 +1724,8 @@ BEGIN
     VALUES (v_room.owner_id, p_room_id, v_room.room_kind, 'EXPIRED', '{"reason": "overdue_during_activity_change"}'::jsonb);
 
     INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
-    VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.expired', v_room.status, 'expired', v_room."expiresAt", v_room."expiresAt", 'canonical expiry reached', v_now);
+    VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.expired', v_room.status, 'expired', v_room."expiresAt", v_room."expiresAt", 'canonical expiry reached', v_now)
+    RETURNING id INTO v_lifecycle_event_id;
 
     v_new_status := 'expired';
   ELSE
@@ -1745,7 +1747,8 @@ BEGIN
 
     IF v_room.status != p_status THEN
       INSERT INTO public.room_lifecycle_events ("roomId", actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp)
-      VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.status_changed', v_room.status, p_status, v_room."expiresAt", v_room."expiresAt", 'activity transition', v_now);
+      VALUES (p_room_id, COALESCE(p_actor_id::text, 'system'), 'room.status_changed', v_room.status, p_status, v_room."expiresAt", v_room."expiresAt", 'activity transition', v_now)
+      RETURNING id INTO v_lifecycle_event_id;
     END IF;
   END IF;
 
@@ -1770,6 +1773,9 @@ BEGIN
   RETURN jsonb_build_object(
     'roomId', p_room_id,
     'status', v_new_status,
+    'previousStatus', v_room.status,
+    'transitioned', (v_room.status != v_new_status),
+    'lifecycleEventId', v_lifecycle_event_id,
     'expiresAt', v_room."expiresAt",
     'isPermanent', v_room."isPermanent"
   );

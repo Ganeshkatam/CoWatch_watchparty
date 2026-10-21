@@ -39,6 +39,7 @@ async function runRoomLifecycleRouterTests() {
 
   // Mock Socket.IO Server
   const emittedEvents: { nsp: string; event: string; payload: any }[] = [];
+  const dispatchedNotifications: { roomId: string; actorUid: string; lifecycleEventId?: string | null }[] = [];
   const mockIo = {
     of: (nspName: string) => ({
       emit: (event: string, payload: any) => {
@@ -97,6 +98,9 @@ async function runRoomLifecycleRouterTests() {
       addChatMessage: async (_user: any, _msg: any) => {},
       disconnectAllSockets: () => {},
       destroy: () => {},
+      dispatchRoomStartedNotification: async (actorUid: string, lifecycleEventId?: string | null) => {
+        dispatchedNotifications.push({ roomId, actorUid, lifecycleEventId });
+      },
     };
     return mock as unknown as Room;
   }
@@ -353,6 +357,8 @@ async function runRoomLifecycleRouterTests() {
         (e) => e.nsp === "r2" && e.event === "REC:sessionStarted" && e.payload?.status === "active" && e.payload?.startedBy === "uid-alice"
       ));
     test("POST /startRoom: schedules inactivity timeout if needed", scheduledTimeout);
+    test("POST /startRoom: dispatches ROOM_STARTED notification on genuine activation",
+      dispatchedNotifications.some((n) => n.roomId === "r2" && n.actorUid === "uid-alice"));
 
     // =========================================================================
     // 3. POST /endRoom
