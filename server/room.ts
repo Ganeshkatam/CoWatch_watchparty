@@ -39,6 +39,10 @@ import {
   HostTransitionUnavailableError,
   type HostAuthorityPayload,
 } from "./room/roomHostCoordinator.ts";
+import {
+  RoomLifecycleCoordinator,
+  EMPTY_ROOM_INACTIVITY_TIMEOUT_MS,
+} from "./room/roomLifecycleCoordinator.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -54,6 +58,8 @@ export {
   RoomAdmissionCoordinator,
   HostTransitionUnavailableError,
   RoomHostCoordinator,
+  EMPTY_ROOM_INACTIVITY_TIMEOUT_MS,
+  RoomLifecycleCoordinator,
 };
 
 
@@ -65,7 +71,6 @@ declare module "socket.io" {
   }
 }
 
-export const EMPTY_ROOM_INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds
 
 export type { RoomAction, AuthorizationContext, ActionTarget, AuthorizationResult };
 
@@ -137,8 +142,6 @@ export class Room {
   public tsMap: NumberDict = {};
   private io: Server;
   private socketIdMap: StringDict = {};
-  private tsInterval: NodeJS.Timeout | undefined = undefined;
-  private inactivityTimeout: NodeJS.Timeout | undefined = undefined;
   public isChatDisabled: boolean | undefined = undefined;
   public status: 'scheduled' | 'active' | 'inactive' | 'ended' | 'expired' = 'inactive';
   public expiresAt: Date | undefined = undefined;
@@ -211,6 +214,7 @@ export class Room {
   public playbackCoordinator: RoomPlaybackCoordinator;
   public admissionCoordinator: RoomAdmissionCoordinator;
   public hostCoordinator: RoomHostCoordinator;
+  public lifecycleCoordinator: RoomLifecycleCoordinator;
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
@@ -481,27 +485,85 @@ export class Room {
       },
     });
 
+    this.lifecycleCoordinator = new RoomLifecycleCoordinator({
+      roomId: this.roomId,
+      io: this.io,
+      getPostgres: () => postgres,
+      getStatus: () => this.status,
+      setStatus: (status) => {
+        this.status = status;
+      },
+      getExpiresAt: () => this.expiresAt,
+      setExpiresAt: (expiresAt) => {
+        this.expiresAt = expiresAt;
+      },
+      getLastUpdateTime: () => this.lastUpdateTime,
+      setLastUpdateTime: (time) => {
+        this.lastUpdateTime = time;
+      },
+      getOwnerId: () => this.owner_id,
+      getCurrentHostUid: () => this.currentHostUid,
+      isHostUid: (uid) => this.isHostUid(uid),
+      getRoster: () => this.roster,
+      getTsMap: () => this.tsMap,
+      getVideo: () => this.video,
+      setVideo: (video) => {
+        this.video = video;
+      },
+      getVideoTS: () => this.videoTS,
+      getSubtitle: () => this.subtitle,
+      setSubtitle: (subtitle) => {
+        this.subtitle = subtitle;
+      },
+      getPlaybackRate: () => this.playbackRate,
+      setPlaybackRate: (rate) => {
+        this.playbackRate = rate;
+      },
+      getPaused: () => this.paused,
+      setPaused: (paused) => {
+        this.paused = paused;
+      },
+      getLoop: () => this.loop,
+      setLoop: (loop) => {
+        this.loop = loop;
+      },
+      getNameMap: () => this.nameMap,
+      setNameMap: (nameMap) => {
+        this.nameMap = nameMap;
+      },
+      getPictureMap: () => this.pictureMap,
+      setPictureMap: (pictureMap) => {
+        this.pictureMap = pictureMap;
+      },
+      getLock: () => this.lock,
+      setLock: (lock) => {
+        this.lock = lock;
+      },
+      getCreator: () => this.creator,
+      setCreator: (creator) => {
+        this.creator = creator;
+      },
+      getPlaylist: () => this.playlist,
+      setPlaylist: (playlist) => {
+        this.playlist = playlist;
+      },
+      getTimeline: () => this.timeline,
+      setTimeline: (timeline) => {
+        this.timeline = timeline;
+      },
+      setLastTsMap: (ts) => {
+        this.lastTsMap = ts;
+      },
+      scavengeDisconnectedParticipants: (now) => this.admissionCoordinator.scavengeDisconnectedParticipants(now),
+      terminateSignalingSession: () => this.signalingCoordinator.terminateSession(),
+      addChatMessage: (socket, chatMsg) => this.addChatMessage(socket, chatMsg),
+    });
+
     if (roomData) {
       this.deserialize(roomData);
     }
 
-    this.tsInterval = setInterval(async () => {
-      // Scavenge stale disconnected participant admissions beyond grace period
-      this.admissionCoordinator.scavengeDisconnectedParticipants(Date.now());
-      // console.log(roomId, this.video, this.roster, this.tsMap, this.nameMap);
-      // Clean up the data of users who aren't in the room anymore
-      const memberIds = this.roster.map((p) => p.id);
-      Object.keys(this.tsMap).forEach((key) => {
-        if (!memberIds.includes(key)) {
-          delete this.tsMap[key];
-        }
-      });
-      if (this.video) {
-        this.lastTsMap = Date.now();
-        io.of(roomId).emit("REC:tsMap", this.tsMap);
-        io.of(roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
-      }
-    }, 1000);
+    this.lifecycleCoordinator.startPeriodicTicker();
 
     io.of(roomId).use(async (socket, next) => {
       let isOwner = false;
@@ -705,10 +767,7 @@ export class Room {
         if (initialPicture && !existingUser.picture) existingUser.picture = initialPicture;
       }
 
-      if (this.inactivityTimeout) {
-        clearTimeout(this.inactivityTimeout);
-        this.inactivityTimeout = undefined;
-      }
+      this.lifecycleCoordinator.clearInactivityTimeout();
 
       socket.on("disconnect", () => this.onDisconnect(socket));
       // -- End socket state initialization --
@@ -724,36 +783,7 @@ export class Room {
       await this.hostCoordinator.handleInitialHost(socket, clientId);
 
       // Authoritative Session Activation on Host Entry:
-      // When the authenticated owner or authorized host enters Watch, transition an inactive
-      // or scheduled room to active DB-first. Only mutate memory and broadcast upon confirmed DB transition.
-      const isAuthorizedHostConnecting = Boolean(
-        socket.uid &&
-        (socket.uid === this.owner_id || (this.currentHostUid && socket.uid === this.currentHostUid))
-      );
-
-      if (isAuthorizedHostConnecting && (this.status === "inactive" || this.status === "scheduled") && postgres) {
-        try {
-          const activateResult = await postgres.query(
-            "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
-            [this.roomId, socket.uid]
-          );
-          const res = activateResult?.rows?.[0]?.result;
-          if (res?.status === "active") {
-            this.status = "active";
-            this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
-            this.lastUpdateTime = new Date();
-            this.io.of(this.roomId).emit("REC:sessionStarted", {
-              status: "active",
-              startedBy: socket.uid,
-            });
-            this.scheduleInactivityTimeoutIfNeeded();
-          } else if (res?.status === "expired") {
-            this.status = "expired";
-          }
-        } catch (activationErr) {
-          console.error(`[Lifecycle] Failed authoritative room activation on host entry for ${this.roomId}:`, activationErr);
-        }
-      }
+      await this.lifecycleCoordinator.handleHostEntryActivation(socket);
 
       redisCount("connectStarts");
       redisCountDistinct("connectStartsDistinct", clientId);
@@ -1261,101 +1291,20 @@ export class Room {
     });
   }
 
-  public serialize = () => {
-    // We no longer serialize chat messages to memory state
-    const chatIDs = new Set<string>();
-    const abbrNameMap: StringDict = {};
-    Object.keys(this.nameMap).forEach((id) => {
-      if (chatIDs.has(id)) {
-        abbrNameMap[id] = this.nameMap[id];
-      }
-    });
-    const abbrPictureMap: StringDict = {};
-    Object.keys(this.pictureMap).forEach((id) => {
-      if (chatIDs.has(id)) {
-        abbrPictureMap[id] = this.pictureMap[id];
-      }
-    });
-    return JSON.stringify({
-      video: this.video,
-      videoTS: this.videoTS,
-      subtitle: this.subtitle,
-      playbackRate: this.playbackRate,
-      paused: this.paused,
-      nameMap: abbrNameMap,
-      pictureMap: abbrPictureMap,
-      lock: this.lock,
-      creator: this.creator,
-      playlist: this.playlist,
-      loop: this.loop,
-    });
+  public serialize = (): string => {
+    return this.lifecycleCoordinator.serialize();
   };
 
-  private deserialize = (roomData: string) => {
-    const roomObj = JSON.parse(roomData);
-    this.video = roomObj.video;
-    if (roomObj.subtitle) {
-      this.subtitle = roomObj.subtitle;
-    }
-    if (roomObj.paused !== undefined) {
-      this.paused = roomObj.paused;
-    }
-    if (roomObj.nameMap) {
-      this.nameMap = roomObj.nameMap;
-    }
-    if (roomObj.pictureMap) {
-      this.pictureMap = roomObj.pictureMap;
-    }
-
-    if (roomObj.lock) {
-      this.lock = roomObj.lock;
-    }
-    if (roomObj.creator) {
-      this.creator = roomObj.creator;
-    }
-    if (roomObj.playlist) {
-      this.playlist = roomObj.playlist;
-    }
-    if (roomObj.playbackRate) {
-      this.playbackRate = roomObj.playbackRate;
-    }
-    if (roomObj.loop) {
-      this.loop = roomObj.loop;
-    }
-    this.timeline = new TimelineAuthority({
-      anchorTime: roomObj.videoTS || 0,
-      anchorWallClock: Date.now(),
-      paused: this.paused !== undefined ? this.paused : true,
-      playbackRate: this.playbackRate || 1.0,
-      mediaSource: this.video || "",
-    });
+  private deserialize = (roomData: string): void => {
+    this.lifecycleCoordinator.deserialize(roomData);
   };
 
-  public saveRoom = async () => {
-    if (postgres) {
-      try {
-        const roomString = this.serialize();
-        await postgres.query(
-          `UPDATE rooms SET
-          "lastUpdateTime" = $1, data = $2
-          WHERE "roomId" = $3`,
-          [this.lastUpdateTime ?? new Date(), roomString, this.roomId],
-        );
-      } catch (e) {
-        console.warn(e);
-      }
-    }
+  public saveRoom = async (): Promise<void> => {
+    return this.lifecycleCoordinator.saveRoom();
   };
 
-  public destroy = () => {
-    if (this.tsInterval) {
-      clearInterval(this.tsInterval);
-    }
-    if (this.inactivityTimeout) {
-      clearTimeout(this.inactivityTimeout);
-      this.inactivityTimeout = undefined;
-    }
-    this.signalingCoordinator.terminateSession();
+  public destroy = (): void => {
+    this.lifecycleCoordinator.destroy();
   };
 
   public getRosterForStats = () => {
@@ -1571,65 +1520,7 @@ export class Room {
   };
 
   public startSession = async (socket: Socket): Promise<void> => {
-    // 1. Server-authoritative ownership/host check (never trust client isHost)
-    if (!socket.uid || (!this.isHostUid(socket.uid) && socket.uid !== this.owner_id)) {
-      socket.emit("CMD:error", { code: "FORBIDDEN", message: "Only the room host or owner can start the session." });
-      return;
-    }
-
-    // 2. Guard: only inactive/scheduled rooms can be started
-    if (this.status !== "inactive" && this.status !== "scheduled") {
-      socket.emit("CMD:error", { code: "INVALID_STATE", message: "Room is already active or has ended." });
-      return;
-    }
-
-    // 3. Atomic DB-first transition (CAS: only transitions if current status allows)
-    if (!postgres) {
-      socket.emit("CMD:error", { code: "SERVICE_UNAVAILABLE", message: "Database unavailable." });
-      return;
-    }
-
-    try {
-      const activateResult = await postgres.query(
-        "SELECT public.set_room_activity_authoritative($1, 'active', $2) AS result",
-        [this.roomId, socket.uid]
-      );
-
-      const res = activateResult?.rows?.[0]?.result;
-      if (!res || res.status === "expired") {
-        this.status = "expired";
-        socket.emit("CMD:error", { code: "ROOM_EXPIRED", message: "This room has expired." });
-        return;
-      }
-
-      if (res.status !== "active") {
-        socket.emit("CMD:error", { code: "TRANSITION_FAILED", message: "Failed to start the session." });
-        return;
-      }
-
-      // 4. Only update memory AFTER DB confirms transition
-      this.status = "active";
-      this.expiresAt = res.expiresAt ? new Date(res.expiresAt) : undefined;
-      this.lastUpdateTime = new Date();
-
-      // 5. Broadcast to connected sockets (only owner is connected pre-start)
-      this.io.of(this.roomId).emit("REC:sessionStarted", {
-        status: "active",
-        startedBy: socket.uid,
-      });
-
-      // 6. System chat message
-      this.addChatMessage(null, {
-        id: socket.clientId,
-        cmd: "system",
-        msg: "Host started the watch party.",
-      });
-
-      this.scheduleInactivityTimeoutIfNeeded();
-    } catch (err) {
-      console.error("CMD:startSession failed:", err);
-      socket.emit("CMD:error", { code: "INTERNAL_ERROR", message: "Failed to start session." });
-    }
+    return this.lifecycleCoordinator.startSession(socket);
   };
 
   public seekVideo = (socket: Socket, data: number | { time: number; operationId?: string }) => {
@@ -1844,34 +1735,7 @@ export class Room {
 
 
   public scheduleInactivityTimeoutIfNeeded = (): void => {
-    const actualUsers = this.roster.filter((p) => !p.isScreenShare);
-    if (actualUsers.length === 0 && this.status === "active") {
-      if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
-      this.inactivityTimeout = setTimeout(async () => {
-        const currentActualUsers = this.roster.filter((p) => !p.isScreenShare);
-        if (currentActualUsers.length === 0 && this.status === "active") {
-          this.status = "inactive";
-          this.lastUpdateTime = new Date();
-          this.io.of(this.roomId).emit("SIGNAL:terminateAndExit", {
-            roomId: this.roomId,
-            reason: "host_stopped_permanent",
-            isPermanent: true,
-          });
-          this.io.of(this.roomId).emit("ROOM_SESSION_STOPPED", {
-            isPermanent: true,
-            status: "inactive",
-            roomId: this.roomId,
-          });
-
-          if (postgres) {
-            await postgres.query(
-              "SELECT public.set_room_activity_authoritative($1, 'inactive', NULL)",
-              [this.roomId]
-            );
-          }
-        }
-      }, EMPTY_ROOM_INACTIVITY_TIMEOUT_MS);
-    }
+    this.lifecycleCoordinator.scheduleInactivityTimeoutIfNeeded();
   };
 
   private performParticipantDeparture = (socket: Socket): void => {
@@ -1959,7 +1823,7 @@ export class Room {
   };
 
   public disconnectAllSockets = () => {
-    this.io.of(this.roomId).disconnectSockets();
+    this.lifecycleCoordinator.disconnectAllSockets();
   };
 
   public deleteChatMessages = async (actorSocket: Socket, raw: unknown) => {
