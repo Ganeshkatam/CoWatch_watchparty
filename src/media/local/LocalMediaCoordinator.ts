@@ -560,11 +560,6 @@ export class LocalMediaCoordinator {
     if (this.scheduleTimer) clearInterval(this.scheduleTimer);
     this.scheduleTimer = setInterval(() => {
       if (this.scheduler && this.manifest) {
-        console.log("[LOCAL_MEDIA] scheduling", {
-          time: this.lastKnownTime,
-          inFlight: this.scheduler?.getInFlightCount(),
-          available: this.cache?.getAvailableChunks().length,
-        });
         this.scheduler.schedule(this.lastKnownTime);
       }
     }, 250);
