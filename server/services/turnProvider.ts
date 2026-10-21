@@ -11,6 +11,7 @@ export interface TurnCredentialsResult {
   iceServers: IceServerConfig[];
   ttlSeconds: number;
   expiresAt: string;
+  relayStatus: "healthy" | "stun_only";
 }
 
 export interface TurnProvider {
@@ -72,6 +73,7 @@ export class CoturnHmacProvider implements TurnProvider {
         iceServers,
         ttlSeconds,
         expiresAt,
+        relayStatus: "stun_only",
       };
     }
 
@@ -101,6 +103,7 @@ export class CoturnHmacProvider implements TurnProvider {
       iceServers,
       ttlSeconds,
       expiresAt,
+      relayStatus: "healthy",
     };
   }
 }

@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { createIceServersRouter } from "./iceServersRouter.ts";
 import { CoturnHmacProvider } from "../services/turnProvider.ts";
 import { generateAdmissionToken } from "../utils/admissionToken.ts";
+import { coreRedis, edgeRedis, metricsRedis } from "../utils/redis.ts";
 
 interface MockRequest {
   method?: string;
@@ -67,6 +68,12 @@ async function invokeHandler(router: any, req: MockRequest): Promise<MockRespons
 }
 
 test("iceServersRouter Test Suite", async (t) => {
+  t.after(() => {
+    coreRedis.client?.disconnect();
+    edgeRedis.client?.disconnect();
+    metricsRedis.client?.disconnect();
+  });
+
   const mockRooms = new Map<string, any>();
   const testSharedSecret = "secret-test-turn-key-32-bytes-long!";
   const testTurnHost = "turn.test.cowatch.tv";
@@ -181,6 +188,7 @@ test("iceServersRouter Test Suite", async (t) => {
     assert.ok(Array.isArray(res.body?.iceServers));
     assert.equal(res.body?.ttlSeconds, 10800);
     assert.ok(res.body?.expiresAt);
+    assert.equal(res.body?.relayStatus, "healthy");
 
     // Verify RFC 5766 TURN server structure
     const turnEntry = res.body.iceServers.find((s: any) => s.username);
@@ -217,6 +225,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_permanent",
+        "x-caller-uid": guestUid,
+        "x-session-id": guestSession,
       },
     };
     const res = await invokeHandler(router, req);
@@ -232,11 +242,42 @@ test("iceServersRouter Test Suite", async (t) => {
       url: "/api/media/ice-servers",
       headers: {
         "x-admission-token": token,
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
     assert.equal(res.statusCode, 400);
     assert.equal(res.body?.error?.code, "ROOM_ID_REQUIRED");
+  });
+
+  await t.test("6B. Guest missing X-Caller-Uid or X-Session-Id header returns 400", async () => {
+    const token = generateAdmissionToken({ roomId: "room_permanent", userId: "u1", sessionId: "s1", ttlSeconds: 3600 });
+    const reqNoUid: MockRequest = {
+      method: "GET",
+      url: "/api/media/ice-servers",
+      headers: {
+        "x-admission-token": token,
+        "x-room-id": "room_permanent",
+        "x-session-id": "s1",
+      },
+    };
+    const resNoUid = await invokeHandler(router, reqNoUid);
+    assert.equal(resNoUid.statusCode, 400);
+    assert.equal(resNoUid.body?.error?.code, "IDENTITY_HEADERS_REQUIRED");
+
+    const reqNoSess: MockRequest = {
+      method: "GET",
+      url: "/api/media/ice-servers",
+      headers: {
+        "x-admission-token": token,
+        "x-room-id": "room_permanent",
+        "x-caller-uid": "u1",
+      },
+    };
+    const resNoSess = await invokeHandler(router, reqNoSess);
+    assert.equal(resNoSess.statusCode, 400);
+    assert.equal(resNoSess.body?.error?.code, "IDENTITY_HEADERS_REQUIRED");
   });
 
   await t.test("7. Cross-room token misuse is strictly rejected (401)", async () => {
@@ -249,6 +290,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_B",
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
@@ -265,6 +308,7 @@ test("iceServersRouter Test Suite", async (t) => {
         "x-admission-token": token,
         "x-room-id": "room_permanent",
         "x-caller-uid": "usr_attacker", // Spoofed
+        "x-session-id": "sess_legit",
       },
     };
     const res = await invokeHandler(router, req);
@@ -280,6 +324,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_permanent",
+        "x-caller-uid": "usr_banned",
+        "x-session-id": "sess_banned",
       },
     };
     const res = await invokeHandler(router, req);
@@ -295,6 +341,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_permanent",
+        "x-caller-uid": "usr_revoked",
+        "x-session-id": "sess_revoked",
       },
     };
     const res = await invokeHandler(router, req);
@@ -310,6 +358,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_ended",
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
@@ -325,6 +375,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_expiring_soon",
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
@@ -340,6 +392,8 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_45m",
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
@@ -356,16 +410,36 @@ test("iceServersRouter Test Suite", async (t) => {
       headers: {
         "x-admission-token": token,
         "x-room-id": "room_corrupted",
+        "x-caller-uid": "u1",
+        "x-session-id": "s1",
       },
     };
     const res = await invokeHandler(router, req);
     assert.equal(res.statusCode, 500);
     assert.equal(res.body?.error?.code, "CORRUPTED_ROOM_EXPIRY");
   });
-}).then(() => {
-  console.log("ALL iceServersRouter TESTS PASSED WITH ZERO FAILURES.");
-  process.exit(0);
-}).catch((err) => {
-  console.error("Test failure in iceServersRouter:", err);
-  process.exit(1);
+
+  await t.test("15. Unconfigured TURN provider returns STUN-only with relayStatus stun_only", async () => {
+    const unconfiguredProvider = new CoturnHmacProvider({
+      sharedSecret: "",
+      turnHost: "",
+    });
+    const unconfiguredRouter = createIceServersRouter({
+      turnProvider: unconfiguredProvider,
+      validateUserTokenFn: mockValidateUserToken as any,
+    });
+    const req: MockRequest = {
+      method: "GET",
+      url: "/api/media/ice-servers",
+      headers: {
+        authorization: `Bearer ${validJwt}`,
+      },
+    };
+    const res = await invokeHandler(unconfiguredRouter, req);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.relayStatus, "stun_only");
+    // Verify only STUN servers, no TURN servers with credentials
+    const hasTurn = res.body?.iceServers?.some((s: any) => s.username || s.credential);
+    assert.equal(hasTurn, false);
+  });
 });

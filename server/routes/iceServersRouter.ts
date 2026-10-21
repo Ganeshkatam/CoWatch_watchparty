@@ -38,7 +38,9 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
 
   router.get(["/api/media/ice-servers", "/media/ice-servers"], async (req: Request, res: Response) => {
     // 1. Abuse Protection & Rate Limiting
-    const ip = req.ip || req.socket?.remoteAddress || "[IP_ADDRESS]";
+    const rawForwarded = req.headers["x-forwarded-for"];
+    const forwardedIp = Array.isArray(rawForwarded) ? rawForwarded[0] : (rawForwarded ? String(rawForwarded).split(",")[0].trim() : "");
+    const ip = forwardedIp || req.ip || req.socket?.remoteAddress || "unknown_ip";
     const rateLimit = await checkRateLimit(`ice_servers:${ip}`, 10, 60);
     if (!rateLimit.allowed) {
       res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
@@ -85,18 +87,33 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
         return;
       }
 
+      if (!callerUidHeader || !sessionIdHeader) {
+        res.status(400).json({
+          error: {
+            code: "IDENTITY_HEADERS_REQUIRED",
+            message: "X-Caller-Uid and X-Session-Id headers are required when authenticating with admission token.",
+          },
+        });
+        return;
+      }
+
       const verification = verifyAdmissionToken(
         admissionTokenHeader,
         cleanRoomId,
-        callerUidHeader || undefined,
-        sessionIdHeader || undefined
+        callerUidHeader,
+        sessionIdHeader
       );
 
       if (!verification.valid || !verification.payload) {
-        res.status(401).json({
+        const isIdentityMismatch =
+          verification.error === "ADMISSION_TOKEN_USER_MISMATCH" ||
+          verification.error === "ADMISSION_TOKEN_SESSION_MISMATCH";
+        res.status(isIdentityMismatch ? 403 : 401).json({
           error: {
             code: verification.error || "ADMISSION_TOKEN_INVALID",
-            message: "Invalid or expired room admission token.",
+            message: isIdentityMismatch
+              ? "Caller identity does not match admission token payload."
+              : "Invalid or expired room admission token.",
           },
         });
         return;
@@ -104,26 +121,6 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
 
       derivedUserId = verification.payload.userId;
       isGuestAuth = true;
-
-      // Strict header equality cross-assertion if client provided identity headers
-      if (callerUidHeader && callerUidHeader !== derivedUserId) {
-        res.status(403).json({
-          error: {
-            code: "ADMISSION_TOKEN_USER_MISMATCH",
-            message: "Caller identity does not match admission token payload.",
-          },
-        });
-        return;
-      }
-      if (sessionIdHeader && sessionIdHeader !== verification.payload.sessionId) {
-        res.status(403).json({
-          error: {
-            code: "ADMISSION_TOKEN_SESSION_MISMATCH",
-            message: "Session identity does not match admission token payload.",
-          },
-        });
-        return;
-      }
     } else {
       res.status(401).json({
         error: {

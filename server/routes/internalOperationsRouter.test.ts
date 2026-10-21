@@ -158,4 +158,78 @@ test("internalOperationsRouter Suite", async (t) => {
       server.close();
     }
   });
+
+  await t.test("GET /internal/health/relay - auth rejection and relay status reporting", async () => {
+    const router = createInternalOperationsRouter({
+      requireInternalAuthMiddleware: (req, res, next) => {
+        if (req.headers["x-test-auth"] !== "allowed") {
+          res.status(401).json({ error: "UNAUTHORIZED: Valid INTERNAL_API_SECRET required" });
+          return;
+        }
+        next();
+      },
+    });
+
+    const app = express();
+    app.use(router);
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      // 1. Unauthorized
+      const resUnauthorized = await request(server, "/internal/health/relay");
+      assert.equal(resUnauthorized.status, 401);
+
+      // 2. Authorized
+      const resAuthorized = await request(server, "/internal/health/relay", {
+        headers: { "x-test-auth": "allowed" },
+      });
+      assert.equal(resAuthorized.status, 200);
+      assert.ok(["healthy", "stun_only", "misconfigured"].includes(resAuthorized.body.status));
+      assert.equal(typeof resAuthorized.body.relayConfigured, "boolean");
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test("defaultRequireInternalAuth - loopback spoofing via X-Forwarded-For rejected in production", async () => {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    try {
+      let nextCalled = false;
+      const req: any = {
+        headers: {
+          "x-forwarded-for": "127.0.0.1",
+        },
+        ip: "127.0.0.1",
+        socket: {
+          remoteAddress: "203.0.113.195", // Physical remote IP
+        },
+      };
+      const res: any = {
+        statusCode: 200,
+        body: null,
+        status(code: number) {
+          this.statusCode = code;
+          return this;
+        },
+        json(data: any) {
+          this.body = data;
+          return this;
+        },
+      };
+
+      const { defaultRequireInternalAuth } = await import("./internalOperationsRouter.js");
+      defaultRequireInternalAuth(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, false);
+      assert.equal(res.statusCode, 403);
+      assert.ok(res.body?.error?.includes("FORBIDDEN"));
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+    }
+  });
 });

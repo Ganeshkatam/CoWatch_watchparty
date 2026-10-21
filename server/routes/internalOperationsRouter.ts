@@ -6,8 +6,8 @@ import { getNotificationHealthReport as defaultGetNotificationHealthReport } fro
 export function defaultRequireInternalAuth(req: Request, res: Response, next: NextFunction): void {
   const secret = config.INTERNAL_API_SECRET;
   if (!secret) {
-    const clientIp = String(req.ip || req.socket?.remoteAddress || "");
-    const isLoopback = clientIp.includes("127.0.0.1") || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
+    const socketAddress = String(req.socket?.remoteAddress || "");
+    const isLoopback = socketAddress.includes("127.0.0.1") || socketAddress === "::1" || socketAddress === "::ffff:127.0.0.1";
     if (!isLoopback && process.env.NODE_ENV === "production") {
       res.status(403).json({ error: "FORBIDDEN: Internal endpoint accessible only via loopback or INTERNAL_API_SECRET" });
       return;
@@ -54,6 +54,24 @@ export function createInternalOperationsRouter(options: InternalOperationsRouter
     } catch (err: any) {
       res.status(500).json({ error: "HEALTH_CHECK_FAILED", details: err?.message });
     }
+  });
+
+  // TURN Relay Infrastructure Health Probe
+  router.get("/internal/health/relay", requireInternalAuth, (_req: Request, res: Response) => {
+    const isConfigured = Boolean(config.TURN_SHARED_SECRET && config.TURN_HOST);
+    const isMisconfigured = Boolean(
+      (config.TURN_SHARED_SECRET && !config.TURN_HOST) ||
+      (!config.TURN_SHARED_SECRET && config.TURN_HOST)
+    );
+    const status = isMisconfigured ? "misconfigured" : (isConfigured ? "healthy" : "stun_only");
+    res.json({
+      status,
+      relayConfigured: isConfigured,
+      turnHost: config.TURN_HOST || null,
+      udpPort: Number(config.TURN_PORT_UDP || 3478),
+      tlsPort: Number(config.TURN_PORT_TLS || 443),
+      warning: !isConfigured ? "WebRTC operating in STUN-only fallback without TURN relay" : null,
+    });
   });
 
   return router;
