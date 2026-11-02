@@ -1,6 +1,6 @@
 import React from "react";
 import { Loader } from "@mantine/core";
-import { IconAlertTriangle, IconWifiOff } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { useRoomInitStage } from "../../hooks/useOperationState";
 import { getLifecycleStageMessage } from "../../utils/userMessages";
 import styles from "./RoomRecoveryOverlay.module.css";
@@ -12,6 +12,7 @@ export const RoomRecoveryOverlay: React.FC = () => {
     stage === "ready" ||
     stage === "booting" ||
     stage === "authenticating" ||
+    stage === "failed" ||
     !isRecovering
   ) {
     return null;
@@ -33,10 +34,6 @@ export const RoomRecoveryOverlay: React.FC = () => {
     case "degraded":
       badgeClass = styles.degraded;
       icon = <IconAlertTriangle size={15} color="#f59e0b" />;
-      break;
-    case "failed":
-      badgeClass = styles.failed;
-      icon = <IconWifiOff size={15} color="#ef4444" />;
       break;
   }
 

@@ -68,7 +68,7 @@ export async function getQueueHealthMetrics(): Promise<QueueHealthMetrics> {
   if (!postgres) return fallback;
 
   try {
-    const result = await postgres.query<{
+    const queryPromise = postgres.query<{
       queue_depth: string;
       processing_count: string;
       retry_count: string;
@@ -88,6 +88,15 @@ export async function getQueueHealthMetrics(): Promise<QueueHealthMetrics> {
          ) AS oldest_pending_age_seconds
        FROM public.email_outbox`,
     );
+
+    let timeoutTimer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => reject(new Error("QUEUE_HEALTH_QUERY_TIMEOUT")), 3000);
+    });
+
+    const result = await Promise.race([queryPromise, timeoutPromise]).finally(() => {
+      clearTimeout(timeoutTimer);
+    });
 
     const row = result.rows[0];
     if (!row) return fallback;

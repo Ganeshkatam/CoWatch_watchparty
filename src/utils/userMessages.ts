@@ -272,6 +272,20 @@ export const USER_MESSAGES: Record<string, UserMessage> = {
     action: "none",
     duration: 5000,
   },
+  LOCAL_MEDIA_CONNECTION_FAILED: {
+    message: "Unable to connect to the video sharer. Your network may restrict peer connections. Please ask them to use Screenshare.",
+    severity: "error",
+    presentation: "toast",
+    action: "retry",
+    duration: 5000,
+  },
+  LOCAL_MEDIA_BUFFER_STALLED: {
+    message: "Video playback is buffering. Waiting for stream data...",
+    severity: "warning",
+    presentation: "toast",
+    action: "none",
+    duration: 3000,
+  },
 
 
   // DB Failures & Timeouts (never imply server rejection)
@@ -611,6 +625,13 @@ export function sanitizeServerUserMessage(raw: string | undefined | null): UserM
   }
   if (trimmed.includes("Not the active sharer")) {
     return USER_MESSAGES.MEDIA_NOT_ACTIVE_SHARER;
+  }
+  if (
+    trimmed.includes("firewall") ||
+    trimmed.includes("Unable to connect to the video sharer") ||
+    trimmed.includes("restricting direct P2P")
+  ) {
+    return USER_MESSAGES.LOCAL_MEDIA_CONNECTION_FAILED;
   }
   if (trimmed.includes("Failed to start local media") || trimmed.includes("Local media")) {
     return USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED;

@@ -237,6 +237,7 @@ export class LocalMediaCoordinator {
   private heartbeatTimer: any = null;
   private lastKnownTime: number = 0;
   private lastError: string | null = null;
+  private hasNotifiedFailure: boolean = false;
   private hostReconnectAttempts: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
 
@@ -533,9 +534,12 @@ export class LocalMediaCoordinator {
     const isFullyBuffered = totalChunks > 0 && availableChunks >= totalChunks;
 
     if (!hasUsablePeers && !isFullyBuffered && this.role === "PARTICIPANT_PEER") {
-      this.lastError =
-        "Unable to connect to the video sharer. Your network or firewall may be restricting direct P2P connections. Please ask the host to use Screenshare instead.";
-      this.notifyState();
+      if (!this.hasNotifiedFailure) {
+        this.hasNotifiedFailure = true;
+        this.lastError =
+          "Unable to connect to the video sharer. Your network or firewall may be restricting direct P2P connections. Please ask the host to use Screenshare instead.";
+        this.notifyState();
+      }
     } else {
       this.notifyState();
     }
@@ -709,6 +713,7 @@ export class LocalMediaCoordinator {
     this.objectUrl = null;
     this.lastKnownTime = 0;
     this.lastError = null;
+    this.hasNotifiedFailure = false;
     this.hostReconnectAttempts = 0;
     this.role = "IDLE";
     this.notifyState();

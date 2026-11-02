@@ -208,6 +208,9 @@ export function registerBackgroundMaintenance(
             });
 
             room.disconnectAllSockets();
+            room.destroy?.();
+            rooms.delete(row.roomId);
+            unregisterRoomNamespace(row.roomId);
           }
         }
       }

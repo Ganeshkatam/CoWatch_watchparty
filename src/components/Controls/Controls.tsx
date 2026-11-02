@@ -52,6 +52,8 @@ interface ControlsProps {
   isPiPSupported?: boolean;
   isPiPActive?: boolean;
   togglePiP?: () => void;
+  isReconnecting?: boolean;
+  isCatchingUp?: boolean;
 }
 
 export const Controls = (props: ControlsProps) => {
@@ -98,6 +100,8 @@ export const Controls = (props: ControlsProps) => {
     leaderTime,
     isPauseDisabled,
     disabled,
+    isReconnecting,
+    isCatchingUp,
     subtitled,
     paused,
     muted,
@@ -116,6 +120,7 @@ export const Controls = (props: ControlsProps) => {
       ? leaderTime - currentTime
       : getEnd() - getCurrent();
   const isBehind = behindTime > behindThreshold;
+  const isServerControlDisabled = Boolean(disabled || isReconnecting);
   const buffers = timeRanges.map(({ start, end }) => {
     const buffStartPct = (start / getLength()) * 100;
     const buffLengthPct = ((end - start) / getLength()) * 100;
@@ -137,57 +142,121 @@ export const Controls = (props: ControlsProps) => {
   });
   const playPauseProps = {
     onClick: () => {
-      roomTogglePlay();
+      if (!isServerControlDisabled && !isPauseDisabled) {
+        roomTogglePlay();
+      }
     },
     className: ` ${styles.action}`,
-    disabled: disabled || isPauseDisabled,
+    disabled: isServerControlDisabled || isPauseDisabled,
   };
   return (
     <div className={styles.controls}>
       {paused ? (
-        <Tooltip label="Play (Space)" withArrow position="top">
+        <Tooltip
+          label={
+            isReconnecting
+              ? "Reconnecting to room..."
+              : isServerControlDisabled
+              ? "Playback locked by host"
+              : "Play (Space)"
+          }
+          withArrow
+          position="top"
+        >
           <IconPlayerPlayFilled {...playPauseProps} />
         </Tooltip>
       ) : (
-        <Tooltip label="Pause (Space)" withArrow position="top">
+        <Tooltip
+          label={
+            isReconnecting
+              ? "Reconnecting to room..."
+              : isServerControlDisabled
+              ? "Playback locked by host"
+              : "Pause (Space)"
+          }
+          withArrow
+          position="top"
+        >
           <IconPlayerPauseFilled {...playPauseProps} />
         </Tooltip>
       )}
       {!isLiveStream && (
         <>
-          <Tooltip label="Rewind 10s (←)" withArrow position="top">
+          <Tooltip
+            label={
+              isReconnecting
+                ? "Reconnecting to room..."
+                : isServerControlDisabled
+                ? "Playback locked by host"
+                : "Rewind 10s (←)"
+            }
+            withArrow
+            position="top"
+          >
             <IconPlayerTrackPrevFilled
               className={styles.action}
-              onClick={() => !disabled && roomSeek(Math.max(0, currentTime - 10))}
-              style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+              onClick={() => !isServerControlDisabled && roomSeek(Math.max(0, currentTime - 10))}
+              style={{ opacity: isServerControlDisabled ? 0.5 : 1, cursor: isServerControlDisabled ? "not-allowed" : "pointer" }}
             />
           </Tooltip>
-          <Tooltip label="Forward 10s (→)" withArrow position="top">
+          <Tooltip
+            label={
+              isReconnecting
+                ? "Reconnecting to room..."
+                : isServerControlDisabled
+                ? "Playback locked by host"
+                : "Forward 10s (→)"
+            }
+            withArrow
+            position="top"
+          >
             <IconPlayerTrackNextFilled
               className={styles.action}
-              onClick={() => !disabled && roomSeek(Math.min(props.duration || Infinity, currentTime + 10))}
-              style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+              onClick={() => !isServerControlDisabled && roomSeek(Math.min(props.duration || Infinity, currentTime + 10))}
+              style={{ opacity: isServerControlDisabled ? 0.5 : 1, cursor: isServerControlDisabled ? "not-allowed" : "pointer" }}
             />
           </Tooltip>
         </>
       )}
       {playlist.length > 0 && (
-        <Tooltip label="Skip to next video in playlist" withArrow position="top">
+        <Tooltip
+          label={
+            isReconnecting
+              ? "Reconnecting to room..."
+              : isServerControlDisabled
+              ? "Playback locked by host"
+              : "Skip to next video in playlist"
+          }
+          withArrow
+          position="top"
+        >
           <IconPlayerSkipForwardFilled
             className={styles.action}
-            onClick={() => !disabled && roomPlaylistPlay(0)}
-            style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+            onClick={() => !isServerControlDisabled && roomPlaylistPlay(0)}
+            style={{ opacity: isServerControlDisabled ? 0.5 : 1, cursor: isServerControlDisabled ? "not-allowed" : "pointer" }}
           />
         </Tooltip>
       )}
       {isBehind && (
-        <Tooltip label={`Behind by ~${Math.round(behindTime)}s — Click to catch up`} withArrow position="top">
+        <Tooltip
+          label={
+            isReconnecting
+              ? "Reconnecting to room..."
+              : isServerControlDisabled
+              ? "Playback locked by host"
+              : `Behind by ~${Math.round(behindTime)}s — Click to catch up`
+          }
+          withArrow
+          position="top"
+        >
           <Button
             size="compact-xs"
             variant="light"
             color="blue"
             leftSection={<IconRefresh size={12} />}
+            disabled={isServerControlDisabled}
             onClick={() => {
+              if (isServerControlDisabled) return;
               if (isLiveStream) {
                 // in live case we want to seek the entire room to edge
                 roomSeek(props.duration);
@@ -203,10 +272,20 @@ export const Controls = (props: ControlsProps) => {
       <div className={` ${styles.text}`}>
         {formatTimestamp(getCurrent(), isLiveStream ? zeroTime : undefined)}
       </div>
+      {isCatchingUp && !isLiveStream && (
+        <Badge
+          size="xs"
+          variant="light"
+          color="violet"
+          style={{ textTransform: "none", fontWeight: 500 }}
+        >
+          Catching up...
+        </Badge>
+      )}
       <Progress.Root
         radius="0px"
         onClick={(e: any) => {
-          if (!disabled) {
+          if (!isServerControlDisabled) {
             // Read the time from the click event
             if (e) {
               const rect = e.target.getBoundingClientRect();
@@ -231,7 +310,7 @@ export const Controls = (props: ControlsProps) => {
           position: "relative",
           minWidth: "50px",
           overflow: "visible",
-          cursor: "pointer",
+          cursor: isServerControlDisabled ? "not-allowed" : "pointer",
         }}
       >
         <Progress.Section
@@ -239,25 +318,6 @@ export const Controls = (props: ControlsProps) => {
           value={getPercent() * 100}
         ></Progress.Section>
         {buffers}
-        {/* {
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '0px',
-                left: `calc(${this.getPercent() * 100 + '% - 6px'})`,
-                pointerEvents: 'none',
-                width: '12px',
-                height: '12px',
-                transform:
-                  this.getLength() < Infinity && showTimestamp
-                    ? 'scale(1, 1)'
-                    : 'scale(0, 0)',
-                transition: '0.25s all',
-                borderRadius: '50%',
-                backgroundColor: '#54c8ff',
-              }}
-            ></div>
-          } */}
         {getLength() < Infinity && showTimestamp && (
           <Badge
             style={{
@@ -282,7 +342,7 @@ export const Controls = (props: ControlsProps) => {
         </Badge>
       )}
       {
-        <Menu disabled={disabled}>
+        <Menu disabled={isServerControlDisabled}>
           <Menu.Target>
             <div
               className={`${styles.text} ${styles.action}`}
@@ -291,6 +351,8 @@ export const Controls = (props: ControlsProps) => {
                 fontSize: 10,
                 borderRadius: "4px",
                 padding: "2px",
+                opacity: isServerControlDisabled ? 0.6 : 1,
+                cursor: isServerControlDisabled ? "not-allowed" : "pointer",
               }}
             >
               {props.playbackRate?.toFixed(2)}x
@@ -301,11 +363,8 @@ export const Controls = (props: ControlsProps) => {
               { key: "Auto", text: "Auto", value: 0 },
               { key: "0.25", text: "0.25x", value: 0.25 },
               { key: "0.5", text: "0.5x", value: 0.5 },
-              // { key: '0.75', text: '0.75x', value: 0.75 },
               { key: "1", text: "1x", value: 1 },
-              // { key: '1.25', text: '1.25x', value: 1.25 },
               { key: "1.5", text: "1.5x", value: 1.5 },
-              // { key: '1.75', text: '1.75x', value: 1.75 },
               { key: "2", text: "2x", value: 2 },
               { key: "3", text: "3x", value: 3 },
             ].map((item) => (
@@ -324,11 +383,12 @@ export const Controls = (props: ControlsProps) => {
       }
       <IconRepeat
         onClick={() => {
-          if (!disabled) {
+          if (!isServerControlDisabled) {
             props.roomSetLoop(Boolean(!props.loop));
           }
         }}
         className={` ${styles.action}`}
+        style={{ opacity: isServerControlDisabled ? 0.5 : 1, cursor: isServerControlDisabled ? "not-allowed" : "pointer" }}
         title="Loop"
         color={props.loop ? "var(--color-success)" : undefined}
       />

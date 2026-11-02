@@ -278,6 +278,8 @@ describe("BackgroundMaintenance Coordinator", () => {
     assert.equal(chatMessageAdded.msg, "This room has expired.");
     assert.equal(chatMessageAdded.system, true);
     assert.equal(disconnectedSockets, true);
+    assert.equal(rooms.has("expired-room-1"), false);
+    assert.ok(mockUnregisterRoomNamespaceCalls.includes("expired-room-1"));
 
     for (const timer of controller.intervals) {
       clearTimeout(timer);
@@ -417,10 +419,11 @@ describe("BackgroundMaintenance Coordinator", () => {
       clearTimeout(timer);
     }
   });
-});
-
-process.on("beforeExit", () => {
+}).then(() => {
   process.exit(0);
+}).catch((err) => {
+  console.error("BackgroundMaintenance test failure:", err);
+  process.exit(1);
 });
 
 

@@ -232,4 +232,110 @@ test("internalOperationsRouter Suite", async (t) => {
       process.env.NODE_ENV = prevEnv;
     }
   });
+
+  await t.test("GET /internal/health/database - healthy, unconfigured, and error reporting", async () => {
+    // 1. Success case
+    const mockPostgresHealthy = {
+      query: async (queryArg: any) => {
+        const sqlText = typeof queryArg === "string" ? queryArg : queryArg?.text;
+        assert.equal(sqlText, "SELECT 1 AS alive");
+        if (typeof queryArg === "object") {
+          assert.equal(queryArg.statement_timeout, 3000);
+          assert.equal(queryArg.query_timeout, 3000);
+        }
+        return { rows: [{ alive: 1 }] };
+      },
+    };
+
+    const routerHealthy = createInternalOperationsRouter({
+      postgres: mockPostgresHealthy as any,
+      requireInternalAuthMiddleware: (_req, _res, next) => next(),
+    });
+
+    const appHealthy = express();
+    appHealthy.use(routerHealthy);
+    const serverHealthy = http.createServer(appHealthy);
+    await new Promise<void>((resolve) => serverHealthy.listen(0, resolve));
+
+    try {
+      const res = await request(serverHealthy, "/internal/health/database");
+      assert.equal(res.status, 200);
+      assert.equal(res.body.status, "healthy");
+      assert.equal(res.body.database, "connected");
+      assert.equal(typeof res.body.latencyMs, "number");
+    } finally {
+      serverHealthy.close();
+    }
+
+    // 2. Disabled / unconfigured case
+    const routerDisabled = createInternalOperationsRouter({
+      postgres: null,
+      requireInternalAuthMiddleware: (_req, _res, next) => next(),
+    });
+    const appDisabled = express();
+    appDisabled.use(routerDisabled);
+    const serverDisabled = http.createServer(appDisabled);
+    await new Promise<void>((resolve) => serverDisabled.listen(0, resolve));
+
+    try {
+      const res = await request(serverDisabled, "/internal/health/database");
+      assert.equal(res.status, 200);
+      assert.equal(res.body.status, "disabled");
+      assert.equal(res.body.database, "not_configured");
+    } finally {
+      serverDisabled.close();
+    }
+
+    // 3. Database query failure case
+    const mockPostgresFailing = {
+      query: async () => {
+        throw new Error("connection terminated unexpectedly");
+      },
+    };
+    const routerFailing = createInternalOperationsRouter({
+      postgres: mockPostgresFailing as any,
+      requireInternalAuthMiddleware: (_req, _res, next) => next(),
+    });
+    const appFailing = express();
+    appFailing.use(routerFailing);
+    const serverFailing = http.createServer(appFailing);
+    await new Promise<void>((resolve) => serverFailing.listen(0, resolve));
+
+    try {
+      const res = await request(serverFailing, "/internal/health/database");
+      assert.equal(res.status, 503);
+      assert.equal(res.body.status, "unhealthy");
+      assert.equal(res.body.database, "error");
+      assert.equal(res.body.error, "DATABASE_UNAVAILABLE");
+    } finally {
+      serverFailing.close();
+    }
+
+    // 4. Stalled database query timeout cancellation case
+    const mockPostgresStalled = {
+      query: async () => {
+        // Simulates query hanging beyond 3000ms bound
+        return new Promise((resolve) => setTimeout(resolve, 10000));
+      },
+    };
+    const routerStalled = createInternalOperationsRouter({
+      postgres: mockPostgresStalled as any,
+      requireInternalAuthMiddleware: (_req, _res, next) => next(),
+    });
+    const appStalled = express();
+    appStalled.use(routerStalled);
+    const serverStalled = http.createServer(appStalled);
+    await new Promise<void>((resolve) => serverStalled.listen(0, resolve));
+
+    try {
+      const res = await request(serverStalled, "/internal/health/database");
+      assert.equal(res.status, 503);
+      assert.equal(res.body.status, "unhealthy");
+      assert.equal(res.body.database, "timeout");
+      assert.equal(res.body.error, "DATABASE_UNAVAILABLE");
+      assert.ok(res.body.latencyMs >= 2900);
+    } finally {
+      serverStalled.close();
+    }
+  });
 });

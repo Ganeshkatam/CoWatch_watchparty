@@ -324,9 +324,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             type="button"
             className={`${styles.nowPlayingBadge} ${currentMedia ? styles.nowPlayingActive : styles.nowPlayingIdle
               }`}
-            onClick={onOpenQuickAdd}
+            onClick={(!haveLock || !isReady) ? undefined : onOpenQuickAdd}
+            disabled={!haveLock || !isReady}
             title={
-              currentMedia
+              !isReady
+                ? "Connecting to room..."
+                : currentMedia
                 ? `Playing: ${mediaDisplayName || currentMedia}`
                 : "Add something to play"
             }
@@ -356,7 +359,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             roomSetMedia={roomSetMedia}
             playlistAdd={playlistAdd}
             mediaPath={mediaPath}
-            disabled={!haveLock}
+            disabled={!haveLock || !isReady}
             onSelectStream={onSelectStream}
           />
         </div>
@@ -366,7 +369,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         {canManageParticipantsLock && onToggleParticipantsLock && (
           <Tooltip
             label={
-              participantsLocked
+              !isReady
+                ? "Connecting to room..."
+                : participantsLocked
                 ? "Participants Locked (Click to unlock)"
                 : "Lock Participants (Click to lock)"
             }
@@ -377,7 +382,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               type="button"
               className={`${styles.lockBtn} ${participantsLocked ? styles.lockBtnLocked : ""}`}
               onClick={onToggleParticipantsLock}
-              disabled={participantsLockOp.isPending}
+              disabled={participantsLockOp.isPending || !isReady}
               title={participantsLocked ? "Participants Locked" : "Lock Participants"}
               aria-label={participantsLocked ? "Participants Locked" : "Lock Participants"}
             >

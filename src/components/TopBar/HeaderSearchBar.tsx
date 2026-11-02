@@ -127,6 +127,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
 
   const handlePlayNow = useCallback(
     (itemOrUrl: SearchResult | string) => {
+      if (disabled) return;
       const isResultObj = typeof itemOrUrl === "object";
       const rawUrl = isResultObj ? itemOrUrl.url || itemOrUrl.magnet || "" : itemOrUrl;
       const trimmed = rawUrl.trim();
@@ -149,11 +150,12 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
       setQuery("");
       inputRef.current?.blur();
     },
-    [roomSetMedia, onSelectStream],
+    [roomSetMedia, onSelectStream, disabled],
   );
 
   const handleAddToPlaylist = useCallback(
     (url: string) => {
+      if (disabled) return;
       const trimmed = url.trim();
       if (!trimmed) return;
       const targetUrl = isYouTube(trimmed) ? normalizeYouTubeUrl(trimmed) : trimmed;
@@ -163,7 +165,7 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
         setAddedUrls((prev) => ({ ...prev, [trimmed]: false }));
       }, 2500);
     },
-    [playlistAdd],
+    [playlistAdd, disabled],
   );
 
   const doSearch = useCallback(
@@ -361,7 +363,11 @@ export const HeaderSearchBar: React.FC<HeaderSearchBarProps> = ({
           id="cowatch-header-search"
           type="text"
           className={styles.searchInput}
-          placeholder="Paste URL, magnet, or search YouTube..."
+          placeholder={
+            disabled
+              ? "Media controls locked or unavailable"
+              : "Paste URL, magnet, or search YouTube..."
+          }
           value={query}
           onChange={handleChange}
           onFocus={() => setIsOpen(true)}

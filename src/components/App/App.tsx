@@ -274,6 +274,7 @@ interface AppState {
   isPermanentRoom?: boolean;
   isEndSessionConfirmOpen?: boolean;
   isEndingSession?: boolean;
+  isCatchingUp: boolean;
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -289,6 +290,7 @@ export class App extends React.Component<AppProps, AppState> {
     isPermanentRoom: false,
     isEndSessionConfirmOpen: false,
     isEndingSession: false,
+    isCatchingUp: false,
     myClientId: "",
     roomMedia: "",
     roomPaused: false,
@@ -414,6 +416,7 @@ export class App extends React.Component<AppProps, AppState> {
   metadataCleanup?: () => void;
   mediaSessionInterval?: number;
   pipUnsubscribe?: () => void;
+  initStageUnsubscribe?: () => void;
   waitingPollTimer: number | null = null;
   hasReceivedRoomState: boolean = false;
   hasReceivedRoster: boolean = false;
@@ -767,6 +770,22 @@ export class App extends React.Component<AppProps, AppState> {
       this.setState({ pipState });
     });
 
+    this.initStageUnsubscribe = operationCoordinator.onInitStageChange((stage) => {
+      if (
+        stage === "failed" &&
+        !this.state.overlayMsg &&
+        !this.state.isHostSessionEnded &&
+        !this.state.isWaitingForHost
+      ) {
+        this.setState({
+          initStage: "failed",
+          overlayMsg: USER_MESSAGES.CONNECTION_FAILED.message,
+        });
+      } else if (this.state.initStage !== stage) {
+        this.setState({ initStage: stage });
+      }
+    });
+
     this.mediaSessionInterval = window.setInterval(() => {
       this.syncMediaSessionPosition();
     }, 1000);
@@ -774,7 +793,7 @@ export class App extends React.Component<AppProps, AppState> {
     // Send heartbeat to the server
     this.heartbeat = window.setInterval(
       () => {
-        fetch(serverPath + "/ping");
+        fetch(serverPath + "/ping").catch(() => {});
       },
       10 * 60 * 1000,
     );
@@ -832,6 +851,8 @@ export class App extends React.Component<AppProps, AppState> {
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     window.clearInterval(this.heartbeat);
     this.pipUnsubscribe?.();
+    this.initStageUnsubscribe?.();
+    this.initStageUnsubscribe = undefined;
     pipManager.cleanup();
     if (this.startingTimer) {
       window.clearTimeout(this.startingTimer);
@@ -1199,10 +1220,8 @@ export class App extends React.Component<AppProps, AppState> {
           assignedClientId,
           (state) => {
             if (state.error) {
-              showUserMessage({
-                ...USER_MESSAGES.LOCAL_MEDIA_LOAD_FAILED,
-                message: sanitizeServerErrorMessage(state.error),
-              });
+              const mapped = sanitizeServerUserMessage(state.error);
+              showUserMessage(mapped);
               this.setState({ loading: false, nonPlayableMedia: true });
               return;
             }
@@ -2086,6 +2105,16 @@ export class App extends React.Component<AppProps, AppState> {
           // console.log(delta, pbr);
           if (this.Player().getPlaybackRate() !== pbr) {
             this.Player().setPlaybackRate(pbr);
+          }
+
+          if (delta > 2.0) {
+            if (!this.state.isCatchingUp) {
+              this.setState({ isCatchingUp: true });
+            }
+          } else if (delta <= 0.5) {
+            if (this.state.isCatchingUp) {
+              this.setState({ isCatchingUp: false });
+            }
           }
         }
         if (this.state.roomSubtitle) {
@@ -3963,6 +3992,8 @@ export class App extends React.Component<AppProps, AppState> {
         currentTime={this.Player().getCurrentTime()}
         duration={this.Player().getDuration()}
         disabled={!this.haveLock()}
+        isReconnecting={this.state.initStage !== "ready" || !this.socket?.connected}
+        isCatchingUp={this.state.isCatchingUp}
         leaderTime={this.hasDuration() ? this.getLeaderTime() : undefined}
         isPauseDisabled={this.isPauseDisabled()}
         playbackRate={this.Player().getPlaybackRate()}
@@ -4218,7 +4249,7 @@ export class App extends React.Component<AppProps, AppState> {
           initialContext={this.state.feedbackInitialContext}
           initialType={this.state.feedbackInitialType}
         />
-        {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && (
+        {!this.state.isHostSessionEnded && !this.state.isWaitingForHost && !this.state.overlayMsg && (
           <RoomRecoveryOverlay />
         )}
         {!this.state.fullScreen && (
@@ -4446,6 +4477,21 @@ export class App extends React.Component<AppProps, AppState> {
                       }}
                       id="leftVideo"
                       onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
+                      onWaiting={() => {
+                        if (!this.state.roomPaused && !this.state.isLiveStream && !this.state.isCatchingUp) {
+                          this.setState({ isCatchingUp: true });
+                        }
+                      }}
+                      onPlaying={() => {
+                        if (this.state.isCatchingUp) {
+                          this.setState({ isCatchingUp: false });
+                        }
+                      }}
+                      onCanPlay={() => {
+                        if (this.state.isCatchingUp) {
+                          this.setState({ isCatchingUp: false });
+                        }
+                      }}
                       playsInline
                       onClick={this.roomTogglePlay}
                     ></video>
@@ -4658,6 +4704,7 @@ export class App extends React.Component<AppProps, AppState> {
                     scrollTimestamp={this.state.scrollTimestamp}
                     getMediaDisplayName={this.getMediaDisplayName}
                     isChatDisabled={this.state.isChatDisabled}
+                    isReconnecting={this.state.initStage !== "ready" || !this.socket?.connected}
                     owner={this.state.owner}
                     isHost={this.state.isHost}
                     ref={this.chatRef}

@@ -1306,6 +1306,17 @@ export class Room {
 
   public destroy = (): void => {
     this.lifecycleCoordinator.destroy();
+    this.admissionCoordinator.admittedParticipants.clear();
+    this.admissionCoordinator.admittedMembers.clear();
+    this.roster = [];
+    this.socketIdMap = {};
+    this.tsMap = {};
+    this.clientToUidMap = {};
+    this.nameMap = {};
+    this.pictureMap = {};
+    this.uidToNameMap = {};
+    this.uidToPictureMap = {};
+    this.playlist = [];
   };
 
   public getRosterForStats = () => {

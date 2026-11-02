@@ -43,10 +43,18 @@ export class RoomSignalingCoordinator {
     eventName: "signal" | "signalSS",
   ): void => {
     const data = raw as { to: string; msg: string; sharer?: boolean };
-    if (!data) {
+    if (!data || typeof data.to !== "string" || !data.msg) {
       return;
     }
     const fromClientId = socket.clientId;
+    if (!fromClientId) {
+      return;
+    }
+    const isSenderInRoster = this.options.roster.some((user) => user.id === fromClientId);
+    const isTargetInRoster = this.options.roster.some((user) => user.id === data.to);
+    if (!isSenderInRoster || !isTargetInRoster) {
+      return;
+    }
     const toId = this.options.socketIdMap[data.to];
     if (toId) {
       this.options.io.of(this.options.roomId).to(toId).emit(eventName, {

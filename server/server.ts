@@ -135,20 +135,20 @@ export async function handleFatalError(
       io.close();
     }
 
-    // 3. Close PostgreSQL pool
-    if (postgres && typeof postgres.end === "function") {
-      await postgres.end().catch((err: unknown) => {
-        console.error("[LIFECYCLE] Error closing PostgreSQL pool:", err);
-      });
-    }
-
-    // 4. Disconnect Redis instances
-    if (edgeRedis?.client) {
-      edgeRedis.client.disconnect();
-    }
-    if (metricsRedis?.client) {
-      metricsRedis.client.disconnect();
-    }
+    // 3. Concurrently drain PostgreSQL pool and Redis connections with bounded timeout
+    const drainTimeout = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+    const drainActions = Promise.allSettled([
+      postgres && typeof postgres.end === "function"
+        ? postgres.end().catch((err: unknown) => console.error("[LIFECYCLE] Error closing PostgreSQL pool:", err))
+        : Promise.resolve(),
+      edgeRedis?.client
+        ? Promise.resolve(edgeRedis.client.disconnect()).catch((err: unknown) => console.error("[LIFECYCLE] Error disconnecting edge Redis:", err))
+        : Promise.resolve(),
+      metricsRedis?.client
+        ? Promise.resolve(metricsRedis.client.disconnect()).catch((err: unknown) => console.error("[LIFECYCLE] Error disconnecting metrics Redis:", err))
+        : Promise.resolve(),
+    ]);
+    await Promise.race([drainActions, drainTimeout]);
 
     console.log(`[LIFECYCLE] Clean shutdown complete for ${type}`);
   } catch (err: unknown) {
@@ -326,8 +326,16 @@ io.engine.use((req: any, res: Response, next: () => void) => {
 // Helper to cleanly unregister room namespaces regardless of slash prefix
 export function unregisterRoomNamespace(roomId: string) {
   if (!roomId) return;
-  (io as any)._nsps?.delete(roomId);
-  (io as any)._nsps?.delete(`/${roomId}`);
+  const bareNsp = (io as any)._nsps?.get(roomId);
+  if (bareNsp) {
+    bareNsp.removeAllListeners();
+    (io as any)._nsps?.delete(roomId);
+  }
+  const slashNsp = (io as any)._nsps?.get(`/${roomId}`);
+  if (slashNsp) {
+    slashNsp.removeAllListeners();
+    (io as any)._nsps?.delete(`/${roomId}`);
+  }
 }
 
 // Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
@@ -365,15 +373,14 @@ registerBackgroundMaintenance({
 EmailProviderRegistry.validateActiveProvider()
   .then((provider) => {
     console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
+    startEmailWorker();
   })
   .catch((err) => {
-    console.error('[EmailProvider] Startup validation failed:', err);
-    if (process.env.NODE_ENV === 'production') {
-      throw err;
-    }
+    // Transactional email is an optional capability. Keep the API available
+    // when its provider is misconfigured. Leave pending outbox jobs untouched
+    // until valid provider configuration is supplied.
+    console.error('[EmailProvider] Startup validation failed; email delivery is unavailable until configuration is fixed:', err);
   });
-
-startEmailWorker();
 
 
 if (process.env.NODE_ENV === "development") {
@@ -433,7 +440,7 @@ app.use("/api", profileRouter);
 app.use(createFeedbackRouter({ postgres, supabaseAdmin }));
 
 // INTERNAL OPERATIONS & HEALTH: Handled by modular router (routes/internalOperationsRouter.ts)
-app.use(createInternalOperationsRouter());
+app.use(createInternalOperationsRouter({ postgres }));
 
 app.use(createSubtitleRouter());
 app.use(compression());
