@@ -119,6 +119,13 @@ const resolvedConfig = {
   ...process.env,
 };
 
+if (!resolvedConfig.APP_URL) {
+  resolvedConfig.APP_URL = "https://cowatch.tomesphere.in";
+}
+if (!resolvedConfig.CORS_ALLOWED_ORIGINS) {
+  resolvedConfig.CORS_ALLOWED_ORIGINS = "https://cowatch.tomesphere.in";
+}
+
 // Validate TURN configuration
 if (resolvedConfig.NODE_ENV === "production") {
   if (resolvedConfig.TURN_SHARED_SECRET && !resolvedConfig.TURN_HOST) {
