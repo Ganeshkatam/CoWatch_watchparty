@@ -54,7 +54,7 @@ export function resolveDeliveryProfile(type: NotificationType): DeliveryProfileI
  * Resolve concrete profile configuration (sender identity, priority) from environment.
  */
 export function getDeliveryProfile(profileId: string | DeliveryProfileId): EmailDeliveryProfile {
-  const defaultFrom = config.EMAIL_FROM_ADDRESS || 'noreply@cowatch.tv';
+  const defaultFrom = config.EMAIL_FROM_ADDRESS || 'noreply@cowatch.tomesphere.in';
   const defaultName = config.EMAIL_FROM_NAME || 'CoWatch';
 
   switch (profileId) {

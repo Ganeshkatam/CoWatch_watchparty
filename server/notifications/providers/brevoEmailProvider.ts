@@ -142,7 +142,7 @@ export class BrevoEmailProvider implements EmailProvider {
 
     // Parse sender name and email
     let senderName = config.EMAIL_FROM_NAME || 'CoWatch';
-    let senderEmail = config.EMAIL_FROM_ADDRESS || 'noreply@cowatch.tv';
+    let senderEmail = config.EMAIL_FROM_ADDRESS || 'noreply@cowatch.tomesphere.in';
 
     if (message.from.includes('<') && message.from.includes('>')) {
       const match = message.from.match(/^(.*?)\s*<(.+?)>$/);

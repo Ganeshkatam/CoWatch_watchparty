@@ -36,4 +36,4 @@ Disallow: /reset-password
 Disallow: /verify-email
 
 # Sitemap index
-Sitemap: https://cowatch.tv/sitemap.xml
+Sitemap: https://cowatch.tomesphere.in/sitemap.xml

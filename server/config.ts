@@ -48,7 +48,7 @@ const defaults = {
   // NOTIFY-001, NOTIFY-002 & NOTIFY-004: Transactional Email Architecture
   // ==========================================
   EMAIL_PROVIDER: "smtp",          // Global default email provider adapter: "brevo" | "smtp"
-  EMAIL_FROM_ADDRESS: "noreply@cowatch.tv", // Default sender email address
+  EMAIL_FROM_ADDRESS: "noreply@cowatch.tomesphere.in", // Default sender email address
   EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
 
   // Delivery Profiles (Provider-neutral sender overrides)
@@ -108,7 +108,7 @@ const defaults = {
   // TURN Relay Configuration (Coturn RFC 5766)
   // ==========================================
   TURN_SHARED_SECRET: "", // Shared secret key for HMAC-SHA1 credential generation
-  TURN_HOST: "", // FQDN or IP of the TURN server (e.g. turn.cowatch.tv)
+  TURN_HOST: "", // FQDN or IP of the TURN server (e.g. turn.cowatch.tomesphere.in)
   TURN_PORT_UDP: 3478, // Standard TURN UDP port (default 3478)
   TURN_PORT_TLS: 443, // Secure TURN TLS/TURNS port (default 443)
   TURN_FALLBACK_STUN_URLS: "stun:stun.l.google.com:19302", // Comma-delimited list of fallback STUN servers
