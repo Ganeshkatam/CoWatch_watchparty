@@ -207,12 +207,7 @@ const getCorsOptions = (): cors.CorsOptions => {
     };
   }
 
-  const allowedOrigins = new Set<string>([
-    "https://cowatch.tomesphere.in",
-    "https://www.cowatch.tomesphere.in",
-    "https://tomesphere.in",
-    "https://cowatch-api.tomesphere.in",
-  ]);
+  const allowedOrigins = new Set<string>(config.ALLOWED_ORIGINS);
 
   if (config.APP_URL) {
     try {
