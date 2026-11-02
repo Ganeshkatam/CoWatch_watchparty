@@ -30,7 +30,6 @@ const defaults = {
   SUBSCRIBER_ROOM_LIMIT: 10, // The maximum number of rooms a subscriber can have
   BETA_USER_EMAILS: "", // Comma-delimited list of user emails to include in the beta / auth
   APP_URL: "https://cowatch.tomesphere.in", // Canonical web application URL for notifications and deep links
-  CORS_ALLOWED_ORIGINS: "https://cowatch.tomesphere.in", // Comma-delimited list of permitted CORS origins in production
 
   // ==========================================
   // Media Configuration
@@ -117,14 +116,9 @@ const defaults = {
 const resolvedConfig = {
   ...defaults,
   ...process.env,
+  HOST: process.env.HOST || defaults.HOST,
+  PORT: Number(process.env.PORT) || defaults.PORT,
 };
-
-if (!resolvedConfig.APP_URL) {
-  resolvedConfig.APP_URL = "https://cowatch.tomesphere.in";
-}
-if (!resolvedConfig.CORS_ALLOWED_ORIGINS) {
-  resolvedConfig.CORS_ALLOWED_ORIGINS = "https://cowatch.tomesphere.in";
-}
 
 // Validate TURN configuration
 if (resolvedConfig.NODE_ENV === "production") {

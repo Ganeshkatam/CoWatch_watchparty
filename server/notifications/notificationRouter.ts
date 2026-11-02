@@ -23,7 +23,7 @@ import { notificationService } from './notificationService.ts';
 import { hashInvitationToken, generateRawInvitationToken } from '../invitations/invitationRouter.ts';
 
 export const getCanonicalJoinUrl = (roomId: string, baseOrigin?: string): string => {
-  const appBaseUrl = (baseOrigin || config.APP_URL || 'https://cowatch.tomesphere.in').replace(/\/+$/, '');
+  const appBaseUrl = (baseOrigin || config.APP_URL || '').replace(/\/+$/, '');
   return appBaseUrl ? `${appBaseUrl}/join/${encodeURIComponent(roomId)}` : `/join/${encodeURIComponent(roomId)}`;
 };
 import {

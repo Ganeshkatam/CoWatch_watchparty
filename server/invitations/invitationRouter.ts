@@ -15,7 +15,7 @@ export function generateRawInvitationToken(): string {
 }
 
 export const getCanonicalInvitationUrl = (token: string, baseOrigin?: string): string => {
-  const appBaseUrl = (baseOrigin || config.APP_URL || 'https://cowatch.tomesphere.in').replace(/\/+$/, '');
+  const appBaseUrl = (baseOrigin || config.APP_URL || '').replace(/\/+$/, '');
   return appBaseUrl ? `${appBaseUrl}/invite/${encodeURIComponent(token)}` : `/invite/${encodeURIComponent(token)}`;
 };
 

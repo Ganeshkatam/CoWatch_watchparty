@@ -222,22 +222,6 @@ const getCorsOptions = (): cors.CorsOptions => {
     }
   }
 
-  if (config.CORS_ALLOWED_ORIGINS) {
-    for (const origin of config.CORS_ALLOWED_ORIGINS.split(",")) {
-      const trimmed = origin.trim();
-
-      if (!trimmed) {
-        continue;
-      }
-
-      try {
-        allowedOrigins.add(new URL(trimmed).origin);
-      } catch {
-        console.warn(`[CORS] Ignoring malformed origin: ${trimmed}`);
-      }
-    }
-  }
-
   return {
     origin: (origin, callback) => {
       // Server-to-server requests and health checks.

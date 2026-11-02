@@ -309,7 +309,7 @@ export class RoomLifecycleCoordinator {
       }
 
       const participantUserIds = Array.from(candidateUserIds);
-      const appUrl = config.APP_URL || "https://cowatch.tomesphere.in";
+      const appUrl = config.APP_URL || "";
       const roomUrl = appUrl
         ? `${appUrl}/watch/${encodeURIComponent(this.deps.roomId)}`
         : `/watch/${encodeURIComponent(this.deps.roomId)}`;
