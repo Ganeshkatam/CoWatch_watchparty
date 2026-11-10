@@ -89,8 +89,6 @@ export function createMediaProxyRouter(options: MediaProxyRouterOptions = {}): R
           "Content-Length": resp.data.length,
         });
         res.end(resp.data);
-      } else {
-        res.status(404).end();
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Proxy request failed";
