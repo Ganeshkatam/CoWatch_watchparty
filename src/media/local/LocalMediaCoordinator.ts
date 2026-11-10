@@ -53,10 +53,12 @@ export async function probeMediaCompatibility(
   }
 
   let duration = 0;
+  let objectUrl: string | null = null;
+  let tempVideo: HTMLVideoElement | null = null;
   try {
-    const tempVideo = document.createElement("video");
+    tempVideo = document.createElement("video");
     tempVideo.preload = "metadata";
-    const objectUrl = URL.createObjectURL(file);
+    objectUrl = URL.createObjectURL(file);
     tempVideo.src = objectUrl;
 
     await new Promise<void>((resolve, reject) => {
@@ -88,14 +90,19 @@ export async function probeMediaCompatibility(
       };
     });
 
-    URL.revokeObjectURL(objectUrl);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       compatible: false,
       duration: 0,
       codec: "",
-      error: err?.message || "Failed to parse video metadata",
+      error: err instanceof Error ? err.message : "Failed to parse video metadata",
     };
+  } finally {
+    if (tempVideo) {
+      tempVideo.removeAttribute("src");
+      tempVideo.load();
+    }
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 
   if (duration <= 0 || !Number.isFinite(duration)) {
@@ -240,6 +247,9 @@ export class LocalMediaCoordinator {
   private hasNotifiedFailure: boolean = false;
   private hostReconnectAttempts: number = 0;
   private onStateChange?: (state: LocalMediaState) => void;
+  private announceListener: ((data: { manifest: unknown }) => Promise<void>) | null = null;
+  private signalListener: ((data: { fromPeerId: string; toPeerId: string; signal: any; epoch: number }) => Promise<void>) | null = null;
+  private unavailableListener: (() => void) | null = null;
 
   constructor(
     socket: Socket,
@@ -257,21 +267,20 @@ export class LocalMediaCoordinator {
 
   private setupSocketListeners(): void {
     // 1. Session announcement received from server
-    this.socket.on(
-      "LOCAL_MEDIA_ANNOUNCE",
-      async (data: { manifest: unknown }) => {
+    this.announceListener = async (data: { manifest: unknown }) => {
         const normalized = normalizeLocalMediaManifest(data?.manifest);
         console.log("[LOCAL_MEDIA] LOCAL_MEDIA_ANNOUNCE received", {
           mediaId: normalized?.mediaId,
           myRole: this.role,
           myUserId: this.userId,
           ownerId: normalized?.ownerId,
+          ownerPeerId: normalized?.ownerPeerId,
           epoch: normalized?.epoch,
         });
         if (normalized && normalized.roomId === this.roomId) {
           const currentEpoch = this.manifest?.epoch ?? 0;
           if (normalized.epoch > currentEpoch || !this.manifest) {
-            if (this.userId === normalized.ownerId) {
+            if (this.userId === (normalized.ownerPeerId || normalized.ownerId)) {
               // Promoted to HOST_SEED via failover election
               this.role = "HOST_SEED";
               this.manifest = normalized;
@@ -303,9 +312,10 @@ export class LocalMediaCoordinator {
                 }
                 this.peers.clear();
                 this.scheduler?.reset();
-                if (normalized.ownerId && normalized.ownerId !== this.userId) {
+                const ownerPeerId = normalized.ownerPeerId || normalized.ownerId;
+                if (ownerPeerId && ownerPeerId !== this.userId) {
                   const resolvedServers = await getIceServersAsync();
-                  const peer = this.createPeer(normalized.ownerId, true, resolvedServers);
+                  const peer = this.createPeer(ownerPeerId, true, resolvedServers);
                   await peer.startNegotiation();
                 }
                 this.notifyState();
@@ -315,13 +325,11 @@ export class LocalMediaCoordinator {
             }
           }
         }
-      },
-    );
+    };
+    this.socket.on("LOCAL_MEDIA_ANNOUNCE", this.announceListener);
 
     // 2. WebRTC Peer Signaling
-    this.socket.on(
-      "LOCAL_MEDIA_SIGNAL",
-      async (data: {
+    this.signalListener = async (data: {
         fromPeerId: string;
         toPeerId: string;
         signal: any;
@@ -354,13 +362,12 @@ export class LocalMediaCoordinator {
           }
           await peer.handleSignal(data.signal);
         }
-      },
-    );
+    };
+    this.socket.on("LOCAL_MEDIA_SIGNAL", this.signalListener);
 
     // 3. Session termination or unavailable
-    this.socket.on("LOCAL_MEDIA_UNAVAILABLE", () => {
-      this.reset();
-    });
+    this.unavailableListener = () => this.reset();
+    this.socket.on("LOCAL_MEDIA_UNAVAILABLE", this.unavailableListener);
   }
 
   public async selectLocalFile(file: File): Promise<string> {
@@ -447,9 +454,10 @@ export class LocalMediaCoordinator {
     this.startHeartbeatLoop();
 
     // 4. Connect to host seed
-    if (manifest.ownerId && manifest.ownerId !== this.userId) {
+    const ownerPeerId = manifest.ownerPeerId || manifest.ownerId;
+    if (ownerPeerId && ownerPeerId !== this.userId) {
       const resolvedServers = await getIceServersAsync();
-      const peer = this.createPeer(manifest.ownerId, true, resolvedServers);
+      const peer = this.createPeer(ownerPeerId, true, resolvedServers);
       await peer.startNegotiation();
     }
 
@@ -507,7 +515,7 @@ export class LocalMediaCoordinator {
     this.scheduler?.unregisterPeer(peerId);
 
     // Check if host seed peer failed for participant
-    const isHostSeed = this.manifest && peerId === this.manifest.ownerId;
+    const isHostSeed = this.manifest && peerId === (this.manifest.ownerPeerId || this.manifest.ownerId);
     if (this.role === "PARTICIPANT_PEER" && isHostSeed) {
       // Attempt one recovery reconnection before declaring terminal failure
       if (this.hostReconnectAttempts < 1) {
@@ -678,6 +686,16 @@ export class LocalMediaCoordinator {
 
   private notifyState(): void {
     this.onStateChange?.(this.getState());
+  }
+
+  public destroy(): void {
+    if (this.announceListener) this.socket.off("LOCAL_MEDIA_ANNOUNCE", this.announceListener);
+    if (this.signalListener) this.socket.off("LOCAL_MEDIA_SIGNAL", this.signalListener);
+    if (this.unavailableListener) this.socket.off("LOCAL_MEDIA_UNAVAILABLE", this.unavailableListener);
+    this.announceListener = null;
+    this.signalListener = null;
+    this.unavailableListener = null;
+    this.reset();
   }
 
   public reset(): void {
