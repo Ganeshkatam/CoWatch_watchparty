@@ -12,7 +12,7 @@ import {
 } from "./LocalMediaManifest";
 import { LocalMediaScheduler } from "./LocalMediaScheduler";
 import { LocalMediaPeer } from "./LocalMediaPeer";
-import { LocalMediaCoordinator } from "./LocalMediaCoordinator";
+import { LocalMediaCoordinator, probeMediaCompatibility } from "./LocalMediaCoordinator";
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -24,6 +24,65 @@ async function runLocalMediaClientTests() {
   console.log("----------------------------------------------------------------");
   console.log("LOCAL-MEDIA-001: Client Local Media Verification Suite");
   console.log("----------------------------------------------------------------");
+
+  // Test 0: Metadata probe revokes its Blob URL when media parsing fails.
+  {
+    const descriptors = ["window", "document", "MediaSource"].map((key) => ({
+      key,
+      descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
+    }));
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const revoked: string[] = [];
+    const video: {
+      preload: string;
+      duration: number;
+      onloadedmetadata: (() => void) | null;
+      onerror: (() => void) | null;
+      removeAttribute: (name: string) => void;
+      load: () => void;
+      src: string;
+    } = {
+      preload: "",
+      duration: 0,
+      onloadedmetadata: null,
+      onerror: null,
+      removeAttribute: () => {},
+      load: () => {},
+      set src(_value: string) {
+        queueMicrotask(() => video.onerror?.());
+      },
+      get src() {
+        return "";
+      },
+    };
+    class MockMediaSource {
+      static isTypeSupported(): boolean { return true; }
+    }
+    try {
+      Object.defineProperty(globalThis, "window", { value: {}, configurable: true });
+      Object.defineProperty(globalThis, "document", {
+        value: { createElement: () => video as unknown as HTMLVideoElement },
+        configurable: true,
+      });
+      Object.defineProperty(globalThis, "MediaSource", { value: MockMediaSource, configurable: true });
+      URL.createObjectURL = (() => "blob:probe-test") as typeof URL.createObjectURL;
+      URL.revokeObjectURL = ((url: string) => { revoked.push(url); }) as typeof URL.revokeObjectURL;
+      const file = new Blob(["invalid media"], { type: "video/mp4" }) as File;
+      Object.defineProperty(file, "name", { value: "invalid.mp4" });
+      const result = await probeMediaCompatibility(file);
+      assert(result.compatible === false, "Metadata probe rejects unreadable media");
+      assert(revoked.length === 1 && revoked[0] === "blob:probe-test", "Metadata probe revokes Blob URL on rejection");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      for (const { key, descriptor } of descriptors) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  }
+  console.log("  PASS [Test 0: Metadata probe Blob URL cleanup on rejection]");
 
   // Test 1: Container detection
   assert(detectMediaContainer("movie.mp4", "video/mp4") === "mp4", "Test 1: MP4 detection");
