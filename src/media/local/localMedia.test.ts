@@ -398,7 +398,7 @@ async function runLocalMediaClientTests() {
   );
 
   // Participant role with manifest from host_user
-  const partManifest: LocalMediaManifest = { ...manifest, ownerId: "host_user" };
+  const partManifest: LocalMediaManifest = { ...manifest, ownerId: "host_account", ownerPeerId: "host_peer" };
   // Access private methods for controlled failure simulation
   const coordAny = coordinator as any;
   coordAny.role = "PARTICIPANT_PEER";
@@ -409,7 +409,7 @@ async function runLocalMediaClientTests() {
   // Register host seed peer
   const mockHostPc = new MockRTCPeerConnection();
   const hostPeer = new LocalMediaPeer(
-    "host_user",
+    "host_peer",
     true,
     () => {},
     {
@@ -419,19 +419,19 @@ async function runLocalMediaClientTests() {
     },
     { pc: mockHostPc as any }
   );
-  coordAny.peers.set("host_user", hostPeer);
+  coordAny.peers.set("host_peer", hostPeer);
   coordAny.scheduler.registerPeer(hostPeer);
 
   assert(coordinator.getState().peersCount === 1, "Test 18: Initial peer registered");
   assert(coordinator.getState().error === null, "Test 18: Initial error is null");
 
   // First failure: Should trigger recovery reconnect attempt without immediate error
-  coordAny.handlePeerFailure("host_user", "Simulated first ICE drop");
+  coordAny.handlePeerFailure("host_peer", "Simulated first ICE drop");
   assert(coordAny.hostReconnectAttempts === 1, "Test 18: Reconnect attempt count incremented to 1");
   assert(coordinator.getState().error === null, "Test 18: Error still null during recovery reconnect");
 
   // Second failure on retried peer: Terminal failure, should populate lastError with actionable guidance
-  coordAny.handlePeerFailure("host_user", "Simulated terminal reconnect failure");
+  coordAny.handlePeerFailure("host_peer", "Simulated terminal reconnect failure");
   const finalState = coordinator.getState();
   assert(finalState.peersCount === 0, "Test 18: Failed peer removed from peers map");
   assert(finalState.error !== null, "Test 18: Terminal error populated in state");
