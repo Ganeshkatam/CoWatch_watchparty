@@ -441,7 +441,7 @@ async function runLocalMediaServerTests() {
     ...baseManifest,
     ownerId: "user_host_orig",
     epoch: 1,
-  });
+  }, "peer_host_orig");
   roomAlphaAuthority.registerPeer("room_alpha", "user_host_orig", "peer_host_orig", "socket_host_orig");
   roomAlphaAuthority.registerPeer("room_alpha", "user_seed_successor", "peer_successor", "socket_successor");
   roomAlphaAuthority.updatePeerAvailability("room_alpha", "peer_successor", "media_test_001", 1, 35, 34);
@@ -452,7 +452,8 @@ async function runLocalMediaServerTests() {
 
   assert(signaling.broadcasts.length === 1, "Case 19: Broadcast sent on failover promotion");
   const failoverBroadcast = signaling.broadcasts[0];
-  assert(failoverBroadcast.manifest.ownerId === "user_seed_successor", "Case 19: Broadcast has new owner");
+  assert(failoverBroadcast.manifest.ownerId === "user_seed_successor", "Case 19: Broadcast has new authenticated owner");
+  assert(failoverBroadcast.manifest.ownerPeerId === "peer_successor", "Case 19: Broadcast has new WebRTC peer owner");
   assert(failoverBroadcast.manifest.epoch === 2, "Case 19: Broadcast has bumped epoch = 2");
   console.log("  PASS [Case 19: Host disconnect broadcasts new owner and bumped epoch]");
 
