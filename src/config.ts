@@ -1,7 +1,6 @@
 export default {
   VITE_SERVER_HOST:
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_SERVER_HOST) ||
-    "https://cowatch-api.tomesphere.in",
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_SERVER_HOST) || "",
   VITE_OAUTH_REDIRECT_HOSTNAME:
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_OAUTH_REDIRECT_HOSTNAME) ||
     (typeof window !== "undefined" && window.location?.origin ? window.location.origin : ""),
