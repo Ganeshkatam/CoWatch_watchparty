@@ -10,6 +10,7 @@ export interface FeedbackRouterOptions {
   postgres?: typeof defaultPostgres;
   supabaseAdmin?: typeof defaultSupabaseAdmin;
   feedbackTelemetry?: typeof defaultFeedbackTelemetry;
+  checkAbuseReportRateLimit?: typeof checkDurableAbuseReportRateLimit;
 }
 
 export function createFeedbackRouter(options?: FeedbackRouterOptions): Router {
@@ -17,6 +18,7 @@ export function createFeedbackRouter(options?: FeedbackRouterOptions): Router {
   const postgres = options?.postgres !== undefined ? options.postgres : defaultPostgres;
   const supabaseAdmin = options?.supabaseAdmin !== undefined ? options.supabaseAdmin : defaultSupabaseAdmin;
   const telemetry = options?.feedbackTelemetry ?? defaultFeedbackTelemetry;
+  const checkAbuseReportRateLimit = options?.checkAbuseReportRateLimit ?? checkDurableAbuseReportRateLimit;
 
   const handleAbuseReport = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -64,16 +66,6 @@ export function createFeedbackRouter(options?: FeedbackRouterOptions): Router {
         return;
       }
 
-      // 3. Durable Rate limiting check (5 per hour per user, 10 per hour per IP)
-      const rateLimit = await checkDurableAbuseReportRateLimit(ip, reporterUserId);
-      if (!rateLimit.allowed) {
-        res.status(429).json({
-          error: "Too many abuse reports submitted. Please try again later.",
-          retryAfter: rateLimit.retryAfterSeconds,
-        });
-        return;
-      }
-
       const { category, reason, targetUserId, targetRoomId, context } = req.body;
 
       const validCategories = new Set([
@@ -110,6 +102,16 @@ export function createFeedbackRouter(options?: FeedbackRouterOptions): Router {
       }
 
       const cleanContext = context && typeof context === "object" && !Array.isArray(context) ? context : {};
+
+      // Consume quota only after the complete report payload has passed validation.
+      const rateLimit = await checkAbuseReportRateLimit(ip, reporterUserId);
+      if (!rateLimit.allowed) {
+        res.status(429).json({
+          error: "Too many abuse reports submitted. Please try again later.",
+          retryAfter: rateLimit.retryAfterSeconds,
+        });
+        return;
+      }
 
       // 4. Server/service-role database write (bypassing client RLS securely)
       const query = `
