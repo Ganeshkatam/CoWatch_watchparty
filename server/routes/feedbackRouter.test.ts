@@ -39,6 +39,8 @@ async function runFeedbackRouterTests() {
     created_at: string;
   }> = [];
 
+  let abuseRateLimitCalls = 0;
+
   const abuseReportStore: Array<{
     id: string;
     reporter_user_id: string;
@@ -162,6 +164,10 @@ async function runFeedbackRouterTests() {
     createFeedbackRouter({
       postgres: mockPostgres as any,
       supabaseAdmin: mockSupabaseAdmin as any,
+      checkAbuseReportRateLimit: async () => {
+        abuseRateLimitCalls++;
+        return { allowed: true, retryAfterSeconds: 0 };
+      },
     })
   );
 
@@ -253,6 +259,8 @@ async function runFeedbackRouterTests() {
       test("Abuse report with reason < 5 chars returns 400", res.status === 400);
     }
 
+    test("Invalid abuse-report payloads do not consume rate-limit tokens", abuseRateLimitCalls === 0);
+
     // --- Test 3: Abuse Reports Valid Submission ---
     {
       const rep = nextReporter();
@@ -276,6 +284,7 @@ async function runFeedbackRouterTests() {
         "Abuse report valid submission returns 201 with reportId",
         res.status === 201 && data.success === true && typeof data.reportId === "string"
       );
+      test("Valid abuse report consumes exactly one rate-limit check", abuseRateLimitCalls === 1);
     }
 
     // --- Test 4: Feedback Validation Guards ---
