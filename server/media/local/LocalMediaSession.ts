@@ -7,6 +7,7 @@ export interface ServerLocalMediaManifest {
   mediaId: string;
   roomId: string;
   ownerId: string;
+  ownerPeerId?: string;
   filename: string;
   byteLength: number;
   durationSeconds: number;
@@ -162,6 +163,7 @@ export function validateLocalMediaManifest(raw: unknown): ManifestValidationResu
     mediaId,
     roomId: typeof obj.roomId === "string" ? obj.roomId.trim() : "",
     ownerId: typeof obj.ownerId === "string" ? obj.ownerId.trim() : "",
+    ownerPeerId: typeof obj.ownerPeerId === "string" ? obj.ownerPeerId.trim() : typeof obj.ownerId === "string" ? obj.ownerId.trim() : "",
     filename,
     byteLength,
     durationSeconds,
@@ -186,6 +188,7 @@ export class LocalMediaSession {
   public readonly mediaId: string;
   public readonly roomId: string;
   public ownerId: string;
+  public ownerPeerId: string;
   public manifest: ServerLocalMediaManifest;
   public status: "ACTIVE" | "ENDED" | "FAILED" = "ACTIVE";
   public epoch: number;
@@ -195,22 +198,27 @@ export class LocalMediaSession {
     this.mediaId = manifest.mediaId;
     this.roomId = manifest.roomId;
     this.ownerId = manifest.ownerId;
+    this.ownerPeerId = manifest.ownerPeerId || manifest.ownerId;
     this.manifest = manifest;
     this.epoch = manifest.epoch || 1;
     this.createdAt = Date.now();
   }
 
-  public promoteFailoverSeed(newOwnerUserId: string): number {
+  public promoteFailoverSeed(newOwnerUserId: string, newOwnerPeerId: string = newOwnerUserId): number {
     this.ownerId = newOwnerUserId;
+    this.ownerPeerId = newOwnerPeerId;
     this.epoch += 1;
     this.manifest.ownerId = newOwnerUserId;
+    this.manifest.ownerPeerId = newOwnerPeerId;
     this.manifest.epoch = this.epoch;
     return this.epoch;
   }
 
-  public updateOwner(newOwnerId: string): void {
+  public updateOwner(newOwnerId: string, newOwnerPeerId: string = newOwnerId): void {
     this.ownerId = newOwnerId;
+    this.ownerPeerId = newOwnerPeerId;
     this.manifest.ownerId = newOwnerId;
+    this.manifest.ownerPeerId = newOwnerPeerId;
   }
 
   public incrementEpoch(): number {
