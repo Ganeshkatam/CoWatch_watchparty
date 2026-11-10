@@ -141,7 +141,7 @@ test("mediaProxyRouter Suite", async (t) => {
     try {
       const res = await request(server, "/proxy/live/playlist.m3u8?host=cdn.video.org");
       assert.equal(res.status, 200);
-      assert.equal(res.body, manifestContent);
+      assert.equal(res.body, manifestContent.replace("segment0.ts", "segment0.ts?host=cdn.video.org"));
       assert.equal(capturedTarget, "https://cdn.video.org/live/playlist.m3u8");
       assert.equal(capturedOptions.timeoutMs, 8000);
       assert.equal(capturedOptions.maxBytes, 2 * 1024 * 1024);
