@@ -504,7 +504,7 @@ async function runLocalMediaClientTests() {
   console.log("  PASS [Test 19: Coordinator listener teardown is deterministic]");
 
   console.log("----------------------------------------------------------------");
-  console.log("ALL 18 LOCAL-MEDIA-001 CLIENT TESTS PASSED SUCCESSFULLY!");
+  console.log("ALL 19 LOCAL-MEDIA-001 CLIENT TESTS PASSED SUCCESSFULLY!");
   console.log("----------------------------------------------------------------");
 }
 
