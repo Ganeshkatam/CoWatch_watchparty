@@ -119,15 +119,206 @@ const defaults = {
   TURN_FALLBACK_STUN_URLS: "stun:stun.l.google.com:19302", // Comma-delimited list of fallback STUN servers
 };
 
-const resolvedConfig = {
-  ...defaults,
-  ...process.env,
-  HOST: process.env.HOST || defaults.HOST,
-  PORT: Number(process.env.PORT) || defaults.PORT,
-  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
-    : defaults.ALLOWED_ORIGINS,
-};
+export function parseBoolean(
+  value: unknown,
+  fallback: boolean,
+  propertyName?: string
+): boolean {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return fallback;
+    }
+    const lower = trimmed.toLowerCase();
+    if (lower === "true" || lower === "1") {
+      return true;
+    }
+    if (lower === "false" || lower === "0") {
+      return false;
+    }
+  }
+  const prop = propertyName ? ` for ${propertyName}` : "";
+  throw new Error(`[CONFIG ERROR] Invalid boolean configuration value${prop}: "${String(value)}"`);
+}
+
+export function parseBoundedInteger(
+  value: unknown,
+  fallback: number,
+  options?: { min?: number; max?: number; propertyName?: string }
+): number {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Invalid non-integer number${prop}: ${value}`);
+    }
+    if (!Number.isSafeInteger(value)) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Out of safe integer range${prop}: ${value}`);
+    }
+    if (options?.min !== undefined && value < options.min) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Value ${value}${prop} is below minimum allowed ${options.min}`);
+    }
+    if (options?.max !== undefined && value > options.max) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Value ${value}${prop} exceeds maximum allowed ${options.max}`);
+    }
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return fallback;
+    }
+    if (!/^-?\d+$/.test(trimmed)) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Invalid integer configuration value${prop}: "${value}"`);
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed)) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Out of safe integer range${prop}: "${value}"`);
+    }
+    if (options?.min !== undefined && parsed < options.min) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Value ${parsed}${prop} is below minimum allowed ${options.min}`);
+    }
+    if (options?.max !== undefined && parsed > options.max) {
+      const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+      throw new Error(`[CONFIG ERROR] Value ${parsed}${prop} exceeds maximum allowed ${options.max}`);
+    }
+    return parsed;
+  }
+  const prop = options?.propertyName ? ` for ${options.propertyName}` : "";
+  throw new Error(`[CONFIG ERROR] Invalid integer configuration value${prop}: "${String(value)}"`);
+}
+
+export function parseOptionalInteger(
+  value: unknown,
+  fallback: number | undefined,
+  options?: { min?: number; max?: number; propertyName?: string }
+): number | undefined {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    return fallback;
+  }
+  return parseBoundedInteger(value, fallback ?? 0, options);
+}
+
+export function createConfig(customEnv: NodeJS.ProcessEnv = process.env) {
+  return {
+    ...defaults,
+    ...customEnv,
+    HOST:
+      typeof customEnv.HOST === "string" && customEnv.HOST.trim() !== ""
+        ? customEnv.HOST.trim()
+        : defaults.HOST,
+    PORT: parseBoundedInteger(customEnv.PORT, defaults.PORT, {
+      min: 1,
+      max: 65535,
+      propertyName: "PORT",
+    }),
+    SHARD: parseOptionalInteger(customEnv.SHARD, defaults.SHARD, {
+      min: 0,
+      propertyName: "SHARD",
+    }),
+    ROOM_CAPACITY: parseBoundedInteger(
+      customEnv.ROOM_CAPACITY,
+      defaults.ROOM_CAPACITY,
+      { min: 0, max: 500, propertyName: "ROOM_CAPACITY" }
+    ),
+    ROOM_CAPACITY_SUB: parseBoundedInteger(
+      customEnv.ROOM_CAPACITY_SUB,
+      defaults.ROOM_CAPACITY_SUB,
+      { min: 0, max: 500, propertyName: "ROOM_CAPACITY_SUB" }
+    ),
+    FREE_ROOM_LIMIT: parseBoundedInteger(
+      customEnv.FREE_ROOM_LIMIT,
+      defaults.FREE_ROOM_LIMIT,
+      { min: 0, max: 1000, propertyName: "FREE_ROOM_LIMIT" }
+    ),
+    SUBSCRIBER_ROOM_LIMIT: parseBoundedInteger(
+      customEnv.SUBSCRIBER_ROOM_LIMIT,
+      defaults.SUBSCRIBER_ROOM_LIMIT,
+      { min: 0, max: 1000, propertyName: "SUBSCRIBER_ROOM_LIMIT" }
+    ),
+    ALLOWED_ORIGINS: customEnv.ALLOWED_ORIGINS
+      ? customEnv.ALLOWED_ORIGINS.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      : defaults.ALLOWED_ORIGINS,
+    EMAIL_SMTP_PORT: parseBoundedInteger(
+      customEnv.EMAIL_SMTP_PORT,
+      defaults.EMAIL_SMTP_PORT,
+      { min: 1, max: 65535, propertyName: "EMAIL_SMTP_PORT" }
+    ),
+    EMAIL_SMTP_SECURE: parseBoolean(
+      customEnv.EMAIL_SMTP_SECURE,
+      defaults.EMAIL_SMTP_SECURE,
+      "EMAIL_SMTP_SECURE"
+    ),
+    EMAIL_WORKER_INTERVAL_MS: parseBoundedInteger(
+      customEnv.EMAIL_WORKER_INTERVAL_MS,
+      defaults.EMAIL_WORKER_INTERVAL_MS,
+      { min: 100, max: 86400000, propertyName: "EMAIL_WORKER_INTERVAL_MS" }
+    ),
+    EMAIL_WORKER_BATCH_SIZE: parseBoundedInteger(
+      customEnv.EMAIL_WORKER_BATCH_SIZE,
+      defaults.EMAIL_WORKER_BATCH_SIZE,
+      { min: 1, max: 500, propertyName: "EMAIL_WORKER_BATCH_SIZE" }
+    ),
+    EMAIL_WORKER_LEASE_SECONDS: parseBoundedInteger(
+      customEnv.EMAIL_WORKER_LEASE_SECONDS,
+      defaults.EMAIL_WORKER_LEASE_SECONDS,
+      { min: 5, max: 86400, propertyName: "EMAIL_WORKER_LEASE_SECONDS" }
+    ),
+    EMAIL_MAX_ATTEMPTS: parseBoundedInteger(
+      customEnv.EMAIL_MAX_ATTEMPTS,
+      defaults.EMAIL_MAX_ATTEMPTS,
+      { min: 1, max: 20, propertyName: "EMAIL_MAX_ATTEMPTS" }
+    ),
+    EMAIL_SENT_RETENTION_DAYS: parseBoundedInteger(
+      customEnv.EMAIL_SENT_RETENTION_DAYS,
+      defaults.EMAIL_SENT_RETENTION_DAYS,
+      { min: 1, max: 3650, propertyName: "EMAIL_SENT_RETENTION_DAYS" }
+    ),
+    EMAIL_FAILED_RETENTION_DAYS: parseBoundedInteger(
+      customEnv.EMAIL_FAILED_RETENTION_DAYS,
+      defaults.EMAIL_FAILED_RETENTION_DAYS,
+      { min: 1, max: 3650, propertyName: "EMAIL_FAILED_RETENTION_DAYS" }
+    ),
+    NOTIFICATION_READ_RETENTION_DAYS: parseBoundedInteger(
+      customEnv.NOTIFICATION_READ_RETENTION_DAYS,
+      defaults.NOTIFICATION_READ_RETENTION_DAYS,
+      { min: 1, max: 3650, propertyName: "NOTIFICATION_READ_RETENTION_DAYS" }
+    ),
+    TURN_PORT_UDP: parseBoundedInteger(
+      customEnv.TURN_PORT_UDP,
+      defaults.TURN_PORT_UDP,
+      { min: 1, max: 65535, propertyName: "TURN_PORT_UDP" }
+    ),
+    TURN_PORT_TLS: parseBoundedInteger(
+      customEnv.TURN_PORT_TLS,
+      defaults.TURN_PORT_TLS,
+      { min: 1, max: 65535, propertyName: "TURN_PORT_TLS" }
+    ),
+  };
+}
+
+export { defaults };
+
+const resolvedConfig = createConfig(process.env);
 
 // Validate TURN configuration
 if (resolvedConfig.NODE_ENV === "production") {

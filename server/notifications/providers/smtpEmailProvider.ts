@@ -16,22 +16,36 @@ import type {
 } from '../emailProvider.ts';
 import { EmailProviderError } from '../emailErrors.ts';
 
+export interface SMTPEmailProviderOptions {
+  name?: string;
+  transporter?: Transporter;
+  config?: {
+    EMAIL_SMTP_HOST?: string;
+    EMAIL_SMTP_PORT?: number;
+    EMAIL_SMTP_USERNAME?: string;
+    EMAIL_SMTP_PASSWORD?: string;
+    EMAIL_SMTP_SECURE?: boolean;
+  };
+}
+
 export class SMTPEmailProvider implements EmailProvider {
   readonly name: string;
   private transporter: Transporter | null = null;
+  private readonly configOverride?: SMTPEmailProviderOptions['config'];
 
-  constructor(options?: { name?: string; transporter?: Transporter } | Transporter) {
-    if (options && typeof (options as Transporter).sendMail === 'function') {
-      this.transporter = options as Transporter;
-      this.name = 'smtp';
-    } else {
-      const opts = options as { name?: string; transporter?: Transporter } | undefined;
-      this.name = opts?.name || 'smtp';
-      if (opts?.transporter) {
-        this.transporter = opts.transporter;
+    constructor(options ?: SMTPEmailProviderOptions | Transporter) {
+      if (options && typeof (options as Transporter).sendMail === 'function') {
+        this.transporter = options as Transporter;
+        this.name = 'smtp';
+      } else {
+        const opts = options as SMTPEmailProviderOptions | undefined;
+        this.name = opts?.name || 'smtp';
+        if (opts?.transporter) {
+          this.transporter = opts.transporter;
+        }
+        this.configOverride = opts?.config;
       }
     }
-  }
 
   readonly capabilities: EmailProviderCapabilities = {
     transactionalSending: true,
@@ -41,23 +55,24 @@ export class SMTPEmailProvider implements EmailProvider {
   };
 
   private get host(): string {
-    return config.EMAIL_SMTP_HOST || '';
+    return this.configOverride?.EMAIL_SMTP_HOST ?? config.EMAIL_SMTP_HOST ?? '';
   }
 
   private get port(): number {
-    return Number(config.EMAIL_SMTP_PORT) || 587;
+    return this.configOverride?.EMAIL_SMTP_PORT ?? config.EMAIL_SMTP_PORT ?? 587;
   }
 
   private get username(): string {
-    return config.EMAIL_SMTP_USERNAME || '';
+    return this.configOverride?.EMAIL_SMTP_USERNAME ?? config.EMAIL_SMTP_USERNAME ?? '';
   }
 
   private get password(): string {
-    return config.EMAIL_SMTP_PASSWORD || '';
+    return this.configOverride?.EMAIL_SMTP_PASSWORD ?? config.EMAIL_SMTP_PASSWORD ?? '';
   }
 
   private get secure(): boolean {
-    return Boolean(config.EMAIL_SMTP_SECURE) || this.port === 465;
+    const isSecure = this.configOverride?.EMAIL_SMTP_SECURE ?? config.EMAIL_SMTP_SECURE;
+    return isSecure || this.port === 465;
   }
 
   private get isDryRun(): boolean {
@@ -69,9 +84,9 @@ export class SMTPEmailProvider implements EmailProvider {
       const auth =
         this.username && this.password
           ? {
-              user: this.username,
-              pass: this.password,
-            }
+            user: this.username,
+            pass: this.password,
+          }
           : undefined;
 
       this.transporter = nodemailer.createTransport({

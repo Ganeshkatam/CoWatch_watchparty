@@ -25,6 +25,54 @@ export interface RoomPlaybackCoordinatorDependencies {
   sendRoster: () => void;
   getHostState: () => HostState;
   resetSubtitle: () => void;
+  twitchClient?: {
+    getStream: (channel: string) => Promise<any>;
+    getVod: (channel: string) => Promise<any>;
+  };
+  twitchProxyPath?: string;
+}
+
+function parseTwitchUrl(rawUrl: string): { isTwitch: boolean; channel?: string; isStream?: boolean } {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") {
+      return { isTwitch: false };
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "twitch.tv" && host !== "www.twitch.tv") {
+      return { isTwitch: false };
+    }
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (segments.length === 0) {
+      return { isTwitch: true };
+    }
+    const last = segments[segments.length - 1];
+    return { isTwitch: true, channel: last, isStream: isNaN(Number(last)) };
+  } catch {
+    return { isTwitch: false };
+  }
+}
+
+function validateProxyBaseUrl(rawProxy?: string): URL | null {
+  const trimmed = rawProxy?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      console.warn("[TWITCH_PROXY_INVALID_PROTOCOL]");
+      return null;
+    }
+    if (url.username || url.password) {
+      console.warn("[TWITCH_PROXY_CREDENTIALS_FORBIDDEN]");
+      return null;
+    }
+    return url;
+  } catch {
+    console.warn("[TWITCH_PROXY_INVALID_CONFIG]");
+    return null;
+  }
 }
 
 export class RoomPlaybackCoordinator {
@@ -42,6 +90,14 @@ export class RoomPlaybackCoordinator {
   }
 
   private readonly deps: RoomPlaybackCoordinatorDependencies;
+
+  private get twitchClient() {
+    return this.deps.twitchClient ?? twitch;
+  }
+
+  private get twitchProxyPath(): string {
+    return this.deps.twitchProxyPath ?? config.TWITCH_PROXY_PATH;
+  }
 
   constructor(deps: RoomPlaybackCoordinatorDependencies) {
     this.deps = deps;
@@ -110,39 +166,39 @@ export class RoomPlaybackCoordinator {
           ?.fallback_url;
       // prefer reddit m3u8 streams over the mp4 links as the m3u8 streams contain audio.
       data = reddit_m3u8 || reddit_mp4 || data;
-    } else if (
-      data?.startsWith("https://www.twitch.tv") ||
-      data?.startsWith("https://twitch.tv")
-    ) {
-      try {
-        // Extract m3u8 data
-        // Note this won't work directly since Twitch will reject requests from the wrong origin--need to proxy the m3u8 playlist
-        const channel = data.split("/").slice(-1)[0];
-        const isStream = isNaN(Number(channel));
-        let streams = [];
-        if (isStream) {
-          streams = await twitch.getStream(channel);
         } else {
-          streams = await twitch.getVod(channel);
+          const twitchInfo = parseTwitchUrl(data);
+          if (twitchInfo.isTwitch) {
+            const proxyBase = validateProxyBaseUrl(this.twitchProxyPath);
+            if (proxyBase && twitchInfo.channel) {
+              try {
+                const streams = twitchInfo.isStream
+                  ? await this.twitchClient.getStream(twitchInfo.channel)
+                  : await this.twitchClient.getVod(twitchInfo.channel);
+                const target =
+                  streams?.find((str: any) => str?.quality?.includes("(source)")) ||
+                  streams?.[0];
+                if (target?.url && typeof target.url === "string") {
+                  const targetUrl = new URL(target.url);
+                  if (targetUrl.protocol === "http:" || targetUrl.protocol === "https:") {
+                    proxyBase.pathname = "/proxy" + targetUrl.pathname;
+                    proxyBase.searchParams.set("host", targetUrl.host);
+                    proxyBase.searchParams.set("displayName", data);
+                    data = proxyBase.toString();
+                  } else {
+                    console.warn("[TWITCH_PROXY_INVALID_TARGET_PROTOCOL]");
+                  }
+                }
+              } catch {
+                console.warn("[TWITCH_PROXY_FETCH_FAILED]");
+              }
+            }
+          } else if (isYouTube(data)) {
+            data = normalizeYouTubeUrl(data);
+          }
         }
-        const target =
-          streams.find((str: any) => str.quality.includes("(source)")) ||
-          streams[0];
-        const parsed = new URL(target?.url);
-        const newUrl = new URL(config.TWITCH_PROXY_PATH);
-        newUrl.pathname = "/proxy" + parsed.pathname;
-        newUrl.searchParams.set("host", parsed.host);
-        newUrl.searchParams.set("displayName", data);
-        newUrl.search = newUrl.searchParams.toString();
-        data = newUrl.toString();
-      } catch (e) {
-        console.warn(e);
-      }
-    } else if (isYouTube(data)) {
-      data = normalizeYouTubeUrl(data);
-    }
-    this.cmdHost(socket, data);
-  };
+        this.cmdHost(socket, data);
+      };
 
   public playlistNext = (raw: unknown) => {
     const data = raw ? String(raw) : null;
