@@ -249,12 +249,14 @@ test("mediaProxyRouter Suite", async (t) => {
   });
 
   await t.test("6b. HLS playlists rewrite relative fMP4 media and initialization URIs", async () => {
-    const manifest = '#EXTM3U\\n#EXT-X-MAP:URI="init.mp4"\\n#EXTINF:4,\\nseg-1.m4s\\n';
+    const manifest = '#EXTM3U\n#EXT-X-MAP:URI="init.mp4?token=abc"\n#EXTINF:4,\nseg-1.m4s?token=xyz\n';
+    let capturedSegmentUrl = "";
     const router = createMediaProxyRouter({
       validateExternalUrlFn: async () => ({ valid: true }),
-      safeExternalGetFn: async (url) => ({
-        status: 200, statusText: "OK", headers: {}, data: Buffer.from(manifest), finalUrl: url,
-      }),
+      safeExternalGetFn: async (url) => {
+        if (url.includes("seg-1.m4s")) capturedSegmentUrl = url;
+        return { status: 200, statusText: "OK", headers: {}, data: Buffer.from(manifest), finalUrl: url };
+      },
     });
     const app = express();
     app.use(router);
@@ -263,8 +265,11 @@ test("mediaProxyRouter Suite", async (t) => {
     try {
       const res = await request(server, "/proxy/video/index.m3u8?host=cdn.example.com");
       assert.equal(res.status, 200);
-      assert(res.body.includes('URI="init.mp4?host=cdn.example.com"'));
-      assert(res.body.includes("seg-1.m4s?host=cdn.example.com"));
+      assert(res.body.includes('URI="init.mp4?token=abc&host=cdn.example.com"'));
+      assert(res.body.includes("seg-1.m4s?token=xyz&host=cdn.example.com"));
+      const segmentResponse = await request(server, "/proxy/video/seg-1.m4s?token=xyz&host=cdn.example.com");
+      assert.equal(segmentResponse.status, 200);
+      assert(capturedSegmentUrl.endsWith("/video/seg-1.m4s?token=xyz"), "Upstream segment query tokens must be preserved");
     } finally {
       server.close();
     }
