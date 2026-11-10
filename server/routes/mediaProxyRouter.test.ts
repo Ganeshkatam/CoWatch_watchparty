@@ -218,6 +218,58 @@ test("mediaProxyRouter Suite", async (t) => {
     }
   });
 
+
+  await t.test("6a. fMP4, audio, and subtitle segment extensions are proxied with bounded fetches", async () => {
+    const extensions = ["m4s", "mp4", "cmfv", "cmfa", "aac", "vtt"];
+    const captured: Array<{ url: string; options: any }> = [];
+    const payload = Buffer.from("segment-payload");
+    const router = createMediaProxyRouter({
+      validateExternalUrlFn: async () => ({ valid: true }),
+      safeExternalGetFn: async (url, options) => {
+        captured.push({ url, options });
+        return { status: 200, statusText: "OK", headers: {}, data: payload, finalUrl: url };
+      },
+    });
+    const app = express();
+    app.use(router);
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      for (const extension of extensions) {
+        const res = await request(server, "/proxy/video/segment." + extension + "?host=cdn.example.com");
+        assert.equal(res.status, 200, extension + " should be accepted");
+        assert.deepEqual(res.raw, payload);
+      }
+      assert.equal(captured.length, extensions.length);
+      assert.equal(captured.find((entry) => entry.url.endsWith(".vtt"))?.options.maxBytes, 2 * 1024 * 1024);
+      assert.equal(captured.find((entry) => entry.url.endsWith(".m4s"))?.options.maxBytes, 25 * 1024 * 1024);
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test("6b. HLS playlists rewrite relative fMP4 media and initialization URIs", async () => {
+    const manifest = '#EXTM3U\\n#EXT-X-MAP:URI="init.mp4"\\n#EXTINF:4,\\nseg-1.m4s\\n';
+    const router = createMediaProxyRouter({
+      validateExternalUrlFn: async () => ({ valid: true }),
+      safeExternalGetFn: async (url) => ({
+        status: 200, statusText: "OK", headers: {}, data: Buffer.from(manifest), finalUrl: url,
+      }),
+    });
+    const app = express();
+    app.use(router);
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      const res = await request(server, "/proxy/video/index.m3u8?host=cdn.example.com");
+      assert.equal(res.status, 200);
+      assert(res.body.includes('URI="init.mp4?host=cdn.example.com"'));
+      assert(res.body.includes("seg-1.m4s?host=cdn.example.com"));
+    } finally {
+      server.close();
+    }
+  });
+
   await t.test("7. upstream fetch error returns 502 Bad Gateway", async () => {
     const router = createMediaProxyRouter({
       validateExternalUrlFn: async () => ({ valid: true }),
