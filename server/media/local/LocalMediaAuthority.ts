@@ -72,7 +72,7 @@ export class LocalMediaAuthority {
       ...validation.sanitized!,
       roomId,
       ownerId: userId,
-      ownerPeerId: peerId || validatedManifest.ownerPeerId || validatedManifest.ownerId || userId,
+      ownerPeerId: peerId || validation.sanitized!.ownerPeerId || validation.sanitized!.ownerId || userId,
     };
 
     const session = new LocalMediaSession(validatedManifest);
