@@ -56,10 +56,11 @@ export async function probeMediaCompatibility(
   let objectUrl: string | null = null;
   let tempVideo: HTMLVideoElement | null = null;
   try {
-    tempVideo = document.createElement("video");
-    tempVideo.preload = "metadata";
+    const video = document.createElement("video");
+    tempVideo = video;
+    video.preload = "metadata";
     objectUrl = URL.createObjectURL(file);
-    tempVideo.src = objectUrl;
+    video.src = objectUrl;
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -73,16 +74,16 @@ export async function probeMediaCompatibility(
 
       function cleanup() {
         clearTimeout(timeout);
-        tempVideo.onloadedmetadata = null;
-        tempVideo.onerror = null;
+        video.onloadedmetadata = null;
+        video.onerror = null;
       }
 
-      tempVideo.onloadedmetadata = () => {
+      video.onloadedmetadata = () => {
         cleanup();
-        duration = tempVideo.duration || 0;
+        duration = video.duration || 0;
         resolve();
       };
-      tempVideo.onerror = () => {
+      video.onerror = () => {
         cleanup();
         reject(
           new Error("Browser video decoder failed to read media metadata"),
@@ -100,7 +101,7 @@ export async function probeMediaCompatibility(
   } finally {
     if (tempVideo) {
       tempVideo.removeAttribute("src");
-      tempVideo.load();
+      try { tempVideo.load(); } catch {}
     }
     if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
