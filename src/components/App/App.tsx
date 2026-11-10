@@ -450,7 +450,7 @@ export class App extends React.Component<AppProps, AppState> {
       this.startingTimer = null;
     }
     if (this.localMediaCoordinator) {
-      this.localMediaCoordinator.reset();
+      this.localMediaCoordinator.destroy();
       this.localMediaCoordinator = null;
     }
     this.latestTsMap = {};
@@ -1212,7 +1212,7 @@ export class App extends React.Component<AppProps, AppState> {
         if (!isCurrentGeneration()) return;
         this.setState({ myClientId: assignedClientId });
         if (this.localMediaCoordinator) {
-          this.localMediaCoordinator.reset();
+          this.localMediaCoordinator.destroy();
         }
         this.localMediaCoordinator = new LocalMediaCoordinator(
           socket,

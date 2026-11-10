@@ -11,7 +11,9 @@ import {
   consumeRateLimitToken,
   checkDurableAbuseReportRateLimit,
   resetFallbackBuckets,
+  MAX_FALLBACK_BUCKETS,
 } from './utils/durableRateLimit.ts';
+import { postgres, setPostgresForTesting } from './utils/postgres.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -88,6 +90,22 @@ async function runDurableRateLimitTests() {
   const userBAllowed = await checkDurableAbuseReportRateLimit(testIp, userB);
   assert(userBAllowed.allowed === true, 'User B from same IP must be allowed before IP threshold');
   console.log('  PASS: IP and user limits evaluated independently without cross-leakage');
+
+  console.log('Case 4: Fallback bucket capacity remains bounded during database outage...');
+  const originalPostgres = postgres;
+  setPostgresForTesting(null);
+  resetFallbackBuckets();
+  try {
+    await Promise.all(Array.from({ length: MAX_FALLBACK_BUCKETS + 1 }, (_, index) =>
+      consumeRateLimitToken("test:bounded-fallback:" + index, 2, 3600)
+    ));
+    const evictedFirstKey = await consumeRateLimitToken("test:bounded-fallback:0", 2, 3600);
+    assert(evictedFirstKey.remaining === 1, "Oldest fallback key must be evicted and recreated at capacity");
+  } finally {
+    resetFallbackBuckets();
+    setPostgresForTesting(originalPostgres);
+  }
+  console.log('  PASS: Fallback bucket capacity and oldest-key eviction verified');
 
   console.log('\nAll NOTIFY-004 Durable Rate Limiter tests PASSED successfully!\n');
 }

@@ -141,7 +141,7 @@ test("mediaProxyRouter Suite", async (t) => {
     try {
       const res = await request(server, "/proxy/live/playlist.m3u8?host=cdn.video.org");
       assert.equal(res.status, 200);
-      assert.equal(res.body, manifestContent);
+      assert.equal(res.body, manifestContent.replace("segment0.ts", "segment0.ts?host=cdn.video.org"));
       assert.equal(capturedTarget, "https://cdn.video.org/live/playlist.m3u8");
       assert.equal(capturedOptions.timeoutMs, 8000);
       assert.equal(capturedOptions.maxBytes, 2 * 1024 * 1024);
@@ -213,6 +213,63 @@ test("mediaProxyRouter Suite", async (t) => {
       assert.deepEqual(res.raw, segmentBuffer);
       assert.equal(capturedOptions.timeoutMs, 15000);
       assert.equal(capturedOptions.maxBytes, 25 * 1024 * 1024);
+    } finally {
+      server.close();
+    }
+  });
+
+
+  await t.test("6a. fMP4, audio, and subtitle segment extensions are proxied with bounded fetches", async () => {
+    const extensions = ["m4s", "mp4", "cmfv", "cmfa", "aac", "vtt"];
+    const captured: Array<{ url: string; options: any }> = [];
+    const payload = Buffer.from("segment-payload");
+    const router = createMediaProxyRouter({
+      validateExternalUrlFn: async () => ({ valid: true }),
+      safeExternalGetFn: async (url, options) => {
+        captured.push({ url, options });
+        return { status: 200, statusText: "OK", headers: {}, data: payload, finalUrl: url };
+      },
+    });
+    const app = express();
+    app.use(router);
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      for (const extension of extensions) {
+        const res = await request(server, "/proxy/video/segment." + extension + "?host=cdn.example.com");
+        assert.equal(res.status, 200, extension + " should be accepted");
+        assert.deepEqual(res.raw, payload);
+      }
+      assert.equal(captured.length, extensions.length);
+      assert.equal(captured.find((entry) => entry.url.endsWith(".vtt"))?.options.maxBytes, 2 * 1024 * 1024);
+      assert.equal(captured.find((entry) => entry.url.endsWith(".m4s"))?.options.maxBytes, 25 * 1024 * 1024);
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test("6b. HLS playlists rewrite relative fMP4 media and initialization URIs", async () => {
+    const manifest = '#EXTM3U\n#EXT-X-MAP:URI="init.mp4?token=abc"\n#EXTINF:4,\nseg-1.m4s?token=xyz\n';
+    let capturedSegmentUrl = "";
+    const router = createMediaProxyRouter({
+      validateExternalUrlFn: async () => ({ valid: true }),
+      safeExternalGetFn: async (url) => {
+        if (url.includes("seg-1.m4s")) capturedSegmentUrl = url;
+        return { status: 200, statusText: "OK", headers: {}, data: Buffer.from(manifest), finalUrl: url };
+      },
+    });
+    const app = express();
+    app.use(router);
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      const res = await request(server, "/proxy/video/index.m3u8?host=cdn.example.com");
+      assert.equal(res.status, 200);
+      assert(res.body.includes('URI="init.mp4?token=abc&host=cdn.example.com"'));
+      assert(res.body.includes("seg-1.m4s?token=xyz&host=cdn.example.com"));
+      const segmentResponse = await request(server, "/proxy/video/seg-1.m4s?token=xyz&host=cdn.example.com");
+      assert.equal(segmentResponse.status, 200);
+      assert(capturedSegmentUrl.endsWith("/video/seg-1.m4s?token=xyz"), "Upstream segment query tokens must be preserved");
     } finally {
       server.close();
     }

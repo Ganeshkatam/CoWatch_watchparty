@@ -91,7 +91,9 @@ async function runLocalMediaServerTests() {
   console.log("\n--- AUD-005: Signaling Authority & Room Isolation ---");
 
   // Case 1: Sender identity enforcement (Server-derived fromPeerId, rejecting spoofed identity)
-  await authority.announceSession("room_alpha", "host_user_1", true, { ...baseManifest });
+  await authority.announceSession("room_alpha", "host_user_1", true, { ...baseManifest }, "peer_1");
+  assert(authority.getSession("room_alpha")?.ownerId === "host_user_1", "Case 1: Session ownerId remains authenticated user identity");
+  assert(authority.getSession("room_alpha")?.ownerPeerId === "peer_1", "Case 1: Session ownerPeerId uses socket peer identity");
   authority.registerPeer("room_alpha", "host_user_1", "peer_1", "socket_peer_1");
   authority.registerPeer("room_alpha", "user_2", "peer_2", "socket_peer_2");
   signaling.clear();
@@ -427,6 +429,7 @@ async function runLocalMediaServerTests() {
   sessionForAtomicTest.promoteFailoverSeed("user_new_host");
   assert(sessionForAtomicTest.epoch === 6, "Case 18: Atomic promotion incremented epoch to 6");
   assert(sessionForAtomicTest.ownerId === "user_new_host", "Case 18: Atomic promotion set owner to user_new_host");
+  assert(sessionForAtomicTest.ownerPeerId === "user_new_host", "Case 18: Legacy promotion defaults peer identity when none is supplied");
   assert(sessionForAtomicTest.manifest.epoch === 6, "Case 18: Manifest epoch matches session epoch");
   assert(sessionForAtomicTest.manifest.ownerId === "user_new_host", "Case 18: Manifest owner matches session owner");
   console.log("  PASS [Case 18: Atomic failover transition for ownerId and epoch]");
@@ -438,7 +441,7 @@ async function runLocalMediaServerTests() {
     ...baseManifest,
     ownerId: "user_host_orig",
     epoch: 1,
-  });
+  }, "peer_host_orig");
   roomAlphaAuthority.registerPeer("room_alpha", "user_host_orig", "peer_host_orig", "socket_host_orig");
   roomAlphaAuthority.registerPeer("room_alpha", "user_seed_successor", "peer_successor", "socket_successor");
   roomAlphaAuthority.updatePeerAvailability("room_alpha", "peer_successor", "media_test_001", 1, 35, 34);
@@ -449,7 +452,8 @@ async function runLocalMediaServerTests() {
 
   assert(signaling.broadcasts.length === 1, "Case 19: Broadcast sent on failover promotion");
   const failoverBroadcast = signaling.broadcasts[0];
-  assert(failoverBroadcast.manifest.ownerId === "user_seed_successor", "Case 19: Broadcast has new owner");
+  assert(failoverBroadcast.manifest.ownerId === "user_seed_successor", "Case 19: Broadcast has new authenticated owner");
+  assert(failoverBroadcast.manifest.ownerPeerId === "peer_successor", "Case 19: Broadcast has new WebRTC peer owner");
   assert(failoverBroadcast.manifest.epoch === 2, "Case 19: Broadcast has bumped epoch = 2");
   console.log("  PASS [Case 19: Host disconnect broadcasts new owner and bumped epoch]");
 

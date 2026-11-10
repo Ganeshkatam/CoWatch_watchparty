@@ -12,7 +12,7 @@ import {
 } from "./LocalMediaManifest";
 import { LocalMediaScheduler } from "./LocalMediaScheduler";
 import { LocalMediaPeer } from "./LocalMediaPeer";
-import { LocalMediaCoordinator } from "./LocalMediaCoordinator";
+import { LocalMediaCoordinator, probeMediaCompatibility } from "./LocalMediaCoordinator";
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -24,6 +24,65 @@ async function runLocalMediaClientTests() {
   console.log("----------------------------------------------------------------");
   console.log("LOCAL-MEDIA-001: Client Local Media Verification Suite");
   console.log("----------------------------------------------------------------");
+
+  // Test 0: Metadata probe revokes its Blob URL when media parsing fails.
+  {
+    const descriptors = ["window", "document", "MediaSource"].map((key) => ({
+      key,
+      descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
+    }));
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const revoked: string[] = [];
+    const video: {
+      preload: string;
+      duration: number;
+      onloadedmetadata: (() => void) | null;
+      onerror: (() => void) | null;
+      removeAttribute: (name: string) => void;
+      load: () => void;
+      src: string;
+    } = {
+      preload: "",
+      duration: 0,
+      onloadedmetadata: null,
+      onerror: null,
+      removeAttribute: () => {},
+      load: () => {},
+      set src(_value: string) {
+        queueMicrotask(() => video.onerror?.());
+      },
+      get src() {
+        return "";
+      },
+    };
+    class MockMediaSource {
+      static isTypeSupported(): boolean { return true; }
+    }
+    try {
+      Object.defineProperty(globalThis, "window", { value: {}, configurable: true });
+      Object.defineProperty(globalThis, "document", {
+        value: { createElement: () => video as unknown as HTMLVideoElement },
+        configurable: true,
+      });
+      Object.defineProperty(globalThis, "MediaSource", { value: MockMediaSource, configurable: true });
+      URL.createObjectURL = (() => "blob:probe-test") as typeof URL.createObjectURL;
+      URL.revokeObjectURL = ((url: string) => { revoked.push(url); }) as typeof URL.revokeObjectURL;
+      const file = new Blob(["invalid media"], { type: "video/mp4" }) as File;
+      Object.defineProperty(file, "name", { value: "invalid.mp4" });
+      const result = await probeMediaCompatibility(file);
+      assert(result.compatible === false, "Metadata probe rejects unreadable media");
+      assert(revoked.length === 1 && revoked[0] === "blob:probe-test", "Metadata probe revokes Blob URL on rejection");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      for (const { key, descriptor } of descriptors) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  }
+  console.log("  PASS [Test 0: Metadata probe Blob URL cleanup on rejection]");
 
   // Test 1: Container detection
   assert(detectMediaContainer("movie.mp4", "video/mp4") === "mp4", "Test 1: MP4 detection");
@@ -370,7 +429,17 @@ async function runLocalMediaClientTests() {
   // Test 18: Coordinator failure handling, retry, and terminal error reporting
   class MockSocket {
     public emitted: { event: string; data: any }[] = [];
-    on() {}
+    public listeners = new Map<string, Set<(...args: any[]) => void>>();
+    on(event: string, handler: (...args: any[]) => void) {
+      const handlers = this.listeners.get(event) || new Set();
+      handlers.add(handler);
+      this.listeners.set(event, handlers);
+      return this;
+    }
+    off(event: string, handler: (...args: any[]) => void) {
+      this.listeners.get(event)?.delete(handler);
+      return this;
+    }
     emit(event: string, data: any) {
       this.emitted.push({ event, data });
     }
@@ -388,7 +457,7 @@ async function runLocalMediaClientTests() {
   );
 
   // Participant role with manifest from host_user
-  const partManifest: LocalMediaManifest = { ...manifest, ownerId: "host_user" };
+  const partManifest: LocalMediaManifest = { ...manifest, ownerId: "host_account", ownerPeerId: "host_peer" };
   // Access private methods for controlled failure simulation
   const coordAny = coordinator as any;
   coordAny.role = "PARTICIPANT_PEER";
@@ -399,7 +468,7 @@ async function runLocalMediaClientTests() {
   // Register host seed peer
   const mockHostPc = new MockRTCPeerConnection();
   const hostPeer = new LocalMediaPeer(
-    "host_user",
+    "host_peer",
     true,
     () => {},
     {
@@ -409,19 +478,19 @@ async function runLocalMediaClientTests() {
     },
     { pc: mockHostPc as any }
   );
-  coordAny.peers.set("host_user", hostPeer);
+  coordAny.peers.set("host_peer", hostPeer);
   coordAny.scheduler.registerPeer(hostPeer);
 
   assert(coordinator.getState().peersCount === 1, "Test 18: Initial peer registered");
   assert(coordinator.getState().error === null, "Test 18: Initial error is null");
 
   // First failure: Should trigger recovery reconnect attempt without immediate error
-  coordAny.handlePeerFailure("host_user", "Simulated first ICE drop");
+  coordAny.handlePeerFailure("host_peer", "Simulated first ICE drop");
   assert(coordAny.hostReconnectAttempts === 1, "Test 18: Reconnect attempt count incremented to 1");
   assert(coordinator.getState().error === null, "Test 18: Error still null during recovery reconnect");
 
   // Second failure on retried peer: Terminal failure, should populate lastError with actionable guidance
-  coordAny.handlePeerFailure("host_user", "Simulated terminal reconnect failure");
+  coordAny.handlePeerFailure("host_peer", "Simulated terminal reconnect failure");
   const finalState = coordinator.getState();
   assert(finalState.peersCount === 0, "Test 18: Failed peer removed from peers map");
   assert(finalState.error !== null, "Test 18: Terminal error populated in state");
@@ -429,8 +498,13 @@ async function runLocalMediaClientTests() {
   assert(finalState.error!.includes("Screenshare"), "Test 18: Error mentions Screenshare fallback guidance");
   console.log("  PASS [Test 18: Coordinator peer failure, recovery retry, and actionable error notification]");
 
+  assert(mockSocket.listeners.size === 3, "Test 19: Coordinator registers exactly three socket listeners");
+  coordinator.destroy();
+  assert([...mockSocket.listeners.values()].every((handlers) => handlers.size === 0), "Test 19: destroy removes all owned socket listeners");
+  console.log("  PASS [Test 19: Coordinator listener teardown is deterministic]");
+
   console.log("----------------------------------------------------------------");
-  console.log("ALL 18 LOCAL-MEDIA-001 CLIENT TESTS PASSED SUCCESSFULLY!");
+  console.log("ALL 19 LOCAL-MEDIA-001 CLIENT TESTS PASSED SUCCESSFULLY!");
   console.log("----------------------------------------------------------------");
 }
 

@@ -16,6 +16,7 @@ export interface RateLimitResult {
 
 // In-memory fallback if postgres is disconnected
 const fallbackBuckets = new Map<string, { tokens: number; lastRefill: number }>();
+export const MAX_FALLBACK_BUCKETS = 5000;
 
 function consumeFallback(
   key: string,
@@ -26,7 +27,14 @@ function consumeFallback(
   const now = Date.now();
   let bucket = fallbackBuckets.get(key);
   if (!bucket) {
+    if (fallbackBuckets.size >= MAX_FALLBACK_BUCKETS) {
+      const oldestKey = fallbackBuckets.keys().next().value;
+      if (oldestKey !== undefined) fallbackBuckets.delete(oldestKey);
+    }
     bucket = { tokens: maxTokens, lastRefill: now };
+    fallbackBuckets.set(key, bucket);
+  } else {
+    fallbackBuckets.delete(key);
     fallbackBuckets.set(key, bucket);
   }
 
