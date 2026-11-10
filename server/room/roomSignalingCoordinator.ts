@@ -147,11 +147,17 @@ export class RoomSignalingCoordinator {
       return;
     }
     const userId = socket.uid || socket.clientId;
+    const peerId = socket.clientId;
+    if (!peerId) {
+      socket.emit("CMD:error", { code: "INVALID_PEER" });
+      return;
+    }
     const session = await this.localMediaAuthority.announceSession(
       this.options.roomId,
       userId,
       auth.allowed,
       data?.manifest,
+      peerId,
     );
     if (session) {
       this.options.setMediaSource(socket, "localmedia://" + data.manifest.mediaId);
