@@ -48,7 +48,10 @@ export function createMediaProxyRouter(options: MediaProxyRouterOptions = {}): R
         res.status(400).send("Missing host parameter");
         return;
       }
-      const targetUrl = "https://" + host + pathname;
+      const upstreamParams = new URLSearchParams(parsed.searchParams);
+      upstreamParams.delete("host");
+      const upstreamQuery = upstreamParams.toString();
+      const targetUrl = "https://" + host + pathname + (upstreamQuery ? "?" + upstreamQuery : "");
       const validation = await validateExternalUrl(targetUrl, ["https:"]);
       if (!validation.valid) {
         res.status(403).send(`Forbidden proxy target: ${validation.reason || "Disallowed host"}`);
