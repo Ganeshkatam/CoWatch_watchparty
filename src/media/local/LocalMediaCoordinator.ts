@@ -697,6 +697,7 @@ export class LocalMediaCoordinator {
     this.signalListener = null;
     this.unavailableListener = null;
     this.reset();
+    this.onStateChange = undefined;
   }
 
   public reset(): void {
