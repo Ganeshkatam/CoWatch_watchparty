@@ -7,6 +7,7 @@ export interface LocalMediaManifest {
   mediaId: string;
   roomId: string;
   ownerId: string;
+  ownerPeerId?: string;
   filename: string;
   byteLength: number;
   durationSeconds: number;
@@ -104,6 +105,7 @@ export function validateLocalMediaManifest(manifest: unknown): manifest is Local
     m.roomId.trim().length > 0 &&
     typeof m.ownerId === "string" &&
     m.ownerId.trim().length > 0 &&
+    (m.ownerPeerId === undefined || (typeof m.ownerPeerId === "string" && m.ownerPeerId.trim().length > 0)) &&
     typeof m.filename === "string" &&
     m.filename.trim().length > 0 &&
     typeof m.mimeType === "string" &&
