@@ -52,7 +52,8 @@ export class LocalMediaAuthority {
     roomId: string,
     userId: string,
     isHost: boolean,
-    manifest: unknown
+    manifest: unknown,
+    peerId?: string,
   ): Promise<LocalMediaSession | null> {
     if (!isHost) {
       console.warn(`Non-host ${userId} attempted to announce local media session in room ${roomId}`);
@@ -71,6 +72,7 @@ export class LocalMediaAuthority {
       ...validation.sanitized!,
       roomId,
       ownerId: userId,
+      ownerPeerId: peerId || validatedManifest.ownerPeerId || validatedManifest.ownerId || userId,
     };
 
     const session = new LocalMediaSession(validatedManifest);
@@ -263,7 +265,7 @@ export class LocalMediaAuthority {
     });
 
     if (candidate) {
-      session.promoteFailoverSeed(candidate.userId);
+      session.promoteFailoverSeed(candidate.userId, candidate.peerId);
       this.signaling.broadcastSession(roomId, session.manifest);
       return true;
     } else {
