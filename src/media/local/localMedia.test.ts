@@ -370,7 +370,17 @@ async function runLocalMediaClientTests() {
   // Test 18: Coordinator failure handling, retry, and terminal error reporting
   class MockSocket {
     public emitted: { event: string; data: any }[] = [];
-    on() {}
+    public listeners = new Map<string, Set<(...args: any[]) => void>>();
+    on(event: string, handler: (...args: any[]) => void) {
+      const handlers = this.listeners.get(event) || new Set();
+      handlers.add(handler);
+      this.listeners.set(event, handlers);
+      return this;
+    }
+    off(event: string, handler: (...args: any[]) => void) {
+      this.listeners.get(event)?.delete(handler);
+      return this;
+    }
     emit(event: string, data: any) {
       this.emitted.push({ event, data });
     }
@@ -428,6 +438,11 @@ async function runLocalMediaClientTests() {
   assert(finalState.error!.includes("restricting direct P2P connections"), "Test 18: Error mentions network/firewall restrictions");
   assert(finalState.error!.includes("Screenshare"), "Test 18: Error mentions Screenshare fallback guidance");
   console.log("  PASS [Test 18: Coordinator peer failure, recovery retry, and actionable error notification]");
+
+  assert(mockSocket.listeners.size === 3, "Test 19: Coordinator registers exactly three socket listeners");
+  coordinator.destroy();
+  assert([...mockSocket.listeners.values()].every((handlers) => handlers.size === 0), "Test 19: destroy removes all owned socket listeners");
+  console.log("  PASS [Test 19: Coordinator listener teardown is deterministic]");
 
   console.log("----------------------------------------------------------------");
   console.log("ALL 18 LOCAL-MEDIA-001 CLIENT TESTS PASSED SUCCESSFULLY!");
