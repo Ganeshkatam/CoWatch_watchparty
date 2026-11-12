@@ -88,6 +88,7 @@ export default defineConfig({
   plugins: [versionManifestPlugin()],
   build: {
     outDir: "build",
+    sourcemap: false,
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       onwarn(warning: RollupLog, warn: (warning: RollupLog | string) => void) {
