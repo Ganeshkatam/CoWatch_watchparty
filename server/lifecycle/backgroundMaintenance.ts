@@ -172,7 +172,7 @@ export function registerBackgroundMaintenance(
                 type: "ROOM_ENDED",
                 title: "Room Expired",
                 body: "Your room has expired and ended.",
-                metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/home" },
+                metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/" },
                 eventId: `ROOM_ENDED:${row.roomId}:${new Date(row.timestamp).getTime()}`,
               })
               .catch((err) => console.error("[EXPIRE] Failed to notify room owner:", err));
@@ -191,7 +191,7 @@ export function registerBackgroundMaintenance(
                     type: "ROOM_ENDED",
                     title: "Room Expired",
                     body: `The room "${room.roomTitle || row.roomId}" has expired and ended.`,
-                    metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/home" },
+                    metadata: { roomId: row.roomId, action: "go_home", targetUrl: "/" },
                     eventId: `ROOM_ENDED:${row.roomId}:${new Date(row.timestamp).getTime()}:${pUid}`,
                   })
                   .catch((err) =>
@@ -261,7 +261,7 @@ export function registerBackgroundMaintenance(
                 metadata: {
                   roomId: row.roomId,
                   action: "open_room",
-                  targetUrl: `/room/${encodeURIComponent(row.roomId)}`,
+                  targetUrl: `/watch/${encodeURIComponent(row.roomId)}`,
                 },
                 eventId: `ROOM_ENDING:${row.roomId}:15m`,
               })
@@ -289,7 +289,7 @@ export function registerBackgroundMaintenance(
                     metadata: {
                       roomId: row.roomId,
                       action: "open_room",
-                      targetUrl: `/room/${encodeURIComponent(row.roomId)}`,
+                      targetUrl: `/watch/${encodeURIComponent(row.roomId)}`,
                     },
                     eventId: `ROOM_ENDING:${row.roomId}:15m:${pUid}`,
                   })

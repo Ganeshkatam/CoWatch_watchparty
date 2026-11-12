@@ -31,12 +31,138 @@ export interface ResolvedNotificationAction {
   url?: string;
 }
 
+const DUMMY_BASE = 'http://localhost';
+
+const SUPPORTED_EXACT_ROUTES = new Set([
+  '/',
+  '/about',
+  '/creator',
+  '/developer',
+  '/support',
+  '/terms',
+  '/privacy',
+  '/faq',
+  '/community-guidelines',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/create',
+  '/join',
+  '/invite',
+  '/myrooms',
+  '/profile',
+  '/room-ended',
+  '/error',
+  '/not-found',
+]);
+
+const SUPPORTED_PREFIX_ROUTES = [
+  '/account',
+  '/watch/',
+  '/join/',
+  '/invite/',
+  '/preflight/',
+  '/myrooms/',
+];
+
+/**
+ * Validates and normalizes internal notification destinations.
+ * Rejects non-relative paths, protocol-relative tricks, external origins,
+ * and unsupported route paths, while preserving valid queries and hashes.
+ */
+export function sanitizeInternalNotificationUrl(
+  rawUrl: unknown,
+  fallback: string = '/',
+): string {
+  if (typeof rawUrl !== 'string') return fallback;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return fallback;
+
+  // 1. Must start with a single slash; reject protocol-relative (//) and backslash bypasses (/\, \\)
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\') || trimmed.startsWith('\\')) {
+    return fallback;
+  }
+
+  // 2. Reject pseudo-protocol injections
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+    return fallback;
+  }
+
+  // 3. Structural parse against fixed dummy origin
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed, DUMMY_BASE);
+  } catch {
+    return fallback;
+  }
+
+  // Reject origin escapes or shifts
+  if (parsed.origin !== DUMMY_BASE) {
+    return fallback;
+  }
+
+  let pathname = parsed.pathname;
+
+  // 4. Legacy route normalization (preserves query params & hashes)
+  if (pathname === '/home' || pathname === '/home/') {
+    pathname = '/';
+  } else if (pathname.startsWith('/home/')) {
+    pathname = pathname.replace(/^\/home/, '');
+    if (!pathname.startsWith('/')) pathname = '/' + pathname;
+  } else if (pathname.startsWith('/room/')) {
+    pathname = pathname.replace(/^\/room\//, '/watch/');
+  }
+
+  // 5. Whitelist validation against registered routes
+  const isSupported =
+    SUPPORTED_EXACT_ROUTES.has(pathname) ||
+    SUPPORTED_PREFIX_ROUTES.some((prefix) => pathname.startsWith(prefix));
+
+  if (!isSupported) {
+    return fallback;
+  }
+
+  // 6. Return verified relative path + query + fragment
+  return `${pathname}${parsed.search}${parsed.hash}`;
+}
+
+/**
+ * Validates external CTA URLs (specifically for SYSTEM_ANNOUNCEMENT).
+ * Only allows HTTP/HTTPS protocols or valid internal routes.
+ */
+export function sanitizeExternalNotificationUrl(rawUrl: unknown): string | undefined {
+  if (typeof rawUrl !== 'string') return undefined;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return undefined;
+
+  // Safe internal route
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\') && !trimmed.startsWith('\\')) {
+    const internal = sanitizeInternalNotificationUrl(trimmed, '');
+    return internal || undefined;
+  }
+
+  // Safe external HTTP/HTTPS URL
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.href;
+    }
+  } catch {}
+
+  return undefined;
+}
+
 export function resolveNotificationAction(notification: NotificationActionSource): ResolvedNotificationAction {
   const metadata = notification.metadata || {};
   const explicitAction = typeof metadata.action === 'string' ? (metadata.action as NotificationActionType) : undefined;
   const rawRoomId = typeof metadata.roomId === 'string' ? metadata.roomId.trim() : undefined;
   const cleanRoomId = rawRoomId ? encodeURIComponent(rawRoomId) : undefined;
-  const explicitTargetUrl = typeof metadata.targetUrl === 'string' ? metadata.targetUrl.trim() : undefined;
+  const sanitizedTarget = typeof metadata.targetUrl === 'string'
+    ? sanitizeInternalNotificationUrl(metadata.targetUrl, '')
+    : undefined;
+  const explicitTargetUrl = sanitizedTarget || undefined;
   const invitationId = typeof metadata.invitationId === 'string' ? metadata.invitationId.trim() : undefined;
 
   // 1. Authoritative explicit action in metadata
@@ -46,25 +172,25 @@ export function resolveNotificationAction(notification: NotificationActionSource
         return {
           action: 'go_home',
           label: 'Go Home',
-          url: explicitTargetUrl || '/home',
+          url: explicitTargetUrl || '/',
         };
       case 'join_room':
         return {
           action: 'join_room',
           label: 'Join Room',
-          url: explicitTargetUrl || (cleanRoomId ? `/join/${cleanRoomId}` : '/home'),
+          url: explicitTargetUrl || (cleanRoomId ? `/join/${cleanRoomId}` : '/'),
         };
       case 'join_invitation':
         return {
           action: 'join_invitation',
           label: 'Join Watch Party',
-          url: explicitTargetUrl || (invitationId ? `/invite?invitationId=${encodeURIComponent(invitationId)}` : (cleanRoomId ? `/join/${cleanRoomId}` : '/home')),
+          url: explicitTargetUrl || (invitationId ? `/invite?invitationId=${encodeURIComponent(invitationId)}` : (cleanRoomId ? `/join/${cleanRoomId}` : '/')),
         };
       case 'open_room':
         return {
           action: 'open_room',
           label: 'Open Room',
-          url: explicitTargetUrl || (cleanRoomId ? `/watch/${cleanRoomId}` : '/home'),
+          url: explicitTargetUrl || (cleanRoomId ? `/watch/${cleanRoomId}` : '/'),
         };
       case 'dismiss':
         return {
@@ -82,7 +208,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
       return {
         action: 'go_home',
         label: 'Go Home',
-        url: '/home',
+        url: '/',
       };
 
     // Legacy notification fallback (strictly for pre-INVITE-001 notifications):
@@ -93,22 +219,21 @@ export function resolveNotificationAction(notification: NotificationActionSource
       return {
         action: 'join_room',
         label: 'Join Room',
-        url: cleanRoomId ? `/join/${cleanRoomId}` : '/home',
+        url: cleanRoomId ? `/join/${cleanRoomId}` : '/',
       };
 
     case 'ROOM_STARTED':
     case 'ROOM_HOST_TRANSFER':
     case 'ROOM_ENDING':
-
       return {
         action: 'open_room',
         label: 'Open Room',
-        url: cleanRoomId ? `/watch/${cleanRoomId}` : '/home',
+        url: cleanRoomId ? `/watch/${cleanRoomId}` : '/',
       };
 
     case 'SYSTEM_ANNOUNCEMENT':
     default: {
-      const ctaUrl = typeof metadata.ctaUrl === 'string' ? metadata.ctaUrl.trim() : undefined;
+      const ctaUrl = sanitizeExternalNotificationUrl(metadata.ctaUrl);
       const ctaLabel = typeof metadata.ctaLabel === 'string' ? metadata.ctaLabel.trim() : 'Dismiss';
       if (ctaUrl) {
         return {

@@ -103,7 +103,7 @@ async function runProductionSmokeTests() {
 
   const modAction = resolveNotificationAction(moderationNotification);
   assert(modAction.action === 'go_home', 'Moderation kick notification must resolve to go_home action');
-  assert(modAction.url === '/home', 'Go home action must route to /home');
+  assert(modAction.url === '/', 'Go home action must route to canonical /');
   console.log('  PASS: Moderation action resolved with canonical home recovery routing');
 
   // ---------------------------------------------------------------------------
