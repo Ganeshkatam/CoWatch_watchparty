@@ -8,7 +8,7 @@ Disallow: /join/
 Disallow: /invite/
 Disallow: /preflight/
 Disallow: /room-ended
-Disallow: /create
+Disallow: /create$
 Disallow: /myrooms
 Disallow: /account
 Disallow: /reset-password
