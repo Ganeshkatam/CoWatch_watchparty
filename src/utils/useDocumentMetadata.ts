@@ -14,6 +14,7 @@ export interface DocumentMetadataOptions {
 const DEFAULT_TITLE = "CoWatch - Watch Together with Friends";
 const DEFAULT_DESCRIPTION =
   "Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share.";
+const SITE_ORIGIN = "https://cowatch.tomesphere.in";
 
 export function formatDocumentTitle(title?: string): string {
   if (!title || !title.trim()) {
@@ -29,6 +30,12 @@ export function formatDocumentTitle(title?: string): string {
     return trimmed;
   }
   return `${trimmed} | CoWatch`;
+}
+
+function getCanonicalUrl(): string {
+  if (typeof window === "undefined") return `${SITE_ORIGIN}/`;
+  const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
+  return `${SITE_ORIGIN}${pathname}`;
 }
 
 function setLinkTag(rel: string, href: string | undefined): () => void {
@@ -127,6 +134,7 @@ export function setDocumentMetadata(options: DocumentMetadataOptions): () => voi
   }
 
   const cleanups: (() => void)[] = [];
+  const canonicalUrl = options.canonicalUrl ?? getCanonicalUrl();
 
   // Title
   if (options.title !== undefined) {
@@ -159,15 +167,9 @@ export function setDocumentMetadata(options: DocumentMetadataOptions): () => voi
     cleanups.push(setMetaTag("name", "twitter:image", options.image));
   }
 
-  // OpenGraph URL
-  if (options.url !== undefined) {
-    cleanups.push(setMetaTag("property", "og:url", options.url));
-  }
-
-  // Canonical URL
-  if (options.canonicalUrl !== undefined) {
-    cleanups.push(setLinkTag("canonical", options.canonicalUrl));
-  }
+  // Canonical URL and OpenGraph URL
+  cleanups.push(setLinkTag("canonical", canonicalUrl));
+  cleanups.push(setMetaTag("property", "og:url", options.url ?? canonicalUrl));
 
   // OpenGraph Type
   if (options.type !== undefined) {
