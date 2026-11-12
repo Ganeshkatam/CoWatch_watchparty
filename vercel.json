@@ -23,7 +23,15 @@
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "^/(about|creator|developer|support|community-guidelines|terms|privacy|faq|create|join|invite|room-ended|login|signup|forgot-password|reset-password|verify-email|confirm-google-signup|profile|myrooms|debug|error|not-found)/?$",
+      "destination": "/index.html"
+    },
+    {
+      "source": "^/(watch|join|invite|preflight|myrooms)/[^/]+/?$",
+      "destination": "/index.html"
+    },
+    {
+      "source": "^/account(?:/.*)?$",
       "destination": "/index.html"
     }
   ]
