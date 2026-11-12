@@ -31,7 +31,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "^/account(?:/.*)?$",
+      "source": "^/account(/.*)?$",
       "destination": "/index.html"
     }
   ]
