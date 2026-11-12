@@ -258,6 +258,7 @@ export const Home: React.FC = () => {
           <div className={styles.sourcesCard}>
             <Tabs defaultValue="youtube" color="violet" variant="outline">
               <Tabs.List grow>
+
                 <Tabs.Tab value="youtube" leftSection={<IconBrandYoutubeFilled size={16} />}>
                   YouTube
                 </Tabs.Tab>
@@ -271,6 +272,8 @@ export const Home: React.FC = () => {
                   WebTorrent
                 </Tabs.Tab>
               </Tabs.List>
+
+
 
               {/* Tab 2: YouTube */}
               <Tabs.Panel value="youtube">
@@ -321,9 +324,55 @@ export const Home: React.FC = () => {
                       </div>
                       <div className={styles.capabilityItem}>
                         <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Integrated system audio forward…</span>
+                        <span>Integrated system audio forwarding directly to connected guests</span>
+                      </div>
+                      <div className={styles.capabilityItem}>
+                        <IconCheck size={18} className={styles.capabilityCheck} />
+                        <span>No auxiliary drivers or virtual audio cables required</span>
                       </div>
                     </div>
+                  </div>
+                  <div className={styles.sourcePreviewVisual}>
+                    <div className={styles.sourcePreviewBadge}>Browser Screen Capture</div>
+                    <img
+                      src="/previews/spring.jpg"
+                      alt="Screen sharing showcase"
+                      className={styles.sourcePreviewImage}
+                    />
+                  </div>
+                </div>
+              </Tabs.Panel>
+
+              {/* Tab 4: Video Files & URLs */}
+              <Tabs.Panel value="videofile">
+                <div className={styles.sourceTabContent}>
+                  <div className={styles.sourceDetails}>
+                    <div className={styles.sourceTitle}>Video Files & Direct URLs</div>
+                    <div className={styles.sourceWhatItSolves}>
+                      Stream self-hosted videos, cloud files, or direct MP4/HLS links with synchronized seeking.
+                    </div>
+                    <div className={styles.capabilityList}>
+                      <div className={styles.capabilityItem}>
+                        <IconCheck size={18} className={styles.capabilityCheck} />
+                        <span>Direct support for MP4, WebM, and HLS (.m3u8) video streams</span>
+                      </div>
+                      <div className={styles.capabilityItem}>
+                        <IconCheck size={18} className={styles.capabilityCheck} />
+                        <span>Drag and drop local video files directly into your room player</span>
+                      </div>
+                      <div className={styles.capabilityItem}>
+                        <IconCheck size={18} className={styles.capabilityCheck} />
+                        <span>Support for external subtitle files (.srt, .vtt)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.sourcePreviewVisual}>
+                    <div className={styles.sourcePreviewBadge}>Direct Stream Player</div>
+                    <img
+                      src="/previews/sintel.jpg"
+                      alt="Direct video file playback"
+                      className={styles.sourcePreviewImage}
+                    />
                   </div>
                 </div>
               </Tabs.Panel>
@@ -499,7 +548,7 @@ export const Home: React.FC = () => {
                   regular hangout nights.
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <Badge size="sm" variant="light" color="teal">
                   Passcode Protected
                 </Badge>
@@ -643,6 +692,8 @@ export const Home: React.FC = () => {
                   room security, profile avatars, and a safe community experience. Sign up is fast and 100% free.
                 </Accordion.Panel>
               </Accordion.Item>
+
+
 
               <Accordion.Item value="installs" className={styles.faqItem}>
                 <Accordion.Control className={styles.faqControl}>
