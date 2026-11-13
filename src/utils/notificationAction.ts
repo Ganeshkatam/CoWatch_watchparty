@@ -29,6 +29,12 @@ export interface ResolvedNotificationAction {
   action: NotificationActionType;
   label: string;
   url?: string;
+  isExternal?: boolean;
+}
+
+export interface SanitizedExternalUrlResult {
+  url: string;
+  isExternal: boolean;
 }
 
 const DUMMY_BASE = 'http://localhost';
@@ -54,18 +60,71 @@ const SUPPORTED_EXACT_ROUTES = new Set([
   '/myrooms',
   '/profile',
   '/room-ended',
+  '/debug',
   '/error',
   '/not-found',
 ]);
 
-const SUPPORTED_PREFIX_ROUTES = [
-  '/account',
+const ALLOWED_ACCOUNT_TABS = new Set(['profile', 'preferences', 'security']);
+
+const PARAMETERIZED_ROUTE_PREFIXES = [
   '/watch/',
   '/join/',
   '/invite/',
   '/preflight/',
   '/myrooms/',
 ];
+
+const TRUSTED_EXTERNAL_HOSTS = new Set([
+  'tomesphere.in',
+  'cowatch.tomesphere.in',
+  'github.com',
+]);
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+function isValidRouteParam(rawSegment: string): boolean {
+  if (!rawSegment || rawSegment.length > 128) return false;
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawSegment);
+  } catch {
+    return false; // Rejects malformed percent-encoding (%zz, %, %2)
+  }
+
+  // Reject decoded separators and dot traversal
+  if (!decoded || decoded.includes('/') || decoded.includes('\\') || decoded.includes('..')) {
+    return false;
+  }
+
+  // Strictly alphanumeric, underscores, and hyphens (matching moniker, UUID, base64url generators)
+  return /^[a-zA-Z0-9_\-]+$/.test(decoded);
+}
+
+function isValidAccountPath(pathname: string): boolean {
+  if (pathname === '/account' || pathname === '/account/') return true;
+  if (!pathname.startsWith('/account/')) return false;
+
+  const subpath = pathname.slice('/account/'.length).replace(/\/+$/, '');
+  const segments = subpath.split('/');
+  return segments.length === 1 && ALLOWED_ACCOUNT_TABS.has(segments[0]);
+}
+
+function isValidInternalPath(pathname: string): boolean {
+  if (SUPPORTED_EXACT_ROUTES.has(pathname)) return true;
+  if (isValidAccountPath(pathname)) return true;
+
+  for (const prefix of PARAMETERIZED_ROUTE_PREFIXES) {
+    if (pathname.startsWith(prefix)) {
+      const rest = pathname.slice(prefix.length);
+      if (rest.includes('/')) return false;
+      return isValidRouteParam(rest);
+    }
+  }
+
+  return false;
+}
 
 /**
  * Validates and normalizes internal notification destinations.
@@ -74,8 +133,9 @@ const SUPPORTED_PREFIX_ROUTES = [
  */
 export function sanitizeInternalNotificationUrl(
   rawUrl: unknown,
-  fallback: string = '/',
+  callerFallback: string = '/',
 ): string {
+  const fallback = callerFallback === '' ? '' : '/';
   if (typeof rawUrl !== 'string') return fallback;
   const trimmed = rawUrl.trim();
   if (!trimmed) return fallback;
@@ -106,21 +166,15 @@ export function sanitizeInternalNotificationUrl(
   let pathname = parsed.pathname;
 
   // 4. Legacy route normalization (preserves query params & hashes)
+  // Strictly normalize canonical /home and /home/; do not silently rewrite nested /home/anything
   if (pathname === '/home' || pathname === '/home/') {
     pathname = '/';
-  } else if (pathname.startsWith('/home/')) {
-    pathname = pathname.replace(/^\/home/, '');
-    if (!pathname.startsWith('/')) pathname = '/' + pathname;
   } else if (pathname.startsWith('/room/')) {
     pathname = pathname.replace(/^\/room\//, '/watch/');
   }
 
   // 5. Whitelist validation against registered routes
-  const isSupported =
-    SUPPORTED_EXACT_ROUTES.has(pathname) ||
-    SUPPORTED_PREFIX_ROUTES.some((prefix) => pathname.startsWith(prefix));
-
-  if (!isSupported) {
+  if (!isValidInternalPath(pathname)) {
     return fallback;
   }
 
@@ -130,28 +184,54 @@ export function sanitizeInternalNotificationUrl(
 
 /**
  * Validates external CTA URLs (specifically for SYSTEM_ANNOUNCEMENT).
- * Only allows HTTP/HTTPS protocols or valid internal routes.
+ * Enforces fail-closed development detection, HTTPS, default port, and explicit trusted host allowlist.
  */
-export function sanitizeExternalNotificationUrl(rawUrl: unknown): string | undefined {
+export function sanitizeExternalNotificationUrl(rawUrl: unknown): SanitizedExternalUrlResult | undefined {
   if (typeof rawUrl !== 'string') return undefined;
   const trimmed = rawUrl.trim();
   if (!trimmed) return undefined;
 
-  // Safe internal route
+  // Safe internal relative route check
   if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\') && !trimmed.startsWith('\\')) {
     const internal = sanitizeInternalNotificationUrl(trimmed, '');
-    return internal || undefined;
+    return internal ? { url: internal, isExternal: false } : undefined;
   }
 
-  // Safe external HTTP/HTTPS URL
   try {
     const parsed = new URL(trimmed);
-    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-      return parsed.href;
-    }
-  } catch {}
 
-  return undefined;
+    // Reject userinfo (@) to prevent credential/origin spoofing
+    if (parsed.username || parsed.password) {
+      return undefined;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const isDevelopment = Boolean(
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) ||
+      (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+    );
+
+    // Fail-closed loopback handling: strictly during development
+    if (LOOPBACK_HOSTS.has(hostname)) {
+      if (!isDevelopment || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+        return undefined;
+      }
+      return { url: parsed.href, isExternal: true };
+    }
+
+    // Production destinations must use HTTPS, default port, and match exact trusted hosts
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.port !== '' ||
+      !TRUSTED_EXTERNAL_HOSTS.has(hostname)
+    ) {
+      return undefined;
+    }
+
+    return { url: parsed.href, isExternal: true };
+  } catch {
+    return undefined;
+  }
 }
 
 export function resolveNotificationAction(notification: NotificationActionSource): ResolvedNotificationAction {
@@ -173,30 +253,35 @@ export function resolveNotificationAction(notification: NotificationActionSource
           action: 'go_home',
           label: 'Go Home',
           url: explicitTargetUrl || '/',
+          isExternal: false,
         };
       case 'join_room':
         return {
           action: 'join_room',
           label: 'Join Room',
           url: explicitTargetUrl || (cleanRoomId ? `/join/${cleanRoomId}` : '/'),
+          isExternal: false,
         };
       case 'join_invitation':
         return {
           action: 'join_invitation',
           label: 'Join Watch Party',
           url: explicitTargetUrl || (invitationId ? `/invite?invitationId=${encodeURIComponent(invitationId)}` : (cleanRoomId ? `/join/${cleanRoomId}` : '/')),
+          isExternal: false,
         };
       case 'open_room':
         return {
           action: 'open_room',
           label: 'Open Room',
           url: explicitTargetUrl || (cleanRoomId ? `/watch/${cleanRoomId}` : '/'),
+          isExternal: false,
         };
       case 'dismiss':
         return {
           action: 'dismiss',
           label: 'Dismiss',
           url: explicitTargetUrl,
+          isExternal: false,
         };
     }
   }
@@ -209,6 +294,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
         action: 'go_home',
         label: 'Go Home',
         url: '/',
+        isExternal: false,
       };
 
     // Legacy notification fallback (strictly for pre-INVITE-001 notifications):
@@ -220,6 +306,7 @@ export function resolveNotificationAction(notification: NotificationActionSource
         action: 'join_room',
         label: 'Join Room',
         url: cleanRoomId ? `/join/${cleanRoomId}` : '/',
+        isExternal: false,
       };
 
     case 'ROOM_STARTED':
@@ -229,17 +316,18 @@ export function resolveNotificationAction(notification: NotificationActionSource
         action: 'open_room',
         label: 'Open Room',
         url: cleanRoomId ? `/watch/${cleanRoomId}` : '/',
+        isExternal: false,
       };
 
-    case 'SYSTEM_ANNOUNCEMENT':
-    default: {
-      const ctaUrl = sanitizeExternalNotificationUrl(metadata.ctaUrl);
+    case 'SYSTEM_ANNOUNCEMENT': {
+      const ctaResult = sanitizeExternalNotificationUrl(metadata.ctaUrl);
       const ctaLabel = typeof metadata.ctaLabel === 'string' ? metadata.ctaLabel.trim() : 'Dismiss';
-      if (ctaUrl) {
+      if (ctaResult) {
         return {
           action: 'open_room',
           label: ctaLabel,
-          url: ctaUrl,
+          url: ctaResult.url,
+          isExternal: ctaResult.isExternal,
         };
       }
       return {
@@ -247,6 +335,12 @@ export function resolveNotificationAction(notification: NotificationActionSource
         label: 'Dismiss',
       };
     }
+
+    default:
+      return {
+        action: 'dismiss',
+        label: 'Dismiss',
+      };
   }
 }
 

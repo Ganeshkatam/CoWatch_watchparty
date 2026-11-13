@@ -16,6 +16,7 @@ import {
   IconSpeakerphone,
   IconDoorEnter,
   IconHome,
+  IconExternalLink,
   IconTrash,
 } from '@tabler/icons-react';
 import { resolveNotificationAction } from '../../utils/notificationAction';
@@ -136,7 +137,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         </div>
         <div className={styles.body}>{notification.body}</div>
         {resolvedAction.action !== 'dismiss' && resolvedAction.url && (
-          resolvedAction.url.startsWith('http://') || resolvedAction.url.startsWith('https://') ? (
+          resolvedAction.isExternal ? (
             <a
               href={resolvedAction.url}
               target="_blank"
@@ -148,7 +149,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                 if (onClosePanel) onClosePanel();
               }}
             >
-              <IconDoorEnter size={14} /> {resolvedAction.label}
+              <IconExternalLink size={14} /> {resolvedAction.label}
             </a>
           ) : (
             <Link

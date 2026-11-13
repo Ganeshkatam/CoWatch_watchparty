@@ -115,6 +115,7 @@ async function runActionTests() {
   assert(sanitizeInternalNotificationUrl('/home?ref=notify') === '/?ref=notify', '/home query must be preserved');
   assert(sanitizeInternalNotificationUrl('/home#rules') === '/#rules', '/home hash must be preserved');
   assert(sanitizeInternalNotificationUrl('/home/?tab=1') === '/?tab=1', '/home/ query must be preserved');
+  assert(sanitizeInternalNotificationUrl('/home/anything') === '/', 'Nested /home/anything must be rejected and fall back to /');
   assert(sanitizeInternalNotificationUrl('/room/party-123') === '/watch/party-123', 'Legacy /room/:id must normalize to /watch/:id');
   assert(sanitizeInternalNotificationUrl('/room/party-123?tab=chat#input') === '/watch/party-123?tab=chat#input', 'Legacy /room/:id query and hash must be preserved');
   assert(sanitizeInternalNotificationUrl('/watch/alpha') === '/watch/alpha', 'Valid /watch/:id route must be preserved');
@@ -126,8 +127,33 @@ async function runActionTests() {
   assert(sanitizeInternalNotificationUrl('') === '/', 'Empty URL must return fallback /');
   console.log('  PASS: Structural URL sanitization and legacy route normalization verified');
 
-  // 5. Security boundary & untrusted destination rejection
-  console.log('Case 5: Testing security boundaries and open redirect prevention...');
+  // 5. Account route hierarchy constraints
+  console.log('Case 5: Testing account route hierarchy constraints...');
+  assert(sanitizeInternalNotificationUrl('/accounting') === '/', '/accounting must be rejected');
+  assert(sanitizeInternalNotificationUrl('/account') === '/account', '/account must be accepted');
+  assert(sanitizeInternalNotificationUrl('/account/') === '/account/', '/account/ must be accepted');
+  assert(sanitizeInternalNotificationUrl('/account/profile') === '/account/profile', '/account/profile must be accepted');
+  assert(sanitizeInternalNotificationUrl('/account/preferences') === '/account/preferences', '/account/preferences must be accepted');
+  assert(sanitizeInternalNotificationUrl('/account/security') === '/account/security', '/account/security must be accepted');
+  assert(sanitizeInternalNotificationUrl('/account/unknown') === '/', '/account/unknown must be rejected');
+  assert(sanitizeInternalNotificationUrl('/account/profile/anything') === '/', 'Nested /account/profile/anything must be rejected');
+  console.log('  PASS: Account route hierarchy constrained to known canonical tabs');
+
+  // 6. Parameterized route validation and percent-encoding boundary
+  console.log('Case 6: Testing parameterized route validation and percent-encoding boundaries...');
+  assert(sanitizeInternalNotificationUrl('/watch/') === '/', 'Empty /watch/ parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/join/') === '/', 'Empty /join/ parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/invite/') === '/', 'Empty /invite/ parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/%2Fadmin') === '/', 'Encoded slash %2F in parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/%5Cadmin') === '/', 'Encoded backslash %5C in parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/%') === '/', 'Truncated % in parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/%2') === '/', 'Single hex digit %2 in parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/%zz') === '/', 'Invalid hex %zz in parameter must be rejected');
+  assert(sanitizeInternalNotificationUrl('/watch/a/b') === '/', 'Multi-segment /watch/a/b must be rejected');
+  console.log('  PASS: Parameterized routes require exact shape, single segment, and valid identifier characters');
+
+  // 7. Security boundary & untrusted destination rejection
+  console.log('Case 7: Testing security boundaries and open redirect prevention...');
   assert(sanitizeInternalNotificationUrl('//evil.com') === '/', 'Protocol-relative URL must be rejected');
   assert(sanitizeInternalNotificationUrl('https://evil.com') === '/', 'External HTTPS URL in internal action must be rejected');
   assert(sanitizeInternalNotificationUrl('http://evil.com/watch/abc') === '/', 'External HTTP URL in internal action must be rejected');
@@ -139,23 +165,47 @@ async function runActionTests() {
   assert(sanitizeInternalNotificationUrl('/unregistered-route-xyz') === '/', 'Unregistered path must be rejected');
   console.log('  PASS: All malicious schemes, backslash escapes, and external redirect vectors rejected');
 
-  // 6. External announcement CTA link handling
-  console.log('Case 6: Testing external announcement CTA URL sanitization...');
-  assert(sanitizeExternalNotificationUrl('https://blog.cowatch.tomesphere.in') === 'https://blog.cowatch.tomesphere.in/', 'Valid external HTTPS CTA permitted');
-  assert(sanitizeExternalNotificationUrl('/about') === '/about', 'Valid internal route CTA permitted');
+  // 8. External announcement CTA link handling & host allowlist
+  console.log('Case 8: Testing external announcement CTA URL sanitization and host policies...');
+  const githubCta = sanitizeExternalNotificationUrl('https://github.com');
+  assert(githubCta !== undefined && githubCta.isExternal === true && githubCta.url === 'https://github.com/', 'Approved external HTTPS host accepted');
+
+  const cowatchCta = sanitizeExternalNotificationUrl('https://cowatch.tomesphere.in');
+  assert(cowatchCta !== undefined && cowatchCta.isExternal === true && cowatchCta.url === 'https://cowatch.tomesphere.in/', 'Approved cowatch domain accepted');
+
+  const internalCta = sanitizeExternalNotificationUrl('/about');
+  assert(internalCta !== undefined && internalCta.isExternal === false && internalCta.url === '/about', 'Valid internal route CTA marked non-external');
+
+  assert(sanitizeExternalNotificationUrl('https://evil.example') === undefined, 'Unapproved external host rejected');
+  assert(sanitizeExternalNotificationUrl('https://cowatch.tomesphere.in@evil.example/') === undefined, 'Userinfo origin spoof rejected');
+  assert(sanitizeExternalNotificationUrl('https://github.com:8443/') === undefined, 'Non-standard HTTPS port rejected');
+  assert(sanitizeExternalNotificationUrl('https://cowatch.tomesphere.in:444/') === undefined, 'Non-standard port on approved host rejected');
+  assert(sanitizeExternalNotificationUrl('http://github.com') === undefined, 'Insecure HTTP on external host rejected');
   assert(sanitizeExternalNotificationUrl('javascript:alert(1)') === undefined, 'Malicious javascript: CTA rejected');
   assert(sanitizeExternalNotificationUrl('//evil.com') === undefined, 'Protocol-relative CTA rejected');
   assert(sanitizeExternalNotificationUrl('data:text/html,...') === undefined, 'data: CTA rejected');
   assert(sanitizeExternalNotificationUrl('/unknown-page') === undefined, 'Unknown internal route CTA rejected');
 
-  const announcementWithValidCta = resolveNotificationAction(
+  // Announcement action resolution & external classification
+  const announcementWithApprovedCta = resolveNotificationAction(
     mockNotification({
       type: 'SYSTEM_ANNOUNCEMENT',
-      metadata: { ctaUrl: 'https://cowatch.tomesphere.in/about', ctaLabel: 'Learn More' },
+      metadata: { ctaUrl: 'https://github.com', ctaLabel: 'View Repository' },
     }),
   );
-  assert(announcementWithValidCta.action === 'open_room', 'Announcement with valid CTA resolves action');
-  assert(announcementWithValidCta.url === 'https://cowatch.tomesphere.in/about', 'Announcement with valid CTA has URL');
+  assert(announcementWithApprovedCta.action === 'open_room', 'Announcement with valid CTA resolves action');
+  assert(announcementWithApprovedCta.url === 'https://github.com/', 'Announcement with valid CTA sets URL');
+  assert(announcementWithApprovedCta.isExternal === true, 'Approved external CTA classified as isExternal: true');
+
+  const announcementWithInternalCta = resolveNotificationAction(
+    mockNotification({
+      type: 'SYSTEM_ANNOUNCEMENT',
+      metadata: { ctaUrl: '/about', ctaLabel: 'About Us' },
+    }),
+  );
+  assert(announcementWithInternalCta.action === 'open_room', 'Announcement with internal CTA resolves action');
+  assert(announcementWithInternalCta.url === '/about', 'Announcement with internal CTA sets relative URL');
+  assert(announcementWithInternalCta.isExternal === false, 'Internal CTA classified as isExternal: false');
 
   const announcementWithMaliciousCta = resolveNotificationAction(
     mockNotification({
@@ -165,7 +215,17 @@ async function runActionTests() {
   );
   assert(announcementWithMaliciousCta.action === 'dismiss', 'Announcement with malicious CTA safely drops to dismiss');
   assert(announcementWithMaliciousCta.url === undefined, 'Malicious CTA URL must not be present');
-  console.log('  PASS: Announcement CTA separation and isolation verified');
+
+  // Unknown notification type isolation: must strictly dismiss and never process ctaUrl
+  const unknownTypeWithCta = resolveNotificationAction(
+    mockNotification({
+      type: 'UNKNOWN_TYPE_SPAM' as any,
+      metadata: { ctaUrl: 'https://github.com', ctaLabel: 'Click' },
+    }),
+  );
+  assert(unknownTypeWithCta.action === 'dismiss', 'Unknown notification type must strictly dismiss');
+  assert(unknownTypeWithCta.url === undefined, 'Unknown notification type must never inherit ctaUrl');
+  console.log('  PASS: Announcement CTA separation, host allowlist, port checks, and unknown type isolation verified');
 
   console.log('\nAll notificationAction tests passed successfully!\n');
 }
