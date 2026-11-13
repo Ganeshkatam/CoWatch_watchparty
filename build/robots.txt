@@ -1,0 +1,35 @@
+# CoWatch crawler access rules
+User-agent: *
+Allow: /
+
+# Private rooms, invitations, and authenticated application routes
+Disallow: /watch/
+Disallow: /join/
+Disallow: /invite/
+Disallow: /preflight/
+Disallow: /room-ended
+Disallow: /create$
+Disallow: /myrooms
+Disallow: /account
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /debug
+Disallow: /error
+Disallow: /not-found
+
+# Backend APIs and internal endpoints
+Disallow: /api/
+Disallow: /roomData/
+Disallow: /roomInfo/
+Disallow: /resolveShard/
+Disallow: /socket.io/
+Disallow: /proxy/
+Disallow: /updateRoom
+Disallow: /updateRoomCover
+Disallow: /verifyPasscode
+Disallow: /listRooms
+Disallow: /deleteRoom
+Disallow: /extendRoom
+Disallow: /endRoomSession
+
+Sitemap: https://cowatch.tomesphere.in/sitemap.xml
