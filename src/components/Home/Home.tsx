@@ -50,8 +50,8 @@ export const Home: React.FC = () => {
     title: "CoWatch - Watch Together with Friends",
     description:
       "A shared place to watch movies, shows, and streams with friends. Built-in voice, video, chat, reactions, and flexible ways to bring your media in.",
-    canonicalUrl: typeof window !== "undefined" ? window.location.href : "/",
-    url: typeof window !== "undefined" ? window.location.href : "/",
+    canonicalUrl: "https://cowatch.tomesphere.in/",
+    url: "https://cowatch.tomesphere.in/",
   });
 
   const handleStartWatchParty = () => {

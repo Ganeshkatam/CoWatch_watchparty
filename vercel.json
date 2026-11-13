@@ -23,7 +23,19 @@
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/:page(about|creator|developer|support|community-guidelines|terms|privacy|faq|create|join|invite|room-ended|login|signup|forgot-password|reset-password|verify-email|confirm-google-signup|profile|myrooms|debug|error|not-found)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:route(watch|join|invite|preflight|myrooms)/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/account",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/account/:tab*",
       "destination": "/index.html"
     }
   ]

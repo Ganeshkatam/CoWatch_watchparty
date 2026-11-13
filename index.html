@@ -1,101 +1,120 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <script>
-      (function() {
-        const local = localStorage.getItem("cowatch-appearance");
-        let scheme = "light";
-        if (local === "mantine") {
-          scheme = "dark";
-        } else if (local === "light") {
-          scheme = "light";
-        } else if (local === "system") {
-          const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          scheme = isDark ? "dark" : "light";
-        } else {
-          scheme = "light";
-        }
-        document.documentElement.setAttribute("data-color-scheme", scheme);
-      })();
+
+<head>
+  <meta charset="utf-8" />
+  <script>
+    (function () {
+      let scheme = "light";
+      try {
+        const appearance = localStorage.getItem("cowatch-appearance");
+        scheme = appearance === "mantine"
+          ? "dark"
+          : appearance === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+      } catch (_) { }
+      document.documentElement.setAttribute("data-color-scheme", scheme);
+      const themeColor = document.querySelector('meta[name="theme-color"]');
+      if (themeColor) themeColor.content = scheme === "dark" ? "#0a0d14" : "#f0f3f8";
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f0f3f8" />
+  <meta name="application-name" content="CoWatch" />
+  <meta name="description"
+    content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://cowatch.tomesphere.in/" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="alternate icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <meta property="og:site_name" content="CoWatch" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://cowatch.tomesphere.in/" />
+  <meta property="og:title" content="CoWatch - Watch Together with Friends" />
+  <meta property="og:description"
+    content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share." />
+  <meta property="og:image" content="https://cowatch.tomesphere.in/og-image.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt"
+    content="CoWatch preview card showing synchronized video streaming with friends, real-time chat, and live reactions" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CoWatch - Watch Together with Friends" />
+  <meta name="twitter:description"
+    content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share." />
+  <meta name="twitter:image" content="https://cowatch.tomesphere.in/og-image.png" />
+
+  <title>CoWatch - Watch Together with Friends</title>
+  <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://cowatch.tomesphere.in/#organization",
+            "name": "CoWatch",
+            "url": "https://cowatch.tomesphere.in/",
+            "logo": "https://cowatch.tomesphere.in/favicon.svg"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://cowatch.tomesphere.in/#website",
+            "url": "https://cowatch.tomesphere.in/",
+            "name": "CoWatch",
+            "publisher": { "@id": "https://cowatch.tomesphere.in/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://cowatch.tomesphere.in/#application",
+            "name": "CoWatch",
+            "url": "https://cowatch.tomesphere.in/",
+            "applicationCategory": "EntertainmentApplication",
+            "operatingSystem": "Web browser",
+            "description": "A web platform for watching videos together with friends and communicating in real time."
+          }
+        ]
+      }
     </script>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="alternate icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f0f3f8" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <meta
-      name="description"
-      content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share."
-    />
-    <meta name="application-name" content="CoWatch" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://cowatch.tomesphere.in/" />
+  <script type="module" src="/src/index.tsx"></script>
+</head>
 
-    <!-- Open Graph Metadata -->
-    <meta property="og:site_name" content="CoWatch" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://cowatch.tomesphere.in/" />
-    <meta property="og:title" content="CoWatch - Watch Party & Synchronized Streaming" />
-    <meta property="og:description" content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share." />
-    <meta property="og:image" content="/screenshot_full.png" />
-
-    <!-- Twitter Card Metadata -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CoWatch - Watch Party & Synchronized Streaming" />
-    <meta name="twitter:description" content="Watch together with friends. Chat and react in real time to the same stream, whether it's YouTube, your own video, or a screen share." />
-    <meta name="twitter:image" content="/screenshot_full.png" />
-
-    <title>CoWatch - Watch Together with Friends</title>
-    <script type="module" src="./src/index.tsx"></script>
-  </head>
-  <body>
-    <script>
-      // Remove fbclid parameter
-      // (function () {
-      //   var param = 'fbclid';
-      //   if (location.search.indexOf(param + '=') !== -1) {
-      //     var replace = '';
-      //     try {
-      //       var url = new URL(location);
-      //       url.searchParams.delete(param);
-      //       replace = url.href;
-      //     } catch (ex) {
-      //       var regExp = new RegExp('[?&]' + param + '=.*$');
-      //       replace = location.search.replace(regExp, '');
-      //       replace = location.pathname + replace + location.hash;
-      //     }
-      //     history.replaceState(null, '', replace);
-      //   }
-      // })();
-    </script>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
-
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
-  <!-- Global site tag (gtag.js) - Google Analytics -->
-  <script
-    async
-    src="https://www.googletagmanager.com/gtag/js?id=UA-45337794-6"
-  ></script>
+<body>
+  <div id="root"></div>
+  <noscript>
+    <main>
+      <h1>Watch Together with CoWatch</h1>
+      <p>CoWatch brings friends together to watch videos and streams while chatting and reacting in real time.</p>
+      <nav aria-label="CoWatch information">
+        <ul>
+          <li><a href="/about">About CoWatch</a></li>
+          <li><a href="/creator">Creator</a></li>
+          <li><a href="/faq">Frequently asked questions</a></li>
+          <li><a href="/support">Support</a></li>
+          <li><a href="/community-guidelines">Community guidelines</a></li>
+          <li><a href="/terms">Terms of service</a></li>
+          <li><a href="/privacy">Privacy policy</a></li>
+        </ul>
+      </nav>
+      <p>Enable JavaScript to use the CoWatch application.</p>
+    </main>
+  </noscript>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-45337794-6"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
-    function gtag() {
-      dataLayer.push(arguments);
-    }
+    function gtag() { window.dataLayer.push(arguments); }
     gtag("js", new Date());
-
     gtag("config", "UA-45337794-6");
   </script>
+</body>
+
 </html>

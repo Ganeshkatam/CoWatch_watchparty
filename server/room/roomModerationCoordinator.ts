@@ -677,7 +677,7 @@ export class RoomModerationCoordinator {
           metadata: {
             roomId: this.options.roomId,
             action: "go_home",
-            targetUrl: "/home",
+            targetUrl: "/",
             moderationType: "kick",
             moderationEventId,
           },
@@ -741,7 +741,7 @@ export class RoomModerationCoordinator {
           metadata: {
             roomId: this.options.roomId,
             action: "go_home",
-            targetUrl: "/home",
+            targetUrl: "/",
             moderationType: "ban",
             moderationEventId,
           },

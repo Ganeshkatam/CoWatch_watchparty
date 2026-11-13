@@ -1,25 +1,29 @@
-# https://www.robotstxt.org/robotstxt.html
-# CoWatch Robots Configuration
-
+# CoWatch crawler access rules
 User-agent: *
+Allow: /
 
-# Allow public landing and informational routes
-Allow: /$
-Allow: /create$
-Allow: /join$
-Allow: /faq$
-Allow: /terms$
-Allow: /privacy$
-Allow: /login$
-Allow: /signup$
+# Private rooms, invitations, and authenticated application routes
+Disallow: /watch/
+Disallow: /join/
+Disallow: /invite/
+Disallow: /preflight/
+Disallow: /room-ended
+Disallow: /create$
+Disallow: /myrooms
+Disallow: /account
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /debug
+Disallow: /error
+Disallow: /not-found
 
-# Disallow internal backend APIs, proxying, and WebSocket namespaces
+# Backend APIs and internal endpoints
+Disallow: /api/
 Disallow: /roomData/
 Disallow: /roomInfo/
 Disallow: /resolveShard/
 Disallow: /socket.io/
 Disallow: /proxy/
-Disallow: /api/
 Disallow: /updateRoom
 Disallow: /updateRoomCover
 Disallow: /verifyPasscode
@@ -28,12 +32,4 @@ Disallow: /deleteRoom
 Disallow: /extendRoom
 Disallow: /endRoomSession
 
-# Disallow dynamic/private rooms and authenticated user panels
-Disallow: /r/
-Disallow: /account
-Disallow: /my-rooms
-Disallow: /reset-password
-Disallow: /verify-email
-
-# Sitemap index
 Sitemap: https://cowatch.tomesphere.in/sitemap.xml

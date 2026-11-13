@@ -292,7 +292,7 @@ async function runDomainEventTests() {
     type: 'ROOM_ENDED',
     title: 'Room Expired',
     body: 'Your room has expired and ended',
-    metadata: { roomId, action: 'go_home', targetUrl: '/home' },
+    metadata: { roomId, action: 'go_home', targetUrl: '/' },
     created_at: new Date().toISOString(),
     read_at: null,
     expires_at: null,
@@ -300,9 +300,9 @@ async function runDomainEventTests() {
   });
 
   assert(actionEnded.action === 'go_home', 'ROOM_ENDED action must be go_home');
-  assert(actionEnded.url === '/home', 'ROOM_ENDED url must navigate to /home');
+  assert(actionEnded.url === '/', 'ROOM_ENDED url must navigate to canonical /');
   assert(actionEnded.label === 'Go Home', 'ROOM_ENDED label must be Go Home');
-  console.log('  PASS: ROOM_ENDED routes strictly to /home and never invites to a dead room');
+  console.log('  PASS: ROOM_ENDED routes strictly to canonical / and never invites to a dead room');
 
   // ---------------------------------------------------------------------------
   // Case 5: Moderation Sanctions (Kick & Ban) Target-Only Delivery
@@ -320,7 +320,7 @@ async function runDomainEventTests() {
     metadata: {
       roomId,
       action: 'go_home',
-      targetUrl: '/home',
+      targetUrl: '/',
       moderationType: 'kick',
       moderationEventId,
     },
@@ -331,9 +331,9 @@ async function runDomainEventTests() {
   });
 
   assert(kickAction.action === 'go_home', 'Kicked user notification action must be go_home');
-  assert(kickAction.url === '/home', 'Kicked user must be routed to /home');
+  assert(kickAction.url === '/', 'Kicked user must be routed to canonical /');
   assert(!kickEventId.includes('Date.now()'), 'Moderation eventId must use authoritative UUID, not Date.now()');
-  console.log('  PASS: Moderation events route strictly to /home and use UUID eventId');
+  console.log('  PASS: Moderation events route strictly to canonical / and use UUID eventId');
 
 
 

@@ -150,7 +150,7 @@ export class RoomHostCoordinator {
           metadata: {
             roomId: this.deps.roomId,
             action: "open_room",
-            targetUrl: `/room/${encodeURIComponent(this.deps.roomId)}`,
+            targetUrl: `/watch/${encodeURIComponent(this.deps.roomId)}`,
             reason,
             hostEpoch: this.hostEpoch,
           },
