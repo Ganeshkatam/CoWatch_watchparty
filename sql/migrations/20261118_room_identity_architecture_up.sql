@@ -191,7 +191,7 @@ RETURNS text
 LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_bytes bytea;
@@ -659,7 +659,7 @@ CREATE OR REPLACE PROCEDURE public.backfill_rooms_identity(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_last_id text;
@@ -712,8 +712,6 @@ BEGIN
         total_rows_processed = total_rows_processed + v_batch_count,
         updated_at = clock_timestamp()
     WHERE target_table = 'public.rooms';
-
-    COMMIT;
   END LOOP;
 
   -- PHASE 2: Unconstrained Trailing Reconciliation Sweep (zero lower bound)
@@ -750,8 +748,6 @@ BEGIN
         trailing_reconciliation_count = trailing_reconciliation_count + 1,
         updated_at = clock_timestamp()
     WHERE target_table = 'public.rooms';
-
-    COMMIT;
   END LOOP;
 
   -- PHASE 3: Transactional Completion Barrier
@@ -774,8 +770,6 @@ BEGIN
       final_verified_row_count = (SELECT count(*) FROM public.rooms),
       updated_at = clock_timestamp()
   WHERE target_table = 'public.rooms';
-
-  COMMIT;
 END;
 $$;
 
@@ -797,7 +791,7 @@ CREATE OR REPLACE PROCEDURE public.backfill_child_table_room_uuid(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_last_uuid text;
@@ -831,7 +825,7 @@ BEGIN
         WHERE t.id = b.pk
         RETURNING t.id
       )
-      SELECT count(*), max(id)::text INTO v_batch_count, v_batch_max_id FROM updated;
+      SELECT count(*), (SELECT id::text FROM updated ORDER BY id DESC LIMIT 1) INTO v_batch_count, v_batch_max_id FROM updated;
 
     ELSIF p_child_table = 'public.room_media_sessions' THEN
       WITH batch AS (
@@ -850,7 +844,7 @@ BEGIN
         WHERE t.media_id = b.pk
         RETURNING t.media_id
       )
-      SELECT count(*), max(media_id)::text INTO v_batch_count, v_batch_max_id FROM updated;
+      SELECT count(*), (SELECT media_id::text FROM updated ORDER BY media_id DESC LIMIT 1) INTO v_batch_count, v_batch_max_id FROM updated;
 
     ELSIF p_child_table = 'public.room_quota_events' THEN
       WITH batch AS (
@@ -870,7 +864,7 @@ BEGIN
         WHERE t.id = b.pk
         RETURNING t.id
       )
-      SELECT count(*), max(id)::text INTO v_batch_count, v_batch_max_id FROM updated;
+      SELECT count(*), (SELECT id::text FROM updated ORDER BY id DESC LIMIT 1) INTO v_batch_count, v_batch_max_id FROM updated;
 
     ELSE
       -- Generic pattern for room_admissions, room_bans, room_invitations, room_messages
@@ -891,7 +885,7 @@ BEGIN
           WHERE t.id = b.pk
           RETURNING t.id
         )
-        SELECT count(*), max(id)::text FROM updated;
+        SELECT count(*), (SELECT id::text FROM updated ORDER BY id DESC LIMIT 1) FROM updated;
       $q$, p_child_table, p_child_table)
       USING v_last_uuid, p_batch_size
       INTO v_batch_count, v_batch_max_id;
@@ -905,8 +899,6 @@ BEGIN
         total_rows_processed = total_rows_processed + v_batch_count,
         updated_at = clock_timestamp()
     WHERE target_table = p_child_table;
-
-    COMMIT;
   END LOOP;
 
   -- Trailing Reconciliation Sweep
@@ -1001,8 +993,6 @@ BEGIN
         trailing_reconciliation_count = trailing_reconciliation_count + 1,
         updated_at = clock_timestamp()
     WHERE target_table = p_child_table;
-
-    COMMIT;
   END LOOP;
 
   -- Completion Barrier for Child Table
@@ -1033,8 +1023,6 @@ BEGIN
       final_verified_row_count = (SELECT count(*) FROM public.rooms),
       updated_at = clock_timestamp()
   WHERE target_table = p_child_table;
-
-  COMMIT;
 END;
 $$;
 
@@ -1044,7 +1032,7 @@ CREATE OR REPLACE PROCEDURE public.backfill_all_child_tables(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 BEGIN
   CALL public.backfill_child_table_room_uuid('public.room_admissions', p_batch_size);
