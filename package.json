@@ -74,6 +74,7 @@
     "test:room-termination": "tsx server/roomTermination.test.ts",
     "test:identity-migration": "tsx server/roomIdentityMigration.test.ts",
     "test:room-identifier": "tsx server/utils/roomIdentifier.test.ts",
+    "test:rpc-phase2": "tsx server/roomRpcPhase2.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {
