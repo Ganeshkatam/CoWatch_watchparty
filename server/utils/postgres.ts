@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 import config from "../config.ts";
 
@@ -17,9 +18,21 @@ export function setPostgresForTesting(pool: Pool | { query: (...args: any[]) => 
 }
 
 function createPool(connectionString: string): Pool {
+  const isSslDisabled = connectionString.includes("sslmode=disable");
+  const caCertPath = process.env.PGSSLROOTCERT;
+  const caCert = caCertPath && fs.existsSync(caCertPath)
+    ? fs.readFileSync(caCertPath, "utf8")
+    : undefined;
+
   const poolConfig: ExtendedPoolConfig = {
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: isSslDisabled
+      ? false
+      : {
+        rejectUnauthorized: true,
+        ...(caCert ? { ca: caCert } : {}),
+      },
+    options: "-c default_transaction_isolation=read\\ committed",
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
