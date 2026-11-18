@@ -13,10 +13,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES FROM anon, auth
 REVOKE ALL ON TABLE public.room_bans FROM anon, authenticated, PUBLIC;
 REVOKE ALL ON TABLE public.room_lifecycle_events FROM anon, authenticated, PUBLIC;
 REVOKE ALL ON TABLE public.room_quota_events FROM anon, authenticated, PUBLIC;
-REVOKE ALL ON TABLE public.vbrowser FROM anon, authenticated, PUBLIC;
-REVOKE ALL ON TABLE public.vbrowser_reservations FROM anon, authenticated, PUBLIC;
-REVOKE ALL ON TABLE public.vbrowser_providers FROM anon, authenticated, PUBLIC;
-REVOKE ALL ON TABLE public.vbrowser_pools FROM anon, authenticated, PUBLIC;
 REVOKE ALL ON TABLE public.active_user FROM anon, authenticated, PUBLIC;
 REVOKE ALL ON TABLE public.room_messages FROM anon, authenticated, PUBLIC;
 
@@ -24,10 +20,6 @@ REVOKE ALL ON TABLE public.room_messages FROM anon, authenticated, PUBLIC;
 ALTER TABLE public.room_bans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_lifecycle_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_quota_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_reservations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_providers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vbrowser_pools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.active_user ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;

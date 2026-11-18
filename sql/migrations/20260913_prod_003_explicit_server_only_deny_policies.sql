@@ -1,5 +1,5 @@
 -- PROD-003 Gate 2: Explicit Declarative Deny Policies on Server-Only Tables
--- Enforces explicit defense-in-depth on all 15 server-only tables in public schema.
+-- Enforces explicit defense-in-depth on all server-only tables in public schema.
 -- Closes Supabase Database Linter warning (RLS Enabled No Policy) without granting any client permissions.
 
 CREATE POLICY "abuse_reports_deny_client_access"
@@ -40,22 +40,6 @@ CREATE POLICY "room_messages_deny_client_access"
 
 CREATE POLICY "room_quota_events_deny_client_access"
   ON public.room_quota_events FOR ALL TO public
-  USING (false) WITH CHECK (false);
-
-CREATE POLICY "vbrowser_deny_client_access"
-  ON public.vbrowser FOR ALL TO public
-  USING (false) WITH CHECK (false);
-
-CREATE POLICY "vbrowser_pools_deny_client_access"
-  ON public.vbrowser_pools FOR ALL TO public
-  USING (false) WITH CHECK (false);
-
-CREATE POLICY "vbrowser_providers_deny_client_access"
-  ON public.vbrowser_providers FOR ALL TO public
-  USING (false) WITH CHECK (false);
-
-CREATE POLICY "vbrowser_reservations_deny_client_access"
-  ON public.vbrowser_reservations FOR ALL TO public
   USING (false) WITH CHECK (false);
 
 CREATE POLICY "webhook_events_deny_client_access"
