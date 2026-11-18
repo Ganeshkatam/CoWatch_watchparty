@@ -550,8 +550,22 @@ async function runLocalMediaServerTests() {
   assert(durationResult.valid === false, "Case 26: Rejects duration > 24 hours (86400s)");
   console.log("  PASS [Case 26: Rejection of excessive durationSeconds (>24 hours)]");
 
+  // Case 27: DB persistence failure triggers atomic rollback and returns null
+  const failingDb = {
+    query: async () => {
+      throw new Error("DB_PERSISTENCE_FAILED");
+    },
+  };
+  const failingSignaling = new MockSignaling();
+  const failingAuthority = new LocalMediaAuthority(failingDb as any, failingSignaling as any);
+  const failedSession = await failingAuthority.announceSession("room_failing", "host_user_1", true, { ...baseManifest });
+  assert(failedSession === null, "Case 27.1: announceSession returns null on database persistence failure");
+  assert(failingAuthority.getSession("room_failing") === null, "Case 27.2: In-memory session rolled back on persistence failure");
+  assert(failingSignaling.broadcasts.length === 0, "Case 27.3: Signaling broadcast strictly suppressed on persistence failure");
+  console.log("  PASS [Case 27: DB persistence failure triggers atomic rollback and suppresses broadcast]");
+
   console.log("\n================================================================");
-  console.log("ALL 26 LOCAL-MEDIA-001 (AUD-005, AUD-004 & DATA-001) TESTS PASSED!");
+  console.log("ALL 27 LOCAL-MEDIA-001 (AUD-005, AUD-004 & DATA-001) TESTS PASSED!");
   console.log("================================================================");
 }
 

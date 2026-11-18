@@ -205,6 +205,8 @@ export class RoomSignalingCoordinator {
     );
     if (session) {
       this.options.setMediaSource(socket, "localmedia://" + data.manifest.mediaId);
+    } else {
+      socket.emit("CMD:error", { code: "MEDIA_PERSISTENCE_FAILED", message: "Failed to persist local media session" });
     }
   };
 

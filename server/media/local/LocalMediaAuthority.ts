@@ -95,16 +95,16 @@ export class LocalMediaAuthority {
 
         await (this.db as DatabasePool).query(
           `INSERT INTO public.room_media_sessions (
-            media_id, room_id, room_uuid, owner_user_id, status, filename, mime_type, byte_size,
+            media_id, "roomId", owner_user_id, status, filename, mime_type, byte_size,
             duration_seconds, codec, container, content_hash, chunk_size, total_chunks
           ) VALUES (
-            $1, $2, $3, $4, 'ACTIVE', $5, $6, $7, $8, $9, $10, $11, $12, $13
+            $1, COALESCE($2::uuid, (SELECT "roomId" FROM public.rooms WHERE "roomId"::text = $3 OR joining_id = $3 LIMIT 1)), $4, 'ACTIVE', $5, $6, $7, $8, $9, $10, $11, $12, $13
           ) ON CONFLICT (media_id) DO UPDATE SET
             status = 'ACTIVE'`,
           [
             validMediaId,
-            roomId,
             validRoomUuid,
+            roomId,
             validOwnerId,
             validatedManifest.filename,
             validatedManifest.mimeType,
@@ -118,7 +118,9 @@ export class LocalMediaAuthority {
           ]
         );
       } catch (err) {
-        console.warn(`Failed to persist room_media_session to DB for room ${roomId}:`, err);
+        console.error(`Failed to persist room_media_session to DB for room ${roomId}:`, err);
+        this.sessions.delete(roomId);
+        return null;
       }
     }
 
@@ -291,6 +293,15 @@ export class LocalMediaAuthority {
     const session = this.sessions.get(roomId);
     if (session) {
       session.terminate();
+      if (this.db) {
+        const validMediaId = toUuid(session.mediaId);
+        (this.db as DatabasePool)
+          .query(
+            `UPDATE public.room_media_sessions SET status = 'ENDED' WHERE media_id = $1`,
+            [validMediaId]
+          )
+          .catch((err) => console.warn(`Failed to update room_media_session status on terminate:`, err));
+      }
       this.sessions.delete(roomId);
     }
     this.registries.delete(roomId);

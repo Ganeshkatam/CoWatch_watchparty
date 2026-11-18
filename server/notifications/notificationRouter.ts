@@ -305,9 +305,9 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
 
       // Check room existence and status
       const roomRes = await postgres.query(
-        `SELECT id, joining_id, id AS "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked, passcode
+        `SELECT "roomId", joining_id, "roomTitle", owner_id, status, "isPermanent", participants_locked, passcode
          FROM public.rooms
-         WHERE id::text = $1 OR joining_id = $1`,
+         WHERE "roomId"::text = $1 OR joining_id = $1`,
         [cleanRoomId],
       );
 
@@ -374,10 +374,10 @@ export function createNotificationRouter(io: Server, roomLookup?: (roomId: strin
 
       await postgres.query(
         `INSERT INTO public.room_invitations
-         (id, room_uuid, inviter_id, target_user_id, token_hash, expires_at, is_reusable)
+         (id, "roomId", inviter_id, target_user_id, token_hash, expires_at, is_reusable)
          VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO NOTHING`,
-        [invId, room.id || cleanRoomId, callerUid, targetUser.id, tokenHash, expiresAt, false],
+        [invId, room.roomId || cleanRoomId, callerUid, targetUser.id, tokenHash, expiresAt, false],
       );
 
       // Fetch caller name for personalized copy

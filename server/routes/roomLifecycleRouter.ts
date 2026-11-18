@@ -171,7 +171,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         // Non-resident room: verify owner authorization authoritatively from database
         const roomRow = (
           await postgres.query<{ owner_id: string }>(
-            `SELECT owner_id FROM public.rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
+            `SELECT owner_id FROM public.rooms WHERE ("roomId"::text = $1 OR joining_id = $1) LIMIT 1`,
             [roomId]
           )
         )?.rows?.[0];

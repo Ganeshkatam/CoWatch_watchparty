@@ -111,6 +111,20 @@ test("iceServersRouter Test Suite", async (t) => {
     },
     postgres: {
       query: async (sql: string, params: any[]) => {
+        if (sql.includes("FROM room_bans")) {
+          const uid = params[1];
+          if (uid === "usr_banned") {
+            return { rows: [{ id: "ban_1" }] };
+          }
+          return { rows: [] };
+        }
+        if (sql.includes("FROM room_admissions")) {
+          const uid = params[1];
+          if (uid === "usr_revoked") {
+            return { rows: [{ revoked_at: new Date().toISOString() }] };
+          }
+          return { rows: [{ revoked_at: null }] };
+        }
         if (sql.includes("FROM rooms WHERE")) {
           const roomId = params[0];
           if (roomId === "room_permanent") {
@@ -131,20 +145,6 @@ test("iceServersRouter Test Suite", async (t) => {
             return { rows: [{ roomId, status: "ended", isPermanent: false, expiresAt: null }] };
           }
           return { rows: [] };
-        }
-        if (sql.includes("FROM room_bans")) {
-          const uid = params[1];
-          if (uid === "usr_banned") {
-            return { rows: [{ id: "ban_1" }] };
-          }
-          return { rows: [] };
-        }
-        if (sql.includes("FROM room_admissions")) {
-          const uid = params[1];
-          if (uid === "usr_revoked") {
-            return { rows: [{ revoked_at: new Date().toISOString() }] };
-          }
-          return { rows: [{ revoked_at: null }] };
         }
         return { rows: [] };
       },

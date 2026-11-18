@@ -142,7 +142,7 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
       if (postgres) {
         try {
           const roomRes = await postgres.query(
-            `SELECT id, status, "isPermanent", "expiresAt", owner_id FROM rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
+            `SELECT "roomId", status, "isPermanent", "expiresAt", owner_id FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) LIMIT 1`,
             [cleanRoomId]
           );
           if (roomRes.rows.length > 0) {
@@ -190,9 +190,9 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
 
       if (postgres) {
         try {
-          const roomUuid = roomRow?.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+          const roomUuid = roomRow?.roomId || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
           const banRes = await postgres.query(
-            `SELECT id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid LIMIT 1`,
+            `SELECT id FROM room_bans WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid LIMIT 1`,
             [roomUuid || cleanRoomId, derivedUserId]
           );
           if (banRes.rows.length > 0) {
@@ -208,7 +208,7 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
           // Guest revocation check
           if (isGuestAuth) {
             const admRes = await postgres.query(
-              `SELECT revoked_at FROM room_admissions WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid ORDER BY admitted_at DESC LIMIT 1`,
+              `SELECT revoked_at FROM room_admissions WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid ORDER BY admitted_at DESC LIMIT 1`,
               [roomUuid || cleanRoomId, derivedUserId]
             );
             if (admRes.rows.length === 0 || admRes.rows[0].revoked_at) {

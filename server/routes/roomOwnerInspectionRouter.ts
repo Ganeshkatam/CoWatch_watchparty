@@ -102,7 +102,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       if (search) {
         params.push(`%${search.toLowerCase()}%`);
         const idx = params.length;
-        whereClauses.push(`(LOWER("roomTitle") LIKE $${idx} OR LOWER("roomDescription") LIKE $${idx} OR LOWER(id::text) LIKE $${idx} OR LOWER(joining_id) LIKE $${idx})`);
+        whereClauses.push(`(LOWER("roomTitle") LIKE $${idx} OR LOWER("roomDescription") LIKE $${idx} OR LOWER("roomId"::text) LIKE $${idx} OR LOWER(joining_id) LIKE $${idx})`);
       }
 
       if (status && status !== "all") {
@@ -139,9 +139,9 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       if (sort === "oldest") {
         orderBy = `"creationTime" ASC`;
       } else if (sort === "title-asc") {
-        orderBy = `LOWER(COALESCE("roomTitle", id::text)) ASC`;
+        orderBy = `LOWER(COALESCE("roomTitle", "roomId"::text)) ASC`;
       } else if (sort === "title-desc") {
-        orderBy = `LOWER(COALESCE("roomTitle", id::text)) DESC`;
+        orderBy = `LOWER(COALESCE("roomTitle", "roomId"::text)) DESC`;
       } else if (sort === "expiring") {
         orderBy = `CASE WHEN status IN ('active', 'expiring') THEN 0 ELSE 1 END, "expiresAt" ASC NULLS LAST, "creationTime" DESC`;
       }
