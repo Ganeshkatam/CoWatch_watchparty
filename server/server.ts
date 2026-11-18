@@ -268,20 +268,38 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
   try {
     const persistedRoom = (
       await postgres.query<PersistentRoom>(
-        `SELECT * from rooms where "roomId" = $1`,
+        `SELECT * FROM public.rooms WHERE id::text = $1 OR joining_id = $1 OR legacy_room_id = $1 OR "roomId" = $1 LIMIT 1`,
         [cleanId],
       )
     )?.rows?.[0];
 
     if (!persistedRoom) return null;
 
+    const canonicalId = persistedRoom.id;
+    const legacyRoomId = persistedRoom.roomId || cleanId;
+
     if (rooms.has(cleanId)) return rooms.get(cleanId)!;
+    if (canonicalId && rooms.has(canonicalId)) return rooms.get(canonicalId)!;
 
     const { room } = await roomReconstructor.reconstructRoom(persistedRoom, io);
+    room.id = canonicalId;
+    room.joiningId = persistedRoom.joining_id;
+
     rooms.set(cleanId, room);
+    if (legacyRoomId && legacyRoomId !== cleanId) {
+      rooms.set(legacyRoomId, room);
+    }
+    if (canonicalId && canonicalId !== cleanId) {
+      rooms.set(canonicalId, room);
+    }
+    if (persistedRoom.joining_id && persistedRoom.joining_id !== cleanId) {
+      rooms.set(persistedRoom.joining_id, room);
+    }
+
     console.log(
-      "loading room %s into memory on shard %s",
+      "loading room %s (uuid: %s) into memory on shard %s",
       cleanId,
+      canonicalId,
       config.SHARD,
     );
     return room;
@@ -310,154 +328,161 @@ io.engine.use((req: any, res: Response, next: () => void) => {
 // Helper to cleanly unregister room namespaces regardless of slash prefix
 export function unregisterRoomNamespace(roomId: string) {
   if (!roomId) return;
-  const bareNsp = (io as any)._nsps?.get(roomId);
-  if (bareNsp) {
-    bareNsp.removeAllListeners();
-    (io as any)._nsps?.delete(roomId);
-  }
-  const slashNsp = (io as any)._nsps?.get(`/${roomId}`);
-  if (slashNsp) {
-    slashNsp.removeAllListeners();
-    (io as any)._nsps?.delete(`/${roomId}`);
-  }
-}
+    const memRoom = rooms.get(roomId);
+    const idsToUnregister = new Set<string>([roomId]);
+    if (memRoom?.id) idsToUnregister.add(memRoom.id);
+    if (memRoom?.roomId) idsToUnregister.add(memRoom.roomId);
 
-// Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
-const dynamicRoomNsp = io.of(/^\/[a-zA-Z0-9_\-\s%]+$/);
-dynamicRoomNsp.use(async (socket, next) => {
-  const cleanId = sanitizeRoomId(socket.nsp.name);
-  if (!cleanId || cleanId === "notifications") {
-    return next();
+    for (const id of idsToUnregister) {
+      const bareNsp = (io as any)._nsps?.get(id);
+      if (bareNsp) {
+        bareNsp.removeAllListeners();
+        (io as any)._nsps?.delete(id);
+      }
+      const slashNsp = (io as any)._nsps?.get(`/${id}`);
+      if (slashNsp) {
+        slashNsp.removeAllListeners();
+        (io as any)._nsps?.delete(`/${id}`);
+      }
+    }
   }
-  try {
-    let memoryRoom = rooms.get(cleanId);
-    if (!memoryRoom) {
-      memoryRoom = (await getOrCreateRoom(cleanId)) || undefined;
+
+  // Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
+  const dynamicRoomNsp = io.of(/^\/[a-zA-Z0-9_\-\s%]+$/);
+  dynamicRoomNsp.use(async (socket, next) => {
+    const cleanId = sanitizeRoomId(socket.nsp.name);
+    if (!cleanId || cleanId === "notifications") {
+      return next();
     }
-    if (!memoryRoom) {
-      return next(new Error("ROOM_NOT_FOUND"));
+    try {
+      let memoryRoom = rooms.get(cleanId);
+      if (!memoryRoom) {
+        memoryRoom = (await getOrCreateRoom(cleanId)) || undefined;
+      }
+      if (!memoryRoom) {
+        return next(new Error("ROOM_NOT_FOUND"));
+      }
+      next();
+    } catch (err) {
+      console.error(`[Socket] Failed loading dynamic room namespace ${cleanId}:`, err);
+      next(new Error("ROOM_LOAD_ERROR"));
     }
+  });
+  // Background Scheduled Maintenance (Lifecycle, Persistence, Expiration, Metrics, Retention)
+  registerBackgroundMaintenance({
+    rooms,
+    postgres,
+    io,
+    roomLifecycleManager,
+    unregisterRoomNamespace,
+    serverLifecycle,
+  });
+
+  // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
+  EmailProviderRegistry.validateActiveProvider()
+    .then((provider) => {
+      console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
+      startEmailWorker();
+    })
+    .catch((err) => {
+      // Transactional email is an optional capability. Keep the API available
+      // when its provider is misconfigured. Leave pending outbox jobs untouched
+      // until valid provider configuration is supplied.
+      console.error('[EmailProvider] Startup validation failed; email delivery is unavailable until configuration is fixed:', err);
+    });
+
+
+  if (process.env.NODE_ENV === "development") {
+    try {
+
+      // import('./syncSubs.ts');
+      // import('./timeSeries.ts');
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  app.use(cors(corsOptions));
+
+  // NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media safe)
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    const isProd = process.env.NODE_ENV === "production";
+    if (isProd) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    const scriptSrc = isProd
+      ? "script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com"
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com";
+    const csp = [
+      "default-src 'self'",
+      scriptSrc,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https:",
+      "media-src 'self' blob: data: https:",
+      "connect-src 'self' ws: wss: https: blob:",
+      "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+    ].join("; ");
+    res.setHeader("Content-Security-Policy", csp);
     next();
-  } catch (err) {
-    console.error(`[Socket] Failed loading dynamic room namespace ${cleanId}:`, err);
-    next(new Error("ROOM_LOAD_ERROR"));
-  }
-});
-// Background Scheduled Maintenance (Lifecycle, Persistence, Expiration, Metrics, Retention)
-registerBackgroundMaintenance({
-  rooms,
-  postgres,
-  io,
-  roomLifecycleManager,
-  unregisterRoomNamespace,
-  serverLifecycle,
-});
-
-// NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
-EmailProviderRegistry.validateActiveProvider()
-  .then((provider) => {
-    console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
-    startEmailWorker();
-  })
-  .catch((err) => {
-    // Transactional email is an optional capability. Keep the API available
-    // when its provider is misconfigured. Leave pending outbox jobs untouched
-    // until valid provider configuration is supplied.
-    console.error('[EmailProvider] Startup validation failed; email delivery is unavailable until configuration is fixed:', err);
   });
 
 
-if (process.env.NODE_ENV === "development") {
-  try {
-
-    // import('./syncSubs.ts');
-    // import('./timeSeries.ts');
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-app.use(cors(corsOptions));
-
-// NOTIFY-004: Production Security Headers (WebRTC, WebSocket, Media safe)
-app.use((_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  const isProd = process.env.NODE_ENV === "production";
-  if (isProd) {
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  }
-  const scriptSrc = isProd
-    ? "script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com";
-  const csp = [
-    "default-src 'self'",
-    scriptSrc,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob: data: https:",
-    "connect-src 'self' ws: wss: https: blob:",
-    "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-  ].join("; ");
-  res.setHeader("Content-Security-Policy", csp);
-  next();
-});
 
 
+  app.use(
+    bodyParser.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf.toString("utf8");
+      },
+    }),
+  );
+  app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
+  app.use("/api/notifications", createNotificationRouter(io, (roomId) => rooms.get(roomId)));
+  app.use("/api/invitations", createInvitationRouter({ roomLookup: (roomId) => rooms.get(roomId), rooms }));
+  app.use("/api", profileRouter);
+  app.use(createFeedbackRouter({ postgres, supabaseAdmin }));
 
+  // INTERNAL OPERATIONS & HEALTH: Handled by modular router (routes/internalOperationsRouter.ts)
+  app.use(createInternalOperationsRouter({ postgres }));
 
-app.use(
-  bodyParser.json({
-    verify: (req: any, _res, buf) => {
-      req.rawBody = buf.toString("utf8");
-    },
-  }),
-);
-app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
-app.use("/api/notifications", createNotificationRouter(io, (roomId) => rooms.get(roomId)));
-app.use("/api/invitations", createInvitationRouter({ roomLookup: (roomId) => rooms.get(roomId), rooms }));
-app.use("/api", profileRouter);
-app.use(createFeedbackRouter({ postgres, supabaseAdmin }));
+  app.use(createSubtitleRouter());
+  app.use(compression());
+  app.use(createOperatorRouter({ postgres }));
+  app.use(createMediaMetadataRouter({ postgres }));
+  app.use(createRoomLifecycleRouter({ rooms, io, postgres, getOrCreateRoom, unregisterRoomNamespace }));
+  app.use(createRoomConfigRouter({ rooms, io, postgres }));
+  app.use(createRoomAdmissionRouter({ rooms, postgres, getOrCreateRoom }));
+  app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
+  app.use(createRoomOwnerInspectionRouter({ postgres }));
+  app.use(createPublicUtilityRouter({ postgres }));
+  app.use(createIceServersRouter({ rooms, postgres }));
 
-// INTERNAL OPERATIONS & HEALTH: Handled by modular router (routes/internalOperationsRouter.ts)
-app.use(createInternalOperationsRouter({ postgres }));
+  // AUTH & ACCOUNT SELF-SERVICE: Handled by modular router (routes/authAccountRouter.ts)
+  app.use(createAuthAccountRouter());
 
-app.use(createSubtitleRouter());
-app.use(compression());
-app.use(createOperatorRouter({ postgres }));
-app.use(createMediaMetadataRouter({ postgres }));
-app.use(createRoomLifecycleRouter({ rooms, io, postgres, getOrCreateRoom, unregisterRoomNamespace }));
-app.use(createRoomConfigRouter({ rooms, io, postgres }));
-app.use(createRoomAdmissionRouter({ rooms, postgres, getOrCreateRoom }));
-app.use(createRoomDiscoveryRouter({ rooms, postgres, getOrCreateRoom }));
-app.use(createRoomOwnerInspectionRouter({ postgres }));
-app.use(createPublicUtilityRouter({ postgres }));
-app.use(createIceServersRouter({ rooms, postgres }));
+  // FEEDBACK & ABUSE REPORTING: Handled by modular router mounted above (routes/feedbackRouter.ts)
 
-// AUTH & ACCOUNT SELF-SERVICE: Handled by modular router (routes/authAccountRouter.ts)
-app.use(createAuthAccountRouter());
+  // OPERATOR & ADMIN ENDPOINTS: Handled by modular router mounted above (routes/operatorRouter.ts)
 
-// FEEDBACK & ABUSE REPORTING: Handled by modular router mounted above (routes/feedbackRouter.ts)
+  // MEDIA METADATA & YOUTUBE: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
 
-// OPERATOR & ADMIN ENDPOINTS: Handled by modular router mounted above (routes/operatorRouter.ts)
+  // ROOM CONFIGURATION: Handled by modular router mounted above (routes/roomConfigRouter.ts)
 
-// MEDIA METADATA & YOUTUBE: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
+  // DESTRUCTIVE ACCOUNT TEARDOWN: Handled by modular router (routes/accountTeardownRouter.ts)
+  app.use(createAccountTeardownRouter({ rooms, postgres, unregisterRoomNamespaceFn: unregisterRoomNamespace }));
 
-// ROOM CONFIGURATION: Handled by modular router mounted above (routes/roomConfigRouter.ts)
-
-// DESTRUCTIVE ACCOUNT TEARDOWN: Handled by modular router (routes/accountTeardownRouter.ts)
-app.use(createAccountTeardownRouter({ rooms, postgres, unregisterRoomNamespaceFn: unregisterRoomNamespace }));
-
-// RUNTIME CLIENT METADATA: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
+  // RUNTIME CLIENT METADATA: Handled by modular router mounted above (routes/mediaMetadataRouter.ts)
 
 
 
-// PUBLIC CONTENT & UTILITIES: Handled by modular router mounted above (routes/publicUtilityRouter.ts)
+  // PUBLIC CONTENT & UTILITIES: Handled by modular router mounted above (routes/publicUtilityRouter.ts)
 
-// MEDIA PROXY: Handled by modular router (routes/mediaProxyRouter.ts)
-app.use(createMediaProxyRouter());
+  // MEDIA PROXY: Handled by modular router (routes/mediaProxyRouter.ts)
+  app.use(createMediaProxyRouter());
 

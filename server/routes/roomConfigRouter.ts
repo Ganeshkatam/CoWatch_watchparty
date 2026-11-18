@@ -291,13 +291,15 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       requestedDurationHours = Math.min(Math.max(1, Math.floor(req.body.sessionTimeHours)), planDurationCeiling);
     }
     const expiresAt = isPermanent ? null : new Date(now.getTime() + requestedDurationHours * 60 * 60 * 1000);
+    let createdRoomId: string | undefined;
+    let createdJoiningId: string | undefined;
 
     if (postgres) {
       try {
         const passcodeHash = await hashRoomPasscode(rawPasscode);
         const ownerPasscodeEncrypted = encryptPasscodeForOwner(rawPasscode);
 
-        await postgres.query(
+        const createResult = await postgres.query(
           `SELECT public.create_room_authoritative(
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
           ) AS result`,
@@ -316,6 +318,24 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
             maxParticipants,
           ]
         );
+        const authRow = createResult?.rows?.[0]?.result as any;
+        if (authRow?.id) createdRoomId = authRow.id;
+        if (authRow?.joiningId) createdJoiningId = authRow.joiningId;
+
+        if (postgres && !createdRoomId) {
+          try {
+            const idRes = await postgres.query<{ id: string; joining_id: string }>(
+              `SELECT id, joining_id FROM public.rooms WHERE "roomId" = $1 LIMIT 1`,
+              [name]
+            );
+            if (idRes.rows?.[0]) {
+              createdRoomId = idRes.rows[0].id;
+              createdJoiningId = idRes.rows[0].joining_id;
+            }
+          } catch {
+            // best-effort identity hydration
+          }
+        }
       } catch (e: any) {
         redisCount("createRoomError");
         const errMsg = e?.message || "";
@@ -385,6 +405,8 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
 
     // Authoritative in-memory registration ONLY after DB commit succeeds
     const newRoom = new Room(io, name);
+    if (createdRoomId) newRoom.id = createdRoomId;
+    if (createdJoiningId) newRoom.joiningId = createdJoiningId;
     if (req.body?.lock) {
       newRoom.lock = decoded.uid;
     }
@@ -410,7 +432,18 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       }
     }
     rooms.set(name, newRoom);
-    res.json({ name });
+    if (newRoom.id && newRoom.id !== name) {
+      rooms.set(newRoom.id, newRoom);
+    }
+    if (newRoom.joiningId && newRoom.joiningId !== name) {
+      rooms.set(newRoom.joiningId, newRoom);
+    }
+    res.json({
+      name,
+      roomId: name,
+      id: newRoom.id,
+      joiningId: newRoom.joiningId,
+    });
   });
 
   // ============================================================================
@@ -450,7 +483,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
 
     const roomCheck = await postgres.query(
-      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE ("roomId" = $1 OR id::text = $1) AND owner_id = $2`,
       [cleanRoomId, decoded.uid]
     );
 

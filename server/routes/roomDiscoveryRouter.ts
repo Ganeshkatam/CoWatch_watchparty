@@ -64,80 +64,85 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
 
     try {
       const result = await postgres?.query(
-        `SELECT r."roomId", r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
-                (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
-                p.display_name as "hostName"
+        `SELECT r.id, r.joining_id, r.legacy_room_id, r."roomId", r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
+        (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
+        p.display_name as "hostName"
          FROM rooms r
          LEFT JOIN profiles p ON r.owner_id = p.id
-         WHERE r."roomId" = $1`,
+         WHERE (r.id::text = $1 OR r.joining_id = $1 OR r.legacy_room_id = $1 OR r."roomId" = $1)`,
         [cleanRoomId]
       );
 
-      if (!result || result.rows.length === 0) {
-        res.status(404).json({ error: "Room not found" });
-        return;
-      }
+  if (!result || result.rows.length === 0) {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
 
-      const row = result.rows[0];
+  const row = result.rows[0];
 
-      // Compute derived status if expired
-      let derivedStatus = row.status;
-      if ((row.status === "active" || row.status === "inactive") && !row.isPermanent && row.expiresAt) {
-        const expiresAt = new Date(row.expiresAt).getTime();
-        if (expiresAt <= Date.now()) {
-          derivedStatus = "expired";
-        }
-      }
-
-      const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
-      let isHost = isOwner;
-      let memoryRoom = rooms.get(cleanRoomId);
-      if (!memoryRoom) {
-        memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
-      }
-      let isHostPresent = false;
-      if (memoryRoom && typeof (memoryRoom as any).isHostPresent === "function") {
-        isHostPresent = (memoryRoom as any).isHostPresent();
-      }
-      if (memoryRoom && callerUid) {
-        if (typeof (memoryRoom as any).isHostUid === "function") {
-          isHost = isHost || (memoryRoom as any).isHostUid(callerUid);
-        } else if ((memoryRoom as any).currentHostUid) {
-          isHost = isHost || (memoryRoom as any).currentHostUid === callerUid;
-        }
-      }
-
-      // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
-      res.json({
-        roomId: row.roomId,
-        roomTitle: row.roomTitle || row.roomId,
-        roomDescription: row.roomDescription || "",
-        coverPhoto: row.coverPhoto || null,
-        status: derivedStatus,
-        requiresPasscode: Boolean(row.requiresPasscode),
-        participantsLocked: Boolean(row.participants_locked),
-        maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
-        isOwner,
-        isHost,
-        owner_id: isOwner ? row.owner_id : null,
-        isHostPresent: Boolean(isHostPresent),
-        hostName: row.hostName || "Host",
-        isPermanent: Boolean(row.isPermanent),
-      });
-    } catch (err) {
-      console.error("Error fetching roomInfo:", err);
-      res.status(500).json({ error: "Internal server error" });
+  // Compute derived status if expired
+  let derivedStatus = row.status;
+  if ((row.status === "active" || row.status === "inactive") && !row.isPermanent && row.expiresAt) {
+    const expiresAt = new Date(row.expiresAt).getTime();
+    if (expiresAt <= Date.now()) {
+      derivedStatus = "expired";
     }
+  }
+
+  const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
+  let isHost = isOwner;
+  let memoryRoom = rooms.get(cleanRoomId);
+  if (!memoryRoom && row.id && row.id !== cleanRoomId) {
+    memoryRoom = rooms.get(row.id);
+  }
+  if (!memoryRoom) {
+    memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
+  }
+  let isHostPresent = false;
+  if (memoryRoom && typeof (memoryRoom as any).isHostPresent === "function") {
+    isHostPresent = (memoryRoom as any).isHostPresent();
+  }
+  if (memoryRoom && callerUid) {
+    if (typeof (memoryRoom as any).isHostUid === "function") {
+      isHost = isHost || (memoryRoom as any).isHostUid(callerUid);
+    } else if ((memoryRoom as any).currentHostUid) {
+      isHost = isHost || (memoryRoom as any).currentHostUid === callerUid;
+    }
+  }
+
+  // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
+  res.json({
+    id: row.id,
+    joiningId: row.joining_id,
+    roomId: row.roomId || row.id,
+    roomTitle: row.roomTitle || row.roomId,
+    roomDescription: row.roomDescription || "",
+    coverPhoto: row.coverPhoto || null,
+    status: derivedStatus,
+    requiresPasscode: Boolean(row.requiresPasscode),
+    participantsLocked: Boolean(row.participants_locked),
+    maxParticipants: typeof row.max_participants === "number" ? row.max_participants : 10,
+    isOwner,
+    isHost,
+    owner_id: isOwner ? row.owner_id : null,
+    isHostPresent: Boolean(isHostPresent),
+    hostName: row.hostName || "Host",
+    isPermanent: Boolean(row.isPermanent),
+  });
+} catch (err) {
+  console.error("Error fetching roomInfo:", err);
+  res.status(500).json({ error: "Internal server error" });
+}
   });
 
-  router.get("/resolveShard/:roomId", async (req: Request, res: Response) => {
-    const cleanRoomId = sanitizeId(req.params.roomId);
-    const shardNum = resolveShardHandler(cleanRoomId);
-    const isShardConfigured = options.configOverride?.SHARD !== undefined
-      ? options.configOverride.SHARD
-      : config.SHARD;
-    res.send(String(isShardConfigured ? shardNum : ""));
-  });
+router.get("/resolveShard/:roomId", async (req: Request, res: Response) => {
+  const cleanRoomId = sanitizeId(req.params.roomId);
+  const shardNum = resolveShardHandler(cleanRoomId);
+  const isShardConfigured = options.configOverride?.SHARD !== undefined
+    ? options.configOverride.SHARD
+    : config.SHARD;
+  res.send(String(isShardConfigured ? shardNum : ""));
+});
 
-  return router;
+return router;
 }

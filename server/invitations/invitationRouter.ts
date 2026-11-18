@@ -4,6 +4,7 @@ import { supabaseAdmin, validateToken } from '../utils/supabase.ts';
 import { postgres } from '../utils/postgres.ts';
 import { isTerminalRoom } from '../lifecycle/types.ts';
 import { generateAdmissionToken, issueRoomAdmissionToken } from '../utils/admissionToken.ts';
+import { isValidCanonicalUuid } from '../utils/roomIdentifier.ts';
 import config from '../config.ts';
 
 export function hashInvitationToken(token: string): string {
@@ -300,19 +301,30 @@ export async function executeInvitationAdmission(
         );
       }
 
-      await client.query(
-        `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-         VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
-         ON CONFLICT (room_id, user_id) DO UPDATE
-         SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
-        [inv.room_id, callerUid],
-      );
+      const roomUuid = (inv as any).room_uuid || (isValidCanonicalUuid(inv.room_id) ? inv.room_id : null);
+      if (roomUuid) {
+        await client.query(
+          `INSERT INTO public.room_admissions (room_id, room_uuid, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+           VALUES ($1, $2::uuid, $3::uuid, 'invite', now(), NULL, NULL)
+           ON CONFLICT (room_id, user_id) DO UPDATE
+           SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite', room_uuid = EXCLUDED.room_uuid`,
+          [inv.room_id, roomUuid, callerUid],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+           VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
+           ON CONFLICT (room_id, user_id) DO UPDATE
+           SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
+          [inv.room_id, callerUid],
+        );
+      }
 
       await client.query('COMMIT');
     } catch (txErr) {
       try {
         await client.query('ROLLBACK');
-      } catch {}
+      } catch { }
       throw txErr;
     } finally {
       client.release?.();
@@ -347,13 +359,24 @@ export async function executeInvitationAdmission(
     }
 
     try {
-      await pool.query(
-        `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-         VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
-         ON CONFLICT (room_id, user_id) DO UPDATE
-         SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
-        [inv.room_id, callerUid],
-      );
+      const roomUuid = (inv as any).room_uuid || (isValidCanonicalUuid(inv.room_id) ? inv.room_id : null);
+      if (roomUuid) {
+        await pool.query(
+          `INSERT INTO public.room_admissions (room_id, room_uuid, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+           VALUES ($1, $2::uuid, $3::uuid, 'invite', now(), NULL, NULL)
+           ON CONFLICT (room_id, user_id) DO UPDATE
+           SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite', room_uuid = EXCLUDED.room_uuid`,
+          [inv.room_id, roomUuid, callerUid],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+           VALUES ($1, $2::uuid, 'invite', now(), NULL, NULL)
+           ON CONFLICT (room_id, user_id) DO UPDATE
+           SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'invite'`,
+          [inv.room_id, callerUid],
+        );
+      }
     } catch (admDbErr) {
       console.error('[Admission] Failed to record durable admission for invite in DB:', admDbErr);
       return {
@@ -425,9 +448,9 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
 
       // Verify room existence and lifecycle
       const roomRes = await pool.query(
-        `SELECT "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked
+        `SELECT id, "roomId", "roomTitle", owner_id, status, "isPermanent", participants_locked
          FROM public.rooms
-         WHERE "roomId" = $1`,
+         WHERE ("roomId" = $1 OR id::text = $1 OR joining_id = $1)`,
         [cleanRoomId],
       );
 
@@ -480,13 +503,22 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
         }
       }
 
-      const insertRes = await pool.query(
-        `INSERT INTO public.room_invitations
-         (room_id, inviter_id, target_user_id, token_hash, expires_at, is_reusable)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, created_at`,
-        [cleanRoomId, callerUid, cleanTargetUserId, tokenHash, expiresAt, reusable],
-      );
+      const roomUuid = room.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+      const insertRes = roomUuid
+        ? await pool.query(
+          `INSERT INTO public.room_invitations
+             (room_id, room_uuid, inviter_id, target_user_id, token_hash, expires_at, is_reusable)
+             VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)
+             RETURNING id, created_at`,
+          [room.roomId || cleanRoomId, roomUuid, callerUid, cleanTargetUserId, tokenHash, expiresAt, reusable],
+        )
+        : await pool.query(
+          `INSERT INTO public.room_invitations
+             (room_id, inviter_id, target_user_id, token_hash, expires_at, is_reusable)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, created_at`,
+          [cleanRoomId, callerUid, cleanTargetUserId, tokenHash, expiresAt, reusable],
+        );
 
       const invitation = insertRes.rows[0];
       const origin = req.get('origin') || (req.get('host') ? `${req.protocol}://${req.get('host')}` : '');
@@ -496,7 +528,8 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
         invitationId: invitation.id,
         token: rawToken,
         invitationUrl,
-        roomId: cleanRoomId,
+        roomId: room.roomId || cleanRoomId,
+        id: room.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : undefined),
         expiresAt,
         isReusable: reusable,
       });
@@ -523,12 +556,12 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
 
     try {
       const result = await pool.query(
-        `SELECT i.id, i.room_id, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
+        `SELECT i.id, i.room_id, i.room_uuid, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
                 i.accepted_at, i.is_reusable,
                 r."roomTitle", r.status, r."isPermanent", r.participants_locked,
                 p.display_name AS inviter_name, p.username AS inviter_username
          FROM public.room_invitations i
-         JOIN public.rooms r ON r."roomId" = i.room_id
+         JOIN public.rooms r ON (r.id = i.room_uuid OR r."roomId" = i.room_id)
          LEFT JOIN public.profiles p ON p.id = i.inviter_id
          WHERE i.token_hash = $1`,
         [tokenHash],
@@ -565,12 +598,12 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
 
     try {
       const result = await pool.query(
-        `SELECT i.id, i.room_id, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
+        `SELECT i.id, i.room_id, i.room_uuid, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
                 i.accepted_at, i.is_reusable,
                 r."roomTitle", r.status, r."isPermanent", r.participants_locked,
                 p.display_name AS inviter_name, p.username AS inviter_username
          FROM public.room_invitations i
-         JOIN public.rooms r ON r."roomId" = i.room_id
+         JOIN public.rooms r ON (r.id = i.room_uuid OR r."roomId" = i.room_id)
          LEFT JOIN public.profiles p ON p.id = i.inviter_id
          WHERE i.id = $1`,
         [invId],
@@ -614,11 +647,11 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
 
       try {
         const result = await pool.query(
-          `SELECT i.id, i.room_id, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
+          `SELECT i.id, i.room_id, i.room_uuid, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
                   i.accepted_at, i.is_reusable,
                   r."roomTitle", r.status, r."isPermanent", r.owner_id, r.participants_locked, r.max_participants
            FROM public.room_invitations i
-           JOIN public.rooms r ON r."roomId" = i.room_id
+           JOIN public.rooms r ON (r.id = i.room_uuid OR r."roomId" = i.room_id)
            WHERE i.token_hash = $1`,
           [tokenHash],
         );
@@ -668,11 +701,11 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
 
       try {
         const result = await pool.query(
-          `SELECT i.id, i.room_id, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
+          `SELECT i.id, i.room_id, i.room_uuid, i.inviter_id, i.target_user_id, i.expires_at, i.revoked_at,
                   i.accepted_at, i.is_reusable,
                   r."roomTitle", r.status, r."isPermanent", r.owner_id, r.participants_locked, r.max_participants
            FROM public.room_invitations i
-           JOIN public.rooms r ON r."roomId" = i.room_id
+           JOIN public.rooms r ON (r.id = i.room_uuid OR r."roomId" = i.room_id)
            WHERE i.id = $1`,
           [invitationId],
         );
@@ -718,9 +751,9 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
       }
 
       const invRes = await pool.query(
-        `SELECT i.id, i.room_id, r.owner_id
+        `SELECT i.id, i.room_id, i.room_uuid, r.owner_id
          FROM public.room_invitations i
-         JOIN public.rooms r ON r."roomId" = i.room_id
+         JOIN public.rooms r ON (r.id = i.room_uuid OR r."roomId" = i.room_id)
          WHERE i.id = $1`,
         [invId],
       );

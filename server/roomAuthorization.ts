@@ -35,6 +35,7 @@ export interface AuthorizationContext {
   actorUid: string;
   actorClientId: string;
   roomId: string;
+  roomUuid?: string;
   isMember: boolean;
   isHost: boolean;
   isOwner: boolean;
@@ -48,6 +49,7 @@ export interface ActionTarget {
   targetMessage?: {
     id: string;
     roomId: string;
+    roomUuid?: string;
     authorUid: string | null;
   };
   targetUserId?: string;
@@ -78,8 +80,17 @@ export function authorizeRoomAction(
   target?: ActionTarget
 ): AuthorizationResult {
   // 1. Target Room Scope Validation (Cross-room probing defense)
-  if (target?.targetMessage?.roomId && target.targetMessage.roomId !== context.roomId) {
-    return { allowed: false, reason: "ROOM_MISMATCH", code: "ROOM_MISMATCH" };
+  if (target?.targetMessage) {
+    const targetRoom = target.targetMessage.roomUuid || target.targetMessage.roomId;
+    const contextRoom = context.roomUuid || context.roomId;
+    const match =
+      (target.targetMessage.roomId && target.targetMessage.roomId === context.roomId) ||
+      (target.targetMessage.roomUuid && context.roomUuid && target.targetMessage.roomUuid === context.roomUuid) ||
+      (targetRoom && contextRoom && targetRoom === contextRoom);
+
+    if (!match) {
+      return { allowed: false, reason: "ROOM_MISMATCH", code: "ROOM_MISMATCH" };
+    }
   }
 
   // 2. Mandatory Membership Invariant: Room ownership strictly implies admitted room membership

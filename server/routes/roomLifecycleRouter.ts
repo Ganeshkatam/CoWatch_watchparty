@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import type { Room } from "../room.ts";
 import { validateUserToken as defaultValidateUserToken } from "../utils/supabase.ts";
 import { sanitizeRoomId as defaultSanitizeRoomId } from "../strip_slashes.ts";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.ts";
 
 export function extractBearerToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
@@ -71,7 +72,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
 
     try {
       const selectResult = await postgres?.query(
-        `SELECT "startedAt", "expiresAt", "status" FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+        `SELECT "startedAt", "expiresAt", "status" FROM rooms WHERE ("roomId" = $1 OR id::text = $1) AND owner_id = $2`,
         [roomId, decoded.uid]
       );
 
@@ -112,7 +113,11 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         if (memoryRoom) {
           memoryRoom.expiresAt = new Date(newExpiresAt);
         }
-        res.json({ expiresAt: newExpiresAt });
+        res.json({
+          expiresAt: newExpiresAt,
+          id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
+          roomId: memoryRoom?.roomId || roomId,
+        });
       } else {
         res.status(403).json({ error: { code: "FORBIDDEN", message: "Forbidden" } });
       }
@@ -167,7 +172,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         // Non-resident room: verify owner authorization authoritatively from database
         const roomRow = (
           await postgres.query<{ owner_id: string }>(
-            `SELECT owner_id FROM public.rooms WHERE "roomId" = $1 LIMIT 1`,
+            `SELECT owner_id FROM public.rooms WHERE ("roomId" = $1 OR id::text = $1) LIMIT 1`,
             [roomId]
           )
         )?.rows?.[0];
@@ -219,7 +224,12 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         }
       }
 
-      res.json({ success: true, status: 'active' });
+      res.json({
+        success: true,
+        status: 'active',
+        id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
+        roomId: memoryRoom?.roomId || roomId,
+      });
     } catch (error) {
       console.error("Error starting room session:", error);
       res.status(500).json({ error: { code: "FORBIDDEN", message: "Internal server error" } });
@@ -287,7 +297,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
 
       if (!isPermanent && postgres) {
         postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'session_ended' WHERE room_id = $1 AND revoked_at IS NULL`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'session_ended' WHERE (room_id = $1 OR room_uuid = (SELECT id FROM rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1)) AND revoked_at IS NULL`,
           [roomId]
         ).catch((e) => console.warn("[Admission] Failed to revoke admissions for ended temporary room:", e));
       }
@@ -330,7 +340,8 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
 
       res.json({
         success: true,
-        roomId,
+        roomId: memoryRoom?.roomId || roomId,
+        id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
         status: newStatus,
         isPermanent,
       });
@@ -410,7 +421,22 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         });
         memoryRoom.disconnectAllSockets();
         rooms.delete(roomId);
+        if (memoryRoom.id) {
+          rooms.delete(memoryRoom.id);
+        }
+        if (memoryRoom.joiningId) {
+          rooms.delete(memoryRoom.joiningId);
+        }
+        if (memoryRoom.roomId) {
+          rooms.delete(memoryRoom.roomId);
+        }
         unregisterRoomNamespace(roomId);
+        if (memoryRoom.roomId && memoryRoom.roomId !== roomId) {
+          unregisterRoomNamespace(memoryRoom.roomId);
+        }
+        if (memoryRoom.id && memoryRoom.id !== roomId) {
+          unregisterRoomNamespace(memoryRoom.id);
+        }
         memoryRoom.destroy();
       }
 

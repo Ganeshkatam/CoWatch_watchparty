@@ -179,15 +179,15 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         totalCount = Number(countRes?.rows?.[0]?.count) || 0;
       }
 
-      let querySql = `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
-                             "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-                             status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
-                      FROM rooms WHERE ${whereSql} ORDER BY ${orderBy}`;
+      let querySql = `SELECT id, joining_id, legacy_room_id, "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+    "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
+    status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
+                      FROM rooms WHERE ${ whereSql } ORDER BY ${ orderBy } `;
 
       const queryParams = [...params];
       if (hasPagination) {
         queryParams.push(limit, offset);
-        querySql += ` LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`;
+        querySql += ` LIMIT $${ queryParams.length - 1 } OFFSET $${ queryParams.length } `;
       }
 
       const result = await postgres.query(querySql, queryParams);
@@ -207,6 +207,9 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         const isEnded = derivedStatus === 'ended' || derivedStatus === 'expired';
         const currentPasscode = (isEnded || !r.owner_passcode) ? null : decryptPasscode(r.owner_passcode);
         return {
+          id: r.id || r.roomId,
+          joiningId: r.joining_id,
+          roomId: r.roomId || r.id,
           ...r,
           owner_passcode: undefined,
           currentPasscode,
@@ -258,8 +261,8 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
     try {
       const roomResult = await postgres?.query(
         `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
-                "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
-                status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
+    "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
+    status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
          FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
         [roomId, decoded.uid],
       );

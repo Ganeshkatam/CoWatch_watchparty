@@ -4,7 +4,7 @@ import { Room } from "../room.ts";
 import { Server } from "socket.io";
 import type { DatabasePool } from "./admissionCoordinator.ts";
 
-export type ReconstructRoomInput = PersistentRoom | {
+export type ReconstructRoomInput = (PersistentRoom | {
   roomId: string;
   data?: unknown;
   status?: string;
@@ -17,6 +17,9 @@ export type ReconstructRoomInput = PersistentRoom | {
   mediaPath?: string | null;
   participants_locked?: boolean | null;
   max_participants?: number | null;
+}) & {
+  id?: string;
+  joining_id?: string;
 };
 
 export class RoomReconstructor {
@@ -45,6 +48,8 @@ export class RoomReconstructor {
     const room = new Room(io, roomId, snapshot ? JSON.stringify(snapshot) : undefined);
 
     // Hydrate lifecycle properties
+    room.id = row.id;
+    room.joiningId = row.joining_id;
     room.status = (row.status as RoomLifecycleStatus) || "active";
     room.owner_id = row.owner_id || "";
     room.isPermanent = Boolean(row.isPermanent);
@@ -79,7 +84,7 @@ export class RoomReconstructor {
     if (this.db) {
       try {
         const bansRes = await this.db.query(
-          `SELECT client_identity, user_id FROM room_bans WHERE room_id = $1`,
+          `SELECT client_identity, user_id FROM room_bans WHERE (room_id = $1 OR room_uuid = (SELECT id FROM rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1))`,
           [roomId]
         );
         if (bansRes.rows) {

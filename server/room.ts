@@ -132,6 +132,8 @@ export class Room {
 
   // Non-serialized state
   public roomId: string;
+  public id?: string;
+  public joiningId?: string;
   public roster: User[] = [];
   public get lastTsMap(): number {
     return this.playbackCoordinator.lastTsMap;
@@ -570,10 +572,12 @@ export class Room {
       let isOwner = false;
       if (postgres) {
         const result = await postgres.query(
-          `SELECT passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where "roomId" = $1`,
-          [this.roomId],
+          `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
+          [this.id || this.roomId],
         );
         const roomRow = result.rows[0];
+        if (roomRow?.id) this.id = this.id || roomRow.id;
+        if (roomRow?.joining_id) this.joiningId = this.joiningId || roomRow.joining_id;
         if (roomRow?.participants_locked !== undefined) {
           this.participantsLocked = Boolean(roomRow.participants_locked);
         }
@@ -830,8 +834,8 @@ export class Room {
       // Check if this socket matches the room owner UID
       const validateOwner = async () => {
         const result = await postgres?.query(
-          'SELECT owner_id FROM rooms where "roomId" = $1',
-          [this.roomId],
+          'SELECT owner_id FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)',
+          [this.id || this.roomId],
         );
         const owner = result?.rows[0]?.owner_id;
         return !owner || socket.uid === owner;
@@ -1437,8 +1441,8 @@ export class Room {
     // Slow path: query the database
     if (!postgres) return false;
     const result = await postgres.query(
-      'SELECT owner_id FROM rooms WHERE "roomId" = $1',
-      [this.roomId],
+      'SELECT owner_id FROM rooms WHERE (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)',
+      [this.id || this.roomId],
     );
     const dbOwner = result?.rows[0]?.owner_id;
     if (dbOwner) {
@@ -1679,10 +1683,12 @@ export class Room {
     if (postgres) {
       try {
         const result = await postgres.query(
-          `SELECT passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where "roomId" = $1`,
-          [this.roomId]
+            `SELECT id, joining_id, passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
+          [this.id || this.roomId]
         );
         first = result.rows[0];
+        if (first?.id) this.id = this.id || first.id;
+        if (first?.joining_id) this.joiningId = this.joiningId || first.joining_id;
         if (this.isChatDisabled === undefined) {
           this.isChatDisabled = Boolean(first?.isChatDisabled);
         }

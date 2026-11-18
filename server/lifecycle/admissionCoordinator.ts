@@ -40,7 +40,7 @@ export class AdmissionCoordinator {
         `SELECT "roomId", status, "owner_id", "expiresAt", "creationTime", "isPermanent", 
                 passcode, "participants_locked", "max_participants", data, lifecycle_revision, schema_version
          FROM rooms
-         WHERE "roomId" = $1
+         WHERE ("roomId" = $1 OR id::text = $1)
          FOR UPDATE`,
         [roomId]
       );
@@ -64,7 +64,7 @@ export class AdmissionCoordinator {
       if (!isPermanent && expiresAt !== null && expiresAt <= now) {
         if (status !== "expired" && status !== "ended") {
           await client.query(
-            `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE "roomId" = $1`,
+            `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE ("roomId" = $1 OR id::text = $1)`,
             [roomId]
           );
         }
@@ -118,7 +118,7 @@ export class AdmissionCoordinator {
         if (isActorOwner) {
           // Transactional activation on cold start by room owner inside row lock
           await client.query(
-            `UPDATE rooms SET status = 'active', "lastUpdateTime" = NOW() WHERE "roomId" = $1`,
+            `UPDATE rooms SET status = 'active', "lastUpdateTime" = NOW() WHERE ("roomId" = $1 OR id::text = $1)`,
             [roomId]
           );
           return {
@@ -171,7 +171,7 @@ export class AdmissionCoordinator {
       }>(
         `SELECT "roomId", status, "expiresAt", "creationTime", "isPermanent"
          FROM rooms
-         WHERE "roomId" = $1
+         WHERE ("roomId" = $1 OR id::text = $1)
          FOR UPDATE`,
         [roomId]
       );
@@ -197,7 +197,7 @@ export class AdmissionCoordinator {
       const targetDate = new Date(targetTime);
 
       await this.db.query(
-        `UPDATE rooms SET "expiresAt" = $1, "lastActiveAt" = NOW() WHERE "roomId" = $2`,
+        `UPDATE rooms SET "expiresAt" = $1, "lastActiveAt" = NOW() WHERE ("roomId" = $2 OR id::text = $2)`,
         [targetDate, roomId]
       );
 

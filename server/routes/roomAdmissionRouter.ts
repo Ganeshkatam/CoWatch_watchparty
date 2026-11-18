@@ -12,6 +12,7 @@ import {
 import { isTerminalRoom } from "../lifecycle/types.js";
 import { isBcryptHash, verifyRoomPasscode } from "../utils/roomPasscode.js";
 import { issueRoomAdmissionToken } from "../utils/admissionToken.js";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.js";
 
 function defaultExtractBearerToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
@@ -115,7 +116,7 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
     try {
       const result = await postgres?.query(
-        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt" FROM rooms WHERE "roomId" = $1`,
+        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", id, "roomId", joining_id FROM rooms WHERE ("roomId" = $1 OR id::text = $1 OR joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -191,13 +192,24 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
       if (postgres) {
         try {
-          await postgres.query(
-            `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
-             VALUES ($1, $2::uuid, 'passcode', now(), NULL, NULL)
-             ON CONFLICT (room_id, user_id) DO UPDATE
-             SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode'`,
-            [cleanRoomId, callerUid]
-          );
+          const roomUuid = row.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+          if (roomUuid) {
+            await postgres.query(
+              `INSERT INTO public.room_admissions (room_id, room_uuid, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+               VALUES ($1, $2::uuid, $3::uuid, 'passcode', now(), NULL, NULL)
+               ON CONFLICT (room_id, user_id) DO UPDATE
+               SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode', room_uuid = EXCLUDED.room_uuid`,
+              [cleanRoomId, roomUuid, callerUid]
+            );
+          } else {
+            await postgres.query(
+              `INSERT INTO public.room_admissions (room_id, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+               VALUES ($1, $2::uuid, 'passcode', now(), NULL, NULL)
+               ON CONFLICT (room_id, user_id) DO UPDATE
+               SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode'`,
+              [cleanRoomId, callerUid]
+            );
+          }
         } catch (admDbErr) {
           console.error("[Admission] Failed to record durable admission in DB:", admDbErr);
           res.status(500).json({ valid: false, error: "Database error recording room admission. Please try again.", code: "DATABASE_ERROR" });
@@ -250,7 +262,7 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
     try {
       const roomResult = await postgres?.query(
-        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt" FROM rooms WHERE "roomId" = $1`,
+        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", id, "roomId", joining_id FROM rooms WHERE ("roomId" = $1 OR id::text = $1 OR joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -266,12 +278,18 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
       }
 
       const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
+      const roomUuid = row.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
 
       // 1. Check bans in database
-      const banResult = await postgres?.query(
-        `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2::uuid LIMIT 1`,
-        [cleanRoomId, callerUid]
-      );
+      const banResult = roomUuid
+        ? await postgres?.query(
+            `SELECT id FROM room_bans WHERE (room_id = $1 OR room_uuid = $2::uuid) AND user_id = $3::uuid LIMIT 1`,
+            [cleanRoomId, roomUuid, callerUid]
+          )
+        : await postgres?.query(
+            `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2::uuid LIMIT 1`,
+            [cleanRoomId, callerUid]
+          );
       if (banResult && banResult.rows.length > 0) {
         res.status(403).json({ valid: false, error: "You have been banned from this room.", code: "BANNED" });
         return;
@@ -289,10 +307,15 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
       // 3. Durable admission check (non-owners must have an active admission record)
       if (!isOwner) {
-        const admResult = await postgres?.query(
-          `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2::uuid`,
-          [cleanRoomId, callerUid]
-        );
+        const admResult = roomUuid
+          ? await postgres?.query(
+              `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE (room_id = $1 OR room_uuid = $2::uuid) AND user_id = $3::uuid`,
+              [cleanRoomId, roomUuid, callerUid]
+            )
+          : await postgres?.query(
+              `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2::uuid`,
+              [cleanRoomId, callerUid]
+            );
         if (!admResult || admResult.rows.length === 0 || admResult.rows[0].revoked_at) {
           res.status(401).json({
             valid: false,
