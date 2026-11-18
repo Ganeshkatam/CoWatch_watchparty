@@ -169,7 +169,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     try {
       const fingerprint = computePasscodeFingerprint(passcode);
       const existing = await postgres.query(
-        `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+        `SELECT id FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
         [fingerprint]
       );
       res.json({ available: existing.rows.length === 0 });
@@ -266,7 +266,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
 
     if (postgres) {
       const duplicateCheck = await postgres.query(
-        `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+        `SELECT id FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
         [passcodeFingerprint]
       );
       if (duplicateCheck.rows.length > 0) {
@@ -325,7 +325,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
         if (postgres && !createdRoomId) {
           try {
             const idRes = await postgres.query<{ id: string; joining_id: string }>(
-              `SELECT id, joining_id FROM public.rooms WHERE "roomId" = $1 LIMIT 1`,
+              `SELECT id, joining_id FROM public.rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
               [name]
             );
             if (idRes.rows?.[0]) {
@@ -483,7 +483,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
 
     const roomCheck = await postgres.query(
-      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE ("roomId" = $1 OR id::text = $1) AND owner_id = $2`,
+      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
       [cleanRoomId, decoded.uid]
     );
 
@@ -588,7 +588,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       await client.query('BEGIN');
 
       const existingRoom = await client.query(
-        `SELECT status, "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE "roomId" = $1 AND owner_id = $2 FOR UPDATE`,
+        `SELECT id, status, "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2 FOR UPDATE`,
         [roomId, decoded.uid]
       );
 
@@ -602,7 +602,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
 
       if (passcodeFingerprint) {
         const duplicateCheck = await client.query(
-          `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 AND "roomId" != $2 LIMIT 1`,
+          `SELECT id FROM rooms WHERE passcode_fingerprint = $1 AND (id::text != $2 AND joining_id != $2) LIMIT 1`,
           [passcodeFingerprint, roomId]
         );
         if (duplicateCheck.rows.length > 0) {

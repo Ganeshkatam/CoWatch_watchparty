@@ -53,22 +53,33 @@ export async function stripSlashesFromDatabase(
   try {
     await client.query("BEGIN");
 
-    const res1 = await client.query(`
-      UPDATE rooms 
-      SET "roomId" = REGEXP_REPLACE("roomId", '^/+', '') 
-      WHERE "roomId" LIKE '/%';
+    const hasRoomIdCol = await client.query(`
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_name = 'rooms' AND column_name = 'roomId'
     `);
 
-    const res2 = await client.query(`
-      UPDATE room_lifecycle_events 
-      SET "roomId" = REGEXP_REPLACE("roomId", '^/+', '') 
-      WHERE "roomId" LIKE '/%';
-    `);
+    let roomsUpdated = 0;
+    let lifecycleEventsUpdated = 0;
+
+    if (hasRoomIdCol.rows.length > 0) {
+      const res1 = await client.query(`
+        UPDATE rooms 
+        SET "roomId" = REGEXP_REPLACE("roomId", '^/+', '') 
+        WHERE "roomId" LIKE '/%';
+      `);
+
+      const res2 = await client.query(`
+        UPDATE room_lifecycle_events 
+        SET "roomId" = REGEXP_REPLACE("roomId", '^/+', '') 
+        WHERE "roomId" LIKE '/%';
+      `);
+
+      roomsUpdated = res1.rowCount ?? 0;
+      lifecycleEventsUpdated = res2.rowCount ?? 0;
+    }
 
     await client.query("COMMIT");
 
-    const roomsUpdated = res1.rowCount ?? 0;
-    const lifecycleEventsUpdated = res2.rowCount ?? 0;
     return { roomsUpdated, lifecycleEventsUpdated };
   } catch (err) {
     try {

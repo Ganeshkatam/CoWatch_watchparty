@@ -89,7 +89,7 @@ test("roomOwnerInspectionRouter Suite", async (t) => {
       });
       assert.equal(res3.status, 404);
       assert.equal(res3.body.error, "Room not found or unauthorized");
-      assert(queriedSql.includes(`WHERE "roomId" = $1 AND owner_id = $2`));
+      assert(queriedSql.includes(`(id::text = $1 OR joining_id = $1) AND owner_id = $2`));
       assert.equal(queryParams[0], "foreign-room");
       assert.equal(queryParams[1], "owner-uid-123");
 
@@ -327,7 +327,7 @@ test("roomOwnerInspectionRouter Suite", async (t) => {
 
       assert.equal(resSuccess.body.id, "b4a1c5d2-3e4f-4a5b-8c6d-7e8f9a0b1c2d");
       assert.equal(resSuccess.body.joiningId, "0123456789");
-      assert(capturedRoomSql.includes(`(id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1 OR joining_id = $1) AND owner_id = $2`));
+      assert(capturedRoomSql.includes(`(id::text = $1 OR joining_id = $1) AND owner_id = $2`));
       assert(capturedLifecycleSql.includes("ORDER BY timestamp DESC"));
       assert(capturedMessagesSql.includes("ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20"));
     } finally {

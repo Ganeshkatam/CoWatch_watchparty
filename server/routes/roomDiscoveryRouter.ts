@@ -64,12 +64,12 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
 
     try {
       const result = await postgres?.query(
-        `SELECT r.id, r.joining_id, r.legacy_room_id, r."roomId", r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
+        `SELECT r.id, r.joining_id, r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
         (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
         p.display_name as "hostName"
          FROM rooms r
          LEFT JOIN profiles p ON r.owner_id = p.id
-         WHERE (r.id::text = $1 OR r.joining_id = $1 OR r.legacy_room_id = $1 OR r."roomId" = $1)`,
+         WHERE (r.id::text = $1 OR r.joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -114,8 +114,8 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
   res.json({
     id: row.id,
     joiningId: row.joining_id,
-    roomId: row.roomId || row.id,
-    roomTitle: row.roomTitle || row.roomId,
+    roomId: (row as any).roomId || row.id,
+    roomTitle: row.roomTitle || (row as any).roomId || row.id,
     roomDescription: row.roomDescription || "",
     coverPhoto: row.coverPhoto || null,
     status: derivedStatus,

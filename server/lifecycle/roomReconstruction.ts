@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import type { DatabasePool } from "./admissionCoordinator.ts";
 
 export type ReconstructRoomInput = (PersistentRoom | {
-  roomId: string;
+  roomId?: string;
   data?: unknown;
   status?: string;
   owner_id?: string;
@@ -44,8 +44,8 @@ export class RoomReconstructor {
       snapshot = parsed as RoomSnapshot;
     }
 
-    const roomId = row.roomId;
-    const room = new Room(io, roomId, snapshot ? JSON.stringify(snapshot) : undefined);
+    const effectiveRoomId = row.id || row.roomId || "";
+    const room = new Room(io, effectiveRoomId, snapshot ? JSON.stringify(snapshot) : undefined);
 
     // Hydrate lifecycle properties
     room.id = row.id;
@@ -84,8 +84,8 @@ export class RoomReconstructor {
     if (this.db) {
       try {
         const bansRes = await this.db.query(
-          `SELECT client_identity, user_id FROM room_bans WHERE (room_id = $1 OR room_uuid = (SELECT id FROM rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1))`,
-          [roomId]
+          `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`,
+          [effectiveRoomId]
         );
         if (bansRes.rows) {
           for (const b of bansRes.rows as Array<{ client_identity?: string; user_id?: string }>) {
@@ -94,7 +94,7 @@ export class RoomReconstructor {
           }
         }
       } catch (err) {
-        console.warn(`Failed to hydrate ban cache for room ${roomId}:`, err);
+        console.warn(`Failed to hydrate ban cache for room ${effectiveRoomId}:`, err);
       }
     }
 

@@ -53,7 +53,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
     }
 
     const result = await postgres.query(
-      `SELECT data FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+      `SELECT data FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
       [cleanRoomId, decoded.uid],
     );
 
@@ -102,7 +102,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       if (search) {
         params.push(`%${search.toLowerCase()}%`);
         const idx = params.length;
-        whereClauses.push(`(LOWER("roomTitle") LIKE $${idx} OR LOWER("roomDescription") LIKE $${idx} OR LOWER("roomId") LIKE $${idx})`);
+        whereClauses.push(`(LOWER("roomTitle") LIKE $${idx} OR LOWER("roomDescription") LIKE $${idx} OR LOWER(id::text) LIKE $${idx} OR LOWER(joining_id) LIKE $${idx})`);
       }
 
       if (status && status !== "all") {
@@ -139,9 +139,9 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       if (sort === "oldest") {
         orderBy = `"creationTime" ASC`;
       } else if (sort === "title-asc") {
-        orderBy = `LOWER(COALESCE("roomTitle", "roomId")) ASC`;
+        orderBy = `LOWER(COALESCE("roomTitle", id::text)) ASC`;
       } else if (sort === "title-desc") {
-        orderBy = `LOWER(COALESCE("roomTitle", "roomId")) DESC`;
+        orderBy = `LOWER(COALESCE("roomTitle", id::text)) DESC`;
       } else if (sort === "expiring") {
         orderBy = `CASE WHEN status IN ('active', 'expiring') THEN 0 ELSE 1 END, "expiresAt" ASC NULLS LAST, "creationTime" DESC`;
       }
@@ -179,7 +179,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         totalCount = Number(countRes?.rows?.[0]?.count) || 0;
       }
 
-      let querySql = `SELECT id, joining_id, legacy_room_id, "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+      let querySql = `SELECT id, joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
     "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
     status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
                       FROM rooms WHERE ${ whereSql } ORDER BY ${ orderBy } `;
@@ -207,9 +207,9 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         const isEnded = derivedStatus === 'ended' || derivedStatus === 'expired';
         const currentPasscode = (isEnded || !r.owner_passcode) ? null : decryptPasscode(r.owner_passcode);
         return {
-          id: r.id || r.roomId,
+          id: r.id,
           joiningId: r.joining_id,
-          roomId: r.roomId || r.id,
+          roomId: r.id,
           ...r,
           owner_passcode: undefined,
           currentPasscode,
@@ -260,10 +260,10 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
 
     try {
       const roomResult = await postgres?.query(
-        `SELECT id, joining_id, "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+        `SELECT id, joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
     "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
     status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
-         FROM rooms WHERE (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1 OR joining_id = $1) AND owner_id = $2`,
+         FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
         [roomId, decoded.uid],
       );
 
@@ -293,7 +293,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch lifecycle events
       const lifecycleResult = await postgres?.query(
         `SELECT id, actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp
-         FROM room_lifecycle_events WHERE ("roomId" = $1 OR (room_uuid IS NOT NULL AND room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))
+         FROM room_lifecycle_events WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
          ORDER BY timestamp DESC`,
         [roomId]
       );
@@ -303,7 +303,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         `SELECT rm.id, rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
          FROM room_messages rm
          LEFT JOIN profiles p ON rm.user_id = p.id
-         WHERE (rm.room_id = $1 OR (rm.room_uuid IS NOT NULL AND rm.room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))
+         WHERE rm.room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
          ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20`,
         [roomId]
       );
@@ -311,7 +311,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch chat summary
       const chatSummaryResult = await postgres?.query(
         `SELECT count(id)::int as "messagesCount", max(created_at) as "lastMessageAt"
-         FROM room_messages WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))`,
+         FROM room_messages WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`,
         [roomId]
       );
       const chatSummary = chatSummaryResult?.rows[0] || { messagesCount: 0, lastMessageAt: null };
@@ -319,7 +319,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       res.json({
         id: room.id,
         joiningId: room.joining_id,
-        roomId: room.roomId || room.id,
+        roomId: room.id,
         ...room,
         owner_passcode: undefined,
         currentPasscode,

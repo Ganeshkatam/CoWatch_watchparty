@@ -36,10 +36,15 @@ test("Phase 4: Realtime, WebRTC Signaling & Socket.IO Namespace Integration Suit
     query: async (sql: string, params: any[] = []) => {
       // Room bans query
       if (sql.includes("FROM room_bans")) {
-        const uidParam = params[2];
+        const uidParam = params[1] || params[2];
         if (uidParam === bannedUserId) {
           return { rowCount: 1, rows: [{ client_identity: "banned-client", user_id: bannedUserId }] };
         }
+        return { rowCount: 0, rows: [] };
+      }
+
+      // Room messages query
+      if (sql.includes("FROM room_messages")) {
         return { rowCount: 0, rows: [] };
       }
 

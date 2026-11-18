@@ -78,6 +78,7 @@
     "test:boundary-phase3": "tsx server/roomBoundaryPhase3.test.ts",
     "test:realtime-phase4": "tsx server/roomRealtimePhase4.test.ts",
     "test:frontend-phase5": "tsx src/utils/roomFrontendPhase5.test.ts",
+    "test:cutover-phase6": "tsx server/roomCutoverPhase6.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

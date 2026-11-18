@@ -51,7 +51,7 @@ async function runConcurrencyStressTest() {
   console.log(`Using test account: ${accountId}`);
 
   // 2. Clean up any existing rooms for this account to guarantee clean slate
-  await pool.query("SELECT public.delete_room_authoritative($1, \"roomId\") FROM public.rooms WHERE owner_id = $1", [accountId]);
+  await pool.query("SELECT public.delete_room_authoritative($1, id) FROM public.rooms WHERE owner_id = $1", [accountId]);
   await pool.query(
     "UPDATE public.account_room_usage SET total_rooms = 0, watch_rooms = 0, permanent_rooms = 0 WHERE account_id = $1",
     [accountId]
@@ -66,7 +66,7 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 1: 100 SIMULTANEOUS CREATE REQUESTS (CEILING = 5) ---");
   const N = 100;
   const createPromises = Array.from({ length: N }).map((_, i) => {
-    const roomId = `stress-100-${Date.now()}-${i}`;
+    const roomId = crypto.randomUUID();
     const title = `Stress Room ${i}`;
     const fingerprint = `fingerprint-100-${Date.now()}-${i}`;
     return pool.query(
@@ -119,16 +119,16 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 2: CONCURRENT CREATE + END + DELETE + EXPIRE FOR SAME ACCOUNT ---");
   // At this point we have 5 active rooms. Let's make 1 room already expired in the database
   const currentRooms = await pool.query(
-    'SELECT "roomId" FROM public.rooms WHERE owner_id = $1 AND status = \'inactive\' ORDER BY "roomId" LIMIT 3',
+    'SELECT id FROM public.rooms WHERE owner_id = $1 AND status = \'inactive\' ORDER BY id LIMIT 3',
     [accountId]
   );
-  const roomToEnd = currentRooms.rows[0].roomId;
-  const roomToDelete = currentRooms.rows[1].roomId;
-  const roomToExpire = currentRooms.rows[2].roomId;
+  const roomToEnd = currentRooms.rows[0].id;
+  const roomToDelete = currentRooms.rows[1].id;
+  const roomToExpire = currentRooms.rows[2].id;
 
   // Age one room so expire_rooms_authoritative will catch it
   await pool.query(
-    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'10 seconds\' WHERE "roomId" = $1',
+    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'10 seconds\' WHERE id = $1',
     [roomToExpire]
   );
 
@@ -149,7 +149,7 @@ async function runConcurrencyStressTest() {
       .then(res => ({ type: "EXPIRE", success: true, count: res.rows.length }))
       .catch(e => ({ type: "EXPIRE", success: false, error: e.message })),
     ...Array.from({ length: 20 }).map((_, i) => {
-      const roomId = `stress-mixed-contention-${Date.now()}-${i}`;
+      const roomId = crypto.randomUUID();
       const fingerprint = `fingerprint-mixed-contention-${Date.now()}-${i}`;
       return pool.query(
         `SELECT public.create_room_authoritative(
@@ -203,15 +203,15 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 3: ROOM ACTIVITY & EXTENSION LIFECYCLE TEST ---");
   // Delete one quota-consuming room to free a slot within the 5-room ceiling
   const existingForTest3 = await pool.query(
-    `SELECT "roomId" FROM public.rooms 
+    `SELECT id FROM public.rooms 
      WHERE owner_id = $1 AND status IN ('scheduled', 'active', 'inactive') AND ("isPermanent" = true OR "expiresAt" > now())
      LIMIT 1`,
     [accountId]
   );
   if (existingForTest3.rows.length) {
-    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, existingForTest3.rows[0].roomId]);
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, existingForTest3.rows[0].id]);
   }
-  const testRoomId = `test-activity-ext-${Date.now()}`;
+  const testRoomId = crypto.randomUUID();
   const testFingerprint = `fingerprint-act-${Date.now()}`;
   await pool.query(
     `SELECT public.create_room_authoritative(
@@ -253,7 +253,7 @@ async function runConcurrencyStressTest() {
 
   // Age room past canonical expiresAt to test canonical expiry transition
   await pool.query(
-    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'5 seconds\' WHERE "roomId" = $1',
+    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'5 seconds\' WHERE id = $1',
     [testRoomId]
   );
   const actRes3 = await pool.query(
@@ -283,7 +283,7 @@ async function runConcurrencyStressTest() {
         now() + INTERVAL '2 hours',
         10
       )`,
-      [accountId, `purge-room-${Date.now()}-${i}`, `purge-fp-${Date.now()}-${i}`]
+      [accountId, crypto.randomUUID(), `purge-fp-${Date.now()}-${i}`]
     );
   }
 
@@ -361,7 +361,7 @@ async function runConcurrencyStressTest() {
   console.log("RECONCILIATION PASSED: 1:1 parity verified across all accounts in database.");
 
   console.log("\n--- TEST 6: ROOM DATA AUTHORIZATION MATRIX VALIDATION ---");
-  const authTestRoomId = `auth-matrix-${Date.now()}`;
+  const authTestRoomId = crypto.randomUUID();
   const authTestFingerprint = `auth-fp-${Date.now()}`;
   const dummyPayload = JSON.stringify({ video: "https://example.com/stream.m3u8", videoTS: 123.45 });
 
@@ -375,11 +375,11 @@ async function runConcurrencyStressTest() {
     )`,
     [accountId, authTestRoomId, authTestFingerprint]
   );
-  await pool.query('UPDATE public.rooms SET data = $1 WHERE "roomId" = $2', [dummyPayload, authTestRoomId]);
+  await pool.query('UPDATE public.rooms SET data = $1 WHERE id = $2', [dummyPayload, authTestRoomId]);
 
   // Case A: Authenticated Owner querying their own room
   const ownerQuery = await pool.query(
-    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    `SELECT data FROM public.rooms WHERE id = $1 AND owner_id = $2`,
     [authTestRoomId, accountId]
   );
   if (ownerQuery.rowCount !== 1 || !ownerQuery.rows[0].data) {
@@ -389,7 +389,7 @@ async function runConcurrencyStressTest() {
   // Case B: Authenticated Non-Owner (or random UID) querying another user's room
   const nonOwnerUid = "00000000-0000-0000-0000-000000000000";
   const nonOwnerQuery = await pool.query(
-    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
+    `SELECT data FROM public.rooms WHERE id = $1 AND owner_id = $2`,
     [authTestRoomId, nonOwnerUid]
   );
   if (nonOwnerQuery.rowCount !== 0) {
@@ -401,7 +401,7 @@ async function runConcurrencyStressTest() {
   console.log("TEST 6 PASSED: Room data authorization matrix verified (Owner-only access enforced, cross-user isolation guaranteed).");
 
   console.log("\n--- TEST 7: LOCK-001 PARTICIPANTS LOCK AUTHORITY & CONCURRENCY MATRIX ---");
-  const lockTestRoomId = `lock-matrix-${Date.now()}`;
+  const lockTestRoomId = crypto.randomUUID();
   const lockTestFingerprint = `lock-fp-${Date.now()}`;
 
   // 1. Create room under accountId
@@ -500,7 +500,7 @@ async function runConcurrencyStressTest() {
 
   // Verify DB state
   const dbCheckA = await pool.query(
-    'SELECT participants_locked FROM public.rooms WHERE "roomId" = $1',
+    'SELECT participants_locked FROM public.rooms WHERE id = $1',
     [lockTestRoomId]
   );
   if (dbCheckA.rows[0].participants_locked !== true) {
@@ -509,7 +509,7 @@ async function runConcurrencyStressTest() {
 
   // Verify audit event
   const auditA = await pool.query(
-    'SELECT event, actor FROM public.room_lifecycle_events WHERE "roomId" = $1 AND event = \'room.participants_locked\' ORDER BY timestamp DESC LIMIT 1',
+    'SELECT event, actor FROM public.room_lifecycle_events WHERE room_uuid = $1::uuid AND event = \'room.participants_locked\' ORDER BY timestamp DESC LIMIT 1',
     [lockTestRoomId]
   );
   if (auditA.rowCount === 0 || auditA.rows[0].actor !== accountId) {
@@ -617,7 +617,7 @@ async function runConcurrencyStressTest() {
 
   // Verify unlock audit event
   const auditC = await pool.query(
-    'SELECT event, actor FROM public.room_lifecycle_events WHERE "roomId" = $1 AND event = \'room.participants_unlocked\' ORDER BY timestamp DESC LIMIT 1',
+    'SELECT event, actor FROM public.room_lifecycle_events WHERE room_uuid = $1::uuid AND event = \'room.participants_unlocked\' ORDER BY timestamp DESC LIMIT 1',
     [lockTestRoomId]
   );
   if (auditC.rowCount === 0 || auditC.rows[0].actor !== accountId) {
@@ -683,7 +683,7 @@ async function runConcurrencyStressTest() {
       .catch((e: any) => ({ type: "TOGGLE", success: false, error: e.message }));
     } else {
       return pool.query(
-        'SELECT participants_locked, owner_id FROM public.rooms WHERE "roomId" = $1',
+        'SELECT participants_locked, owner_id FROM public.rooms WHERE id = $1',
         [lockTestRoomId]
       )
       .then(res => {
@@ -1072,7 +1072,7 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 9: MEMBER-001 PARTICIPANT CAPACITY AUTHORITY (HARD CEILING = 10) ---");
 
   // Case A: Room Creation with Valid Capacity (Within 2 - 10)
-  const capTestRoomId = `cap-test-${Date.now()}`;
+  const capTestRoomId = crypto.randomUUID();
   const createCapRes = await pool.query(
     `SELECT public.create_room_authoritative(
       $1, $2, 'watch', 'Capacity Test Room', 'testing capacity',
@@ -1086,7 +1086,7 @@ async function runConcurrencyStressTest() {
     throw new Error(`TEST 9 Case A FAILED: Expected maxParticipants = 10, got ${createCapRes.rows[0].result?.maxParticipants}`);
   }
   const dbCapCheck = await pool.query(
-    'SELECT max_participants FROM public.rooms WHERE "roomId" = $1',
+    'SELECT max_participants FROM public.rooms WHERE id = $1',
     [capTestRoomId]
   );
   if (dbCapCheck.rows[0].max_participants !== 10) {
@@ -1675,7 +1675,7 @@ async function runConcurrencyStressTest() {
         now() + INTERVAL '25 hours',
         10
       )`,
-      [accountId, `dur-over-${Date.now()}`, `dur-fp-${Date.now()}`]
+      [accountId, crypto.randomUUID(), `dur-fp-${Date.now()}`]
     );
   } catch (err: any) {
     durationExceededCaught = err.message.includes("ROOM_DURATION_EXCEEDS_PLAN_LIMIT");
@@ -1685,7 +1685,7 @@ async function runConcurrencyStressTest() {
   }
 
   // Permitted duration succeeds
-  const validDurationRoomId = `dur-valid-${Date.now()}`;
+  const validDurationRoomId = crypto.randomUUID();
   await pool.query(
     `SELECT public.create_room_authoritative(
       $1, $2, 'watch', 'Valid Duration Room', null,
@@ -1716,7 +1716,7 @@ async function runConcurrencyStressTest() {
         now() + INTERVAL '10 hours',
         10
       )`,
-      [accountId, `prem-room-${Date.now()}-${i}`, `Room ${i}`, `prem-fp-${Date.now()}-${i}`]
+      [accountId, crypto.randomUUID(), `Room ${i}`, `prem-fp-${Date.now()}-${i}`]
     );
   });
   await Promise.all(pRooms);
@@ -1736,7 +1736,7 @@ async function runConcurrencyStressTest() {
         now() + INTERVAL '10 hours',
         10
       )`,
-      [accountId, `prem-room-21-${Date.now()}`, `prem-fp-21-${Date.now()}`]
+      [accountId, crypto.randomUUID(), `prem-fp-21-${Date.now()}`]
     );
   } catch (err: any) {
     rejected21 = err.message.includes("TOTAL_ROOM_LIMIT_EXCEEDED");
@@ -1756,7 +1756,7 @@ async function runConcurrencyStressTest() {
   }
 
   // 5. 21st room creation now succeeds!
-  const room21Id = `prem-room-21-success-${Date.now()}`;
+  const room21Id = crypto.randomUUID();
   await pool.query(
     `SELECT public.create_room_authoritative(
       $1, $2, 'watch', 'Room 21 Succeeded', null,
@@ -1796,7 +1796,7 @@ async function runConcurrencyStressTest() {
         now() + INTERVAL '10 hours',
         10
       )`,
-      [accountId, `prem-room-22-${Date.now()}`, `prem-fp-22-${Date.now()}`]
+      [accountId, crypto.randomUUID(), `prem-fp-22-${Date.now()}`]
     );
   } catch (err: any) {
     rejected22 = err.message.includes("TOTAL_ROOM_LIMIT_EXCEEDED");

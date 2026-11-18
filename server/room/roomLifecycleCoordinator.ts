@@ -261,7 +261,7 @@ export class RoomLifecycleCoordinator {
       if (!sessionId) {
         const eventRes = await this.postgres.query(
           `SELECT id FROM public.room_lifecycle_events
-           WHERE ("roomId" = $1 OR room_uuid = (SELECT id FROM public.rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1))
+           WHERE room_uuid = (SELECT id FROM public.rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
              AND event = 'room.status_changed' AND "newStatus" = 'active'
            ORDER BY timestamp DESC LIMIT 1`,
           [this.deps.roomId]
@@ -275,7 +275,7 @@ export class RoomLifecycleCoordinator {
       }
 
       const roomRes = await this.postgres.query(
-        `SELECT "roomTitle" FROM public.rooms WHERE ("roomId" = $1 OR id::text = $1) LIMIT 1`,
+        `SELECT "roomTitle" FROM public.rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
         [this.deps.roomId]
       );
       const roomTitle = roomRes?.rows?.[0]?.roomTitle || this.deps.roomId;
@@ -284,7 +284,7 @@ export class RoomLifecycleCoordinator {
         this.postgres.query(
           `SELECT target_user_id AS user_id
            FROM public.room_invitations
-           WHERE (room_id = $1 OR room_uuid = (SELECT id FROM public.rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1))
+           WHERE room_uuid = (SELECT id FROM public.rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
              AND target_user_id IS NOT NULL
              AND revoked_at IS NULL
              AND (expires_at IS NULL OR expires_at > now())`,
@@ -293,7 +293,7 @@ export class RoomLifecycleCoordinator {
         this.postgres.query(
           `SELECT user_id
            FROM public.room_admissions
-           WHERE (room_id = $1 OR room_uuid = (SELECT id FROM public.rooms WHERE "roomId" = $1 OR id::text = $1 LIMIT 1))
+           WHERE room_uuid = (SELECT id FROM public.rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
              AND revoked_at IS NULL`,
           [this.deps.roomId]
         ),

@@ -30,7 +30,9 @@ export async function getStats() {
   const currentRoomSizes: Record<string, number> = {};
 
   const result = await postgres?.query<{
-    roomId: string;
+    id: string;
+    joining_id?: string;
+    roomId?: string;
     creationTime: Date;
     lastUpdateTime: Date;
 
@@ -45,7 +47,7 @@ export async function getStats() {
     creator: string;
     lock: string;
   }>(
-    `SELECT "roomId", "creationTime", "lastUpdateTime", "isSubRoom", "roomTitle", "roomDescription", "mediaPath", owner_id, password,
+    `SELECT id, joining_id, id AS "roomId", "creationTime", "lastUpdateTime", "isSubRoom", "roomTitle", "roomDescription", "mediaPath", owner_id, password,
     data->'video' as video, data->'videoTS' as "videoTS", data->'creator' as creator, data->'lock' as lock
     FROM rooms
     WHERE "lastUpdateTime" > NOW() - INTERVAL '7 day'
@@ -61,7 +63,8 @@ export async function getStats() {
 
       let rosterLength = 0;
       let roster: unknown[] = [];
-      const batchData = batchPresence[dbRoom.roomId];
+      const effectiveRoomId = dbRoom.id || dbRoom.roomId || "";
+      const batchData = batchPresence[effectiveRoomId];
       if (batchData) {
         try {
           const parsed = JSON.parse(batchData);
@@ -72,9 +75,9 @@ export async function getStats() {
         }
       } else if (edgeRedis.client) {
         // Fallback to legacy keys if batch presence entry not found
-        rosterLength = Number(await edgeRedis.execute("presence", "get", (c) => c.get(`roomCounts:${dbRoom.roomId}`))) || 0;
+        rosterLength = Number(await edgeRedis.execute("presence", "get", (c) => c.get(`roomCounts:${effectiveRoomId}`))) || 0;
         if (rosterLength > 0) {
-          const resp = await edgeRedis.execute("presence", "get", (c) => c.get(`roomRosters:${dbRoom.roomId}`));
+          const resp = await edgeRedis.execute("presence", "get", (c) => c.get(`roomRosters:${effectiveRoomId}`));
           if (resp) {
             try { roster = JSON.parse(resp); } catch {}
           }
@@ -86,7 +89,7 @@ export async function getStats() {
           (currentRoomSizes[rosterLength] ?? 0) + 1;
       }
       const obj = {
-        roomId: dbRoom.roomId,
+        roomId: effectiveRoomId,
         video: dbRoom.video || undefined,
         videoTS: dbRoom.videoTS || undefined,
         creationTime: dbRoom.creationTime || undefined,

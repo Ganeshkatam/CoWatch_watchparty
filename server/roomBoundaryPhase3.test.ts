@@ -416,15 +416,15 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
           };
         }
         if (sql.includes("INSERT INTO public.room_admissions")) {
-          insertedRoomUuid = params[1];
+          insertedRoomUuid = params[0] === testUuid ? params[0] : params[1];
           return { rowCount: 1 };
         }
         if (sql.includes("FROM room_bans")) {
-          checkedBanUuid = params[1] || params[0];
+          checkedBanUuid = params[0] === testUuid ? params[0] : (params[1] || params[0]);
           return { rows: [] };
         }
         if (sql.includes("FROM room_admissions")) {
-          checkedAdmUuid = params[1] || params[0];
+          checkedAdmUuid = params[0] === testUuid ? params[0] : (params[1] || params[0]);
           return { rows: [{ admission_method: "passcode", admitted_at: new Date().toISOString(), revoked_at: null }] };
         }
         return { rows: [] };

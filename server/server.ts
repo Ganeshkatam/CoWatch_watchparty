@@ -268,15 +268,15 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
   try {
     const persistedRoom = (
       await postgres.query<PersistentRoom>(
-        `SELECT * FROM public.rooms WHERE id::text = $1 OR joining_id = $1 OR legacy_room_id = $1 OR "roomId" = $1 LIMIT 1`,
+        `SELECT * FROM public.rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1`,
         [cleanId],
       )
     )?.rows?.[0];
 
     if (!persistedRoom) return null;
 
-    const canonicalId = persistedRoom.id;
-    const legacyRoomId = persistedRoom.roomId || cleanId;
+    const canonicalId = persistedRoom.id || cleanId;
+    const legacyRoomId = (persistedRoom as any).roomId || cleanId;
 
     if (rooms.has(cleanId)) return rooms.get(cleanId)!;
     if (canonicalId && rooms.has(canonicalId)) return rooms.get(canonicalId)!;

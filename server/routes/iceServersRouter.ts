@@ -6,6 +6,7 @@ import { verifyAdmissionToken as defaultVerifyAdmissionToken } from "../utils/ad
 import { checkRateLimit as defaultCheckRateLimit } from "../utils/rateLimit.ts";
 import { CoturnHmacProvider, type TurnProvider } from "../services/turnProvider.ts";
 import { sanitizeRoomId as defaultSanitizeRoomId } from "../strip_slashes.ts";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.ts";
 
 export function extractBearerToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
@@ -141,7 +142,7 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
       if (postgres) {
         try {
           const roomRes = await postgres.query(
-            `SELECT status, "isPermanent", "expiresAt", owner_id FROM rooms WHERE "roomId" = $1 LIMIT 1`,
+            `SELECT id, status, "isPermanent", "expiresAt", owner_id FROM rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
             [cleanRoomId]
           );
           if (roomRes.rows.length > 0) {
@@ -189,9 +190,10 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
 
       if (postgres) {
         try {
+          const roomUuid = roomRow?.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
           const banRes = await postgres.query(
-            `SELECT id FROM room_bans WHERE room_id = $1 AND user_id = $2::uuid LIMIT 1`,
-            [cleanRoomId, derivedUserId]
+            `SELECT id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid LIMIT 1`,
+            [roomUuid || cleanRoomId, derivedUserId]
           );
           if (banRes.rows.length > 0) {
             res.status(403).json({
@@ -206,8 +208,8 @@ export function createIceServersRouter(options?: IceServersRouterOptions): Route
           // Guest revocation check
           if (isGuestAuth) {
             const admRes = await postgres.query(
-              `SELECT revoked_at FROM room_admissions WHERE room_id = $1 AND user_id = $2::uuid ORDER BY admitted_at DESC LIMIT 1`,
-              [cleanRoomId, derivedUserId]
+              `SELECT revoked_at FROM room_admissions WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid ORDER BY admitted_at DESC LIMIT 1`,
+              [roomUuid || cleanRoomId, derivedUserId]
             );
             if (admRes.rows.length === 0 || admRes.rows[0].revoked_at) {
               res.status(401).json({

@@ -94,7 +94,7 @@ interface HostState {
 interface PersistentRoom {
   id?: string;
   joining_id?: string;
-  roomId: string;
+  roomId?: string;
   creationTime: string;
   passcode?: string;
   isChatDisabled?: boolean;

@@ -655,7 +655,7 @@ export class Room {
     let isOwner = false;
     if (postgres) {
       const result = await postgres.query(
-        `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
+        `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR joining_id = $1)`,
         [this.id || this.roomId],
       );
       const roomRow = result.rows[0];
@@ -780,10 +780,14 @@ export class Room {
     const authUid = socket.uid || undefined;
     if (postgres) {
       try {
-        const roomUuid = this.getRoomUuid() || null;
+        const roomUuid = this.getRoomUuid() || (isValidCanonicalUuid(this.roomId) ? this.roomId : null);
+        const validUuid = isValidCanonicalUuid(roomUuid || this.roomId) ? (roomUuid || this.roomId) : null;
+        const banSql = validUuid
+          ? `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = $1::uuid AND (user_id IS NOT NULL AND user_id = $2)`
+          : `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id IS NOT NULL AND user_id = $2)`;
         const banRes = await postgres.query(
-          `SELECT client_identity, user_id FROM room_bans WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $2::uuid)) AND (user_id IS NOT NULL AND user_id = $3)`,
-          [this.roomId, roomUuid, authUid || null]
+          banSql,
+          [validUuid || roomUuid || this.roomId, authUid || null]
         );
         if (banRes.rowCount && banRes.rowCount > 0) {
           if (authUid) this.bannedIdentities.add(authUid);
@@ -916,7 +920,7 @@ export class Room {
       // Check if this socket matches the room owner UID
       const validateOwner = async () => {
         const result = await postgres?.query(
-          'SELECT owner_id FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)',
+          'SELECT owner_id FROM rooms where (id::text = $1 OR joining_id = $1)',
           [this.id || this.roomId],
         );
         const owner = result?.rows[0]?.owner_id;
@@ -1338,13 +1342,13 @@ export class Room {
         id: row.metadata?.clientId || 'unknown',
         msg: row.message,
         cmd: row.event_type || undefined,
-        timestamp: row.created_at.toISOString(),
+        timestamp: row.created_at ? (typeof row.created_at.toISOString === 'function' ? row.created_at.toISOString() : new Date(row.created_at).toISOString()) : new Date().toISOString(),
         videoTS: row.metadata?.videoTS,
         dbId: row.id,
         name: row.profile_name || row.metadata?.name,
         picture: row.profile_picture || row.metadata?.picture,
         userId: row.user_id || undefined,
-        updatedAt: row.updated_at ? row.updated_at.toISOString() : undefined,
+        updatedAt: row.updated_at ? (typeof row.updated_at.toISOString === 'function' ? row.updated_at.toISOString() : new Date(row.updated_at).toISOString()) : undefined,
       }));
       socket.emit("chatinit", formattedMessages.reverse());
       socket.emit("ROOM_MESSAGES", formattedMessages);
@@ -1501,7 +1505,7 @@ export class Room {
     // Slow path: query the database
     if (!postgres) return false;
     const result = await postgres.query(
-      'SELECT owner_id FROM rooms WHERE (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)',
+      'SELECT owner_id FROM rooms WHERE (id::text = $1 OR joining_id = $1)',
       [this.id || this.roomId],
     );
     const dbOwner = result?.rows[0]?.owner_id;
@@ -1743,7 +1747,7 @@ export class Room {
     if (postgres) {
       try {
         const result = await postgres.query(
-            `SELECT id, joining_id, passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
+            `SELECT id, joining_id, passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where (id::text = $1 OR joining_id = $1)`,
           [this.id || this.roomId]
         );
         first = result.rows[0];
