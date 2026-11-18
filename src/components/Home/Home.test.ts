@@ -13,6 +13,22 @@ assert(
   "rebel-structure-balance should parse as rebel-structure-balance"
 );
 assert(parseRoomInput("room_name_42") === "room_name_42", "room_name_42 should parse as room_name_42");
+assert(
+  parseRoomInput("e2f1a0b3-4c5d-6e7f-8a9b-0c1d2e3f4a5b") === "e2f1a0b3-4c5d-6e7f-8a9b-0c1d2e3f4a5b",
+  "canonical UUID should parse directly"
+);
+assert(
+  parseRoomInput("9876543210") === "9876543210",
+  "plain 10-digit code should parse directly"
+);
+assert(
+  parseRoomInput("987-654-3210") === "9876543210",
+  "formatted 10-digit code should normalize to raw digits"
+);
+assert(
+  parseRoomInput("012 345 6789") === "0123456789",
+  "spaced 10-digit code with leading zero should preserve leading zero"
+);
 
 // 2. Slash-prefixed room codes
 assert(parseRoomInput("/abc123") === "abc123", "/abc123 should parse as abc123");

@@ -5,16 +5,21 @@ import {
   IconCopy,
   IconUsers,
   IconLock,
+  IconHash,
 } from "@tabler/icons-react";
 import { MODAL_SIZES } from "../../utils/designSystem";
 import { apiFetch } from "../../utils/utils";
 import { supabase } from "../../utils/supabaseClient";
+import { formatJoiningCodeForDisplay } from "../../utils/roomIdentifier";
 import { QRShare } from "./QRShare";
 import { DirectInviteForm } from "./DirectInviteForm";
 import { ShareActions } from "./ShareActions";
 import styles from "./InviteModal.module.css";
 
 interface RoomDetailsResponse {
+  id?: string;
+  joiningId?: string;
+  roomId?: string;
   currentPasscode?: string | null;
   roomTitle?: string | null;
 }
@@ -27,6 +32,7 @@ interface CreateInvitationResponse {
 
 interface InviteModalProps {
   roomId?: string;
+  joiningId?: string;
   passcode?: string;
   closeInviteModal: () => void;
   isHost?: boolean;
@@ -35,6 +41,7 @@ interface InviteModalProps {
 
 export const InviteModal: React.FC<InviteModalProps> = ({
   roomId,
+  joiningId: propJoiningId,
   passcode: propPasscode,
   closeInviteModal,
   isHost,
@@ -42,7 +49,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 }) => {
   const canManageCredentials = Boolean(isHost || isOwner);
   const [passcodeCopied, setPasscodeCopied] = useState(false);
+  const [joiningCodeCopied, setJoiningCodeCopied] = useState(false);
   const [fetchedPasscode, setFetchedPasscode] = useState<string>("");
+  const [fetchedJoiningId, setFetchedJoiningId] = useState<string>("");
+  const [fetchedCanonicalId, setFetchedCanonicalId] = useState<string>("");
   const [roomTitle, setRoomTitle] = useState<string>("");
   const [inviterName, setInviterName] = useState<string>("");
   const [invitationUrl, setInvitationUrl] = useState<string>("");
@@ -79,6 +89,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               { requireAuth: true }
             );
             if (!isCancelled && freshData) {
+              if (freshData?.id) {
+                setFetchedCanonicalId(freshData.id);
+              }
+              if (freshData?.joiningId) {
+                setFetchedJoiningId(freshData.joiningId);
+              }
               if (freshData?.currentPasscode && !propPasscode) {
                 setFetchedPasscode(freshData.currentPasscode.trim());
               }
@@ -88,11 +104,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             }
 
             // 2. Generate or fetch reusable room invitation token
+            const targetRoomUuid = freshData?.id || cleanId;
             const inviteData = await apiFetch<CreateInvitationResponse>(`/api/invitations`, {
               method: "POST",
               requireAuth: true,
               body: {
-                roomId: cleanId,
+                roomId: targetRoomUuid,
                 isReusable: true,
               },
             });
@@ -115,13 +132,26 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     ? (propPasscode ? propPasscode.trim() : fetchedPasscode.trim())
     : "";
 
-  const effectiveInvitationUrl = invitationUrl || `${window.location.origin}/join/${cleanId}`;
+  const effectiveJoiningId = (propJoiningId || fetchedJoiningId || "").trim();
+  const effectiveCanonicalId = (fetchedCanonicalId || cleanId).trim();
+  const effectiveInvitationUrl =
+    invitationUrl ||
+    (effectiveJoiningId
+      ? `${window.location.origin}/join/${effectiveJoiningId}`
+      : `${window.location.origin}/join/${cleanId}`);
 
   const handleCopyPasscode = () => {
     if (!resolvedPasscode) return;
     navigator.clipboard.writeText(resolvedPasscode);
     setPasscodeCopied(true);
     setTimeout(() => setPasscodeCopied(false), 2000);
+  };
+
+  const handleCopyJoiningCode = () => {
+    if (!effectiveJoiningId) return;
+    navigator.clipboard.writeText(effectiveJoiningId);
+    setJoiningCodeCopied(true);
+    setTimeout(() => setJoiningCodeCopied(false), 2000);
   };
 
   return (
@@ -155,23 +185,59 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         )}
 
         {/* 1. QR Code Section: Encodes the opaque invitation token URL */}
-        <QRShare roomId={cleanId} invitationUrl={effectiveInvitationUrl} />
+        <QRShare roomId={effectiveCanonicalId} invitationUrl={effectiveInvitationUrl} />
 
         {/* 2. Direct Username Invitation: Creates targeted room_invitations and sends notification */}
-        <DirectInviteForm roomId={cleanId} />
+        <DirectInviteForm roomId={effectiveCanonicalId} />
 
         {/* 3. Share to External Apps: Canonical human-readable invitation message with URL and fallback credentials */}
         <ShareActions
-          roomId={cleanId}
+          roomId={effectiveCanonicalId}
           roomTitle={roomTitle || cleanId}
           passcode={resolvedPasscode}
           invitationUrl={effectiveInvitationUrl}
           inviterName={inviterName}
+          joiningCode={effectiveJoiningId || undefined}
         />
 
-        {/* Passcode Card - Strictly restricted to host or room owner */}
+        {/* Credentials Cards - Strictly restricted to host or room owner */}
         {canManageCredentials && (
           <div className={styles.credentialsGrid}>
+            {effectiveJoiningId && (
+              <div
+                className={styles.credentialCard}
+                onClick={handleCopyJoiningCode}
+                title="Click to copy Room Code"
+                style={{ cursor: "pointer" }}
+              >
+                <div className={styles.credentialHeader}>
+                  <span className={styles.credentialTitle}>
+                    <IconHash size={13} />
+                    Public Room Code
+                  </span>
+                  <Tooltip label={joiningCodeCopied ? "Copied!" : "Copy Room Code"} withArrow position="top">
+                    <ActionIcon
+                      size="sm"
+                      variant="subtle"
+                      color={joiningCodeCopied ? "teal" : "gray"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyJoiningCode();
+                      }}
+                      title="Copy Room Code"
+                    >
+                      {joiningCodeCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </div>
+                <div className={styles.credentialValue}>
+                  <span>{formatJoiningCodeForDisplay(effectiveJoiningId)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: joiningCodeCopied ? "#10b981" : "var(--text-muted)", transition: "color 0.2s" }}>
+                    {joiningCodeCopied ? "Copied!" : "Copy"}
+                  </span>
+                </div>
+              </div>
+            )}
             <div
               className={styles.credentialCard}
               onClick={resolvedPasscode ? handleCopyPasscode : undefined}

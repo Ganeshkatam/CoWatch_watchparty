@@ -38,6 +38,8 @@ interface JoinRouteParams {
 }
 
 interface RoomInfo {
+  id?: string;
+  joiningId?: string;
   roomId: string;
   roomTitle: string;
   roomDescription?: string;
@@ -109,7 +111,7 @@ export const Join: React.FC = () => {
 
   const navigateToWatch = useCallback(() => {
     if (transitioningRef.current && stage === "ready") return;
-    const targetRoomId = resolvedRoomId || cleanRouteRoomId;
+    const targetRoomId = roomInfo?.id || resolvedRoomId || cleanRouteRoomId;
     if (!targetRoomId) return;
 
     transitioningRef.current = true;
@@ -129,7 +131,7 @@ export const Join: React.FC = () => {
       micDeviceId: prefs?.micDeviceId,
       speakerDeviceId: prefs?.speakerDeviceId,
     });
-  }, [cleanRouteRoomId, resolvedRoomId, history, stage]);
+  }, [cleanRouteRoomId, resolvedRoomId, roomInfo?.id, history, stage]);
 
   // Invitation admission flow: /invite/:token
   // Preview must NEVER consume the invitation.
@@ -315,12 +317,17 @@ export const Join: React.FC = () => {
           `[ADMISSION_TRACE:A] Issued via invite: room=${effectiveRoomId} session=${sessionIdRef.current} tokenFp=${aFp}`
         );
         if (effectiveRoomId) {
-          saveAdmissionSession(effectiveRoomId, acceptData.admissionToken, sessionIdRef.current);
-          const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(effectiveRoomId.toLowerCase())}`) : null;
+          const targetRoomId = roomInfo?.id || resolvedRoomId || effectiveRoomId;
+          const aliases: string[] = [];
+          if (effectiveRoomId && effectiveRoomId !== targetRoomId) aliases.push(effectiveRoomId);
+          if (roomInfo?.joiningId) aliases.push(roomInfo.joiningId);
+          if (roomInfo?.roomId && roomInfo.roomId !== targetRoomId) aliases.push(roomInfo.roomId);
+          saveAdmissionSession(targetRoomId, acceptData.admissionToken, sessionIdRef.current, aliases);
+          const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(targetRoomId.toLowerCase())}`) : null;
           const parsedCheck = rawCheck ? JSON.parse(rawCheck) : null;
           const bFp = fingerprintToken(parsedCheck?.admissionToken);
           console.log(
-            `[ADMISSION_TRACE:B] Storage write verified (invite): room=${effectiveRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
+            `[ADMISSION_TRACE:B] Storage write verified (invite): room=${targetRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
           );
         }
         setStage("preflight");
@@ -387,7 +394,7 @@ export const Join: React.FC = () => {
         // Host has authority over room and does not require participant passcode/admission token.
         if (data.isHost) {
           if (data.status === "active") {
-            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+            history.replace(`/watch/${encodeURIComponent(data.id || cleanRouteRoomId)}`);
             return;
           }
           // Inactive room: Host sees waiting/start session screen
@@ -468,12 +475,17 @@ export const Join: React.FC = () => {
                 `[ADMISSION_TRACE:A] Issued via no-passcode: room=${cleanRouteRoomId} session=${sessionIdRef.current} tokenFp=${aFp}`
               );
               if (effectiveRoomId) {
-                saveAdmissionSession(effectiveRoomId, verifyData.admissionToken, sessionIdRef.current);
-                const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(effectiveRoomId.toLowerCase())}`) : null;
+                const targetRoomId = data.id || effectiveRoomId;
+                const aliases: string[] = [];
+                if (effectiveRoomId && effectiveRoomId !== targetRoomId) aliases.push(effectiveRoomId);
+                if (data.joiningId) aliases.push(data.joiningId);
+                if (data.roomId && data.roomId !== targetRoomId) aliases.push(data.roomId);
+                saveAdmissionSession(targetRoomId, verifyData.admissionToken, sessionIdRef.current, aliases);
+                const rawCheck = typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage.getItem(`cowatch_admission_${encodeURIComponent(targetRoomId.toLowerCase())}`) : null;
                 const parsedCheck = rawCheck ? JSON.parse(rawCheck) : null;
                 const bFp = fingerprintToken(parsedCheck?.admissionToken);
                 console.log(
-                  `[ADMISSION_TRACE:B] Storage write verified (no-passcode): room=${effectiveRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
+                  `[ADMISSION_TRACE:B] Storage write verified (no-passcode): room=${targetRoomId} stored=${Boolean(rawCheck)} session=${parsedCheck?.sessionId} tokenFp=${bFp}`
                 );
               }
               setStage("preflight");
@@ -532,7 +544,7 @@ export const Join: React.FC = () => {
           if (!transitioningRef.current) {
             transitioningRef.current = true;
             if (freshData.isHost) {
-              history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+              history.replace(`/watch/${encodeURIComponent(freshData.id || roomInfo?.id || cleanRouteRoomId)}`);
             } else {
               navigateToWatch();
             }
@@ -547,7 +559,7 @@ export const Join: React.FC = () => {
       isCancelled = true;
       window.clearInterval(interval);
     };
-  }, [stage, cleanRouteRoomId, history, navigateToWatch]);
+  }, [stage, cleanRouteRoomId, roomInfo?.id, history, navigateToWatch]);
 
   const handleStartRoom = async () => {
     if (!cleanRouteRoomId) return;
@@ -571,7 +583,7 @@ export const Join: React.FC = () => {
         setFormError(resData?.error?.message || "Failed to start room session.");
         return;
       }
-      history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+      history.replace(`/watch/${encodeURIComponent(roomInfo?.id || cleanRouteRoomId)}`);
     } catch {
       setFormError("Network error while starting room session.");
     }
@@ -596,7 +608,7 @@ export const Join: React.FC = () => {
         if (fresh.status === "active" && !transitioningRef.current) {
           transitioningRef.current = true;
           if (fresh.isHost) {
-            history.replace(`/watch/${encodeURIComponent(cleanRouteRoomId)}`);
+            history.replace(`/watch/${encodeURIComponent(fresh.id || roomInfo?.id || cleanRouteRoomId)}`);
           } else {
             navigateToWatch();
           }

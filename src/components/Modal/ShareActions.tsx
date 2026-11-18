@@ -15,6 +15,7 @@ export interface ShareActionsProps {
   passcode?: string;
   invitationUrl: string;
   inviterName?: string;
+  joiningCode?: string;
 }
 
 export const ShareActions: React.FC<ShareActionsProps> = ({
@@ -23,6 +24,7 @@ export const ShareActions: React.FC<ShareActionsProps> = ({
   passcode,
   invitationUrl,
   inviterName,
+  joiningCode,
 }) => {
   const cleanId = roomId.replace(/^\//, "").trim();
   const title = roomTitle?.trim() || cleanId;
@@ -32,6 +34,7 @@ export const ShareActions: React.FC<ShareActionsProps> = ({
     passcode,
     invitationUrl,
     inviterName,
+    joiningCode,
   });
 
   // WhatsApp accepts the complete text message

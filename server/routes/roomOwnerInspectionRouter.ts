@@ -260,10 +260,10 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
 
     try {
       const roomResult = await postgres?.query(
-        `SELECT "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+        `SELECT id, joining_id, "roomId", (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
     "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
     status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
-         FROM rooms WHERE "roomId" = $1 AND owner_id = $2`,
+         FROM rooms WHERE (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1 OR joining_id = $1) AND owner_id = $2`,
         [roomId, decoded.uid],
       );
 
@@ -293,7 +293,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch lifecycle events
       const lifecycleResult = await postgres?.query(
         `SELECT id, actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp
-         FROM room_lifecycle_events WHERE "roomId" = $1
+         FROM room_lifecycle_events WHERE ("roomId" = $1 OR (room_uuid IS NOT NULL AND room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))
          ORDER BY timestamp DESC`,
         [roomId]
       );
@@ -303,7 +303,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         `SELECT rm.id, rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
          FROM room_messages rm
          LEFT JOIN profiles p ON rm.user_id = p.id
-         WHERE rm.room_id = $1
+         WHERE (rm.room_id = $1 OR (rm.room_uuid IS NOT NULL AND rm.room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))
          ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20`,
         [roomId]
       );
@@ -311,12 +311,15 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch chat summary
       const chatSummaryResult = await postgres?.query(
         `SELECT count(id)::int as "messagesCount", max(created_at) as "lastMessageAt"
-         FROM room_messages WHERE room_id = $1`,
+         FROM room_messages WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = (SELECT id FROM rooms WHERE (id::text = $1 OR "roomId" = $1) LIMIT 1)))`,
         [roomId]
       );
       const chatSummary = chatSummaryResult?.rows[0] || { messagesCount: 0, lastMessageAt: null };
 
       res.json({
+        id: room.id,
+        joiningId: room.joining_id,
+        roomId: room.roomId || room.id,
         ...room,
         owner_passcode: undefined,
         currentPasscode,

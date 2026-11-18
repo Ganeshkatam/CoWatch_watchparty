@@ -101,6 +101,9 @@ export const ThemeToggleQuickButton = () => {
 
 export interface CreateRoomResponse {
   name: string;
+  id?: string;
+  joiningId?: string;
+  roomId?: string;
 }
 
 export async function createRoom(
@@ -148,17 +151,17 @@ export async function createRoom(
     formattedErr.error = errorObj;
     throw formattedErr;
   }
-  const { name } = data;
+  const targetId = data.id || data.roomId || data.name;
 
   if (options?.noRedirect) {
-    return name;
+    return targetId;
   }
 
-  const safeName = name.startsWith("/") ? name.substring(1) : name;
+  const safeTarget = targetId.startsWith("/") ? targetId.substring(1) : targetId;
   if (openNewTab) {
-    window.open(`/watch/${safeName}`);
+    window.open(`/watch/${safeTarget}`);
   } else {
-    window.location.assign(`/watch/${safeName}`);
+    window.location.assign(`/watch/${safeTarget}`);
   }
 }
 

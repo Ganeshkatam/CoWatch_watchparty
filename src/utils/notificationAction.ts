@@ -10,6 +10,8 @@
  *   3. metadata.action is authoritative, with robust fallback for legacy items.
  */
 
+import { isValidJoiningCode, normalizeJoiningCode, formatJoiningCodeForDisplay } from "./roomIdentifier.js";
+
 export interface NotificationActionSource {
   id?: string;
   user_id?: string;
@@ -350,6 +352,7 @@ export function formatInvitationMessage(params: {
   passcode?: string;
   invitationUrl: string;
   inviterName?: string;
+  joiningCode?: string;
 }): string {
   const cleanId = params.roomId.replace(/^\//, "").trim();
   const title = params.roomTitle?.trim() || cleanId;
@@ -365,6 +368,10 @@ export function formatInvitationMessage(params: {
     `Join: ${params.invitationUrl}`,
     `Room ID: ${cleanId}`,
   ];
+
+  if (params.joiningCode && isValidJoiningCode(params.joiningCode)) {
+    lines.push(`Room Code: ${formatJoiningCodeForDisplay(params.joiningCode)}`);
+  }
 
   if (pass) {
     lines.push(`Passcode: ${pass}`);
@@ -429,10 +436,11 @@ export function parseJoinRoute(value: string): ParsedJoinRoute {
     const rawRoom = trimmed.split("/join/")[1]?.split(/[?&#\s]/)[0] || "";
     const cleanRoom = rawRoom.replace(/^\/+|\/+$/g, "").trim();
     if (cleanRoom) {
+      const normalizedRoom = isValidJoiningCode(cleanRoom) ? normalizeJoiningCode(cleanRoom) : cleanRoom;
       return {
         type: "join",
-        path: `/join/${encodeURIComponent(cleanRoom)}`,
-        identifier: cleanRoom,
+        path: `/join/${encodeURIComponent(normalizedRoom)}`,
+        identifier: normalizedRoom,
       };
     }
   }
@@ -442,25 +450,38 @@ export function parseJoinRoute(value: string): ParsedJoinRoute {
     const rawRoom = trimmed.split("/watch/")[1]?.split(/[?&#\s]/)[0] || "";
     const cleanRoom = rawRoom.replace(/^\/+|\/+$/g, "").trim();
     if (cleanRoom) {
+      const normalizedRoom = isValidJoiningCode(cleanRoom) ? normalizeJoiningCode(cleanRoom) : cleanRoom;
       return {
         type: "join",
-        path: `/join/${encodeURIComponent(cleanRoom)}`,
-        identifier: cleanRoom,
+        path: `/join/${encodeURIComponent(normalizedRoom)}`,
+        identifier: normalizedRoom,
       };
     }
   }
 
-  // 5. Default: treat as plain roomId (strip protocol/host if user pasted a generic link)
+  // 5. Check if input is a 10-digit public joining code (with or without separators)
+  if (isValidJoiningCode(trimmed)) {
+    const code = normalizeJoiningCode(trimmed);
+    return {
+      type: "join",
+      path: `/join/${encodeURIComponent(code)}`,
+      identifier: code,
+    };
+  }
+
+  // 6. Default: treat as plain roomId (strip protocol/host if user pasted a generic link)
   const plainRoom = trimmed
     .replace(/^https?:\/\/[^/]+\/?/, "")
     .replace(/^\/+|\/+$/g, "")
     .split(/[?&#\s]/)[0]
     .trim();
 
+  const finalIdentifier = isValidJoiningCode(plainRoom) ? normalizeJoiningCode(plainRoom) : plainRoom;
+
   return {
     type: "join",
-    path: plainRoom ? `/join/${encodeURIComponent(plainRoom)}` : "",
-    identifier: plainRoom,
+    path: finalIdentifier ? `/join/${encodeURIComponent(finalIdentifier)}` : "",
+    identifier: finalIdentifier,
   };
 }
 

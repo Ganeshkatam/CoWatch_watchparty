@@ -130,7 +130,8 @@ export const EditRoomModal = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
-  const cleanId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
+  const primaryId = room.id || room.roomId;
+  const cleanId = primaryId.startsWith("/") ? primaryId.substring(1) : primaryId;
   const initialPasscode = room.currentPasscode || "";
 
   const [title, setTitle] = useState(room.roomTitle || "");
@@ -178,7 +179,7 @@ export const EditRoomModal = ({
         setIsLoadingDetails(true);
         (async () => {
           try {
-            const freshData = await apiFetch<RoomDetailsData>(`/roomDetails?roomId=${encodeURIComponent(room.roomId)}`, {
+            const freshData = await apiFetch<RoomDetailsData>(`/roomDetails?roomId=${encodeURIComponent(primaryId)}`, {
               requireAuth: true,
             });
             if (freshData) {
@@ -262,7 +263,7 @@ export const EditRoomModal = ({
 
       if (coverFile) {
         const fileExt = coverFile.name.split('.').pop();
-        const safeRoomId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
+        const safeRoomId = cleanId;
         const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -284,7 +285,7 @@ export const EditRoomModal = ({
         requireAuth: true,
         body: {
           uid: user.id,
-          roomId: room.roomId,
+          roomId: primaryId,
           roomTitle: trimmedTitle,
           roomDescription: description,
           isPermanent,
@@ -304,13 +305,13 @@ export const EditRoomModal = ({
         await apiFetch('/updateRoomCover', {
           method: 'POST',
           requireAuth: true,
-          body: { uid: user.id, roomId: room.roomId, coverPhoto: null },
+          body: { uid: user.id, roomId: primaryId, coverPhoto: null },
         });
       } else if (coverFile && finalCoverUrl && finalCoverUrl !== room.coverPhoto) {
         await apiFetch('/updateRoomCover', {
           method: 'POST',
           requireAuth: true,
-          body: { uid: user.id, roomId: room.roomId, coverPhoto: finalCoverUrl },
+          body: { uid: user.id, roomId: primaryId, coverPhoto: finalCoverUrl },
         });
       }
 
@@ -758,9 +759,12 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const history = useHistory();
   const computedState = getComputedState(room);
   const isEnded = isTerminalRoom(room);
+  const primaryId = room.id || room.roomId;
+  const cleanPrimaryId = primaryId.startsWith("/") ? primaryId.substring(1) : primaryId;
 
   const handleCopyUrl = () => {
-    navigator.clipboard.writeText(getRoomUrl(room.roomId)).then(() => {
+    const target = room.joiningId || primaryId;
+    navigator.clipboard.writeText(getRoomUrl(target)).then(() => {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
     }).catch(console.error);
@@ -779,7 +783,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
     try {
-      await onDelete(room.roomId);
+      await onDelete(primaryId);
       setDeleteModalOpened(false);
     } catch (e) {
       console.error("Failed to delete room:", e);
@@ -800,7 +804,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         requireAuth: true,
         body: {
           uid: user.id,
-          roomId: room.roomId,
+          roomId: primaryId,
         },
       });
 
@@ -839,14 +843,14 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
       if (!user) throw new Error("Not logged in");
 
       const fileExt = file.name.split('.').pop();
-      const safeRoomId = room.roomId.startsWith("/") ? room.roomId.substring(1) : room.roomId;
+      const safeRoomId = cleanPrimaryId;
       const filePath = `${user.id}/${safeRoomId}/cover.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage.from('room_covers').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage.from('room_covers').getPublicUrl(filePath);
-      onUpdateCover(room.roomId, `${publicUrlData.publicUrl}?t=${Date.now()}`);
+      onUpdateCover(primaryId, `${publicUrlData.publicUrl}?t=${Date.now()}`);
     } catch (e: unknown) {
       console.error("Failed to upload cover", e);
       const raw = e instanceof Error ? e.message : "Failed to upload cover photo";
@@ -859,8 +863,8 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   };
 
   const isPermanent = Boolean(room.isPermanent);
-  const urlPath = `/watch/${room.roomId.replace(/^\//, '')}`;
-  const detailsPath = `/myrooms/${room.roomId}`;
+  const urlPath = `/watch/${cleanPrimaryId}`;
+  const detailsPath = `/myrooms/${cleanPrimaryId}`;
 
   const renderPrimary = () => {
     if (isEnded) {
@@ -879,7 +883,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
         <Button
           size="xs"
           className={styles.primaryBtn}
-          onClick={() => history.push(`/join/${room.roomId.replace(/^\//, '')}?user=host&start=waiting`)}
+          onClick={() => history.push(`/join/${cleanPrimaryId}?user=host&start=waiting`)}
           leftSection={<IconPlayerPlayFilled size={12} />}
         >
           Start Session
@@ -1307,7 +1311,8 @@ const GridRoomCard = ({
 
       {actions.inviteModalOpened && (
         <InviteModal
-          roomId={room.roomId}
+          roomId={room.id || room.roomId}
+          joiningId={room.joiningId}
           passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}
           isOwner={true}
@@ -1563,7 +1568,8 @@ const StackRoomCard = ({
 
       {actions.inviteModalOpened && (
         <InviteModal
-          roomId={room.roomId}
+          roomId={room.id || room.roomId}
+          joiningId={room.joiningId}
           passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}
           isOwner={true}

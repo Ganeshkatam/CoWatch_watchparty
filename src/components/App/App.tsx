@@ -232,6 +232,8 @@ interface AppState {
   controller?: string;
   savedPasscodes: StringDict;
   roomId: string;
+  canonicalRoomId?: string;
+  joiningId?: string;
   isChatDisabled: boolean;
   showChatColumn: boolean;
   showPeopleColumn: boolean;
@@ -339,6 +341,8 @@ export class App extends React.Component<AppProps, AppState> {
     maxParticipants: 10,
     controller: "",
     roomId: "",
+    canonicalRoomId: undefined,
+    joiningId: undefined,
     savedPasscodes: {},
     isChatDisabled: false,
     showChatColumn: (() => {
@@ -793,7 +797,7 @@ export class App extends React.Component<AppProps, AppState> {
     // Send heartbeat to the server
     this.heartbeat = window.setInterval(
       () => {
-        fetch(serverPath + "/ping").catch(() => {});
+        fetch(serverPath + "/ping").catch(() => { });
       },
       10 * 60 * 1000,
     );
@@ -907,6 +911,18 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (infoResp.ok) {
           const info = await infoResp.json();
+          if (info.id) {
+            this.setState({ canonicalRoomId: info.id, joiningId: info.joiningId });
+            // Normalize URL to canonical UUID if caller entered via legacy moniker or joining code
+            if (this.props.urlRoomId && this.props.urlRoomId !== info.id) {
+              const currentSearch = this.props.location?.search || (typeof window !== "undefined" ? window.location.search : "") || "";
+              if (this.props.history?.replace) {
+                this.props.history.replace(`/watch/${info.id}${currentSearch}`);
+              } else if (typeof window !== "undefined") {
+                window.history.replaceState(window.history.state, "", `/watch/${info.id}${currentSearch}`);
+              }
+            }
+          }
           if (info.roomTitle) {
             this.setState({ roomTitle: info.roomTitle });
           }
@@ -924,7 +940,15 @@ export class App extends React.Component<AppProps, AppState> {
           const isHostPresent = Boolean(info.isHostPresent);
           const isWaiting = info.status !== "active";
           const owner_id = isOwner ? (info.owner_id || user?.id || null) : null;
-          return { isOwner, requiresPasscode, owner_id, isWaiting, isHostPresent };
+          return {
+            isOwner,
+            requiresPasscode,
+            owner_id,
+            isWaiting,
+            isHostPresent,
+            id: info.id as string | undefined,
+            joiningId: info.joiningId as string | undefined,
+          };
         }
       } catch (e) {
         console.warn("/roomInfo fetch failed:", e);
@@ -1033,11 +1057,17 @@ export class App extends React.Component<AppProps, AppState> {
         });
       }
 
+      let effectiveRoomId = cleanRoomId;
       try {
         const access = await this.checkRoomAccess(cleanRoomId);
         if (!isCurrentGeneration()) {
           this.socketConnecting = false;
           return;
+        }
+
+        effectiveRoomId = access.id || cleanRoomId;
+        if (access.id && access.id !== this.state.roomId) {
+          this.setState({ roomId: access.id, canonicalRoomId: access.id, joiningId: access.joiningId });
         }
 
         // Admission Gateway Invariant:
@@ -1057,7 +1087,7 @@ export class App extends React.Component<AppProps, AppState> {
             const user = sessionData?.data?.session?.user;
             const token = sessionData?.data?.session?.access_token;
             if (user?.id && token) {
-              const restoreResult = await restoreAdmissionSession(cleanRoomId, serverPath, token, user.id);
+              const restoreResult = await restoreAdmissionSession(effectiveRoomId, serverPath, token, user.id);
               if (!isCurrentGeneration()) {
                 this.socketConnecting = false;
                 return;
@@ -1070,10 +1100,10 @@ export class App extends React.Component<AppProps, AppState> {
                   sessionId: routeSessionId,
                 });
                 console.log(
-                  `[ADMISSION_TRACE:RESTORE] Restored durable admission: room=${cleanRoomId} session=${routeSessionId} tokenFp=${fingerprintToken(routeAdmissionToken)}`
+                  `[ADMISSION_TRACE:RESTORE] Restored durable admission: room=${effectiveRoomId} session=${routeSessionId} tokenFp=${fingerprintToken(routeAdmissionToken)}`
                 );
               } else if (restoreResult.code === "BANNED" || restoreResult.code === "ROOM_TERMINAL" || restoreResult.code === "NO_ACTIVE_ADMISSION") {
-                clearAdmissionSession(cleanRoomId);
+                clearAdmissionSession(effectiveRoomId, [cleanRoomId, access.joiningId].filter(Boolean) as string[]);
                 routeAdmissionToken = undefined;
                 routeSessionId = undefined;
               }
@@ -1169,7 +1199,8 @@ export class App extends React.Component<AppProps, AppState> {
       // Connect to room namespace (URL-encoded to prevent invalid character/space errors)
       // Strict handshake: auth contains { token, sessionId, admissionToken }
       // Zero raw passcodes sent over socket query or handshake
-      const safeNamespace = encodeURIComponent(cleanRoomId);
+      const targetNamespaceRoomId = effectiveRoomId;
+      const safeNamespace = encodeURIComponent(targetNamespaceRoomId);
       const authSessionId = routeSessionId || this.state.sessionId || getOrCreateSessionId();
       const authFp = fingerprintToken(routeAdmissionToken);
       let sessionIdSource = "NONE";
@@ -1178,7 +1209,7 @@ export class App extends React.Component<AppProps, AppState> {
       else sessionIdSource = "FALLBACK_LOCALSTORAGE";
 
       console.log(
-        `[ADMISSION_TRACE:E] Socket auth construction: room=${cleanRoomId} session=${authSessionId} sessionSource=${sessionIdSource} tokenFp=${authFp} pairCorrelated=${Boolean(routeAdmissionToken && routeSessionId && authSessionId === routeSessionId)}`
+        `[ADMISSION_TRACE:E] Socket auth construction: room=${targetNamespaceRoomId} session=${authSessionId} sessionSource=${sessionIdSource} tokenFp=${authFp} pairCorrelated=${Boolean(routeAdmissionToken && routeSessionId && authSessionId === routeSessionId)}`
       );
 
       const socket = io(serverPath + "/" + safeNamespace, {
@@ -1191,7 +1222,7 @@ export class App extends React.Component<AppProps, AppState> {
         timeout: 10000,
         query: {
           shard,
-          roomId: cleanRoomId,
+          roomId: targetNamespaceRoomId,
         },
         auth: {
           sessionId: authSessionId,
@@ -1201,7 +1232,7 @@ export class App extends React.Component<AppProps, AppState> {
       });
       this.socket = socket;
       void prewarmIceServers({
-        roomId: cleanRoomId,
+        roomId: targetNamespaceRoomId,
         token: token || undefined,
         admissionToken: routeAdmissionToken || undefined,
         callerUid: uid || undefined,
@@ -2498,7 +2529,7 @@ export class App extends React.Component<AppProps, AppState> {
 
   // Functions for managing room settings
   getInviteLink = () => {
-    return getRoomUrl(this.state.roomId);
+    return getRoomUrl(this.state.joiningId || this.state.roomId);
   };
 
   resolveHostName = async (ownerId: string, ownerNameHint?: string) => {
@@ -4672,6 +4703,7 @@ export class App extends React.Component<AppProps, AppState> {
                       currentHostClientId={this.state.currentHostClientId}
                       getLeaderTime={this.getLeaderTime}
                       roomId={this.state.roomId}
+                      joiningId={this.state.joiningId}
                       passcode={this.state.passcode}
                       initialCameraOn={this.state.initialCameraOn}
                       initialMicOn={this.state.initialMicOn}

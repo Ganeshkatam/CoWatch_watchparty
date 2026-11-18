@@ -226,12 +226,14 @@ test("roomOwnerInspectionRouter Suite", async (t) => {
 
     const mockPostgres = {
       query: async (sql: string, params: any[]) => {
-        if (sql.includes(`FROM rooms WHERE "roomId" = $1 AND owner_id = $2`)) {
+        if (sql.includes(`FROM rooms WHERE`) && sql.includes(`owner_id = $2`)) {
           capturedRoomSql = sql;
           if (params[0] === "target-room" && params[1] === "owner-bob") {
             return {
               rows: [
                 {
+                  id: "b4a1c5d2-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
+                  joining_id: "0123456789",
                   roomId: "target-room",
                   roomTitle: "Bob Room",
                   status: "active",
@@ -323,7 +325,9 @@ test("roomOwnerInspectionRouter Suite", async (t) => {
       assert.equal(resSuccess.body.chatSummary.messagesCount, 2);
       assert.equal(resSuccess.body.chatSummary.lastMessageAt, "2026-10-03T10:05:00Z");
 
-      assert(capturedRoomSql.includes(`FROM rooms WHERE "roomId" = $1 AND owner_id = $2`));
+      assert.equal(resSuccess.body.id, "b4a1c5d2-3e4f-4a5b-8c6d-7e8f9a0b1c2d");
+      assert.equal(resSuccess.body.joiningId, "0123456789");
+      assert(capturedRoomSql.includes(`(id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1 OR joining_id = $1) AND owner_id = $2`));
       assert(capturedLifecycleSql.includes("ORDER BY timestamp DESC"));
       assert(capturedMessagesSql.includes("ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20"));
     } finally {

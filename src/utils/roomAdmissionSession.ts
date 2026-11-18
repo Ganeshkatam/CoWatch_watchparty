@@ -38,7 +38,8 @@ export function fingerprintToken(token?: string | null): string {
 export function saveAdmissionSession(
   roomId: string,
   admissionToken: string,
-  sessionId: string
+  sessionId: string,
+  aliases?: string[]
 ): void {
   if (typeof window === "undefined" || !window.sessionStorage) {
     return;
@@ -54,20 +55,34 @@ export function saveAdmissionSession(
     createdAt: Date.now(),
   };
 
+  const keysToSave = new Set<string>();
+  keysToSave.add(getStorageKey(roomId));
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      if (alias && typeof alias === "string" && alias.trim()) {
+        keysToSave.add(getStorageKey(alias));
+      }
+    }
+  }
+
   try {
-    window.sessionStorage.setItem(getStorageKey(roomId), JSON.stringify(payload));
+    const serialized = JSON.stringify(payload);
+    for (const key of keysToSave) {
+      window.sessionStorage.setItem(key, serialized);
+    }
   } catch (err) {
     console.warn("[AdmissionSession] Failed to save admission session:", err);
   }
 }
 
 /**
- * Loads and validates a stored admission session for a specific room.
- * Validates structural integrity (matching roomId, non-empty strings, finite createdAt).
+ * Loads and validates a stored admission session for a specific room or alias.
+ * Validates structural integrity (non-empty strings, finite createdAt).
  * Never validates cryptographic signatures on client; server remains authoritative.
  */
 export function loadAdmissionSession(
-  roomId: string
+  roomId: string,
+  fallbackAliases?: string[]
 ): { admissionToken: string; sessionId: string } | null {
   if (typeof window === "undefined" || !window.sessionStorage) {
     return null;
@@ -76,49 +91,50 @@ export function loadAdmissionSession(
     return null;
   }
 
-  try {
-    const raw = window.sessionStorage.getItem(getStorageKey(roomId));
-    if (!raw) {
-      return null;
+  const candidateKeys = [getStorageKey(roomId)];
+  if (Array.isArray(fallbackAliases)) {
+    for (const alias of fallbackAliases) {
+      if (alias && typeof alias === "string" && alias.trim()) {
+        candidateKeys.push(getStorageKey(alias));
+      }
     }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-
-    const targetRoom = (roomId || "").trim().toLowerCase();
-    const storedRoom = typeof parsed.roomId === "string" ? parsed.roomId.trim().toLowerCase() : "";
-
-    if (storedRoom !== targetRoom) {
-      return null;
-    }
-
-    if (
-      typeof parsed.admissionToken !== "string" ||
-      parsed.admissionToken.trim().length === 0 ||
-      typeof parsed.sessionId !== "string" ||
-      parsed.sessionId.trim().length === 0 ||
-      typeof parsed.createdAt !== "number" ||
-      !Number.isFinite(parsed.createdAt)
-    ) {
-      return null;
-    }
-
-    return {
-      admissionToken: parsed.admissionToken.trim(),
-      sessionId: parsed.sessionId.trim(),
-    };
-  } catch (err) {
-    console.warn("[AdmissionSession] Failed to load admission session:", err);
-    return null;
   }
+
+  for (const key of candidateKeys) {
+    try {
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+
+      if (
+        typeof parsed.admissionToken !== "string" ||
+        parsed.admissionToken.trim().length === 0 ||
+        typeof parsed.sessionId !== "string" ||
+        parsed.sessionId.trim().length === 0 ||
+        typeof parsed.createdAt !== "number" ||
+        !Number.isFinite(parsed.createdAt)
+      ) {
+        continue;
+      }
+
+      return {
+        admissionToken: parsed.admissionToken.trim(),
+        sessionId: parsed.sessionId.trim(),
+      };
+    } catch {
+      // Continue to next alias
+    }
+  }
+
+  return null;
 }
 
 /**
  * Clears the stored admission session for a room upon explicit exit or terminal admission failure.
  */
-export function clearAdmissionSession(roomId: string): void {
+export function clearAdmissionSession(roomId: string, aliases?: string[]): void {
   if (typeof window === "undefined" || !window.sessionStorage) {
     return;
   }
@@ -126,8 +142,20 @@ export function clearAdmissionSession(roomId: string): void {
     return;
   }
 
+  const keysToRemove = new Set<string>();
+  keysToRemove.add(getStorageKey(roomId));
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      if (alias && typeof alias === "string" && alias.trim()) {
+        keysToRemove.add(getStorageKey(alias));
+      }
+    }
+  }
+
   try {
-    window.sessionStorage.removeItem(getStorageKey(roomId));
+    for (const key of keysToRemove) {
+      window.sessionStorage.removeItem(key);
+    }
   } catch (err) {
     console.warn("[AdmissionSession] Failed to clear admission session:", err);
   }

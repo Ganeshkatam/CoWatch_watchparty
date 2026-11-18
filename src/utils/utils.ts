@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import config from "../config";
 import { cyrb53 } from "./hash";
 import { supabase, getAccessToken } from "./supabaseClient";
+import { isValidJoiningCode, normalizeJoiningCode } from "./roomIdentifier";
 
 export function formatTimestamp(input: any, zeroTime?: number): string {
   if (
@@ -763,14 +764,22 @@ export function parseRoomInput(raw: string): string | null {
 
       if (pathname.includes("/join/")) {
         const afterJoin = pathname.split("/join/")[1] || "";
-        const segment = afterJoin.split("/")[0]?.split("?")[0];
-        return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+        const segment = afterJoin.split("/")[0]?.split("?")[0]?.trim();
+        if (segment) {
+          if (isValidJoiningCode(segment)) return normalizeJoiningCode(segment);
+          if (/^[a-zA-Z0-9_-]+$/.test(segment)) return segment;
+        }
+        return null;
       }
 
       if (pathname.includes("/watch/")) {
         const afterWatch = pathname.split("/watch/")[1] || "";
-        const segment = afterWatch.split("/")[0]?.split("?")[0];
-        return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+        const segment = afterWatch.split("/")[0]?.split("?")[0]?.trim();
+        if (segment) {
+          if (isValidJoiningCode(segment)) return normalizeJoiningCode(segment);
+          if (/^[a-zA-Z0-9_-]+$/.test(segment)) return segment;
+        }
+        return null;
       }
 
       return null;
@@ -781,21 +790,38 @@ export function parseRoomInput(raw: string): string | null {
 
   // Handle path-based inputs
   if (trimmed.startsWith("/join/")) {
-    const segment = trimmed.slice(6).split("/")[0]?.split("?")[0];
-    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+    const segment = trimmed.slice(6).split("/")[0]?.split("?")[0]?.trim();
+    if (segment) {
+      if (isValidJoiningCode(segment)) return normalizeJoiningCode(segment);
+      if (/^[a-zA-Z0-9_-]+$/.test(segment)) return segment;
+    }
+    return null;
   }
 
   if (trimmed.startsWith("/watch/")) {
-    const segment = trimmed.slice(7).split("/")[0]?.split("?")[0];
-    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+    const segment = trimmed.slice(7).split("/")[0]?.split("?")[0]?.trim();
+    if (segment) {
+      if (isValidJoiningCode(segment)) return normalizeJoiningCode(segment);
+      if (/^[a-zA-Z0-9_-]+$/.test(segment)) return segment;
+    }
+    return null;
   }
 
   if (trimmed.startsWith("/")) {
-    const segment = trimmed.slice(1).split("/")[0]?.split("?")[0];
-    return segment && /^[a-zA-Z0-9_-]+$/.test(segment) ? segment : null;
+    const segment = trimmed.slice(1).split("/")[0]?.split("?")[0]?.trim();
+    if (segment) {
+      if (isValidJoiningCode(segment)) return normalizeJoiningCode(segment);
+      if (/^[a-zA-Z0-9_-]+$/.test(segment)) return segment;
+    }
+    return null;
   }
 
-  // Handle plain room code or slug
+  // Handle formatted or plain 10-digit joining codes (e.g. 123-456-7890 or 123 456 7890)
+  if (isValidJoiningCode(trimmed)) {
+    return normalizeJoiningCode(trimmed);
+  }
+
+  // Handle plain room code, slug, or canonical UUID
   if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
     return trimmed;
   }

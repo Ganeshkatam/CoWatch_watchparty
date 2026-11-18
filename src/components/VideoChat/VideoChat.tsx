@@ -39,6 +39,7 @@ interface VideoChatProps {
   owner: string | undefined;
   getLeaderTime: () => number;
   roomId?: string;
+  joiningId?: string;
   passcode?: string;
   onOpenInviteModal?: () => void;
   initialCameraOn?: boolean;
@@ -1146,6 +1147,7 @@ export class VideoChat extends React.Component<VideoChatProps> {
         {this.state.isInviteModalOpen && canInvite && (
           <InviteModal
             roomId={this.props.roomId || ""}
+            joiningId={this.props.joiningId}
             passcode={this.props.passcode}
             isHost={this.props.isHost}
             isOwner={isRoomOwner}
