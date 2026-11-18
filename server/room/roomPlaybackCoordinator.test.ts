@@ -18,7 +18,6 @@ function createMockDeps(overrides?: Partial<any>) {
     terminateSignalingSession: () => {},
     sendRoster: () => {},
     getHostState: () => ({} as any),
-    resetSubtitle: () => {},
     ...overrides,
   };
 }

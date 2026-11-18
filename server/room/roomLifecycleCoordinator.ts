@@ -26,8 +26,6 @@ export interface RoomLifecycleDependencies {
   getVideo: () => string | null;
   setVideo: (video: string | null) => void;
   getVideoTS: () => number;
-  getSubtitle: () => string;
-  setSubtitle: (subtitle: string) => void;
   getPlaybackRate: () => number;
   setPlaybackRate: (rate: number) => void;
   getPaused: () => boolean;
@@ -375,7 +373,6 @@ export class RoomLifecycleCoordinator {
     return JSON.stringify({
       video: this.deps.getVideo(),
       videoTS: this.deps.getVideoTS(),
-      subtitle: this.deps.getSubtitle(),
       playbackRate: this.deps.getPlaybackRate(),
       paused: this.deps.getPaused(),
       nameMap: abbrNameMap,
@@ -390,9 +387,6 @@ export class RoomLifecycleCoordinator {
   public deserialize = (roomData: string): void => {
     const roomObj = JSON.parse(roomData);
     this.deps.setVideo(roomObj.video);
-    if (roomObj.subtitle) {
-      this.deps.setSubtitle(roomObj.subtitle);
-    }
     if (roomObj.paused !== undefined) {
       this.deps.setPaused(roomObj.paused);
     }

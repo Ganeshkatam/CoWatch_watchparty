@@ -42,7 +42,6 @@ const defaults = {
   // ==========================================
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
   TWITCH_PROXY_PATH: "", // Optional, URL of the server that can proxy twitch HLS stream playlists and segments
-  OPENSUBTITLES_KEY: "", // Optional, key to OpenSubtitles API
   MEDIASOUP_SERVER: "", // Optional, URL of the MediaSoup server to broadcast to for larger screen/file shares
   STREAM_PATH: "", // Path of server that supports additional video streams
   CONVERT_PATH: "", // Path of server that supports video conversion

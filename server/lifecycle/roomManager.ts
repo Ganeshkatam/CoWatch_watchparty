@@ -39,7 +39,6 @@ export class RoomLifecycleManager {
       playlist: room.playlist,
       nameMap: room.nameMap,
       pictureMap: room.pictureMap,
-      subtitle: room.subtitle,
       loop: room.loop,
       video: room.video || undefined,
       videoTS: room.videoTS,

@@ -219,7 +219,7 @@ test("mediaProxyRouter Suite", async (t) => {
   });
 
 
-  await t.test("6a. fMP4, audio, and subtitle segment extensions are proxied with bounded fetches", async () => {
+  await t.test("6a. fMP4, audio, and text track segment extensions are proxied with bounded fetches", async () => {
     const extensions = ["m4s", "mp4", "cmfv", "cmfa", "aac", "vtt"];
     const captured: Array<{ url: string; options: any }> = [];
     const payload = Buffer.from("segment-payload");

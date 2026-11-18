@@ -36,10 +36,6 @@ export class YouTube implements Player {
     }
   };
 
-  isSubtitled = (): boolean => {
-    return false;
-  };
-
   getPlaybackRate = (): number => {
     try {
       return this.coWatchYTPlayer?.getPlaybackRate() ?? 1;
@@ -158,29 +154,6 @@ export class YouTube implements Player {
     }
   };
 
-  setSubtitleMode = (mode?: TextTrackMode, lang?: string) => {
-    try {
-      if (mode === "showing") {
-        //@ts-expect-error
-        this.coWatchYTPlayer?.setOption("captions", "reload", true);
-        //@ts-expect-error
-        this.coWatchYTPlayer?.setOption("captions", "track", {
-          languageCode: lang ?? "en",
-        });
-      }
-      if (mode === "hidden") {
-        //@ts-expect-error
-        this.coWatchYTPlayer?.setOption("captions", "track", {});
-      }
-    } catch (e) {
-      console.warn("Error setting YouTube subtitles:", e);
-    }
-  };
-
-  getSubtitleMode = () => {
-    return "hidden" as TextTrackMode;
-  };
-
   isReady = () => {
     return Boolean(
       this.coWatchYTPlayer &&
@@ -197,14 +170,6 @@ export class YouTube implements Player {
   };
 
   clearState = () => {
-    return;
-  };
-
-  loadSubtitles = async (_src: string) => {
-    return;
-  };
-
-  syncSubtitles = (_sharerTime: number) => {
     return;
   };
 

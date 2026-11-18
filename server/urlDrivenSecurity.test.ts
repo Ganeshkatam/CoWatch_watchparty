@@ -311,7 +311,7 @@ async function runTests() {
   testRoom.isChatDisabled = false;
   console.log('✓ Host complete chat authority matrix strictly verified (send, edit, delete, clear, react)');
 
-  // 2.5 Exhaustive Mutation Inventory Check (Playback, Playlist, Subtitles, Locks)
+  // 2.5 Exhaustive Mutation Inventory Check (Playback, Playlist, Locks)
   console.log('\n--- Section 2.5: Exhaustive Mutation Inventory Check ---');
   testRoom.lock = 'host-uid'; // Lock playback to host
 
@@ -325,7 +325,6 @@ async function runTests() {
     'playlist:move',
     'playlist:delete',
     'playlist:next',
-    'room:subtitle_change',
   ];
 
   for (const action of playbackMutations) {
@@ -345,7 +344,7 @@ async function runTests() {
   assert(testRoom.authorizeRoomAction({ actorSocket: memberSocket, action: 'room:lock_participants' }).allowed === false, 'Member cannot lock participants');
 
   testRoom.lock = ''; // Unlock
-  console.log('✓ Exhaustive mutation inventory verified: playback, playlist, subtitles, locks');
+  console.log('✓ Exhaustive mutation inventory verified: playback, playlist, locks');
 
   // =========================================================================
   // Section 3: Room Ownership Boundary Check
@@ -677,7 +676,6 @@ async function runTests() {
     'CMD:seek': { category: 'PRIVILEGED', requiredAction: 'room:seek', delegatedInternalMethod: 'seekVideo' },
     'CMD:playbackRate': { category: 'PRIVILEGED', requiredAction: 'room:change_rate', delegatedInternalMethod: 'setPlaybackRate' },
     'CMD:loop': { category: 'PRIVILEGED', requiredAction: 'room:set_media' },
-    'CMD:subtitle': { category: 'PRIVILEGED', requiredAction: 'room:subtitle_change' },
     'CMD:lock': { category: 'PRIVILEGED', requiredAction: 'room:lock' },
     'CMD:setParticipantsLock': { category: 'PRIVILEGED', requiredAction: 'room:lock_participants' },
 
@@ -850,7 +848,7 @@ async function runTests() {
   assert(actionTypeMatch, 'Could not extract RoomAction union from server/roomAuthorization.ts');
 
   const definedActions = [...actionTypeMatch[1].matchAll(/["']([a-zA-Z0-9_:]+)["']/g)].map(m => m[1]);
-  assert(definedActions.length >= 21, `Expected at least 21 RoomAction variants, found ${definedActions.length}`);
+  assert(definedActions.length >= 20, `Expected at least 20 RoomAction variants, found ${definedActions.length}`);
 
   // Verify each defined RoomAction is handled in authorizeRoomAction's switch statement
   for (const actionName of definedActions) {

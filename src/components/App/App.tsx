@@ -46,7 +46,6 @@ import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
 import { supabase, safeGetSession, getAccessToken, getCachedSupabaseToken, getCachedSupabaseUser } from "../../utils/supabaseClient";
 import { fetchPublicProfile } from "../../api/profile";
-import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
 import styles from "./App.module.css";
@@ -187,7 +186,6 @@ interface AppProps {
 interface AppState {
   state: "starting" | "connected";
   roomMedia: string;
-  roomSubtitle: string;
   roomPaused: boolean;
   roomLoop: boolean;
   participants: any[];
@@ -224,7 +222,6 @@ interface AppState {
   isSubscribeModalOpen: boolean;
   isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
-  isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
 
   copiedRoomLink: boolean;
@@ -295,7 +292,6 @@ export class App extends React.Component<AppProps, AppState> {
     myClientId: "",
     roomMedia: "",
     roomPaused: false,
-    roomSubtitle: "",
     roomLoop: false,
     participants: [],
     rosterUpdateTS: Date.now(),
@@ -331,7 +327,6 @@ export class App extends React.Component<AppProps, AppState> {
     isSubscribeModalOpen: false,
     isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
-    isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
 
     copiedRoomLink: false,
@@ -1663,15 +1658,6 @@ export class App extends React.Component<AppProps, AppState> {
           this.Player().setPlaybackRate(rate);
         }
       });
-      socket.on("REC:subtitle", (data: any) => {
-        if (!isCurrentGeneration()) return;
-        const epoch = typeof data === "object" ? data?.__epoch : undefined;
-        const sub = typeof data === "object" ? data?.subtitle : data;
-        if (!operationCoordinator.canAcceptSyncEvent(epoch)) return;
-        this.setState({ roomSubtitle: sub }, () => {
-          this.Player().loadSubtitles(sub);
-        });
-      });
       socket.on("REC:loop", (data: any) => {
         if (!isCurrentGeneration()) return;
         const epoch = typeof data === "object" ? data?.__epoch : undefined;
@@ -1727,7 +1713,6 @@ export class App extends React.Component<AppProps, AppState> {
           {
             roomMedia: currentMedia,
             roomPaused: data.paused,
-            roomSubtitle: data.subtitle,
             roomLoop: data.loop,
             roomPlaybackRate: data.playbackRate,
             loading: mediaChanged ? Boolean(data.video) : this.state.loading,
@@ -1751,9 +1736,6 @@ export class App extends React.Component<AppProps, AppState> {
 
             if (mediaChanged && !this.isLocalStreamAFile && !localMedia && !isWebRTCStream) {
               this.Player().clearState();
-            }
-            if (data.subtitle) {
-              this.Player().loadSubtitles(data.subtitle);
             }
             if (data.playbackRate) {
               this.Player().setPlaybackRate(data.playbackRate);
@@ -2144,16 +2126,6 @@ export class App extends React.Component<AppProps, AppState> {
           } else if (delta <= 0.5) {
             if (this.state.isCatchingUp) {
               this.setState({ isCatchingUp: false });
-            }
-          }
-        }
-        if (this.state.roomSubtitle) {
-          const sharer = this.state.participants.find((p) => p.isScreenShare);
-          if (sharer && sharer.id !== this.state.myClientId) {
-            // Sync only if someone is sharing and it's not us
-            const sharerTime = data[sharer.id];
-            if (typeof sharerTime === "number") {
-              this.Player().syncSubtitles(sharerTime);
             }
           }
         }
@@ -3502,13 +3474,6 @@ export class App extends React.Component<AppProps, AppState> {
     this.refreshControls();
   };
 
-  localSubtitleModal = () => {
-    // Native player uses subtitle modal.
-    if (this.usingNative()) {
-      this.setState({ isSubtitleModalOpen: true });
-    }
-  };
-
   roomSetPlaybackRate = (rate: number) => {
     const operationId = operationCoordinator.createOperationId("media-playback", "playbackRate");
     this.socket.emit("CMD:playbackRate", { rate, operationId });
@@ -4018,7 +3983,6 @@ export class App extends React.Component<AppProps, AppState> {
         isLiveStream={this.state.isLiveStream}
         muted={this.Player().isMuted()}
         volume={this.Player().getVolume()}
-        subtitled={this.Player().isSubtitled()}
         currentTime={this.Player().getCurrentTime()}
         duration={this.Player().getDuration()}
         disabled={!this.haveLock()}
@@ -4036,10 +4000,8 @@ export class App extends React.Component<AppProps, AppState> {
         roomSetPlaybackRate={this.roomSetPlaybackRate}
         localFullScreen={this.localFullScreen}
         localToggleMute={this.localToggleMute}
-        localSubtitleModal={this.localSubtitleModal}
         localSetVolume={this.localSetVolume}
         localSeek={this.localSeek}
-        localSetSubtitleMode={this.Player().setSubtitleMode}
         roomPlaylistPlay={this.roomPlaylistPlay}
         playlist={this.state.playlist}
         isPiPSupported={this.Player().isPictureInPictureSupported()}
@@ -4069,18 +4031,6 @@ export class App extends React.Component<AppProps, AppState> {
             closeModal={() => this.setState({ isFileShareModalOpen: false })}
             startFileShare={this.startFileShare}
             startConvert={this.startConvert}
-          />
-        )}
-        {this.state.isSubtitleModalOpen && (
-          <SubtitleModal
-            closeModal={() => this.setState({ isSubtitleModalOpen: false })}
-            socket={this.socket}
-            roomSubtitle={this.state.roomSubtitle}
-            roomMedia={this.state.roomMedia}
-            haveLock={this.haveLock}
-            getMediaDisplayName={this.getMediaDisplayName}
-            setSubtitleMode={this.Player().setSubtitleMode}
-            getSubtitleMode={this.Player().getSubtitleMode}
           />
         )}
 

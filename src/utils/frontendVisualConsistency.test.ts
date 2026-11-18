@@ -82,8 +82,6 @@ async function runVisualConsistencyTests() {
     "src/components/Modal/PasscodeModal.tsx",
     "src/components/Modal/ScreenShareModal.tsx",
     "src/components/Modal/FileShareModal.tsx",
-
-    "src/components/Modal/SubtitleModal.tsx",
     "src/components/Modal/MultiStreamModal.tsx",
     "src/components/Modal/HostEndedModal.tsx",
     "src/components/Profile/Profile.tsx",

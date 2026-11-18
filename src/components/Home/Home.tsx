@@ -362,7 +362,7 @@ export const Home: React.FC = () => {
                       </div>
                       <div className={styles.capabilityItem}>
                         <IconCheck size={18} className={styles.capabilityCheck} />
-                        <span>Support for external subtitle files (.srt, .vtt)</span>
+                        <span>Synchronized playback and timeline seeking across all viewers</span>
                       </div>
                     </div>
                   </div>

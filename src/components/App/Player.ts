@@ -12,15 +12,10 @@ export abstract class Player {
   public abstract setMute: (muted: boolean) => void;
   public abstract getVolume: () => number;
   public abstract setVolume: (volume: number) => void;
-  public abstract isSubtitled: () => boolean;
-  public abstract getSubtitleMode: () => TextTrackMode;
-  public abstract setSubtitleMode: (mode?: TextTrackMode) => void;
   public abstract isReady: () => boolean;
   public abstract clearState: () => void;
-  public abstract loadSubtitles: (src: string) => void;
   public abstract isPictureInPictureSupported: () => boolean;
   public abstract togglePictureInPicture: (autoTriggered?: boolean) => Promise<void>;
-  public abstract syncSubtitles: (sharerTime: number) => void;
   public abstract getTimeRanges: () => { start: number; end: number }[];
   public abstract setLoop: (loop: boolean) => void;
   public abstract getVideoEl: () => HTMLMediaElement;

@@ -90,7 +90,7 @@ CoWatch is a private, real-time synchronized video streaming and collaborative w
 - **Bundler**: Vite 7
 - **UI System**: Mantine v8 (`@mantine/core`, `@mantine/notifications`, `@mantine/dates`, `@mantine/hooks`)
 - **Icons**: Tabler Icons (`@tabler/icons-react`)
-- **Streaming & Media**: HLS.js, Dash.js, WebTorrent, srt-webvtt
+- **Streaming & Media**: HLS.js, Dash.js, WebTorrent
 - **Real-Time & WebRTC**: Socket.IO Client 4, Mediasoup Client 3
 - **Social & Interactive**: Emoji Mart (`@emoji-mart/react`), React QR Code, Recharts
 

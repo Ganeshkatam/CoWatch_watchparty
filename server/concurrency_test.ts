@@ -1312,7 +1312,6 @@ async function runConcurrencyStressTest() {
       paused: false,
       playbackRate: 1.25,
       loop: true,
-      subtitle: "en.vtt",
       playlist: [{ url: "https://example.com/next.mp4" }],
       lock: "lock-user-1",
       participantsLocked: true,

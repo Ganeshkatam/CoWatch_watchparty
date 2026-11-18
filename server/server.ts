@@ -20,7 +20,6 @@ import { RoomLifecycleManager } from "./lifecycle/roomManager.ts";
 import { registerBackgroundMaintenance } from "./lifecycle/backgroundMaintenance.ts";
 import { sanitizeRoomId } from "./strip_slashes.ts";
 import { profileRouter } from "./routes/profile.ts";
-import { createSubtitleRouter } from "./routes/subtitleRouter.ts";
 import { createFeedbackRouter } from "./routes/feedbackRouter.ts";
 import { createOperatorRouter } from "./routes/operatorRouter.ts";
 import { createMediaMetadataRouter } from "./routes/mediaMetadataRouter.ts";
@@ -463,7 +462,6 @@ dynamicRoomNsp.use(async (socket, next) => {
   // INTERNAL OPERATIONS & HEALTH: Handled by modular router (routes/internalOperationsRouter.ts)
   app.use(createInternalOperationsRouter({ postgres }));
 
-  app.use(createSubtitleRouter());
   app.use(compression());
   app.use(createOperatorRouter({ postgres }));
   app.use(createMediaMetadataRouter({ postgres }));

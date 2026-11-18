@@ -42,7 +42,6 @@ export interface RoomSnapshot {
   playlist?: unknown[];
   nameMap?: Record<string, string>;
   pictureMap?: Record<string, string>;
-  subtitle?: string;
   loop?: boolean;
   video?: string;
   videoTS?: number;

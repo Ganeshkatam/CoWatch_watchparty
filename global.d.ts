@@ -1,5 +1,3 @@
-declare module "srt-webvtt";
-
 type StringDict = Record<string, string>;
 type NumberDict = Record<string, number>;
 type BooleanDict = Record<string, boolean>;
@@ -85,7 +83,6 @@ interface SearchResult extends PlaylistVideo {
 interface HostState {
   video: string;
   videoTS: number;
-  subtitle: string;
   paused: boolean;
   playbackRate: number;
   loop: boolean;

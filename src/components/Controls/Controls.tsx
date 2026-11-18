@@ -9,7 +9,6 @@ import {
   IconRefresh,
   IconCheck,
   IconRepeat,
-  IconBadgeCc,
   IconVolumeOff,
   IconVolume,
   IconTheater,
@@ -26,7 +25,6 @@ interface ControlsProps {
   paused: boolean;
   muted: boolean;
   volume: number;
-  subtitled: boolean;
   currentTime: number;
   disabled?: boolean;
   leaderTime?: number;
@@ -43,10 +41,8 @@ interface ControlsProps {
   roomSetLoop: (loop: boolean) => void;
   localFullScreen: (fs: boolean) => void;
   localToggleMute: () => void;
-  localSubtitleModal: () => void;
   localSeek: () => void;
   localSetVolume: (volume: number) => void;
-  localSetSubtitleMode: (mode: TextTrackMode, lang?: string) => void;
   roomPlaylistPlay: (index: number) => void;
   playlist: PlaylistVideo[];
   isPiPSupported?: boolean;
@@ -94,7 +90,6 @@ export const Controls = (props: ControlsProps) => {
     roomSeek,
     localFullScreen,
     localToggleMute,
-    localSubtitleModal,
     localSeek,
     currentTime,
     leaderTime,
@@ -102,7 +97,6 @@ export const Controls = (props: ControlsProps) => {
     disabled,
     isReconnecting,
     isCatchingUp,
-    subtitled,
     paused,
     muted,
     volume,
@@ -392,41 +386,6 @@ export const Controls = (props: ControlsProps) => {
         title="Loop"
         color={props.loop ? "var(--color-success)" : undefined}
       />
-      {props.isYouTube ? (
-        <Menu>
-          <Menu.Target>
-            <IconBadgeCc className={styles.action} />
-          </Menu.Target>
-          <Menu.Dropdown>
-            {[
-              { key: "hidden", text: "Off", value: "hidden" },
-              { key: "en", text: "English", value: "showing" },
-              { key: "es", text: "Spanish", value: "showing" },
-            ].map((item) => (
-              <Menu.Item
-                key={item.key}
-                onClick={() =>
-                  props.localSetSubtitleMode(
-                    item.value as TextTrackMode,
-                    item.key,
-                  )
-                }
-              >
-                {item.text}
-              </Menu.Item>
-            ))}
-          </Menu.Dropdown>
-        </Menu>
-      ) : (
-        <IconBadgeCc
-          onClick={() => {
-            localSubtitleModal();
-          }}
-          className={` ${styles.action}`}
-          title="Captions"
-          color={subtitled ? "var(--color-success)" : undefined}
-        />
-      )}
       <IconTheater
         onClick={() => localFullScreen(false)}
         className={`${styles.action} ${styles.desktopOnly}`}

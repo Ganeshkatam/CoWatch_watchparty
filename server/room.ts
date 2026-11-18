@@ -97,7 +97,6 @@ export class Room {
   public get videoTS(): number {
     return this.playbackCoordinator.videoTS;
   }
-  public subtitle = "";
   public get playbackRate(): number {
     return this.playbackCoordinator.playbackRate;
   }
@@ -547,9 +546,6 @@ export class Room {
       terminateSignalingSession: () => this.signalingCoordinator.terminateSession(),
       sendRoster: () => this.sendRoster(),
       getHostState: () => this.getHostState(),
-      resetSubtitle: () => {
-        this.subtitle = "";
-      },
       emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
     });
 
@@ -579,10 +575,6 @@ export class Room {
         this.video = video;
       },
       getVideoTS: () => this.videoTS,
-      getSubtitle: () => this.subtitle,
-      setSubtitle: (subtitle) => {
-        this.subtitle = subtitle;
-      },
       getPlaybackRate: () => this.playbackRate,
       setPlaybackRate: (rate) => {
         this.playbackRate = rate;
@@ -1073,17 +1065,6 @@ export class Room {
       );
       socket.on("CMD:leaveScreenShare", () => validateNotExpired() && this.signalingCoordinator.leaveScreenSharing(socket));
 
-      socket.on("CMD:subtitle", (data: unknown) => {
-        if (!validateNotExpired()) return;
-        const context = this.buildAuthorizationContext(socket);
-        const auth = pureAuthorizeRoomAction(context, "room:subtitle_change");
-        if (!auth.allowed) {
-          socket.emit("CMD:error", { code: "FORBIDDEN" });
-          socket.emit("errorMessage", "FORBIDDEN");
-          return;
-        }
-        this.addSubtitles(String(data));
-      });
       socket.on("CMD:lock", async (data: unknown) => {
         if (!validateNotExpired()) return;
         const context = this.buildAuthorizationContext(socket);
@@ -1413,7 +1394,6 @@ export class Room {
     return {
       video: this.video ?? "",
       videoTS: this.videoTS,
-      subtitle: this.subtitle,
       playbackRate: this.playbackRate,
       paused: this.paused,
       loop: this.loop,
@@ -1676,14 +1656,6 @@ export class Room {
 
 
 
-
-  private addSubtitles = async (data: string) => {
-    if (data && data.length > 10000) {
-      return;
-    }
-    this.subtitle = data;
-    this.emitToRoom("REC:subtitle", this.subtitle);
-  };
 
   private lockRoom = async (socket: Socket, raw: unknown) => {
     const data = raw as { locked: boolean };

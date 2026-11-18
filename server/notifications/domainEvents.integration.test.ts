@@ -94,9 +94,6 @@ async function runDomainEventTests() {
   try {
     const mockPostgres = {
       query: async (sql: string, _params?: any[]) => {
-        if (sql.includes('public.rooms')) {
-          return { rows: [{ roomTitle: 'Cyber Cinema' }] };
-        }
         if (sql.includes('public.room_invitations')) {
           return {
             rows: [
@@ -114,6 +111,9 @@ async function runDomainEventTests() {
               { user_id: 'owner-uid-1' },
             ],
           };
+        }
+        if (sql.includes('public.rooms')) {
+          return { rows: [{ roomTitle: 'Cyber Cinema' }] };
         }
         if (sql.includes('public.set_room_activity_authoritative')) {
           return {
@@ -155,8 +155,6 @@ async function runDomainEventTests() {
       getVideo: () => null,
       setVideo: () => {},
       getVideoTS: () => 0,
-      getSubtitle: () => '',
-      setSubtitle: () => {},
       getPlaybackRate: () => 1,
       setPlaybackRate: () => {},
       getPaused: () => true,

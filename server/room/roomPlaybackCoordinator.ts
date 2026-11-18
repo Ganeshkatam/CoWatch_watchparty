@@ -24,7 +24,6 @@ export interface RoomPlaybackCoordinatorDependencies {
   terminateSignalingSession: () => void;
   sendRoster: () => void;
   getHostState: () => HostState;
-  resetSubtitle: () => void;
   twitchClient?: {
     getStream: (channel: string) => Promise<any>;
     getVod: (channel: string) => Promise<any>;
@@ -121,7 +120,6 @@ export class RoomPlaybackCoordinator {
     }
     this.video = data;
     this.paused = false;
-    this.deps.resetSubtitle();
     this.loop = false;
     this.playbackRate = 1;
     this.timeline.setMediaSource(data);

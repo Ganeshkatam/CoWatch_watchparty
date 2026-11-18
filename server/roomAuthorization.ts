@@ -28,8 +28,7 @@ export type RoomAction =
   | "playlist:add"
   | "playlist:move"
   | "playlist:delete"
-  | "playlist:next"
-  | "room:subtitle_change";
+  | "playlist:next";
 
 export interface AuthorizationContext {
   actorUid: string;
@@ -169,7 +168,6 @@ export function authorizeRoomAction(
     case "playlist:move":
     case "playlist:delete":
     case "playlist:next":
-    case "room:subtitle_change":
       if (!context.playbackLocked) {
         return { allowed: true, code: "OK" };
       }

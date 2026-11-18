@@ -1,4 +1,3 @@
-import { default as toWebVTT } from "srt-webvtt";
 import { Player } from "./Player";
 import { pipManager } from "../../utils/pipManager";
 
@@ -22,10 +21,6 @@ export class HTML implements Player {
 
   isMuted = () => {
     return this.getVideoEl()?.muted ?? false;
-  };
-
-  isSubtitled = () => {
-    return this.getSubtitleMode() === "showing";
   };
 
   getPlaybackRate = (): number => {
@@ -101,26 +96,6 @@ export class HTML implements Player {
     return this.getVideoEl()?.volume ?? 1;
   };
 
-  setSubtitleMode = (mode?: TextTrackMode) => {
-    if (this.getVideoEl()) {
-      for (
-        let i = 0;
-        i < Math.min(this.getVideoEl().textTracks.length, 1);
-        i++
-      ) {
-        this.getVideoEl().textTracks[i].mode =
-          mode ??
-          (this.getVideoEl().textTracks[i].mode === "hidden"
-            ? "showing"
-            : "hidden");
-      }
-    }
-  };
-
-  getSubtitleMode = () => {
-    return this.getVideoEl()?.textTracks[0]?.mode ?? "hidden";
-  };
-
   isReady = () => {
     return Boolean(this.getVideoEl());
   };
@@ -131,60 +106,7 @@ export class HTML implements Player {
     // Clear src and srcObject
     leftVideo.src = "";
     leftVideo.srcObject = null;
-
-    // Clear subtitles
-    this.setSubtitleMode("hidden");
     leftVideo.innerHTML = "";
-  };
-
-  loadSubtitles = async (src: string) => {
-    const leftVideo = this.getVideoEl();
-    if (!leftVideo) {
-      return;
-    }
-    // Clear subtitles and put new ones in
-    leftVideo.innerHTML = "";
-    if (Boolean(src)) {
-      let subtitleSrc = src;
-      if (subtitleSrc) {
-        const response = await fetch(subtitleSrc);
-        const buffer = await response.arrayBuffer();
-        const url = await toWebVTT(new Blob([buffer]));
-        const track = document.createElement("track");
-        track.kind = "captions";
-        track.label = "English";
-        track.srclang = "en";
-        track.src = url;
-        leftVideo.appendChild(track);
-        leftVideo.textTracks[0].mode = "showing";
-      }
-    }
-  };
-
-  syncSubtitles = (sharerTime: number) => {
-    // When sharing, our timestamp doesn't match the subtitles so adjust them
-    // For each cue, subtract the videoTS of the sharer, then add our own
-    const leftVideo = this.getVideoEl();
-    const track = leftVideo?.textTracks[0];
-    let offset = leftVideo.currentTime - sharerTime;
-    if (track && track.cues && offset) {
-      for (let i = 0; i < track.cues.length; i++) {
-        let cue = track?.cues?.[i] as TextTrackCue & {
-          origStart: number;
-          origEnd: number;
-        };
-        if (!cue) {
-          continue;
-        }
-        // console.log(cue.text, offset, cue.origStart, cue.origEnd);
-        if (!cue.origStart) {
-          cue.origStart = cue.startTime;
-          cue.origEnd = cue.endTime;
-        }
-        cue.startTime = cue.origStart + offset;
-        cue.endTime = cue.origEnd + offset;
-      }
-    }
   };
 
   getTimeRanges = (): { start: number; end: number }[] => {
