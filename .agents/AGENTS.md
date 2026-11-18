@@ -2,7 +2,7 @@
 - Do not push commits to the remote repository. Keep all commits local and never run git push unless explicitly instructed by the user.
 - Never use window.confirm, window.alert, or native browser prompt dialogs. Always use custom Mantine modals or toasts/notifications for user confirmations and alerts.
 - Never auto-confirm users in the database or bypass email verification; users must always confirm their email through the proper verification flow.
-- Never delete any file in the repository; instead of deleting files, convert them to our configurations.
+- Never delete any file in the repository unless explicitly instructed by the user; instead of deleting files, convert them to our configurations.
 - Always write detailed commit messages including a structured summary, architectural rationale, key changes, and verification notes.
 - Never show host-only UI, moderation controls, room configuration options, room credentials (such as passcodes), or invitation controls to non-host participants or guests. Non-hosts must never be able to invite users, copy party invite links/messages, unmask passcodes, moderate chat, or alter room playback lock and capacity settings. All host-only UI elements and invitation actions must be conditionally excluded from rendering (not merely disabled or hidden with CSS), and server-side authorization must strictly reject unauthorized invitation requests and host actions from non-hosts.
 - Never create new files unnecessarily. Always prioritize using and extending existing files efficiently, and only introduce new files when a feature strictly requires an independent boundary or isolated module.
