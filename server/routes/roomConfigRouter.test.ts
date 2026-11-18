@@ -463,7 +463,7 @@ async function runRoomConfigRouterTests() {
       if (sql.includes("FOR UPDATE")) {
         return { rows: [{ status: "inactive", expiresAt: null, isPermanent: true }], rowCount: 1 };
       }
-      if (sql.includes("passcode_fingerprint = $1 AND \"roomId\" != $2")) {
+      if (sql.includes("passcode_fingerprint = $1")) {
         return { rows: [{ roomId: "other-room" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };

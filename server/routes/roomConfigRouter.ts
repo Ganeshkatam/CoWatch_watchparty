@@ -412,8 +412,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     }
 
     // Authoritative in-memory registration ONLY after DB commit succeeds
-    const newRoom = new Room(io, name);
-    if (createdRoomId) newRoom.id = createdRoomId;
+    const newRoom = new Room(io, createdRoomId || name);
     if (createdJoiningId) newRoom.joiningId = createdJoiningId;
     if (req.body?.lock) {
       newRoom.lock = decoded.uid;
@@ -440,17 +439,16 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       }
     }
     rooms.set(name, newRoom);
-    if (newRoom.id && newRoom.id !== name) {
-      rooms.set(newRoom.id, newRoom);
+    if (newRoom.roomId && newRoom.roomId !== name) {
+      rooms.set(newRoom.roomId, newRoom);
     }
     if (newRoom.joiningId && newRoom.joiningId !== name) {
       rooms.set(newRoom.joiningId, newRoom);
     }
-    const responseRoomId = (authRow?.roomId && !isValidCanonicalUuid(authRow.roomId)) ? name : (createdRoomId || name);
+    const responseRoomId = createdRoomId || name;
     res.json({
       name,
       roomId: responseRoomId,
-      id: createdRoomId || newRoom.id,
       joiningId: newRoom.joiningId,
     });
   });

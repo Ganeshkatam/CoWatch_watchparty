@@ -909,7 +909,7 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (infoResp.ok) {
           const info = await infoResp.json();
-          const targetRoomId = (info.roomId || info.id) as string | undefined;
+          const targetRoomId = info.roomId as string | undefined;
           if (targetRoomId) {
             this.setState({ roomId: targetRoomId, joiningId: info.joiningId });
             // Normalize URL to canonical UUID if caller entered via joining code
@@ -946,7 +946,6 @@ export class App extends React.Component<AppProps, AppState> {
             isWaiting,
             isHostPresent,
             roomId: targetRoomId,
-            id: targetRoomId,
             joiningId: info.joiningId as string | undefined,
           };
         }
@@ -1065,7 +1064,7 @@ export class App extends React.Component<AppProps, AppState> {
           return;
         }
 
-        effectiveRoomId = access.roomId || access.id || cleanRoomId;
+        effectiveRoomId = access.roomId || cleanRoomId;
         if (effectiveRoomId && effectiveRoomId !== this.state.roomId) {
           this.setState({ roomId: effectiveRoomId, joiningId: access.joiningId });
         }

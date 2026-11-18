@@ -209,7 +209,7 @@ async function runConcurrencyStressTest() {
     [accountId]
   );
   if (existingForTest3.rows.length) {
-    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, (existingForTest3.rows[0] as any).roomId || (existingForTest3.rows[0] as any).id]);
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, (existingForTest3.rows[0] as any).roomId]);
   }
   const testRoomId = crypto.randomUUID();
   const testFingerprint = `fingerprint-act-${Date.now()}`;

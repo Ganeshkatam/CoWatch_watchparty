@@ -138,10 +138,9 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
 
       assert.equal(res.status, 200);
       assert.ok(res.body.name, "Response must include moniker name for backward-compatibility");
-      assert.equal(res.body.roomId, res.body.name, "roomId equals name");
-      assert.equal(res.body.id, testUuid, "Response includes canonical UUID id");
+      assert.equal(res.body.roomId, testUuid, "Response includes canonical UUID roomId");
       assert.equal(res.body.joiningId, testJoiningId, "Response includes 10-digit joiningId");
-      assert.ok(isValidCanonicalUuid(res.body.id), "id must be valid canonical UUID");
+      assert.ok(isValidCanonicalUuid(res.body.roomId), "roomId must be valid canonical UUID");
       assert.ok(isValidJoiningCode(res.body.joiningId), "joiningId must be valid 10-digit joining code");
 
       // Verify in-memory aliases all point to the EXACT same Room instance
@@ -154,7 +153,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       assert.ok(roomByCode, "Room must be registered in memory by public joining code");
       assert.strictEqual(roomByName, roomByUuid, "Moniker and UUID must resolve to exact same Room reference");
       assert.strictEqual(roomByName, roomByCode, "Moniker and Joining Code must resolve to exact same Room reference");
-      assert.equal(roomByName?.id, testUuid);
+      assert.equal(roomByName?.roomId, testUuid);
       assert.equal(roomByName?.joiningId, testJoiningId);
     } finally {
       server.close();
@@ -171,10 +170,8 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
     const testMoniker = "retro-movie-night";
 
     const mockDbRow = {
-      id: testUuid,
       joining_id: testJoiningId,
-      legacy_room_id: testMoniker,
-      roomId: testMoniker,
+      roomId: testUuid,
       roomTitle: "Retro Movie Night",
       roomDescription: "Watching 80s classics",
       coverPhoto: "https://example.com/cover.jpg",
@@ -217,24 +214,21 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       // 2.1 Resolution by canonical UUID
       const resByUuid = await request(server, `/roomInfo/${testUuid}`);
       assert.equal(resByUuid.status, 200);
-      assert.equal(resByUuid.body.id, testUuid);
+      assert.equal(resByUuid.body.roomId, testUuid);
       assert.equal(resByUuid.body.joiningId, testJoiningId);
-      assert.equal(resByUuid.body.roomId, testMoniker);
       assert.equal(resByUuid.body.roomTitle, "Retro Movie Night");
 
       // 2.2 Resolution by 10-digit public joining code
       const resByCode = await request(server, `/roomInfo/${testJoiningId}`);
       assert.equal(resByCode.status, 200);
-      assert.equal(resByCode.body.id, testUuid);
+      assert.equal(resByCode.body.roomId, testUuid);
       assert.equal(resByCode.body.joiningId, testJoiningId);
-      assert.equal(resByCode.body.roomId, testMoniker);
 
       // 2.3 Resolution by legacy moniker
       const resByMoniker = await request(server, `/roomInfo/${testMoniker}`);
       assert.equal(resByMoniker.status, 200);
-      assert.equal(resByMoniker.body.id, testUuid);
+      assert.equal(resByMoniker.body.roomId, testUuid);
       assert.equal(resByMoniker.body.joiningId, testJoiningId);
-      assert.equal(resByMoniker.body.roomId, testMoniker);
 
       // 2.4 Non-existent identifier returns 404
       const resNotFound = await request(server, `/roomInfo/non-existent-room-999`);
@@ -254,8 +248,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
     const testJoiningId = "5556667777";
     const testMoniker = "lifecycle-room-test";
 
-    const memoryRoom = new Room(mockIo, testMoniker);
-    memoryRoom.id = testUuid;
+    const memoryRoom = new Room(mockIo, testUuid);
     memoryRoom.joiningId = testJoiningId;
     memoryRoom.owner_id = "owner-carol";
     memoryRoom.status = "inactive";
@@ -338,7 +331,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       assert.equal(startRes.status, 200);
       assert.equal(startRes.body.success, true);
       assert.equal(startRes.body.status, "active");
-      assert.equal(startRes.body.id, testUuid);
+      assert.equal(startRes.body.roomId, testUuid);
       assert.ok(authoritativelyStarted);
 
       // 3.2 Extend Room using UUID
@@ -349,7 +342,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       });
       assert.equal(extRes.status, 200);
       assert.ok(extRes.body.expiresAt);
-      assert.equal(extRes.body.id, testUuid);
+      assert.equal(extRes.body.roomId, testUuid);
       assert.ok(authoritativelyExtended);
 
       // 3.3 End Room using UUID
@@ -360,7 +353,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       });
       assert.equal(endRes.status, 200);
       assert.equal(endRes.body.status, "ended");
-      assert.equal(endRes.body.id, testUuid);
+      assert.equal(endRes.body.roomId, testUuid);
       assert.ok(authoritativelyEnded);
 
       // 3.4 Delete Room using UUID -> Must clean up ALL 3 memory map aliases
@@ -401,8 +394,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
           return {
             rows: [
               {
-                id: testUuid,
-                roomId: testMoniker,
+                roomId: testUuid,
                 joining_id: "1231231234",
                 passcode: "12345678",
                 status: "active",
@@ -431,8 +423,7 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
       },
     } as any;
 
-    const memoryRoom = new Room(mockIo, testMoniker);
-    memoryRoom.id = testUuid;
+    const memoryRoom = new Room(mockIo, testUuid);
     rooms.set(testMoniker, memoryRoom);
     rooms.set(testUuid, memoryRoom);
 

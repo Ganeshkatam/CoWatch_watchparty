@@ -159,16 +159,15 @@ test("Phase 4: Realtime, WebRTC Signaling & Socket.IO Namespace Integration Suit
   const rooms = new Map<string, Room>();
 
   // Create room with canonical UUID, moniker, and joining code
-  const room = new Room(io, testMoniker);
-  room.id = testUuid;
+  const room = new Room(io, testUuid);
   room.joiningId = testJoiningCode;
   room.status = "active";
   room.isPermanent = true;
   room.owner_id = ownerUserId;
 
   // Pre-attach canonical and public namespaces
-  room.attachNamespace(room.id);
-  room.attachNamespace(`/watch/${room.id}`);
+  room.attachNamespace(room.roomId);
+  room.attachNamespace(`/watch/${room.roomId}`);
   room.attachNamespace(room.joiningId);
 
   // Index under all aliases in rooms Map (Phase 3 multi-key alignment)

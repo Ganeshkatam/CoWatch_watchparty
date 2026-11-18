@@ -505,7 +505,6 @@ export function createInvitationRouter(options: InvitationRouterOptions = {}) {
         token: rawToken,
         invitationUrl,
         roomId: roomUuid || cleanRoomId,
-        id: room.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : undefined),
         expiresAt,
         isReusable: reusable,
       });

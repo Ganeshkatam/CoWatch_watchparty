@@ -115,7 +115,6 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         }
         res.json({
           expiresAt: newExpiresAt,
-          id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
           roomId: memoryRoom?.roomId || roomId,
         });
       } else {
@@ -227,7 +226,6 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
       res.json({
         success: true,
         status: 'active',
-        id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
         roomId: memoryRoom?.roomId || roomId,
       });
     } catch (error) {
@@ -341,7 +339,6 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
       res.json({
         success: true,
         roomId: memoryRoom?.roomId || roomId,
-        id: memoryRoom?.id || (isValidCanonicalUuid(roomId) ? roomId : undefined),
         status: newStatus,
         isPermanent,
       });
@@ -421,21 +418,20 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
         });
         memoryRoom.disconnectAllSockets();
         rooms.delete(roomId);
-        if (memoryRoom.id) {
-          rooms.delete(memoryRoom.id);
-        }
         if (memoryRoom.joiningId) {
           rooms.delete(memoryRoom.joiningId);
         }
         if (memoryRoom.roomId) {
           rooms.delete(memoryRoom.roomId);
         }
+        for (const [key, val] of rooms.entries()) {
+          if (val === memoryRoom) {
+            rooms.delete(key);
+          }
+        }
         unregisterRoomNamespace(roomId);
         if (memoryRoom.roomId && memoryRoom.roomId !== roomId) {
           unregisterRoomNamespace(memoryRoom.roomId);
-        }
-        if (memoryRoom.id && memoryRoom.id !== roomId) {
-          unregisterRoomNamespace(memoryRoom.id);
         }
         memoryRoom.destroy();
       }

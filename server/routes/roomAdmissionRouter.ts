@@ -192,7 +192,9 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
       if (postgres) {
         try {
-          const roomUuid = (isValidCanonicalUuid(row.roomId) ? row.roomId : (isValidCanonicalUuid((row as any).id) ? (row as any).id : null)) || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+          const roomUuid = (row.roomId && isValidCanonicalUuid(row.roomId))
+            ? row.roomId
+            : (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : (row.roomId || cleanRoomId));
           if (roomUuid) {
             await postgres.query(
               `INSERT INTO public.room_admissions ("roomId", user_id, admission_method, admitted_at, revoked_at, revoked_reason)
@@ -270,7 +272,9 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
       }
 
       const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
-      const roomUuid = (isValidCanonicalUuid(row.roomId) ? row.roomId : (isValidCanonicalUuid((row as any).id) ? (row as any).id : null)) || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+      const roomUuid = (row.roomId && isValidCanonicalUuid(row.roomId))
+        ? row.roomId
+        : (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : (row.roomId || cleanRoomId));
 
       // 1. Check bans in database
       const banResult = roomUuid

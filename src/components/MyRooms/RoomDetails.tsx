@@ -62,9 +62,8 @@ interface LifecycleEvent {
 }
 
 export interface RoomDetailsData {
-  id?: string;
-  joiningId?: string;
   roomId: string;
+  joiningId?: string;
   isPasscodeProtected: boolean;
   currentPasscode?: string | null;
   creationTime: string;
@@ -258,7 +257,7 @@ export const RoomDetails = () => {
 
   const handleCopyUrl = () => {
     if (!room) return;
-    const target = room.joiningId || room.roomId || (room as any).id;
+    const target = room.joiningId || room.roomId;
     const url = getRoomUrl(target);
     navigator.clipboard.writeText(url).then(() => {
       setCopiedUrl(true);
@@ -268,7 +267,7 @@ export const RoomDetails = () => {
 
   const handleCopyRoomId = () => {
     if (!room) return;
-    navigator.clipboard.writeText(room.roomId || (room as any).id).then(() => {
+    navigator.clipboard.writeText(room.roomId).then(() => {
       setCopiedRoomId(true);
       setTimeout(() => setCopiedRoomId(false), 2000);
     }).catch(console.error);
@@ -295,7 +294,7 @@ export const RoomDetails = () => {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      await apiFetch(`/deleteRoom?roomId=${encodeURIComponent(room.roomId || (room as any).id)}`, {
+      await apiFetch(`/deleteRoom?roomId=${encodeURIComponent(room.roomId)}`, {
         method: "DELETE",
         requireAuth: true,
       });
@@ -342,7 +341,7 @@ export const RoomDetails = () => {
   }
 
   const isOpenable = !isTerminalRoom(room);
-  const primaryId = (room.roomId || (room as any).id || "").replace(/^\//, "");
+  const primaryId = (room.roomId || "").replace(/^\//, "");
   const urlPath = room.status === "inactive"
     ? `/join/${primaryId}?user=host&start=waiting`
     : `/watch/${primaryId}`;
@@ -369,7 +368,7 @@ export const RoomDetails = () => {
           <IconArrowLeft size={15} /> My Rooms
         </span>
         <span className={styles.breadcrumbSeparator}>/</span>
-        <span className={styles.breadcrumbCurrent}>{room.roomTitle || room.roomId || (room as any).id}</span>
+        <span className={styles.breadcrumbCurrent}>{room.roomTitle || room.roomId}</span>
       </div>
 
       {/* HERO SECTION */}
@@ -559,7 +558,7 @@ export const RoomDetails = () => {
               <div className={styles.tile}>
                 <span className={styles.tileLabel}>Room ID</span>
                 <div className={styles.tileValue}>
-                  <span className={styles.codeBadge}>{room.roomId || (room as any).id}</span>
+                  <span className={styles.codeBadge}>{room.roomId}</span>
                   <Tooltip label={copiedRoomId ? "Copied!" : "Copy room ID"} withArrow>
                     <ActionIcon
                       size="xs"
@@ -1029,7 +1028,7 @@ export const RoomDetails = () => {
 
       {inviteModalOpened && (
         <InviteModal
-          roomId={room.roomId || (room as any).id}
+          roomId={room.roomId}
           joiningId={room.joiningId}
           passcode={isRoomEnded ? undefined : (room.currentPasscode || undefined)}
           closeInviteModal={() => setInviteModalOpened(false)}
@@ -1041,8 +1040,7 @@ export const RoomDetails = () => {
       {/* EDIT ROOM MODAL */}
       <EditRoomModal
         room={{
-          roomId: room.roomId || (room as any).id,
-          id: room.roomId || (room as any).id,
+          roomId: room.roomId,
           joiningId: room.joiningId,
           creationTime: room.creationTime,
           roomTitle: room.roomTitle,

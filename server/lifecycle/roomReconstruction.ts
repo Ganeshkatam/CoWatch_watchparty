@@ -18,7 +18,6 @@ export type ReconstructRoomInput = (PersistentRoom | {
   participants_locked?: boolean | null;
   max_participants?: number | null;
 }) & {
-  id?: string;
   joining_id?: string;
 };
 
@@ -44,12 +43,11 @@ export class RoomReconstructor {
       snapshot = parsed as RoomSnapshot;
     }
 
-    const effectiveRoomId = row.roomId || (row as any).id || "";
+    const effectiveRoomId = row.roomId || "";
     const room = new Room(io, effectiveRoomId, snapshot ? JSON.stringify(snapshot) : undefined);
 
     // Hydrate lifecycle properties
     room.roomId = effectiveRoomId;
-    if ((row as any).id) room.id = (row as any).id;
     room.joiningId = row.joining_id;
     room.status = (row.status as RoomLifecycleStatus) || "active";
     room.owner_id = row.owner_id || "";

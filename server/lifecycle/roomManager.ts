@@ -174,8 +174,8 @@ export class RoomLifecycleManager {
 
       const expiredRoomIds: string[] = [];
       if (res.rows && res.rows.length > 0) {
-        for (const row of res.rows as Array<{ roomId?: string; id?: string }>) {
-          const roomId: string = row.roomId || row.id || "";
+        for (const row of res.rows as Array<{ roomId: string }>) {
+          const roomId: string = row.roomId;
           if (!roomId) continue;
           await this.db.query(
             `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE ("roomId"::text = $1 OR joining_id = $1)`,

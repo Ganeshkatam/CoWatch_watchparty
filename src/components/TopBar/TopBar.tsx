@@ -103,7 +103,6 @@ export interface CreateRoomResponse {
   roomId: string;
   joiningId?: string;
   name?: string;
-  id?: string;
 }
 
 export async function createRoom(
@@ -151,7 +150,7 @@ export async function createRoom(
     formattedErr.error = errorObj;
     throw formattedErr;
   }
-  const targetId = data.roomId || data.name || data.id || "";
+  const targetId = data.roomId || data.name || "";
 
   if (options?.noRedirect) {
     return targetId;

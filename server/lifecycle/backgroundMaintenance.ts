@@ -229,7 +229,7 @@ export function registerBackgroundMaintenance(
         roomTitle: string | null;
       }>(`
         WITH candidates AS (
-          SELECT id
+          SELECT "roomId"
           FROM public.rooms
           WHERE status = 'active'
             AND "isPermanent" = false
@@ -242,8 +242,8 @@ export function registerBackgroundMaintenance(
         UPDATE public.rooms r
         SET "endingNotifiedAt" = clock_timestamp()
         FROM candidates c
-        WHERE r.id = c.id
-        RETURNING r.id AS "roomId", r.owner_id AS "ownerId", r."expiresAt", r."roomTitle";
+        WHERE r."roomId" = c."roomId"
+        RETURNING r."roomId", r.owner_id AS "ownerId", r."expiresAt", r."roomTitle";
       `);
 
       if (result.rowCount && result.rowCount > 0) {

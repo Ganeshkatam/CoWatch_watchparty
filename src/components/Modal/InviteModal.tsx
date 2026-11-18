@@ -17,9 +17,8 @@ import { ShareActions } from "./ShareActions";
 import styles from "./InviteModal.module.css";
 
 interface RoomDetailsResponse {
-  id?: string;
-  joiningId?: string;
   roomId?: string;
+  joiningId?: string;
   currentPasscode?: string | null;
   roomTitle?: string | null;
 }
@@ -89,7 +88,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               { requireAuth: true }
             );
             if (!isCancelled && freshData) {
-              const rid = freshData?.roomId || freshData?.id;
+              const rid = freshData?.roomId;
               if (rid) {
                 setFetchedCanonicalId(rid);
               }
@@ -105,7 +104,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             }
 
             // 2. Generate or fetch reusable room invitation token
-            const targetRoomId = freshData?.roomId || freshData?.id || cleanId;
+            const targetRoomId = freshData?.roomId || cleanId;
             const inviteData = await apiFetch<CreateInvitationResponse>(`/api/invitations`, {
               method: "POST",
               requireAuth: true,

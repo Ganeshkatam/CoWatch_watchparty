@@ -282,7 +282,6 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
 
     const { room } = await roomReconstructor.reconstructRoom(persistedRoom, io);
     room.roomId = canonicalRoomId;
-    room.id = canonicalRoomId;
     room.joiningId = persistedRoom.joining_id;
 
     rooms.set(cleanId, room);
@@ -327,10 +326,6 @@ export function unregisterRoomNamespace(roomId: string) {
   if (!roomId) return;
   const memRoom = rooms.get(roomId);
   const idsToUnregister = new Set<string>([roomId]);
-  if (memRoom?.id) {
-    idsToUnregister.add(memRoom.id);
-    idsToUnregister.add(`watch/${memRoom.id}`);
-  }
   if (memRoom?.roomId) {
     idsToUnregister.add(memRoom.roomId);
     idsToUnregister.add(`watch/${memRoom.roomId}`);

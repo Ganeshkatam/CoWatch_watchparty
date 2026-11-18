@@ -112,7 +112,6 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
 
   // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
   res.json({
-    id: (row as any).id || row.roomId,
     roomId: row.roomId,
     joiningId: row.joining_id,
     roomTitle: row.roomTitle || row.roomId,

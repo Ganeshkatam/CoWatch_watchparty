@@ -130,7 +130,7 @@ export const EditRoomModal = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
-  const primaryId = room.roomId || (room as any).id || "";
+  const primaryId = room.roomId || "";
   const cleanId = primaryId.startsWith("/") ? primaryId.substring(1) : primaryId;
   const initialPasscode = room.currentPasscode || "";
 
@@ -759,7 +759,7 @@ const useRoomActions = (room: RoomSummary, onDelete: (id: string) => void, onRef
   const history = useHistory();
   const computedState = getComputedState(room);
   const isEnded = isTerminalRoom(room);
-  const primaryId = room.roomId || (room as any).id || "";
+  const primaryId = room.roomId || "";
   const cleanPrimaryId = primaryId.startsWith("/") ? primaryId.substring(1) : primaryId;
 
   const handleCopyUrl = () => {
@@ -1311,7 +1311,7 @@ const GridRoomCard = ({
 
       {actions.inviteModalOpened && (
         <InviteModal
-          roomId={room.roomId || (room as any).id}
+          roomId={room.roomId}
           joiningId={room.joiningId}
           passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}
@@ -1568,7 +1568,7 @@ const StackRoomCard = ({
 
       {actions.inviteModalOpened && (
         <InviteModal
-          roomId={room.roomId || (room as any).id}
+          roomId={room.roomId}
           joiningId={room.joiningId}
           passcode={actions.isEnded ? undefined : (room.currentPasscode || undefined)}
           isHost={true}

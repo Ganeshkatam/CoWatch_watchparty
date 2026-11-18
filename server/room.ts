@@ -133,7 +133,6 @@ export class Room {
 
   // Non-serialized state
   public roomId: string;
-  public id?: string;
   public joiningId?: string;
   public roster: User[] = [];
   public get lastTsMap(): number {
@@ -226,7 +225,7 @@ export class Room {
   public readonly activeSockets = new Map<string, Socket>();
 
   public getRoomUuid = (): string | undefined => {
-    return this.id || (isValidCanonicalUuid(this.roomId) ? this.roomId : undefined);
+    return isValidCanonicalUuid(this.roomId) ? this.roomId : undefined;
   };
 
   public findSocket = (clientId: string): Socket | undefined => {
@@ -247,11 +246,8 @@ export class Room {
   public emitToRoom = (event: string, ...args: any[]): void => {
     const targets = new Set<string>(this.attachedNamespaces);
     targets.add(this.roomId);
-    if (this.id) {
-      targets.add(this.id);
-      targets.add(`/watch/${this.id}`);
-      targets.add(`watch/${this.id}`);
-    }
+    targets.add(`/watch/${this.roomId}`);
+    targets.add(`watch/${this.roomId}`);
     for (const nsp of targets) {
       const slashNsp = nsp.startsWith("/") ? nsp : `/${nsp}`;
       this.io.of(slashNsp).emit(event, ...args);
@@ -465,9 +461,6 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
-    if (isValidCanonicalUuid(this.roomId)) {
-      this.id = this.roomId;
-    }
 
     this.admissionCoordinator = new RoomAdmissionCoordinator({
       roomId: this.roomId,
@@ -645,23 +638,20 @@ export class Room {
     this.lifecycleCoordinator.startPeriodicTicker();
 
     this.attachNamespace(this.roomId);
-    if (this.id) {
-      this.attachNamespace(this.id);
-      this.attachNamespace(`/watch/${this.id}`);
-    }
+    this.attachNamespace(`/watch/${this.roomId}`);
   }
 
   public socketMiddleware = async (socket: Socket, next: (err?: any) => void): Promise<void> => {
     let isOwner = false;
     if (postgres) {
       const result = await postgres.query(
-        `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR joining_id = $1)`,
-        [this.id || this.roomId],
+        `SELECT "roomId", joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where ("roomId"::text = $1 OR joining_id = $1)`,
+        [this.roomId],
       );
       const roomRow = result.rows[0];
-      if (roomRow?.id) {
-        const canonicalId: string = roomRow.id;
-        this.id = this.id || canonicalId;
+      if (roomRow?.roomId) {
+        const canonicalId: string = roomRow.roomId;
+        this.roomId = canonicalId;
         this.attachNamespace(canonicalId);
         this.attachNamespace(`/watch/${canonicalId}`);
       }
@@ -725,7 +715,6 @@ export class Room {
         const tokenFp = fingerprintToken(admissionToken);
 
         const expectedRooms: string[] = [this.roomId];
-        if (this.id) expectedRooms.push(this.id);
         if (this.joiningId) expectedRooms.push(this.joiningId);
 
         const verification = verifyAdmissionToken(
@@ -920,8 +909,8 @@ export class Room {
       // Check if this socket matches the room owner UID
       const validateOwner = async () => {
         const result = await postgres?.query(
-          'SELECT owner_id FROM rooms where (id::text = $1 OR joining_id = $1)',
-          [this.id || this.roomId],
+          'SELECT owner_id FROM rooms where ("roomId"::text = $1 OR joining_id = $1)',
+          [this.roomId],
         );
         const owner = result?.rows[0]?.owner_id;
         return !owner || socket.uid === owner;
@@ -1505,8 +1494,8 @@ export class Room {
     // Slow path: query the database
     if (!postgres) return false;
     const result = await postgres.query(
-      'SELECT owner_id FROM rooms WHERE (id::text = $1 OR joining_id = $1)',
-      [this.id || this.roomId],
+      'SELECT owner_id FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1)',
+      [this.roomId],
     );
     const dbOwner = result?.rows[0]?.owner_id;
     if (dbOwner) {
@@ -1747,11 +1736,11 @@ export class Room {
     if (postgres) {
       try {
         const result = await postgres.query(
-            `SELECT id, joining_id, passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where (id::text = $1 OR joining_id = $1)`,
-          [this.id || this.roomId]
+            `SELECT "roomId", joining_id, passcode, owner_passcode, owner_id, "isChatDisabled", "roomTitle", "roomDescription", "mediaPath", participants_locked, max_participants FROM rooms where ("roomId"::text = $1 OR joining_id = $1)`,
+          [this.roomId]
         );
         first = result.rows[0];
-        if (first?.id) this.id = this.id || first.id;
+        if (first?.roomId) this.roomId = first.roomId;
         if (first?.joining_id) this.joiningId = this.joiningId || first.joining_id;
         if (this.isChatDisabled === undefined) {
           this.isChatDisabled = Boolean(first?.isChatDisabled);

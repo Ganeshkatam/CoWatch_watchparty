@@ -14,9 +14,8 @@ import { sanitizeServerErrorMessage } from "../../utils/userMessages";
 import { parseMyRoomsParams, getMyRoomsUrl, MyRoomsStatusFilter, MyRoomsViewMode } from "../../utils/routeParams";
 
 export interface RoomSummary {
-  id?: string;
-  joiningId?: string;
   roomId: string;
+  joiningId?: string;
   isPasscodeProtected: boolean;
   currentPasscode?: string | null;
   creationTime: string;

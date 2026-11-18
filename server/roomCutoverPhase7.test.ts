@@ -200,4 +200,41 @@ test("Phase 7: Unified roomId Architecture & Migration Validation Suite", async 
     assert.ok(!isValidJoiningCode("123"), "3-digit string is not a joining code");
     assert.ok(!isValidJoiningCode("abcdefghij"), "Non-numeric string is not a joining code");
   });
+
+  // =========================================================================
+  // 7. APPLICATION-LEVEL IDENTITY UNIFICATION (NO ROOM.ID, NO FALLBACKS)
+  // =========================================================================
+  await t.test("7. Eliminates redundant room identity aliases across all application layers", () => {
+    // 7.1 Verify Room class in server/room.ts does not declare public id property
+    const roomTsContent = fs.readFileSync(path.resolve(process.cwd(), "server/room.ts"), "utf-8");
+    assert.ok(!roomTsContent.includes("public id?: string;"), "Room class must not declare public id property");
+    assert.ok(!roomTsContent.includes("this.id"), "Room class must not use this.id");
+
+    // 7.2 Verify frontend contracts do not declare id on room interfaces
+    const myRoomsContent = fs.readFileSync(path.resolve(process.cwd(), "src/components/MyRooms/MyRooms.tsx"), "utf-8");
+    assert.ok(!myRoomsContent.includes("id?: string;\n  joiningId?: string;\n  roomId: string;"), "RoomSummary must not have id property");
+
+    const roomDetailsContent = fs.readFileSync(path.resolve(process.cwd(), "src/components/MyRooms/RoomDetails.tsx"), "utf-8");
+    assert.ok(!roomDetailsContent.includes("id?: string;\n  joiningId?: string;\n  roomId: string;"), "RoomDetailsData must not have id property");
+
+    const topBarContent = fs.readFileSync(path.resolve(process.cwd(), "src/components/TopBar/TopBar.tsx"), "utf-8");
+    assert.ok(!topBarContent.includes("id?: string;"), "CreateRoomResponse must not declare room id property");
+
+    // 7.3 Verify frontend components do not perform roomId || id fallbacks
+    const roomCardContent = fs.readFileSync(path.resolve(process.cwd(), "src/components/MyRooms/RoomCard.tsx"), "utf-8");
+    assert.ok(!roomCardContent.includes("room.roomId || room.id"), "RoomCard must not perform room.roomId || room.id fallback");
+    assert.ok(!roomCardContent.includes("room.roomId || (room as any).id"), "RoomCard must not perform room.roomId || (room as any).id fallback");
+
+    assert.ok(!roomDetailsContent.includes("room.roomId || room.id"), "RoomDetails must not perform room.roomId || room.id fallback");
+    assert.ok(!roomDetailsContent.includes("room.roomId || (room as any).id"), "RoomDetails must not perform room.roomId || (room as any).id fallback");
+
+    const appContent = fs.readFileSync(path.resolve(process.cwd(), "src/components/App/App.tsx"), "utf-8");
+    assert.ok(!appContent.includes("info.roomId || info.id"), "App must not perform info.roomId || info.id fallback");
+    assert.ok(!appContent.includes("access.roomId || access.id"), "App must not perform access.roomId || access.id fallback");
+
+    // 7.4 Verify server reconstruction does not perform row.roomId || (row as any).id fallback
+    const reconstructionContent = fs.readFileSync(path.resolve(process.cwd(), "server/lifecycle/roomReconstruction.ts"), "utf-8");
+    assert.ok(!reconstructionContent.includes("row.roomId || (row as any).id"), "RoomReconstructor must not perform row.roomId || (row as any).id fallback");
+    assert.ok(!reconstructionContent.includes("room.id ="), "RoomReconstructor must not assign room.id");
+  });
 });

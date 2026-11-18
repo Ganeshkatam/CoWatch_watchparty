@@ -47,7 +47,7 @@ export async function getStats() {
     creator: string;
     lock: string;
   }>(
-    `SELECT id, joining_id, id AS "roomId", "creationTime", "lastUpdateTime", "isSubRoom", "roomTitle", "roomDescription", "mediaPath", owner_id, password,
+    `SELECT "roomId", joining_id, "creationTime", "lastUpdateTime", "isSubRoom", "roomTitle", "roomDescription", "mediaPath", owner_id, password,
     data->'video' as video, data->'videoTS' as "videoTS", data->'creator' as creator, data->'lock' as lock
     FROM rooms
     WHERE "lastUpdateTime" > NOW() - INTERVAL '7 day'
@@ -63,7 +63,7 @@ export async function getStats() {
 
       let rosterLength = 0;
       let roster: unknown[] = [];
-      const effectiveRoomId = dbRoom.id || dbRoom.roomId || "";
+      const effectiveRoomId = dbRoom.roomId || "";
       const batchData = batchPresence[effectiveRoomId];
       if (batchData) {
         try {
