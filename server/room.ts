@@ -43,6 +43,7 @@ import {
   RoomLifecycleCoordinator,
   EMPTY_ROOM_INACTIVITY_TIMEOUT_MS,
 } from "./room/roomLifecycleCoordinator.ts";
+import { isValidCanonicalUuid } from "./utils/roomIdentifier.ts";
 import type { ServerLocalMediaManifest } from "./media/local/LocalMediaSession.ts";
 export function makeHandshakeError(code: string, message: string): Error & { data: { code: string; message: string } } {
   return Object.assign(new Error(code), {
@@ -220,6 +221,65 @@ export class Room {
   public get localMediaAuthority(): LocalMediaAuthority {
     return this.signalingCoordinator.localMediaAuthority;
   }
+
+  public readonly attachedNamespaces = new Set<string>();
+  public readonly activeSockets = new Map<string, Socket>();
+
+  public getRoomUuid = (): string | undefined => {
+    return this.id || (isValidCanonicalUuid(this.roomId) ? this.roomId : undefined);
+  };
+
+  public findSocket = (clientId: string): Socket | undefined => {
+    if (!clientId) return undefined;
+    const direct = this.activeSockets.get(clientId);
+    if (direct) return direct;
+    const socketId = this.socketIdMap[clientId];
+    if (socketId) {
+      for (const nsp of this.attachedNamespaces) {
+        const found = this.io.of(nsp).sockets.get(socketId);
+        if (found) return found;
+      }
+      return this.io.of(this.roomId).sockets.get(socketId);
+    }
+    return undefined;
+  };
+
+  public emitToRoom = (event: string, ...args: any[]): void => {
+    const targets = new Set<string>(this.attachedNamespaces);
+    targets.add(this.roomId);
+    if (this.id) {
+      targets.add(this.id);
+      targets.add(`/watch/${this.id}`);
+      targets.add(`watch/${this.id}`);
+    }
+    for (const nsp of targets) {
+      const slashNsp = nsp.startsWith("/") ? nsp : `/${nsp}`;
+      this.io.of(slashNsp).emit(event, ...args);
+    }
+  };
+
+  public attachNamespace = (nspPath: string): void => {
+    if (!nspPath) return;
+    const cleanPath = nspPath.replace(/^\//, "");
+    const normalized = `/${cleanPath}`;
+    if (this.attachedNamespaces.has(normalized)) return;
+    this.attachedNamespaces.add(normalized);
+
+    const nsp = this.io.of(normalized);
+    nsp.use(this.socketMiddleware);
+    nsp.on("connection", (socket: Socket) => {
+      void this.handleSocketConnection(socket).catch((error: unknown) => {
+        console.error(
+          { socketId: socket.id, roomId: this.roomId, nsp: normalized, error },
+          "Unhandled socket connection lifecycle failure on attached namespace"
+        );
+        if (socket.connected) {
+          socket.emit("errorMessage", "Unable to initialize the connection.");
+          socket.disconnect();
+        }
+      });
+    });
+  };
 
   public hasProcessedOperation = (clientId: string, operationId?: string): boolean => {
     if (!operationId || !clientId) return false;
@@ -405,6 +465,10 @@ export class Room {
   ) {
     this.roomId = sanitizeRoomId(roomId);
     this.io = io;
+    if (isValidCanonicalUuid(this.roomId)) {
+      this.id = this.roomId;
+    }
+
     this.admissionCoordinator = new RoomAdmissionCoordinator({
       roomId: this.roomId,
       getOwnerId: () => this.owner_id,
@@ -436,6 +500,8 @@ export class Room {
         participantsLocked: this.participantsLocked,
         maxParticipants: this.maxParticipants,
       }),
+      getRoomUuid: () => this.getRoomUuid(),
+      emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
     });
 
     this.signalingCoordinator = new RoomSignalingCoordinator({
@@ -447,6 +513,9 @@ export class Room {
       getRosterForApp: () => this.getRosterForApp(),
       setMediaSource: (socket, mediaUrl) => this.cmdHost(socket, mediaUrl),
       buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
+      getRoomUuid: () => this.getRoomUuid(),
+      findSocket: (clientId) => this.findSocket(clientId),
+      emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
     });
 
     this.moderationCoordinator = new RoomModerationCoordinator({
@@ -469,6 +538,9 @@ export class Room {
       recordProcessedOperation: (clientId, opId) => this.recordProcessedOperation(clientId, opId),
       buildAuthorizationContext: (socket) => this.buildAuthorizationContext(socket),
       authorizeRoomAction: (params) => this.authorizeRoomAction(params),
+      getRoomUuid: () => this.getRoomUuid(),
+      findSocket: (clientId) => this.findSocket(clientId),
+      emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
     });
 
     this.playbackCoordinator = new RoomPlaybackCoordinator({
@@ -485,6 +557,7 @@ export class Room {
       resetSubtitle: () => {
         this.subtitle = "";
       },
+      emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
     });
 
     this.lifecycleCoordinator = new RoomLifecycleCoordinator({
@@ -560,6 +633,9 @@ export class Room {
       terminateSignalingSession: () => this.signalingCoordinator.terminateSession(),
       addChatMessage: (socket, chatMsg) => this.addChatMessage(socket, chatMsg),
       getConnectedParticipantUids: () => this.getConnectedParticipantUids(),
+      getRoomUuid: () => this.getRoomUuid(),
+      emitToRoom: (event, ...args) => this.emitToRoom(event, ...args),
+      disconnectAllSockets: () => this.disconnectAllSockets(),
     });
 
     if (roomData) {
@@ -568,213 +644,219 @@ export class Room {
 
     this.lifecycleCoordinator.startPeriodicTicker();
 
-    io.of(roomId).use(async (socket, next) => {
-      let isOwner = false;
-      if (postgres) {
-        const result = await postgres.query(
-          `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
-          [this.id || this.roomId],
-        );
-        const roomRow = result.rows[0];
-        if (roomRow?.id) this.id = this.id || roomRow.id;
-        if (roomRow?.joining_id) this.joiningId = this.joiningId || roomRow.joining_id;
-        if (roomRow?.participants_locked !== undefined) {
-          this.participantsLocked = Boolean(roomRow.participants_locked);
-        }
-        if (roomRow?.max_participants !== undefined && typeof roomRow.max_participants === "number") {
-          this.maxParticipants = roomRow.max_participants;
-        }
-        const roomPasscode = roomRow?.passcode;
-        const owner_id = roomRow?.owner_id;
-        const dbStatus = roomRow?.status;
-        const isPermanent = Boolean(roomRow?.isPermanent);
+    this.attachNamespace(this.roomId);
+    if (this.id) {
+      this.attachNamespace(this.id);
+      this.attachNamespace(`/watch/${this.id}`);
+    }
+  }
 
-        if (owner_id) {
-          this.owner_id = owner_id;
-        }
-        this.isPermanent = isPermanent;
-        if (roomRow?.expiresAt) {
-          this.expiresAt = new Date(roomRow.expiresAt);
-        }
-        if (roomRow?.startedAt) {
-          this.startedAt = new Date(roomRow.startedAt);
-        }
-
-        const token = socket.handshake.auth?.token;
-
-        // Authenticate the user strictly from token, never from client-provided UID
-        if (token) {
-          try {
-            const decoded = await validateToken(token);
-            if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
-              socket.uid = decoded.uid;
-              isOwner = Boolean(owner_id && owner_id === decoded.uid);
-            }
-          } catch (e) {
-            console.error("Token validation failed in socket connect", e);
-          }
-        }
-
-        const currentDbStatus = dbStatus || this.status;
-
-        // Expired or ended rooms cannot be joined by anyone
-        if (currentDbStatus === "expired" || currentDbStatus === "ended") {
-          this.status = currentDbStatus;
-          next(new Error("This room has ended or expired."));
-          return;
-        }
-
-        // Authoritative participant admission token verification
-        // Strict boundary: Non-owners MUST possess a valid server-issued admissionToken
-        // binding { roomId, userId, sessionId }
-        if (!isOwner) {
-          const admissionToken = socket.handshake.auth?.admissionToken;
-          const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
-          const tokenFp = fingerprintToken(admissionToken);
-
-          const verification = verifyAdmissionToken(
-            admissionToken,
-            this.roomId,
-            socket.uid,
-            handshakeSessionId
-          );
-
-          console.log(
-            `[ADMISSION_TRACE:F] Server verification: room=${this.roomId} uid=${socket.uid || "none"} session=${handshakeSessionId || "none"} tokenFp=${tokenFp} valid=${verification.valid} error=${verification.error || "none"}`
-          );
-
-          if (!verification.valid) {
-            console.warn(
-              `[Admission] Handshake rejected for room ${this.roomId}: ${verification.error}`
-            );
-            next(new Error("passcode"));
-            return;
-          }
-        }
-
-        // Host-initiated room access control:
-        // When room is not active, non-owners are rejected to waiting poll.
-        // Owner is admitted to the namespace WITHOUT activating the room.
-        // Activation happens only via explicit CMD:startSession.
-        if (currentDbStatus !== "active") {
-          if (!isOwner) {
-            next(new Error("ROOM_NOT_STARTED"));
-            return;
-          }
-          // Owner enters namespace; room stays in its current state until CMD:startSession
-          this.status = (currentDbStatus === "scheduled" || currentDbStatus === "inactive")
-            ? currentDbStatus
-            : "inactive";
-        } else {
-          this.status = "active";
-        }
+  public socketMiddleware = async (socket: Socket, next: (err?: any) => void): Promise<void> => {
+    let isOwner = false;
+    if (postgres) {
+      const result = await postgres.query(
+        `SELECT id, joining_id, passcode, owner_id, "isSubRoom", status, "expiresAt", "isPermanent", "startedAt", participants_locked, max_participants FROM rooms where (id::text = $1 OR "roomId" = $1 OR legacy_room_id = $1)`,
+        [this.id || this.roomId],
+      );
+      const roomRow = result.rows[0];
+      if (roomRow?.id) {
+        const canonicalId: string = roomRow.id;
+        this.id = this.id || canonicalId;
+        this.attachNamespace(canonicalId);
+        this.attachNamespace(`/watch/${canonicalId}`);
       }
-      // clientId is meant for things that shouldn't require login
-      // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
-      // identify chat messages, video chat/screenshare signaling
-      // Used as keys for ephemeral room state (e.g. name, picture, timestamp)
+      if (roomRow?.joining_id) {
+        const publicJoiningId: string = roomRow.joining_id;
+        this.joiningId = this.joiningId || publicJoiningId;
+        this.attachNamespace(publicJoiningId);
+      }
+      if (roomRow?.participants_locked !== undefined) {
+        this.participantsLocked = Boolean(roomRow.participants_locked);
+      }
+      if (roomRow?.max_participants !== undefined && typeof roomRow.max_participants === "number") {
+        this.maxParticipants = roomRow.max_participants;
+      }
+      const roomPasscode = roomRow?.passcode;
+      const owner_id = roomRow?.owner_id;
+      const dbStatus = roomRow?.status;
+      const isPermanent = Boolean(roomRow?.isPermanent);
 
-      // redis-based clientId spoof protection (session)
-      // Keep a map of clientIds to sessionIDs (a secret generated by client and stored in localstorage)
-      // If a clientId already exists in map, a matching sessionId must be provided, otherwise fail
-      // Otherwise, store it with some expiry
-      // Refresh the expiry on each successful connection
-      // Attacker can't spoof unless the user doesn't connect for a long time
+      if (owner_id) {
+        this.owner_id = owner_id;
+      }
+      this.isPermanent = isPermanent;
+      if (roomRow?.expiresAt) {
+        this.expiresAt = new Date(roomRow.expiresAt);
+      }
+      if (roomRow?.startedAt) {
+        this.startedAt = new Date(roomRow.startedAt);
+      }
 
-      // ALTERNATIVE: using crypto?
-      // What if we send back the client an encrypt or hmac of their clientID?
-      // Client can store in localstorage
-      // Can't be spoofed without the server's encryption key
-      // Attacker could try to bruteforce the key by trying all possibilities
-      // Client sends both the clear clientId and the hmac
-      // During transition, accept requests with no hmac
-      // We would need to turn on enforcement after a while (after all clients have updated)
-      // On connection, compute hmac of clear clientId and verify it matches what client sent
-      // We can accept query param clientHmac?
+      const token = socket.handshake.auth?.token;
 
-      // Server assigns unpredictable, ephemeral connection identity
-      const clientId = randomUUID();
-      socket.clientId = clientId;
-      const sessionId = typeof socket.handshake.auth?.sessionId === "string" ? socket.handshake.auth.sessionId : undefined;
-
-      // MODERATION-001 Invariant: Banned Participant Authority
-      // Check PostgreSQL room_bans table and L1 cache
-      const authUid = socket.uid || undefined;
-      if (postgres) {
+      // Authenticate the user strictly from token, never from client-provided UID
+      if (token) {
         try {
-          const banRes = await postgres.query(
-            `SELECT client_identity, user_id FROM room_bans WHERE room_id = $1 AND (user_id IS NOT NULL AND user_id = $2)`,
-            [this.roomId, authUid || null]
-          );
-          if (banRes.rowCount && banRes.rowCount > 0) {
-            if (authUid) this.bannedIdentities.add(authUid);
-            next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
-            return;
+          const decoded = await validateToken(token);
+          if (decoded && decoded !== "EMAIL_NOT_VERIFIED" && decoded.uid) {
+            socket.uid = decoded.uid;
+            isOwner = Boolean(owner_id && owner_id === decoded.uid);
           }
-        } catch (dbErr) {
-          console.error("Failed to check room_bans in postgres:", dbErr);
-          next(makeHandshakeError("SERVICE_UNAVAILABLE", "Unable to verify authorization state. Please try again."));
+        } catch (e) {
+          console.error("Token validation failed in socket connect", e);
+        }
+      }
+
+      const currentDbStatus = dbStatus || this.status;
+
+      // Expired or ended rooms cannot be joined by anyone
+      if (currentDbStatus === "expired" || currentDbStatus === "ended") {
+        this.status = currentDbStatus;
+        next(new Error("This room has ended or expired."));
+        return;
+      }
+
+      // Authoritative participant admission token verification
+      // Strict boundary: Non-owners MUST possess a valid server-issued admissionToken
+      // binding { roomId, userId, sessionId }
+      if (!isOwner) {
+        const admissionToken = socket.handshake.auth?.admissionToken;
+        const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
+        const tokenFp = fingerprintToken(admissionToken);
+
+        const expectedRooms: string[] = [this.roomId];
+        if (this.id) expectedRooms.push(this.id);
+        if (this.joiningId) expectedRooms.push(this.joiningId);
+
+        const verification = verifyAdmissionToken(
+          admissionToken,
+          expectedRooms,
+          socket.uid,
+          handshakeSessionId
+        );
+
+        console.log(
+          `[ADMISSION_TRACE:F] Server verification: room=${this.roomId} uid=${socket.uid || "none"} session=${handshakeSessionId || "none"} tokenFp=${tokenFp} valid=${verification.valid} error=${verification.error || "none"}`
+        );
+
+        if (!verification.valid) {
+          console.warn(
+            `[Admission] Handshake rejected for room ${this.roomId}: ${verification.error}`
+          );
+          next(new Error("passcode"));
           return;
         }
       }
 
-      if (this.isBanned(clientId, authUid)) {
-        next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
-        return;
-      }
-
-      // LOCK-001 Invariant: Evaluate participants_locked at final server-side admission boundary.
-      // Flow: Creds -> Room/Passcode verify -> participants_locked?
-      // - False: admit.
-      // - True: admit ONLY IF owner OR authoritative server-side existing identity. Otherwise, reject PARTICIPANTS_LOCKED.
-      if (this.participantsLocked && !isOwner) {
-        const isAdmitted = this.verifyAdmittedSession(sessionId, authUid);
-        if (!isAdmitted) {
-          next(makeHandshakeError("PARTICIPANTS_LOCKED", "This room is currently locked to existing participants."));
+      // Host-initiated room access control:
+      // When room is not active, non-owners are rejected to waiting poll.
+      // Owner is admitted to the namespace WITHOUT activating the room.
+      // Activation happens only via explicit CMD:startSession.
+      if (currentDbStatus !== "active") {
+        if (!isOwner) {
+          next(new Error("ROOM_NOT_STARTED"));
           return;
         }
-      }
-
-      // MEMBER-001 Invariant: Capacity Authority
-      // Flow: Creds -> Lock Policy -> Existing Session -> Capacity Check -> ADMIT or ROOM_FULL
-      // - If room is full, reject with ROOM_FULL unless owner or existing admitted session reconnecting
-      if (this.isRoomFull(isOwner, sessionId, authUid)) {
-        next(makeHandshakeError("ROOM_FULL", "This room has reached its participant limit."));
-        return;
-      }
-
-      next();
-    });
-    const handleSocketConnection = async (socket: Socket): Promise<void> => {
-      const clientId = socket.clientId || randomUUID();
-      socket.clientId = clientId;
-      socket.emit("REC:assignedClientId", clientId);
-      const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
-      this.recordAdmittedParticipant(clientId, handshakeSessionId, socket.uid);
-
-      // -- Start socket state initialization --
-
-      // Disconnect other sockets with this clientId
-      if (this.socketIdMap[clientId]) {
-        this.io.of(this.roomId).sockets.get(this.socketIdMap[clientId])?.disconnect(true);
-      }
-      // Keep track of the current socketID associated with this client (only used for signaling and kicking)
-      this.socketIdMap[clientId] = socket.id;
-      const effectiveUserId = socket.uid || clientId;
-      this.signalingCoordinator.registerPeer(clientId, effectiveUserId, socket.id);
-      const initialName = this.nameMap[clientId] || (socket.uid ? this.uidToNameMap[socket.uid] : undefined);
-      const initialPicture = this.pictureMap[clientId] || (socket.uid ? this.uidToPictureMap[socket.uid] : undefined);
-      const existingUser = this.roster.find(user => user.id === clientId);
-      if (!existingUser) {
-        this.roster.push({ id: clientId, name: initialName, picture: initialPicture });
+        // Owner enters namespace; room stays in its current state until CMD:startSession
+        this.status = (currentDbStatus === "scheduled" || currentDbStatus === "inactive")
+          ? currentDbStatus
+          : "inactive";
       } else {
-        if (initialName && !existingUser.name) existingUser.name = initialName;
-        if (initialPicture && !existingUser.picture) existingUser.picture = initialPicture;
+        this.status = "active";
       }
+    }
+    // clientId is meant for things that shouldn't require login
+    // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
+    // identify chat messages, video chat/screenshare signaling
+    // Used as keys for ephemeral room state (e.g. name, picture, timestamp)
 
-      this.lifecycleCoordinator.clearInactivityTimeout();
+    // Server assigns unpredictable, ephemeral connection identity
+    const clientId = randomUUID();
+    socket.clientId = clientId;
+    const sessionId = typeof socket.handshake.auth?.sessionId === "string" ? socket.handshake.auth.sessionId : undefined;
 
-      socket.on("disconnect", () => this.onDisconnect(socket));
+    // MODERATION-001 Invariant: Banned Participant Authority
+    // Check PostgreSQL room_bans table and L1 cache
+    const authUid = socket.uid || undefined;
+    if (postgres) {
+      try {
+        const roomUuid = this.getRoomUuid() || null;
+        const banRes = await postgres.query(
+          `SELECT client_identity, user_id FROM room_bans WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $2::uuid)) AND (user_id IS NOT NULL AND user_id = $3)`,
+          [this.roomId, roomUuid, authUid || null]
+        );
+        if (banRes.rowCount && banRes.rowCount > 0) {
+          if (authUid) this.bannedIdentities.add(authUid);
+          next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
+          return;
+        }
+      } catch (dbErr) {
+        console.error("Failed to check room_bans in postgres:", dbErr);
+        next(makeHandshakeError("SERVICE_UNAVAILABLE", "Unable to verify authorization state. Please try again."));
+        return;
+      }
+    }
+
+    if (this.isBanned(clientId, authUid)) {
+      next(makeHandshakeError("BANNED_FROM_ROOM", "You have been removed from this room and cannot rejoin."));
+      return;
+    }
+
+    // LOCK-001 Invariant: Evaluate participants_locked at final server-side admission boundary.
+    if (this.participantsLocked && !isOwner) {
+      const isAdmitted = this.verifyAdmittedSession(sessionId, authUid);
+      if (!isAdmitted) {
+        next(makeHandshakeError("PARTICIPANTS_LOCKED", "This room is currently locked to existing participants."));
+        return;
+      }
+    }
+
+    // MEMBER-001 Invariant: Capacity Authority
+    if (this.isRoomFull(isOwner, sessionId, authUid)) {
+      next(makeHandshakeError("ROOM_FULL", "This room has reached its participant limit."));
+      return;
+    }
+
+    next();
+  };
+
+  public handleSocketConnection = async (socket: Socket): Promise<void> => {
+    const clientId = socket.clientId || randomUUID();
+    socket.clientId = clientId;
+    socket.emit("REC:assignedClientId", clientId);
+    const handshakeSessionId = (socket.handshake.auth?.sessionId as string) || "";
+    this.recordAdmittedParticipant(clientId, handshakeSessionId, socket.uid);
+
+    // -- Start socket state initialization --
+
+    // Disconnect other sockets with this clientId
+    const existingSocket = this.findSocket(clientId);
+    if (existingSocket && existingSocket.id !== socket.id) {
+      existingSocket.disconnect(true);
+    }
+    this.activeSockets.set(clientId, socket);
+    // Keep track of the current socketID associated with this client (only used for signaling and kicking)
+    this.socketIdMap[clientId] = socket.id;
+    const effectiveUserId = socket.uid || clientId;
+    this.signalingCoordinator.registerPeer(clientId, effectiveUserId, socket.id);
+    const initialName = this.nameMap[clientId] || (socket.uid ? this.uidToNameMap[socket.uid] : undefined);
+    const initialPicture = this.pictureMap[clientId] || (socket.uid ? this.uidToPictureMap[socket.uid] : undefined);
+    const existingUser = this.roster.find(user => user.id === clientId);
+    if (!existingUser) {
+      this.roster.push({ id: clientId, name: initialName, picture: initialPicture });
+    } else {
+      if (initialName && !existingUser.name) existingUser.name = initialName;
+      if (initialPicture && !existingUser.picture) existingUser.picture = initialPicture;
+    }
+
+    this.lifecycleCoordinator.clearInactivityTimeout();
+
+    socket.on("disconnect", () => {
+      if (this.activeSockets.get(clientId) === socket) {
+        this.activeSockets.delete(clientId);
+      }
+      this.onDisconnect(socket);
+    });
       // -- End socket state initialization --
 
       // Preserve uid if already set by the middleware (owner auth bypass)
@@ -1246,12 +1328,12 @@ export class Room {
         hostName: this.getHostDisplayName(),
         isOwner: this.getHostMode() === "owner",
       });
-      this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
-      this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
+      this.emitToRoom("REC:nameMap", this.nameMap);
+      this.emitToRoom("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
       socket.emit("REC:lock", this.lock);
       socket.emit("REC:participantsLock", this.participantsLocked);
-      const recentMessages = await loadRoomMessages(this.roomId, 50);
+      const recentMessages = await loadRoomMessages(this.roomId, 50, undefined, postgres, this.getRoomUuid());
       const formattedMessages = recentMessages.map((row: any) => ({
         id: row.metadata?.clientId || 'unknown',
         msg: row.message,
@@ -1269,32 +1351,8 @@ export class Room {
       socket.emit("playlist", this.playlist);
       socket.emit("REC:playbackSync", this.timeline.generateSyncPayload());
       this.getRoomState(socket);
-      io.of(roomId).emit("roster", this.getRosterForApp());
+      this.emitToRoom("roster", this.getRosterForApp());
     };
-
-    io.of(roomId).on("connection", (socket: Socket) => {
-      void handleSocketConnection(socket).catch(
-        (error: unknown) => {
-          console.error(
-            {
-              socketId: socket.id,
-              roomId: this.roomId,
-              error,
-            },
-            "Unhandled socket connection lifecycle failure",
-          );
-
-          if (socket.connected) {
-            socket.emit(
-              "errorMessage",
-              "Unable to initialize the connection.",
-            );
-            socket.disconnect();
-          }
-        },
-      );
-    });
-  }
 
   public serialize = (): string => {
     return this.lifecycleCoordinator.serialize();
@@ -1312,6 +1370,8 @@ export class Room {
     this.lifecycleCoordinator.destroy();
     this.admissionCoordinator.admittedParticipants.clear();
     this.admissionCoordinator.admittedMembers.clear();
+    this.activeSockets.clear();
+    this.attachedNamespaces.clear();
     this.roster = [];
     this.socketIdMap = {};
     this.tsMap = {};
@@ -1470,10 +1530,10 @@ export class Room {
     if (match) {
       match.name = data;
     }
-    this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
+    this.emitToRoom("REC:nameMap", this.nameMap);
+    this.emitToRoom("roster", this.getRosterForApp());
     if (this.isHost(socket)) {
-      this.io.of(this.roomId).emit("REC:hostAuthority", {
+      this.emitToRoom("REC:hostAuthority", {
         hostId: this.currentHostUid || this.currentHostClientId,
         hostClientId: this.currentHostClientId,
         mode: this.getHostMode(),
@@ -1481,7 +1541,7 @@ export class Room {
         hostName: data,
         isOwner: this.getHostMode() === "owner",
       });
-      this.io.of(this.roomId).emit("REC:hostChange", {
+      this.emitToRoom("REC:hostChange", {
         hostId: this.currentHostUid,
         hostClientId: this.currentHostClientId,
         hostName: data,
@@ -1503,8 +1563,8 @@ export class Room {
     if (match) {
       match.picture = data;
     }
-    this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
+    this.emitToRoom("REC:pictureMap", this.pictureMap);
+    this.emitToRoom("roster", this.getRosterForApp());
   };
 
   private startHosting = async (socket: Socket, data: string) => {
@@ -1629,7 +1689,7 @@ export class Room {
       return;
     }
     this.subtitle = data;
-    this.io.of(this.roomId).emit("REC:subtitle", this.subtitle);
+    this.emitToRoom("REC:subtitle", this.subtitle);
   };
 
   private lockRoom = async (socket: Socket, raw: unknown) => {
@@ -1639,7 +1699,7 @@ export class Room {
     }
     const { uid, clientId } = socket;
     this.lock = data.locked ? uid : "";
-    this.io.of(this.roomId).emit("REC:lock", this.lock);
+    this.emitToRoom("REC:lock", this.lock);
     const chatMsg = {
       id: clientId,
       cmd: data.locked ? "lock" : "unlock",
@@ -1657,7 +1717,7 @@ export class Room {
       );
       this.participantsLocked = locked;
       this.lastUpdateTime = new Date();
-      this.io.of(this.roomId).emit("REC:participantsLock", locked);
+      this.emitToRoom("REC:participantsLock", locked);
       const chatMsg = {
         id: socket?.clientId || "system",
         cmd: "system",
@@ -1778,7 +1838,7 @@ export class Room {
       if (index > -1) {
         this.roster.splice(index, 1);
       }
-      this.io.of(this.roomId).emit("roster", this.getRosterForApp());
+      this.emitToRoom("roster", this.getRosterForApp());
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       delete this.clientToUidMap[clientId];
@@ -1791,7 +1851,7 @@ export class Room {
       // This prevents remaining participants from being frozen behind an orphaned lock.
       if (socket.uid && this.lock && socket.uid === this.lock) {
         this.lock = "";
-        this.io.of(this.roomId).emit("REC:lock", this.lock);
+        this.emitToRoom("REC:lock", this.lock);
         const unlockMsg = {
           id: clientId,
           cmd: "unlock",
@@ -1853,7 +1913,10 @@ export class Room {
   };
 
   public disconnectAllSockets = () => {
-    this.lifecycleCoordinator.disconnectAllSockets();
+    for (const nsp of this.attachedNamespaces) {
+      this.io.of(nsp).disconnectSockets(true);
+    }
+    this.io.of(this.roomId).disconnectSockets(true);
   };
 
   public deleteChatMessages = async (actorSocket: Socket, raw: unknown) => {

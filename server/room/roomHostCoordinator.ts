@@ -65,6 +65,8 @@ export interface RoomHostCoordinatorDependencies {
     participantsLocked: boolean;
     maxParticipants: number;
   };
+  getRoomUuid?: () => string | undefined;
+  emitToRoom?: (event: string, ...args: any[]) => void;
 }
 
 export class RoomHostCoordinator {
@@ -137,8 +139,15 @@ export class RoomHostCoordinator {
       hostName: this.getHostDisplayName(),
       isOwner,
     };
-    this.deps.io.of(this.deps.roomId).emit("REC:hostAuthority", hostPayload);
-    this.deps.io.of(this.deps.roomId).emit("REC:hostChange", hostPayload);
+    if (this.deps.emitToRoom) {
+      this.deps.emitToRoom("REC:hostAuthority", hostPayload);
+      this.deps.emitToRoom("REC:hostChange", hostPayload);
+    } else {
+      this.deps.io.of(this.deps.roomId).emit("REC:hostAuthority", hostPayload);
+      this.deps.io.of(this.deps.roomId).emit("REC:hostChange", hostPayload);
+    }
+
+    const effectiveRoomId = this.deps.getRoomUuid?.() || this.deps.roomId;
 
     if ((reason === "failover" || reason === "explicit_transfer") && this.currentHostUid) {
       notificationService
@@ -146,21 +155,21 @@ export class RoomHostCoordinator {
           userId: this.currentHostUid,
           type: "ROOM_HOST_TRANSFER",
           title: "Host role assigned",
-          body: `You are now the host of room ${this.deps.roomId}.`,
+          body: `You are now the host of room ${effectiveRoomId}.`,
           metadata: {
-            roomId: this.deps.roomId,
+            roomId: effectiveRoomId,
             action: "open_room",
-            targetUrl: `/watch/${encodeURIComponent(this.deps.roomId)}`,
+            targetUrl: `/watch/${encodeURIComponent(effectiveRoomId)}`,
             reason,
             hostEpoch: this.hostEpoch,
           },
-          eventId: `ROOM_HOST_TRANSFER:${this.deps.roomId}:${this.currentHostUid}`,
+          eventId: `ROOM_HOST_TRANSFER:${effectiveRoomId}:${this.currentHostUid}`,
         })
         .catch((err) => console.error("[Notification] Failed to notify new host:", err));
     }
 
     const roomDetails = this.deps.getRoomStateBroadcastDetails();
-    this.deps.io.of(this.deps.roomId).emit("REC:getRoomState", {
+    const roomStatePayload = {
       owner: this.deps.getOwnerId(),
       currentHostId: hostId,
       currentHostClientId: this.currentHostClientId,
@@ -173,7 +182,12 @@ export class RoomHostCoordinator {
       mediaPath: roomDetails.mediaPath,
       participantsLocked: roomDetails.participantsLocked,
       maxParticipants: roomDetails.maxParticipants,
-    });
+    };
+    if (this.deps.emitToRoom) {
+      this.deps.emitToRoom("REC:getRoomState", roomStatePayload);
+    } else {
+      this.deps.io.of(this.deps.roomId).emit("REC:getRoomState", roomStatePayload);
+    }
   };
 
   public withHostTransitionLease = async <T>(
@@ -195,7 +209,8 @@ export class RoomHostCoordinator {
       );
     }
 
-    const leaseKey = `room:host:${this.deps.roomId}`;
+    const canonicalRoomId = this.deps.getRoomUuid?.() || this.deps.roomId;
+    const leaseKey = `room:host:${canonicalRoomId}`;
     const leaseVal =
       `${process.pid}:${Date.now()}:${randomUUID()}`;
 

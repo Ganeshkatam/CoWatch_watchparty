@@ -12,6 +12,7 @@ import {
   type ServerLocalMediaManifest,
 } from "./LocalMediaSession.ts";
 import { LocalMediaSignaling, type SignalMessagePayload } from "./LocalMediaSignaling.ts";
+import { isValidCanonicalUuid } from "../../utils/roomIdentifier.ts";
 
 function toUuid(id: string): string {
   if (!id) return "00000000-0000-4000-a000-000000000000";
@@ -54,6 +55,7 @@ export class LocalMediaAuthority {
     isHost: boolean,
     manifest: unknown,
     peerId?: string,
+    roomUuid?: string,
   ): Promise<LocalMediaSession | null> {
     if (!isHost) {
       console.warn(`Non-host ${userId} attempted to announce local media session in room ${roomId}`);
@@ -89,18 +91,20 @@ export class LocalMediaAuthority {
       try {
         const validMediaId = toUuid(validatedManifest.mediaId);
         const validOwnerId = toUuid(userId || validatedManifest.ownerId);
+        const validRoomUuid = isValidCanonicalUuid(roomUuid || roomId) ? (roomUuid || roomId) : null;
 
         await (this.db as DatabasePool).query(
           `INSERT INTO public.room_media_sessions (
-            media_id, room_id, owner_user_id, status, filename, mime_type, byte_size,
+            media_id, room_id, room_uuid, owner_user_id, status, filename, mime_type, byte_size,
             duration_seconds, codec, container, content_hash, chunk_size, total_chunks
           ) VALUES (
-            $1, $2, $3, 'ACTIVE', $4, $5, $6, $7, $8, $9, $10, $11, $12
+            $1, $2, $3, $4, 'ACTIVE', $5, $6, $7, $8, $9, $10, $11, $12, $13
           ) ON CONFLICT (media_id) DO UPDATE SET
             status = 'ACTIVE'`,
           [
             validMediaId,
             roomId,
+            validRoomUuid,
             validOwnerId,
             validatedManifest.filename,
             validatedManifest.mimeType,

@@ -18,15 +18,19 @@ if (!supabaseUrl || !supabaseSecretKey) {
 
 import { postgres } from "./postgres.ts";
 
-export const supabaseAdmin = supabaseUrl && supabaseSecretKey 
+export let supabaseAdmin = supabaseUrl && supabaseSecretKey 
   ? createClient(supabaseUrl, supabaseSecretKey) 
   : null as any;
+
+export function setSupabaseAdminForTesting(client: any): void {
+  supabaseAdmin = client;
+}
 
 /**
  * Pure token validation extracting the verified user subject from Supabase Auth.
  */
 export async function validateToken(token: string, requireConfirmation: boolean = true) {
-  if (!supabaseUrl || !supabaseSecretKey || !token) {
+  if (!supabaseAdmin || !token) {
     return undefined;
   }
   try {
@@ -63,7 +67,7 @@ export async function validateUserToken(
 ): Promise<ValidatedUserToken | "EMAIL_NOT_VERIFIED" | undefined> {
   const actualToken = token || uidOrToken;
   const claimedUid = token ? uidOrToken : undefined;
-  if (!supabaseUrl || !supabaseSecretKey || !actualToken) {
+  if (!supabaseAdmin || !actualToken) {
     return undefined;
   }
   try {

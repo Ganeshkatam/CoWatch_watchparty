@@ -76,6 +76,7 @@
     "test:room-identifier": "tsx server/utils/roomIdentifier.test.ts",
     "test:rpc-phase2": "tsx server/roomRpcPhase2.test.ts",
     "test:boundary-phase3": "tsx server/roomBoundaryPhase3.test.ts",
+    "test:realtime-phase4": "tsx server/roomRealtimePhase4.test.ts",
     "test:smoke": "tsx server/productionSmoke.test.ts"
   },
   "dependencies": {

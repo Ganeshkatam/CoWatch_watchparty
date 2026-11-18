@@ -95,11 +95,11 @@ export function generateAdmissionToken(params: {
 
 /**
  * Verifies an admission token against cryptographic signature, expiration,
- * room ID, verified user ID, and client session ID.
+ * room ID (or set of aliased room IDs), verified user ID, and client session ID.
  */
 export function verifyAdmissionToken(
   token: string | undefined | null,
-  expectedRoomId: string,
+  expectedRoomId: string | string[],
   callerUid?: string | null,
   clientSessionId?: string | null
 ): AdmissionVerificationResult {
@@ -140,8 +140,11 @@ export function verifyAdmissionToken(
     return { valid: false, error: "ADMISSION_TOKEN_EXPIRED" };
   }
 
-  const cleanExpectedRoom = (expectedRoomId || "").trim();
-  if (!cleanExpectedRoom || payload.roomId !== cleanExpectedRoom) {
+  const matchesRoom = Array.isArray(expectedRoomId)
+    ? expectedRoomId.some((r) => r && r.trim() === payload.roomId)
+    : Boolean(expectedRoomId && expectedRoomId.trim() === payload.roomId);
+
+  if (!matchesRoom) {
     return { valid: false, error: "ADMISSION_TOKEN_ROOM_MISMATCH" };
   }
 

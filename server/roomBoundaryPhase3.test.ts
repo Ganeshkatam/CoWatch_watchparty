@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import http from "node:http";
@@ -538,3 +538,8 @@ test("Phase 3: Application Boundary & Internal Identity Migration Suite", async 
     assert.equal(resMismatch.reason, "ROOM_MISMATCH");
   });
 });
+
+after(() => {
+  process.exit(0);
+});
+

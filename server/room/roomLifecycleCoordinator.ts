@@ -51,6 +51,9 @@ export interface RoomLifecycleDependencies {
   terminateSignalingSession: () => void;
   addChatMessage: (socket: Socket | null, chatMsg: ChatMessageBase) => Promise<any>;
   getConnectedParticipantUids?: () => string[];
+  getRoomUuid?: () => string | undefined;
+  emitToRoom?: (event: string, ...args: any[]) => void;
+  disconnectAllSockets?: () => void;
 }
 
 export class RoomLifecycleCoordinator {
@@ -61,6 +64,14 @@ export class RoomLifecycleCoordinator {
   public constructor(deps: RoomLifecycleDependencies) {
     this.deps = deps;
   }
+
+  private emitToAll = (event: string, ...args: any[]) => {
+    if (this.deps.emitToRoom) {
+      this.deps.emitToRoom(event, ...args);
+    } else {
+      this.deps.io.of(this.deps.roomId).emit(event, ...args);
+    }
+  };
 
   private get postgres(): any {
     return this.deps.getPostgres ? this.deps.getPostgres() : defaultPostgres;
@@ -84,8 +95,8 @@ export class RoomLifecycleCoordinator {
       });
       if (this.deps.getVideo()) {
         this.deps.setLastTsMap(Date.now());
-        this.deps.io.of(this.deps.roomId).emit("REC:tsMap", tsMap);
-        this.deps.io.of(this.deps.roomId).emit("REC:playbackSync", this.deps.getTimeline().generateSyncPayload());
+        this.emitToAll("REC:tsMap", tsMap);
+        this.emitToAll("REC:playbackSync", this.deps.getTimeline().generateSyncPayload());
       }
     }, 1000);
   };
@@ -99,15 +110,16 @@ export class RoomLifecycleCoordinator {
         if (currentActualUsers.length === 0 && this.deps.getStatus() === "active") {
           this.deps.setStatus("inactive");
           this.deps.setLastUpdateTime(new Date());
-          this.deps.io.of(this.deps.roomId).emit("SIGNAL:terminateAndExit", {
-            roomId: this.deps.roomId,
+          const effectiveRoomId = this.deps.getRoomUuid?.() || this.deps.roomId;
+          this.emitToAll("SIGNAL:terminateAndExit", {
+            roomId: effectiveRoomId,
             reason: "host_stopped_permanent",
             isPermanent: true,
           });
-          this.deps.io.of(this.deps.roomId).emit("ROOM_SESSION_STOPPED", {
+          this.emitToAll("ROOM_SESSION_STOPPED", {
             isPermanent: true,
             status: "inactive",
-            roomId: this.deps.roomId,
+            roomId: effectiveRoomId,
           });
 
           if (this.postgres) {
@@ -146,7 +158,7 @@ export class RoomLifecycleCoordinator {
           this.deps.setStatus("active");
           this.deps.setExpiresAt(res.expiresAt ? new Date(res.expiresAt) : undefined);
           this.deps.setLastUpdateTime(new Date());
-          this.deps.io.of(this.deps.roomId).emit("REC:sessionStarted", {
+          this.emitToAll("REC:sessionStarted", {
             status: "active",
             startedBy: socket.uid,
           });
@@ -210,7 +222,7 @@ export class RoomLifecycleCoordinator {
       this.deps.setLastUpdateTime(new Date());
 
       // 5. Broadcast to connected sockets (only owner is connected pre-start)
-      this.deps.io.of(this.deps.roomId).emit("REC:sessionStarted", {
+      this.emitToAll("REC:sessionStarted", {
         status: "active",
         startedBy: socket.uid,
       });
@@ -444,6 +456,10 @@ export class RoomLifecycleCoordinator {
   };
 
   public disconnectAllSockets = (): void => {
-    this.deps.io.of(this.deps.roomId).disconnectSockets();
+    if (this.deps.disconnectAllSockets) {
+      this.deps.disconnectAllSockets();
+    } else {
+      this.deps.io.of(this.deps.roomId).disconnectSockets();
+    }
   };
 }

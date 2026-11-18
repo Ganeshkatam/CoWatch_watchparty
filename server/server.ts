@@ -328,46 +328,66 @@ io.engine.use((req: any, res: Response, next: () => void) => {
 // Helper to cleanly unregister room namespaces regardless of slash prefix
 export function unregisterRoomNamespace(roomId: string) {
   if (!roomId) return;
-    const memRoom = rooms.get(roomId);
-    const idsToUnregister = new Set<string>([roomId]);
-    if (memRoom?.id) idsToUnregister.add(memRoom.id);
-    if (memRoom?.roomId) idsToUnregister.add(memRoom.roomId);
-
-    for (const id of idsToUnregister) {
-      const bareNsp = (io as any)._nsps?.get(id);
-      if (bareNsp) {
-        bareNsp.removeAllListeners();
-        (io as any)._nsps?.delete(id);
-      }
-      const slashNsp = (io as any)._nsps?.get(`/${id}`);
-      if (slashNsp) {
-        slashNsp.removeAllListeners();
-        (io as any)._nsps?.delete(`/${id}`);
-      }
+  const memRoom = rooms.get(roomId);
+  const idsToUnregister = new Set<string>([roomId]);
+  if (memRoom?.id) {
+    idsToUnregister.add(memRoom.id);
+    idsToUnregister.add(`watch/${memRoom.id}`);
+  }
+  if (memRoom?.roomId) {
+    idsToUnregister.add(memRoom.roomId);
+    idsToUnregister.add(`watch/${memRoom.roomId}`);
+  }
+  if (memRoom?.joiningId) {
+    idsToUnregister.add(memRoom.joiningId);
+  }
+  if ((memRoom as any)?.attachedNamespaces) {
+    for (const nsp of (memRoom as any).attachedNamespaces) {
+      idsToUnregister.add(nsp);
     }
   }
 
-  // Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
-  const dynamicRoomNsp = io.of(/^\/[a-zA-Z0-9_\-\s%]+$/);
-  dynamicRoomNsp.use(async (socket, next) => {
-    const cleanId = sanitizeRoomId(socket.nsp.name);
-    if (!cleanId || cleanId === "notifications") {
-      return next();
+  for (const id of idsToUnregister) {
+    const cleanId = id.replace(/^\//, "");
+    const bareNsp = (io as any)._nsps?.get(cleanId);
+    if (bareNsp) {
+      bareNsp.removeAllListeners();
+      (io as any)._nsps?.delete(cleanId);
     }
-    try {
-      let memoryRoom = rooms.get(cleanId);
-      if (!memoryRoom) {
-        memoryRoom = (await getOrCreateRoom(cleanId)) || undefined;
-      }
-      if (!memoryRoom) {
-        return next(new Error("ROOM_NOT_FOUND"));
-      }
-      next();
-    } catch (err) {
-      console.error(`[Socket] Failed loading dynamic room namespace ${cleanId}:`, err);
-      next(new Error("ROOM_LOAD_ERROR"));
+    const slashNsp = (io as any)._nsps?.get(`/${cleanId}`);
+    if (slashNsp) {
+      slashNsp.removeAllListeners();
+      (io as any)._nsps?.delete(`/${cleanId}`);
     }
-  });
+  }
+}
+
+// Dynamic room namespace handler to prevent "Invalid namespace" on direct WebSocket or initial connection
+// Supports canonical '/watch/:uuid', direct '/:uuid', and legacy '/:moniker'
+const dynamicRoomNsp = io.of(/^\/(?:watch\/)?[a-zA-Z0-9_\-\s%]+$/);
+dynamicRoomNsp.use(async (socket, next) => {
+  const rawName = socket.nsp.name.replace(/^\/(?:watch\/)?/, "");
+  const cleanId = sanitizeRoomId(rawName);
+  if (!cleanId || cleanId === "notifications") {
+    return next();
+  }
+  try {
+    let memoryRoom = rooms.get(cleanId);
+    if (!memoryRoom) {
+      memoryRoom = (await getOrCreateRoom(cleanId)) || undefined;
+    }
+    if (!memoryRoom) {
+      return next(new Error("ROOM_NOT_FOUND"));
+    }
+    if (typeof (memoryRoom as any).attachNamespace === "function") {
+      (memoryRoom as any).attachNamespace(socket.nsp.name);
+    }
+    next();
+  } catch (err) {
+    console.error(`[Socket] Failed loading dynamic room namespace ${cleanId}:`, err);
+    next(new Error("ROOM_LOAD_ERROR"));
+  }
+});
   // Background Scheduled Maintenance (Lifecycle, Persistence, Expiration, Metrics, Retention)
   registerBackgroundMaintenance({
     rooms,

@@ -10,11 +10,13 @@ import {
   type RoomAction,
   type ActionTarget,
 } from "../roomAuthorization.ts";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.ts";
 import type { AdmittedParticipantRecord } from "../room.ts";
 
 export interface RoomMessageRow {
   id: string;
   roomId: string;
+  roomUuid?: string | null;
   user_id: string;
   message: string;
   message_type: 'user' | 'system';
@@ -35,26 +37,29 @@ export async function persistRoomMessage(
   eventType: string | null = null,
   metadata: Record<string, unknown> | null = null,
   clientMessageId: string | null = null,
-  postgresInstance: any = defaultPostgres
+  postgresInstance: any = defaultPostgres,
+  roomUuid?: string
 ): Promise<RoomMessageRow | null> {
   const db = postgresInstance ?? defaultPostgres;
   if (!db) return null;
 
+  const validUuid = isValidCanonicalUuid(roomUuid || roomId) ? (roomUuid || roomId) : null;
+
   try {
     const result = await db.query(
-      `INSERT INTO room_messages (room_id, user_id, message, message_type, event_type, metadata, client_message_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO room_messages (room_id, room_uuid, user_id, message, message_type, event_type, metadata, client_message_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (room_id, user_id, client_message_id) DO NOTHING
-       RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
-      [roomId, userId, message, messageType, eventType, metadata, clientMessageId]
+       RETURNING id, room_id as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
+      [roomId, validUuid, userId, message, messageType, eventType, metadata, clientMessageId]
     );
     if (result.rowCount === 0 && clientMessageId) {
       // Duplicate client_message_id for this room/user, fetch the existing one
       const existingResult = await db.query(
-        `SELECT id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
+        `SELECT id, room_id as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
          FROM room_messages
-         WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3`,
-        [roomId, userId, clientMessageId]
+         WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $4::uuid)) AND user_id = $2 AND client_message_id = $3`,
+        [roomId, userId, clientMessageId, validUuid]
       );
       return existingResult.rows[0] || null;
     }
@@ -69,26 +74,29 @@ export async function loadRoomMessages(
   roomId: string,
   limit: number = 50,
   beforeCursor?: string | { createdAt: string; id: string },
-  postgresInstance: any = defaultPostgres
+  postgresInstance: any = defaultPostgres,
+  roomUuid?: string
 ): Promise<RoomMessageRow[]> {
   const db = postgresInstance ?? defaultPostgres;
   if (!db) return [];
 
+  const validUuid = isValidCanonicalUuid(roomUuid || roomId) ? (roomUuid || roomId) : null;
+
   try {
     let query = `
-      SELECT rm.id, rm.room_id as "roomId", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
+      SELECT rm.id, rm.room_id as "roomId", rm.room_uuid as "roomUuid", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
       FROM room_messages rm
       LEFT JOIN profiles p ON rm.user_id = p.id
-      WHERE rm.room_id = $1
+      WHERE (rm.room_id = $1 OR (rm.room_uuid IS NOT NULL AND rm.room_uuid = $2::uuid))
     `;
-    const params: unknown[] = [roomId];
+    const params: unknown[] = [roomId, validUuid];
 
     if (beforeCursor) {
       if (typeof beforeCursor === 'string') {
-        query += ` AND rm.created_at < $2`;
+        query += ` AND rm.created_at < $3`;
         params.push(beforeCursor);
       } else {
-        query += ` AND (rm.created_at, rm.id) < ($2, $3)`;
+        query += ` AND (rm.created_at, rm.id) < ($3, $4)`;
         params.push(beforeCursor.createdAt);
         params.push(beforeCursor.id);
       }
@@ -133,10 +141,21 @@ export interface RoomModerationOptions {
     targetRoomPermanent?: boolean;
     targetRoomState?: string;
   }) => AuthorizationResult;
+  getRoomUuid?: () => string | undefined;
+  findSocket?: (clientId: string) => Socket | undefined;
+  emitToRoom?: (event: string, ...args: any[]) => void;
 }
 
 export class RoomModerationCoordinator {
   private readonly options: RoomModerationOptions;
+
+  private emitToAll = (event: string, ...args: any[]) => {
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom(event, ...args);
+    } else {
+      this.options.io.of(this.options.roomId).emit(event, ...args);
+    }
+  };
 
   public constructor(options: RoomModerationOptions) {
     this.options = options;
@@ -172,14 +191,14 @@ export class RoomModerationCoordinator {
         });
       }
       // System events without a uid are still emitted live but never persisted
-      this.options.io.of(this.options.roomId).emit("REC:chat", chatWithTime);
-      this.options.io.of(this.options.roomId).emit("ROOM_MESSAGE", chatWithTime);
+      this.emitToAll("REC:chat", chatWithTime);
+      this.emitToAll("ROOM_MESSAGE", chatWithTime);
       return;
     }
 
     // Broadcast immediately in realtime to all clients in the room (zero latency)
-    this.options.io.of(this.options.roomId).emit("REC:chat", { ...chatWithTime, userId: socket.uid });
-    this.options.io.of(this.options.roomId).emit("ROOM_MESSAGE", { ...chatWithTime, userId: socket.uid });
+    this.emitToAll("REC:chat", { ...chatWithTime, userId: socket.uid });
+    this.emitToAll("ROOM_MESSAGE", { ...chatWithTime, userId: socket.uid });
 
     // Persist asynchronously in the background so database latency never blocks the live realtime WebSocket loop
     const shouldPersist = !isCmd || (isCmd && ['room.inactive', 'room.reactivated', 'room.expired'].includes(chatMsg.cmd!));
@@ -197,7 +216,8 @@ export class RoomModerationCoordinator {
           picture: socket?.clientId ? this.options.pictureMap[socket.clientId] : undefined,
         },
         chatMsg.clientMessageId,
-        this.options.postgres ?? defaultPostgres
+        this.options.postgres ?? defaultPostgres,
+        this.options.getRoomUuid?.()
       ).then((dbRow) => {
         if (dbRow?.id) {
           const persistedUpdate = {
@@ -205,8 +225,8 @@ export class RoomModerationCoordinator {
             dbId: dbRow.id,
             userId: socket?.uid,
           };
-          this.options.io.of(this.options.roomId).emit("REC:messagePersisted", persistedUpdate);
-          this.options.io.of(this.options.roomId).emit("ROOM_MESSAGE_EDITED", persistedUpdate);
+          this.emitToAll("REC:messagePersisted", persistedUpdate);
+          this.emitToAll("ROOM_MESSAGE_EDITED", persistedUpdate);
         }
       }).catch((err) => {
         console.error("Background message persist error:", err);
@@ -219,7 +239,7 @@ export class RoomModerationCoordinator {
         };
         socket?.emit?.("REC:messagePersistFailed", failurePayload);
         socket?.emit?.("ROOM_MESSAGE_ERROR", failurePayload);
-        this.options.io.of(this.options.roomId).emit("REC:messagePersistFailed", failurePayload);
+        this.emitToAll("REC:messagePersistFailed", failurePayload);
       });
     }
   };
@@ -339,22 +359,23 @@ export class RoomModerationCoordinator {
 
       // Step 4: Mutate atomically
       const isHostOrOwner = ctx.isHost || ctx.isOwner;
+      const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
       const query = isHostOrOwner
         ? `
           UPDATE room_messages
           SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_id = $3 AND message_type = 'user'
-          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
+          WHERE id = $2 AND (room_id = $3 OR (room_uuid IS NOT NULL AND room_uuid = $4::uuid)) AND message_type = 'user'
+          RETURNING id, room_id as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at
         `
         : `
           UPDATE room_messages
           SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_id = $3 AND user_id = $4 AND message_type = 'user'
-          RETURNING id, room_id as "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
+          WHERE id = $2 AND (room_id = $3 OR (room_uuid IS NOT NULL AND room_uuid = $5::uuid)) AND user_id = $4 AND message_type = 'user'
+          RETURNING id, room_id as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at
         `;
       const queryParams = isHostOrOwner
-        ? [trimmedMsg, data.messageId, this.options.roomId]
-        : [trimmedMsg, data.messageId, this.options.roomId, socket.uid];
+        ? [trimmedMsg, data.messageId, this.options.roomId, roomUuid]
+        : [trimmedMsg, data.messageId, this.options.roomId, socket.uid, roomUuid];
       const result = await db.query(query, queryParams);
 
       if (result.rowCount === 0) {
@@ -383,8 +404,8 @@ export class RoomModerationCoordinator {
         updatedAt: row.updated_at.toISOString(),
       };
 
-      this.options.io.of(this.options.roomId).emit("REC:editMessage", updatedMsg);
-      this.options.io.of(this.options.roomId).emit("ROOM_MESSAGE_EDITED", updatedMsg);
+      this.emitToAll("REC:editMessage", updatedMsg);
+      this.emitToAll("ROOM_MESSAGE_EDITED", updatedMsg);
     } catch (e) {
       console.error("Failed to edit message in postgres:", e);
       socket.emit("CMD:error", { code: "FORBIDDEN" });
@@ -407,7 +428,7 @@ export class RoomModerationCoordinator {
     }
     const reaction: Reaction = { user: socket.clientId, ...data };
     redisCount("addReaction");
-    this.options.io.of(this.options.roomId).emit("REC:addReaction", reaction);
+    this.emitToAll("REC:addReaction", reaction);
   };
 
   public removeReaction = (socket: Socket, raw: unknown): void => {
@@ -425,7 +446,7 @@ export class RoomModerationCoordinator {
       return;
     }
     const reaction: Reaction = { user: socket.clientId, ...data };
-    this.options.io.of(this.options.roomId).emit("REC:removeReaction", reaction);
+    this.emitToAll("REC:removeReaction", reaction);
   };
 
   public deleteChatMessages = async (
@@ -452,6 +473,7 @@ export class RoomModerationCoordinator {
       const ctx = context ?? this.options.buildAuthorizationContext(actorSocket);
       const hostEpochSnapshot = ctx.hostEpoch;
       const uniqueIds = [...new Set(data.messageIds)];
+      const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
 
       if (db) {
         const client = await db.connect();
@@ -461,9 +483,9 @@ export class RoomModerationCoordinator {
           // Row lock target messages within the scope of this room
           const checkRes = await client.query(
             `SELECT id, room_id, user_id, metadata FROM room_messages 
-             WHERE id = ANY($1::uuid[]) AND room_id = $2 
+             WHERE id = ANY($1::uuid[]) AND (room_id = $2 OR (room_uuid IS NOT NULL AND room_uuid = $3::uuid))
              FOR UPDATE`,
-            [uniqueIds, this.options.roomId]
+            [uniqueIds, this.options.roomId, roomUuid]
           );
 
           // All-or-nothing check: if row count does not match requested unique IDs, foreign or non-existent IDs are present
@@ -505,8 +527,8 @@ export class RoomModerationCoordinator {
           await client.query(
             `UPDATE room_messages 
              SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
-             WHERE room_id = $1 AND id = ANY($3::uuid[])`,
-            [this.options.roomId, actorSocket.clientId || actorSocket.uid || "host", uniqueIds]
+             WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $4::uuid)) AND id = ANY($3::uuid[])`,
+            [this.options.roomId, actorSocket.clientId || actorSocket.uid || "host", uniqueIds, roomUuid]
           );
 
           await client.query("COMMIT");
@@ -529,7 +551,7 @@ export class RoomModerationCoordinator {
         }
       }
 
-      this.options.io.of(this.options.roomId).emit("REC:chatMessagesDeleted", {
+      this.emitToAll("REC:chatMessagesDeleted", {
         eventId: randomUUID(),
         roomId: this.options.roomId,
         messageIds: uniqueIds,
@@ -538,6 +560,8 @@ export class RoomModerationCoordinator {
       });
       return;
     }
+
+    const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
 
     // Legacy author/timestamp handling
     if (!data.timestamp && !data.author) {
@@ -548,7 +572,7 @@ export class RoomModerationCoordinator {
         return; // Zero mutation on denial
       }
       if (db) {
-        await db.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1`, [this.options.roomId]);
+        await db.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $2::uuid))`, [this.options.roomId, roomUuid]);
       }
     } else if (data.timestamp && data.author) {
       // Delete specific message by author/timestamp
@@ -565,8 +589,8 @@ export class RoomModerationCoordinator {
       }
       if (db) {
         await db.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
-          [this.options.roomId, data.author, data.timestamp]
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $4::uuid)) AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
+          [this.options.roomId, data.author, data.timestamp, roomUuid]
         );
       }
     } else if (data.author) {
@@ -584,14 +608,14 @@ export class RoomModerationCoordinator {
       }
       if (db) {
         await db.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_id = $1 AND (user_id = $2 OR metadata->>'clientId' = $2)`,
-          [this.options.roomId, data.author]
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $3::uuid)) AND (user_id = $2 OR metadata->>'clientId' = $2)`,
+          [this.options.roomId, data.author, roomUuid]
         );
       }
     }
 
     // Refresh for everyone (legacy UI sync)
-    const recentMessages = await loadRoomMessages(this.options.roomId, 50, undefined, db);
+    const recentMessages = await loadRoomMessages(this.options.roomId, 50, undefined, db, roomUuid || undefined);
     const formattedMessages = recentMessages.map((row: any) => ({
       id: row.metadata?.clientId || row.user_id,
       msg: row.message,
@@ -604,7 +628,7 @@ export class RoomModerationCoordinator {
       userId: row.user_id || undefined,
       updatedAt: row.updated_at ? row.updated_at.toISOString() : undefined,
     }));
-    this.options.io.of(this.options.roomId).emit("ROOM_MESSAGES", formattedMessages.reverse());
+    this.emitToAll("ROOM_MESSAGES", formattedMessages.reverse());
   };
 
   public kickUser = async (
@@ -633,9 +657,9 @@ export class RoomModerationCoordinator {
     this.options.admittedParticipants.delete(targetIdentity);
 
     const targetSocketId = this.options.socketIdMap[targetIdentity];
-    const targetSocket = targetSocketId
-      ? this.options.io.of(this.options.roomId).sockets.get(targetSocketId)
-      : undefined;
+    const targetSocket = this.options.findSocket
+      ? this.options.findSocket(targetIdentity)
+      : (targetSocketId ? this.options.io.of(this.options.roomId).sockets.get(targetSocketId) : undefined);
 
     if (targetSocket) {
       targetSocket.emit("kicked", {
@@ -646,7 +670,7 @@ export class RoomModerationCoordinator {
     }
 
     this.options.sendRoster();
-    this.options.io.of(this.options.roomId).emit("REC:participantKicked", {
+    this.emitToAll("REC:participantKicked", {
       eventId: randomUUID(),
       roomId: this.options.roomId,
       targetUserId: targetIdentity,
@@ -659,10 +683,11 @@ export class RoomModerationCoordinator {
     if (targetUid) {
       this.options.admittedMembers.delete(targetUid);
       const db = this.options.postgres ?? defaultPostgres;
+      const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
       if (db) {
         db.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_id = $1 AND user_id = $2::uuid`,
-          [this.options.roomId, targetUid]
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $3::uuid)) AND user_id = $2::uuid`,
+          [this.options.roomId, targetUid, roomUuid]
         ).catch((err: any) => console.warn("[Admission] Failed to revoke admission on kick in DB:", err));
       }
       const moderationEventId = operationId || randomUUID();
@@ -720,13 +745,15 @@ export class RoomModerationCoordinator {
     // Remove from admitted participants
     this.options.admittedParticipants.delete(targetIdentity);
 
+    const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
+
     if (targetUid) {
       this.options.admittedMembers.delete(targetUid);
       const db = this.options.postgres ?? defaultPostgres;
       if (db) {
         db.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_id = $1 AND user_id = $2::uuid`,
-          [this.options.roomId, targetUid]
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE (room_id = $1 OR (room_uuid IS NOT NULL AND room_uuid = $3::uuid)) AND user_id = $2::uuid`,
+          [this.options.roomId, targetUid, roomUuid]
         ).catch((err: any) => console.warn("[Admission] Failed to revoke admission on ban in DB:", err));
       }
       const moderationEventId = operationId || randomUUID();
@@ -755,11 +782,12 @@ export class RoomModerationCoordinator {
     if (db) {
       try {
         await db.query(
-          `INSERT INTO room_bans (room_id, client_identity, user_id, banned_by, reason)
-           VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO room_bans (room_id, room_uuid, client_identity, user_id, banned_by, reason)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (room_id, client_identity) DO NOTHING`,
           [
             this.options.roomId,
+            roomUuid,
             targetIdentity,
             targetUid || null,
             actorSocket.clientId || actorSocket.uid || "host",
@@ -773,9 +801,9 @@ export class RoomModerationCoordinator {
 
     // Eject target socket if currently connected
     const targetSocketId = this.options.socketIdMap[targetIdentity];
-    const targetSocket = targetSocketId
-      ? this.options.io.of(this.options.roomId).sockets.get(targetSocketId)
-      : undefined;
+    const targetSocket = this.options.findSocket
+      ? this.options.findSocket(targetIdentity)
+      : (targetSocketId ? this.options.io.of(this.options.roomId).sockets.get(targetSocketId) : undefined);
 
     if (targetSocket) {
       targetSocket.emit("banned", {
@@ -786,7 +814,7 @@ export class RoomModerationCoordinator {
     }
 
     this.options.sendRoster();
-    this.options.io.of(this.options.roomId).emit("REC:participantBanned", {
+    this.emitToAll("REC:participantBanned", {
       eventId: randomUUID(),
       roomId: this.options.roomId,
       targetUserId: targetIdentity,

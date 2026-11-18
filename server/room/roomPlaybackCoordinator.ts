@@ -30,6 +30,7 @@ export interface RoomPlaybackCoordinatorDependencies {
     getVod: (channel: string) => Promise<any>;
   };
   twitchProxyPath?: string;
+  emitToRoom?: (event: string, ...args: any[]) => void;
 }
 
 function parseTwitchUrl(rawUrl: string): { isTwitch: boolean; channel?: string; isStream?: boolean } {
@@ -103,6 +104,14 @@ export class RoomPlaybackCoordinator {
     this.deps = deps;
   }
 
+  private emitToAll = (event: string, ...args: any[]) => {
+    if (this.deps.emitToRoom) {
+      this.deps.emitToRoom(event, ...args);
+    } else {
+      this.deps.io.of(this.deps.roomId).emit(event, ...args);
+    }
+  };
+
   public cmdHost = (socket: Socket | null, data: string) => {
     if (data && data.length > 50000) {
       return;
@@ -121,9 +130,9 @@ export class RoomPlaybackCoordinator {
     }
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
-    this.deps.io.of(this.deps.roomId).emit("REC:tsMap", this.deps.tsMap);
-    this.deps.io.of(this.deps.roomId).emit("REC:host", this.deps.getHostState());
-    this.deps.io.of(this.deps.roomId).emit("REC:playbackSync", this.timeline.generateSyncPayload());
+    this.emitToAll("REC:tsMap", this.deps.tsMap);
+    this.emitToAll("REC:host", this.deps.getHostState());
+    this.emitToAll("REC:playbackSync", this.timeline.generateSyncPayload());
     if (socket && data) {
       const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
       this.deps.addChatMessage(socket, chatMsg);
@@ -214,7 +223,7 @@ export class RoomPlaybackCoordinator {
       return;
     }
     const next = this.playlist.shift();
-    this.deps.io.of(this.deps.roomId).emit("playlist", this.playlist);
+    this.emitToAll("playlist", this.playlist);
     if (next) {
       this.cmdHost(null, next.url);
     }
@@ -253,7 +262,7 @@ export class RoomPlaybackCoordinator {
     } else {
       this.playlist.push(item);
     }
-    this.deps.io.of(this.deps.roomId).emit("playlist", this.playlist);
+    this.emitToAll("playlist", this.playlist);
     const clientId = socket?.clientId;
     if (clientId) {
       const chatMsg = {
@@ -271,7 +280,7 @@ export class RoomPlaybackCoordinator {
   public playlistDelete = (index: number) => {
     if (index !== -1) {
       this.playlist.splice(index, 1);
-      this.deps.io.of(this.deps.roomId).emit("playlist", this.playlist);
+      this.emitToAll("playlist", this.playlist);
     }
   };
 
@@ -283,7 +292,7 @@ export class RoomPlaybackCoordinator {
     if (data.index !== -1) {
       const items = this.playlist.splice(data.index, 1);
       this.playlist.splice(data.toIndex, 0, items[0]);
-      this.deps.io.of(this.deps.roomId).emit("playlist", this.playlist);
+      this.emitToAll("playlist", this.playlist);
     }
   };
 
@@ -300,7 +309,7 @@ export class RoomPlaybackCoordinator {
     this.timeline.play();
     this.paused = false;
     socket.broadcast.emit("REC:play", this.video);
-    this.deps.io.of(this.deps.roomId).emit(
+    this.emitToAll(
       "REC:playbackSync",
       this.timeline.generateSyncPayload(undefined, undefined, operationId),
     );
@@ -325,7 +334,7 @@ export class RoomPlaybackCoordinator {
     this.timeline.pause();
     this.paused = true;
     socket.broadcast.emit("REC:pause");
-    this.deps.io.of(this.deps.roomId).emit(
+    this.emitToAll(
       "REC:playbackSync",
       this.timeline.generateSyncPayload(undefined, undefined, operationId),
     );
@@ -360,7 +369,7 @@ export class RoomPlaybackCoordinator {
     const targetTime = Math.max(0, rawTarget);
     this.timeline.seek(targetTime);
     socket.broadcast.emit("REC:seek", targetTime);
-    this.deps.io.of(this.deps.roomId).emit(
+    this.emitToAll(
       "REC:playbackSync",
       this.timeline.generateSyncPayload(undefined, undefined, operationId),
     );
@@ -399,8 +408,8 @@ export class RoomPlaybackCoordinator {
     this.deps.recordProcessedOperation(socket.clientId, operationId);
     this.timeline.setPlaybackRate(rawRate);
     this.playbackRate = rawRate;
-    this.deps.io.of(this.deps.roomId).emit("REC:playbackRate", rawRate);
-    this.deps.io.of(this.deps.roomId).emit(
+    this.emitToAll("REC:playbackRate", rawRate);
+    this.emitToAll(
       "REC:playbackSync",
       this.timeline.generateSyncPayload(undefined, undefined, operationId),
     );
@@ -417,7 +426,7 @@ export class RoomPlaybackCoordinator {
       return;
     }
     this.loop = data;
-    this.deps.io.of(this.deps.roomId).emit("REC:loop", data);
+    this.emitToAll("REC:loop", data);
   };
 
   public setTimestamp = (socket: Socket, data: number) => {

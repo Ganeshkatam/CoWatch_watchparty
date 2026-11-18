@@ -7,6 +7,7 @@ import {
   authorizeRoomAction as pureAuthorizeRoomAction,
   type AuthorizationContext,
 } from "../roomAuthorization.ts";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.ts";
 import { LocalMediaAuthority } from "../media/local/LocalMediaAuthority.ts";
 import { LocalMediaSignaling } from "../media/local/LocalMediaSignaling.ts";
 import type { ServerLocalMediaManifest } from "../media/local/LocalMediaSession.ts";
@@ -21,6 +22,9 @@ export interface RoomSignalingOptions {
   getRosterForApp: () => User[];
   setMediaSource: (socket: Socket | null, mediaUrl: string) => void;
   buildAuthorizationContext: (socket: Socket) => AuthorizationContext;
+  getRoomUuid?: () => string | undefined;
+  findSocket?: (clientId: string) => Socket | undefined;
+  emitToRoom?: (event: string, ...args: any[]) => void;
 }
 
 export class RoomSignalingCoordinator {
@@ -55,13 +59,26 @@ export class RoomSignalingCoordinator {
     if (!isSenderInRoster || !isTargetInRoster) {
       return;
     }
+    const roomUuid = this.options.getRoomUuid?.() || undefined;
+    const signalPayload = {
+      from: fromClientId,
+      msg: data.msg,
+      sharer: data.sharer,
+      roomUuid,
+    };
+
+    const targetSocket = this.options.findSocket
+      ? this.options.findSocket(data.to)
+      : undefined;
+
+    if (targetSocket) {
+      targetSocket.emit(eventName, signalPayload);
+      return;
+    }
+
     const toId = this.options.socketIdMap[data.to];
     if (toId) {
-      this.options.io.of(this.options.roomId).to(toId).emit(eventName, {
-        from: fromClientId,
-        msg: data.msg,
-        sharer: data.sharer,
-      });
+      this.options.io.of(this.options.roomId).to(toId).emit(eventName, signalPayload);
     }
   };
 
@@ -71,7 +88,12 @@ export class RoomSignalingCoordinator {
       match.isVideoChat = true;
       redisCount("videoChatStarts");
     }
-    this.options.io.of(this.options.roomId).emit("roster", this.options.getRosterForApp());
+    const rosterData = this.options.getRosterForApp();
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom("roster", rosterData);
+    } else {
+      this.options.io.of(this.options.roomId).emit("roster", rosterData);
+    }
   };
 
   public leaveVideo = async (socket: Socket): Promise<void> => {
@@ -79,7 +101,12 @@ export class RoomSignalingCoordinator {
     if (match) {
       match.isVideoChat = false;
     }
-    this.options.io.of(this.options.roomId).emit("roster", this.options.getRosterForApp());
+    const rosterData = this.options.getRosterForApp();
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom("roster", rosterData);
+    } else {
+      this.options.io.of(this.options.roomId).emit("roster", rosterData);
+    }
   };
 
   public setUserMute = (socket: Socket, raw: unknown): void => {
@@ -91,7 +118,12 @@ export class RoomSignalingCoordinator {
     if (match) {
       match.isMuted = data.isMuted;
     }
-    this.options.io.of(this.options.roomId).emit("roster", this.options.getRosterForApp());
+    const rosterData = this.options.getRosterForApp();
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom("roster", rosterData);
+    } else {
+      this.options.io.of(this.options.roomId).emit("roster", rosterData);
+    }
   };
 
   public joinScreenSharing = (socket: Socket, raw: unknown): void => {
@@ -123,7 +155,12 @@ export class RoomSignalingCoordinator {
       );
       redisCount("screenShareStarts");
     }
-    this.options.io.of(this.options.roomId).emit("roster", this.options.getRosterForApp());
+    const rosterData = this.options.getRosterForApp();
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom("roster", rosterData);
+    } else {
+      this.options.io.of(this.options.roomId).emit("roster", rosterData);
+    }
   };
 
   public leaveScreenSharing = (socket: Socket): void => {
@@ -133,7 +170,12 @@ export class RoomSignalingCoordinator {
       return;
     }
     this.options.setMediaSource(socket, "");
-    this.options.io.of(this.options.roomId).emit("roster", this.options.getRosterForApp());
+    const rosterData = this.options.getRosterForApp();
+    if (this.options.emitToRoom) {
+      this.options.emitToRoom("roster", rosterData);
+    } else {
+      this.options.io.of(this.options.roomId).emit("roster", rosterData);
+    }
   };
 
   public handleLocalMediaAnnounce = async (
@@ -152,12 +194,14 @@ export class RoomSignalingCoordinator {
       socket.emit("CMD:error", { code: "INVALID_PEER" });
       return;
     }
+    const roomUuid = this.options.getRoomUuid?.() || (data?.roomId && isValidCanonicalUuid(data.roomId) ? data.roomId : undefined);
     const session = await this.localMediaAuthority.announceSession(
       this.options.roomId,
       userId,
       auth.allowed,
       data?.manifest,
       peerId,
+      roomUuid,
     );
     if (session) {
       this.options.setMediaSource(socket, "localmedia://" + data.manifest.mediaId);
@@ -171,26 +215,34 @@ export class RoomSignalingCoordinator {
     const targetPeerId = data.toPeerId;
     if (!targetPeerId || typeof targetPeerId !== "string") return;
 
-    const targetSocketId = this.options.socketIdMap[targetPeerId];
+    const targetSocket = this.options.findSocket
+      ? this.options.findSocket(targetPeerId)
+      : undefined;
+
+    const targetSocketId = targetSocket ? targetSocket.id : this.options.socketIdMap[targetPeerId];
     if (!targetSocketId) return;
 
-    const targetSocket = this.options.io.of(this.options.roomId).sockets.get(targetSocketId);
-    if (!targetSocket) return;
+    const effectiveTargetSocket = targetSocket || this.options.io.of(this.options.roomId).sockets.get(targetSocketId);
+    if (!effectiveTargetSocket) return;
 
     const relayPayload = {
-      roomId: this.options.roomId,
+      roomId: this.options.getRoomUuid?.() || this.options.roomId,
       fromPeerId: senderPeerId,
       toPeerId: targetPeerId,
       signal: data.signal,
       epoch: typeof data.epoch === "number" ? data.epoch : 1,
     };
 
-    this.localMediaAuthority.handleSignalRelay(
+    const relayed = this.localMediaAuthority.handleSignalRelay(
       socket,
       targetSocketId,
       relayPayload,
       data.mediaId,
     );
+
+    if (!relayed && effectiveTargetSocket) {
+      effectiveTargetSocket.emit("CMD_LOCAL_MEDIA_SIGNAL", relayPayload);
+    }
   };
 
   public handleLocalMediaAvailability = (socket: Socket, data: any): void => {
