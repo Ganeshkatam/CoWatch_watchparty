@@ -23,8 +23,14 @@ const JOINING_CODE_SEPARATORS_REGEX = /[\s\-_.]/g;
 export type RoomUuid = string;
 export type RoomJoiningCode = string;
 
+export interface RoomIdentity {
+  roomId: RoomUuid;
+  joiningId: RoomJoiningCode;
+}
+
 export interface RoomIdentityPair {
-  id: RoomUuid;
+  id?: RoomUuid;
+  roomId?: RoomUuid;
   joiningId: RoomJoiningCode;
 }
 
@@ -155,8 +161,8 @@ export async function resolveJoiningCodeToRoomId(
 
   const normalizedCode = normalizeJoiningCode(rawJoiningCode);
 
-  const result = await postgres.query<{ id: string }>(
-    `SELECT id FROM public.rooms WHERE joining_id = $1 LIMIT 1`,
+  const result = await postgres.query<{ roomId: string }>(
+    `SELECT "roomId" FROM public.rooms WHERE joining_id = $1 LIMIT 1`,
     [normalizedCode],
   );
 
@@ -164,5 +170,7 @@ export async function resolveJoiningCodeToRoomId(
     return null;
   }
 
-  return result.rows[0].id.toLowerCase();
+  const row = result.rows[0] as any;
+  const rawId = row.roomId || row.id;
+  return rawId ? rawId.toLowerCase() : null;
 }

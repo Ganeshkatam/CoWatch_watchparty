@@ -186,16 +186,15 @@ test("Phase 6: Database Cutover & Architectural Invariants Suite", async (t) => 
       assert.ok(fs.existsSync(fullPath), `${relPath} must exist`);
       const content = fs.readFileSync(fullPath, "utf-8");
 
-      // Verify no queries targeting WHERE "roomId" =
-      assert.ok(
-        !content.includes('WHERE "roomId" =') && !content.includes("WHERE \"roomId\"="),
-        `${relPath} must not query WHERE "roomId" =`
-      );
-
-      // Verify no queries targeting WHERE room_id =
+      // Verify no queries targeting legacy text columns (room_id or legacy_room_id).
+      // Note: Phase 7 unified "roomId" as the canonical UUID PK and FK across PostgreSQL.
       assert.ok(
         !content.includes("WHERE room_id =") && !content.includes("WHERE room_id="),
         `${relPath} must not query WHERE room_id =`
+      );
+      assert.ok(
+        !content.includes("WHERE legacy_room_id =") && !content.includes("WHERE legacy_room_id="),
+        `${relPath} must not query WHERE legacy_room_id =`
       );
     }
   });

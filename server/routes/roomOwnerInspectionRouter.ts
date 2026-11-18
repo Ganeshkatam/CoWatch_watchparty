@@ -53,7 +53,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
     }
 
     const result = await postgres.query(
-      `SELECT data FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
+      `SELECT data FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) AND owner_id = $2`,
       [cleanRoomId, decoded.uid],
     );
 
@@ -179,7 +179,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         totalCount = Number(countRes?.rows?.[0]?.count) || 0;
       }
 
-      let querySql = `SELECT id, joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+      let querySql = `SELECT "roomId", joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
     "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
     status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode
                       FROM rooms WHERE ${ whereSql } ORDER BY ${ orderBy } `;
@@ -207,9 +207,8 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         const isEnded = derivedStatus === 'ended' || derivedStatus === 'expired';
         const currentPasscode = (isEnded || !r.owner_passcode) ? null : decryptPasscode(r.owner_passcode);
         return {
-          id: r.id,
+          roomId: r.roomId,
           joiningId: r.joining_id,
-          roomId: r.id,
           ...r,
           owner_passcode: undefined,
           currentPasscode,
@@ -260,10 +259,10 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
 
     try {
       const roomResult = await postgres?.query(
-        `SELECT id, joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
+        `SELECT "roomId", joining_id, (passcode IS NOT NULL AND passcode <> '') AS "isPasscodeProtected",
     "creationTime", "roomTitle", "roomDescription", "coverPhoto", "isChatDisabled", "isSubRoom",
     status, "startedAt", "expiresAt", "endedAt", "isPermanent", owner_passcode, max_participants
-         FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
+         FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) AND owner_id = $2`,
         [roomId, decoded.uid],
       );
 
@@ -293,7 +292,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch lifecycle events
       const lifecycleResult = await postgres?.query(
         `SELECT id, actor, event, "previousStatus", "newStatus", "previousExpiresAt", "newExpiresAt", reason, timestamp
-         FROM room_lifecycle_events WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
+         FROM room_lifecycle_events WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)
          ORDER BY timestamp DESC`,
         [roomId]
       );
@@ -303,7 +302,7 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
         `SELECT rm.id, rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
          FROM room_messages rm
          LEFT JOIN profiles p ON rm.user_id = p.id
-         WHERE rm.room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)
+         WHERE rm."roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)
          ORDER BY rm.created_at DESC, rm.id DESC LIMIT 20`,
         [roomId]
       );
@@ -311,15 +310,14 @@ export function createRoomOwnerInspectionRouter(options: RoomOwnerInspectionRout
       // Fetch chat summary
       const chatSummaryResult = await postgres?.query(
         `SELECT count(id)::int as "messagesCount", max(created_at) as "lastMessageAt"
-         FROM room_messages WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`,
+         FROM room_messages WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)`,
         [roomId]
       );
       const chatSummary = chatSummaryResult?.rows[0] || { messagesCount: 0, lastMessageAt: null };
 
       res.json({
-        id: room.id,
+        roomId: room.roomId,
         joiningId: room.joining_id,
-        roomId: room.id,
         ...room,
         owner_passcode: undefined,
         currentPasscode,

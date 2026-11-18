@@ -1,5 +1,5 @@
 import type { TimelineSnapshot } from "../timelineAuthority.ts";
-export type { RoomUuid, RoomJoiningCode, RoomIdentityPair } from "../utils/roomIdentifier.ts";
+export type { RoomUuid, RoomJoiningCode, RoomIdentityPair, RoomIdentity } from "../utils/roomIdentifier.ts";
 export {
   isValidCanonicalUuid,
   normalizeCanonicalUuid,

@@ -47,25 +47,25 @@ export async function persistRoomMessage(
 
   try {
     const targetUuid = validUuid || (await (async () => {
-      const r = await db.query(`SELECT id FROM rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`, [roomId]);
-      return r.rows?.[0]?.id || null;
+      const r = await db.query(`SELECT "roomId" FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) LIMIT 1`, [roomId]);
+      return r.rows?.[0]?.roomId || null;
     })());
 
     if (!targetUuid) return null;
 
     const result = await db.query(
-      `INSERT INTO room_messages (room_uuid, user_id, message, message_type, event_type, metadata, client_message_id)
+      `INSERT INTO room_messages ("roomId", user_id, message, message_type, event_type, metadata, client_message_id)
        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (room_uuid, user_id, client_message_id) DO NOTHING
-       RETURNING id, room_uuid as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
+       ON CONFLICT ("roomId", user_id, client_message_id) DO NOTHING
+       RETURNING id, "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted`,
       [targetUuid, userId, message, messageType, eventType, metadata, clientMessageId]
     );
     if (result.rowCount === 0 && clientMessageId) {
       // Duplicate client_message_id for this room/user, fetch the existing one
       const existingResult = await db.query(
-        `SELECT id, room_uuid as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
+        `SELECT id, "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at, is_deleted
          FROM room_messages
-         WHERE room_uuid = $1::uuid AND user_id = $2 AND client_message_id = $3`,
+         WHERE "roomId" = $1::uuid AND user_id = $2 AND client_message_id = $3`,
         [targetUuid, userId, clientMessageId]
       );
       return existingResult.rows[0] || null;
@@ -91,10 +91,10 @@ export async function loadRoomMessages(
 
   try {
     let query = `
-      SELECT rm.id, rm.room_uuid as "roomId", rm.room_uuid as "roomUuid", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
+      SELECT rm.id, rm."roomId", rm.user_id, rm.message, rm.message_type, rm.event_type, rm.metadata, rm.created_at, rm.updated_at, rm.is_deleted, p.display_name as profile_name, p.avatar_url as profile_picture
       FROM room_messages rm
       LEFT JOIN profiles p ON rm.user_id = p.id
-      ${validUuid ? `WHERE rm.room_uuid = $1::uuid` : `WHERE rm.room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`}
+      ${validUuid ? `WHERE rm."roomId" = $1::uuid` : `WHERE rm."roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)`}
     `;
     const params: unknown[] = [validUuid || roomUuid || roomId];
 
@@ -335,7 +335,7 @@ export class RoomModerationCoordinator {
     try {
       // Step 1: Fetch target message to verify room and authorship
       const existing = await db.query(
-        `SELECT id, room_uuid, user_id FROM room_messages WHERE id = $1`,
+        `SELECT id, "roomId", user_id FROM room_messages WHERE id = $1`,
         [data.messageId]
       );
       if (existing.rowCount === 0) {
@@ -354,7 +354,7 @@ export class RoomModerationCoordinator {
       const target: ActionTarget = {
         targetMessage: {
           id: targetRow.id,
-          roomId: targetRow.room_uuid,
+          roomId: targetRow.roomId,
           authorUid: targetRow.user_id,
         },
       };
@@ -371,14 +371,14 @@ export class RoomModerationCoordinator {
         ? `
           UPDATE room_messages
           SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_uuid = (SELECT id FROM rooms WHERE id::text = $3 OR joining_id = $3 LIMIT 1) AND message_type = 'user'
-          RETURNING id, room_uuid as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at
+          WHERE id = $2 AND "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $3 OR joining_id = $3 LIMIT 1) AND message_type = 'user'
+          RETURNING id, "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
         `
         : `
           UPDATE room_messages
           SET message = $1, updated_at = NOW()
-          WHERE id = $2 AND room_uuid = (SELECT id FROM rooms WHERE id::text = $3 OR joining_id = $3 LIMIT 1) AND user_id = $4 AND message_type = 'user'
-          RETURNING id, room_uuid as "roomId", room_uuid as "roomUuid", user_id, message, message_type, event_type, metadata, created_at, updated_at
+          WHERE id = $2 AND "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $3 OR joining_id = $3 LIMIT 1) AND user_id = $4 AND message_type = 'user'
+          RETURNING id, "roomId", user_id, message, message_type, event_type, metadata, created_at, updated_at
         `;
       const queryParams = isHostOrOwner
         ? [trimmedMsg, data.messageId, roomUuid || this.options.roomId]
@@ -489,8 +489,8 @@ export class RoomModerationCoordinator {
 
           // Row lock target messages within the scope of this room
           const checkRes = await client.query(
-            `SELECT id, room_uuid, user_id, metadata FROM room_messages 
-             WHERE id = ANY($1::uuid[]) AND room_uuid = (SELECT id FROM rooms WHERE id::text = $2 OR joining_id = $2 LIMIT 1)
+            `SELECT id, "roomId", user_id, metadata FROM room_messages 
+             WHERE id = ANY($1::uuid[]) AND "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $2 OR joining_id = $2 LIMIT 1)
              FOR UPDATE`,
             [uniqueIds, roomUuid || this.options.roomId]
           );
@@ -518,7 +518,7 @@ export class RoomModerationCoordinator {
             const target: ActionTarget = {
               targetMessage: {
                 id: row.id,
-                roomId: row.room_uuid,
+                roomId: row.roomId,
                 authorUid: row.user_id,
               },
             };
@@ -534,7 +534,7 @@ export class RoomModerationCoordinator {
           await client.query(
             `UPDATE room_messages 
              SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $2 
-             WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND id = ANY($3::uuid[])`,
+             WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND id = ANY($3::uuid[])`,
             [roomUuid || this.options.roomId, actorSocket.clientId || actorSocket.uid || "host", uniqueIds]
           );
 
@@ -579,7 +579,7 @@ export class RoomModerationCoordinator {
         return; // Zero mutation on denial
       }
       if (db) {
-        await db.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`, [roomUuid || this.options.roomId]);
+        await db.query(`UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)`, [roomUuid || this.options.roomId]);
       }
     } else if (data.timestamp && data.author) {
       // Delete specific message by author/timestamp
@@ -596,7 +596,7 @@ export class RoomModerationCoordinator {
       }
       if (db) {
         await db.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id = $2 OR metadata->>'clientId' = $2) AND created_at = $3`,
           [roomUuid || this.options.roomId, data.author, data.timestamp]
         );
       }
@@ -615,7 +615,7 @@ export class RoomModerationCoordinator {
       }
       if (db) {
         await db.query(
-          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id = $2 OR metadata->>'clientId' = $2)`,
+          `UPDATE room_messages SET is_deleted = TRUE, deleted_at = NOW() WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id = $2 OR metadata->>'clientId' = $2)`,
           [roomUuid || this.options.roomId, data.author]
         );
       }
@@ -693,7 +693,7 @@ export class RoomModerationCoordinator {
       const roomUuid = this.options.getRoomUuid?.() || (isValidCanonicalUuid(this.options.roomId) ? this.options.roomId : null);
       if (db) {
         db.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'kicked' WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid`,
           [roomUuid || this.options.roomId, targetUid]
         ).catch((err: any) => console.warn("[Admission] Failed to revoke admission on kick in DB:", err));
       }
@@ -759,7 +759,7 @@ export class RoomModerationCoordinator {
       const db = this.options.postgres ?? defaultPostgres;
       if (db) {
         db.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'banned' WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND user_id = $2::uuid`,
           [roomUuid || this.options.roomId, targetUid]
         ).catch((err: any) => console.warn("[Admission] Failed to revoke admission on ban in DB:", err));
       }
@@ -789,9 +789,9 @@ export class RoomModerationCoordinator {
     if (db) {
       try {
         await db.query(
-          `INSERT INTO room_bans (room_uuid, client_identity, user_id, banned_by, reason)
-           VALUES ((SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1), $2, $3, $4, $5)
-           ON CONFLICT (room_uuid, client_identity) DO NOTHING`,
+          `INSERT INTO room_bans ("roomId", client_identity, user_id, banned_by, reason)
+           VALUES ((SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1), $2, $3, $4, $5)
+           ON CONFLICT ("roomId", client_identity) DO NOTHING`,
           [
             roomUuid || this.options.roomId,
             targetIdentity,

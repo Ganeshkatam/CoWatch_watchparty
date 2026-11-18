@@ -20,8 +20,14 @@ const JOINING_CODE_SEPARATORS_REGEX = /[\s\-_.]/g;
 export type RoomUuid = string;
 export type RoomJoiningCode = string;
 
+export interface RoomIdentity {
+  roomId: RoomUuid;
+  joiningId: RoomJoiningCode;
+}
+
 export interface RoomIdentityPair {
-  id: RoomUuid;
+  id?: RoomUuid;
+  roomId?: RoomUuid;
   joiningId: RoomJoiningCode;
 }
 

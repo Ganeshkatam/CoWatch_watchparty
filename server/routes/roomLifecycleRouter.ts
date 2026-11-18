@@ -72,7 +72,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
 
     try {
       const selectResult = await postgres?.query(
-        `SELECT "startedAt", "expiresAt", "status" FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
+        `SELECT "startedAt", "expiresAt", "status" FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) AND owner_id = $2`,
         [roomId, decoded.uid]
       );
 
@@ -297,7 +297,7 @@ export function createRoomLifecycleRouter(options: RoomLifecycleRouterOptions): 
 
       if (!isPermanent && postgres) {
         postgres.query(
-          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'session_ended' WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND revoked_at IS NULL`,
+          `UPDATE public.room_admissions SET revoked_at = now(), revoked_reason = 'session_ended' WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND revoked_at IS NULL`,
           [roomId]
         ).catch((e) => console.warn("[Admission] Failed to revoke admissions for ended temporary room:", e));
       }

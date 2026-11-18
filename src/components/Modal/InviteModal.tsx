@@ -89,8 +89,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               { requireAuth: true }
             );
             if (!isCancelled && freshData) {
-              if (freshData?.id) {
-                setFetchedCanonicalId(freshData.id);
+              const rid = freshData?.roomId || freshData?.id;
+              if (rid) {
+                setFetchedCanonicalId(rid);
               }
               if (freshData?.joiningId) {
                 setFetchedJoiningId(freshData.joiningId);
@@ -104,12 +105,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             }
 
             // 2. Generate or fetch reusable room invitation token
-            const targetRoomUuid = freshData?.id || cleanId;
+            const targetRoomId = freshData?.roomId || freshData?.id || cleanId;
             const inviteData = await apiFetch<CreateInvitationResponse>(`/api/invitations`, {
               method: "POST",
               requireAuth: true,
               body: {
-                roomId: targetRoomUuid,
+                roomId: targetRoomId,
                 isReusable: true,
               },
             });
@@ -133,7 +134,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     : "";
 
   const effectiveJoiningId = (propJoiningId || fetchedJoiningId || "").trim();
-  const effectiveCanonicalId = (fetchedCanonicalId || cleanId).trim();
+  const effectiveRoomId = (fetchedCanonicalId || cleanId).trim();
   const effectiveInvitationUrl =
     invitationUrl ||
     (effectiveJoiningId
@@ -185,14 +186,14 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         )}
 
         {/* 1. QR Code Section: Encodes the opaque invitation token URL */}
-        <QRShare roomId={effectiveCanonicalId} invitationUrl={effectiveInvitationUrl} />
+        <QRShare roomId={effectiveRoomId} invitationUrl={effectiveInvitationUrl} />
 
         {/* 2. Direct Username Invitation: Creates targeted room_invitations and sends notification */}
-        <DirectInviteForm roomId={effectiveCanonicalId} />
+        <DirectInviteForm roomId={effectiveRoomId} />
 
         {/* 3. Share to External Apps: Canonical human-readable invitation message with URL and fallback credentials */}
         <ShareActions
-          roomId={effectiveCanonicalId}
+          roomId={effectiveRoomId}
           roomTitle={roomTitle || cleanId}
           passcode={resolvedPasscode}
           invitationUrl={effectiveInvitationUrl}

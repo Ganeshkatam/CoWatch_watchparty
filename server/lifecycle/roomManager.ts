@@ -89,7 +89,7 @@ export class RoomLifecycleManager {
     try {
       // Step 2: Read current revision N and status
       const res = await this.db.query(
-        `SELECT lifecycle_revision, status FROM rooms WHERE (id::text = $1 OR joining_id = $1)`,
+        `SELECT lifecycle_revision, status FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1)`,
         [roomId]
       );
 
@@ -125,7 +125,7 @@ export class RoomLifecycleManager {
              lifecycle_revision = $1,
              data = $2,
              "lastUpdateTime" = NOW()
-         WHERE (id::text = $3 OR joining_id = $3)
+         WHERE ("roomId"::text = $3 OR joining_id = $3)
            AND lifecycle_revision = $4
            AND status = 'active'`,
         [nextRevision, snapshotJson, roomId, currentDbRevision]
@@ -161,7 +161,7 @@ export class RoomLifecycleManager {
 
     try {
       const res = await this.db.query(
-        `SELECT id, joining_id, owner_id, status
+        `SELECT "roomId", joining_id, owner_id, status
          FROM rooms
          WHERE "isPermanent" = FALSE
            AND "expiresAt" IS NOT NULL
@@ -174,11 +174,11 @@ export class RoomLifecycleManager {
 
       const expiredRoomIds: string[] = [];
       if (res.rows && res.rows.length > 0) {
-        for (const row of res.rows as Array<{ id: string; roomId?: string }>) {
-          const roomId: string = row.id || row.roomId || "";
+        for (const row of res.rows as Array<{ roomId?: string; id?: string }>) {
+          const roomId: string = row.roomId || row.id || "";
           if (!roomId) continue;
           await this.db.query(
-            `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE (id::text = $1 OR joining_id = $1)`,
+            `UPDATE rooms SET status = 'expired', "endedAt" = NOW() WHERE ("roomId"::text = $1 OR joining_id = $1)`,
             [roomId]
           );
 

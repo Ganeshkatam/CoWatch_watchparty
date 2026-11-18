@@ -116,7 +116,7 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
     try {
       const result = await postgres?.query(
-        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", id, joining_id FROM rooms WHERE (id::text = $1 OR joining_id = $1)`,
+        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", "roomId", joining_id FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -192,12 +192,12 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
       if (postgres) {
         try {
-          const roomUuid = row.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+          const roomUuid = (isValidCanonicalUuid(row.roomId) ? row.roomId : (isValidCanonicalUuid((row as any).id) ? (row as any).id : null)) || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
           if (roomUuid) {
             await postgres.query(
-              `INSERT INTO public.room_admissions (room_uuid, user_id, admission_method, admitted_at, revoked_at, revoked_reason)
+              `INSERT INTO public.room_admissions ("roomId", user_id, admission_method, admitted_at, revoked_at, revoked_reason)
                VALUES ($1::uuid, $2::uuid, 'passcode', now(), NULL, NULL)
-               ON CONFLICT (room_uuid, user_id) DO UPDATE
+               ON CONFLICT ("roomId", user_id) DO UPDATE
                SET admitted_at = now(), revoked_at = NULL, revoked_reason = NULL, admission_method = 'passcode'`,
               [roomUuid, callerUid]
             );
@@ -254,7 +254,7 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
 
     try {
       const roomResult = await postgres?.query(
-        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", id, joining_id FROM rooms WHERE (id::text = $1 OR joining_id = $1)`,
+        `SELECT passcode, status, owner_id, participants_locked, max_participants, "isPermanent", "expiresAt", "roomId", joining_id FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -270,12 +270,12 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
       }
 
       const isOwner = Boolean(row.owner_id && callerUid === row.owner_id);
-      const roomUuid = row.id || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
+      const roomUuid = (isValidCanonicalUuid(row.roomId) ? row.roomId : (isValidCanonicalUuid((row as any).id) ? (row as any).id : null)) || (isValidCanonicalUuid(cleanRoomId) ? cleanRoomId : null);
 
       // 1. Check bans in database
       const banResult = roomUuid
         ? await postgres?.query(
-            `SELECT id FROM room_bans WHERE room_uuid = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+            `SELECT id FROM room_bans WHERE "roomId" = $1::uuid AND user_id = $2::uuid LIMIT 1`,
             [roomUuid, callerUid]
           )
         : null;
@@ -298,7 +298,7 @@ export function createRoomAdmissionRouter(options: RoomAdmissionRouterOptions): 
       if (!isOwner) {
         const admResult = roomUuid
           ? await postgres?.query(
-              `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE room_uuid = $1::uuid AND user_id = $2::uuid`,
+              `SELECT admission_method, admitted_at, revoked_at FROM room_admissions WHERE "roomId" = $1::uuid AND user_id = $2::uuid`,
               [roomUuid, callerUid]
             )
           : null;

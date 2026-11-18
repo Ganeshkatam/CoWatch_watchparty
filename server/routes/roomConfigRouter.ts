@@ -12,6 +12,7 @@ import {
   encryptPasscodeForOwner as defaultEncryptPasscodeForOwner,
   computePasscodeFingerprint as defaultComputePasscodeFingerprint,
 } from "../utils/roomPasscode.ts";
+import { isValidCanonicalUuid } from "../utils/roomIdentifier.ts";
 
 export function extractBearerToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
@@ -169,7 +170,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     try {
       const fingerprint = computePasscodeFingerprint(passcode);
       const existing = await postgres.query(
-        `SELECT id FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+        `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
         [fingerprint]
       );
       res.json({ available: existing.rows.length === 0 });
@@ -266,7 +267,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
 
     if (postgres) {
       const duplicateCheck = await postgres.query(
-        `SELECT id FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
+        `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 LIMIT 1`,
         [passcodeFingerprint]
       );
       if (duplicateCheck.rows.length > 0) {
@@ -293,6 +294,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     const expiresAt = isPermanent ? null : new Date(now.getTime() + requestedDurationHours * 60 * 60 * 1000);
     let createdRoomId: string | undefined;
     let createdJoiningId: string | undefined;
+    let authRow: any = null;
 
     if (postgres) {
       try {
@@ -318,18 +320,24 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
             maxParticipants,
           ]
         );
-        const authRow = createResult?.rows?.[0]?.result as any;
-        if (authRow?.id) createdRoomId = authRow.id;
+        authRow = createResult?.rows?.[0]?.result as any;
+        if (authRow?.roomId && isValidCanonicalUuid(authRow.roomId)) {
+          createdRoomId = authRow.roomId;
+        } else if (authRow?.id && isValidCanonicalUuid(authRow.id)) {
+          createdRoomId = authRow.id;
+        } else if (authRow?.roomId) {
+          createdRoomId = authRow.roomId;
+        }
         if (authRow?.joiningId) createdJoiningId = authRow.joiningId;
 
         if (postgres && !createdRoomId) {
           try {
-            const idRes = await postgres.query<{ id: string; joining_id: string }>(
-              `SELECT id, joining_id FROM public.rooms WHERE (id::text = $1 OR joining_id = $1) LIMIT 1`,
+            const idRes = await postgres.query<{ roomId: string; joining_id: string }>(
+              `SELECT "roomId", joining_id FROM public.rooms WHERE ("roomId"::text = $1 OR joining_id = $1) LIMIT 1`,
               [name]
             );
             if (idRes.rows?.[0]) {
-              createdRoomId = idRes.rows[0].id;
+              createdRoomId = idRes.rows[0].roomId;
               createdJoiningId = idRes.rows[0].joining_id;
             }
           } catch {
@@ -438,10 +446,11 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     if (newRoom.joiningId && newRoom.joiningId !== name) {
       rooms.set(newRoom.joiningId, newRoom);
     }
+    const responseRoomId = (authRow?.roomId && !isValidCanonicalUuid(authRow.roomId)) ? name : (createdRoomId || name);
     res.json({
       name,
-      roomId: name,
-      id: newRoom.id,
+      roomId: responseRoomId,
+      id: createdRoomId || newRoom.id,
       joiningId: newRoom.joiningId,
     });
   });
@@ -483,7 +492,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
     const isMemActive = Boolean(memRoom && (memRoom.status === 'active' || (memRoom.roster && memRoom.roster.length > 0)));
 
     const roomCheck = await postgres.query(
-      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2`,
+      `SELECT status, "expiresAt", "isPermanent" FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) AND owner_id = $2`,
       [cleanRoomId, decoded.uid]
     );
 
@@ -588,7 +597,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
       await client.query('BEGIN');
 
       const existingRoom = await client.query(
-        `SELECT id, status, "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE (id::text = $1 OR joining_id = $1) AND owner_id = $2 FOR UPDATE`,
+        `SELECT "roomId", status, "expiresAt", "isSubRoom", "isPermanent" FROM rooms WHERE ("roomId"::text = $1 OR joining_id = $1) AND owner_id = $2 FOR UPDATE`,
         [roomId, decoded.uid]
       );
 
@@ -602,7 +611,7 @@ export function createRoomConfigRouter(options: RoomConfigRouterOptions): Router
 
       if (passcodeFingerprint) {
         const duplicateCheck = await client.query(
-          `SELECT id FROM rooms WHERE passcode_fingerprint = $1 AND (id::text != $2 AND joining_id != $2) LIMIT 1`,
+          `SELECT "roomId" FROM rooms WHERE passcode_fingerprint = $1 AND ("roomId"::text != $2 AND joining_id != $2) LIMIT 1`,
           [passcodeFingerprint, roomId]
         );
         if (duplicateCheck.rows.length > 0) {

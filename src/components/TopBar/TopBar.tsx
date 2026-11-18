@@ -100,10 +100,10 @@ export const ThemeToggleQuickButton = () => {
 };
 
 export interface CreateRoomResponse {
-  name: string;
-  id?: string;
+  roomId: string;
   joiningId?: string;
-  roomId?: string;
+  name?: string;
+  id?: string;
 }
 
 export async function createRoom(
@@ -151,7 +151,7 @@ export async function createRoom(
     formattedErr.error = errorObj;
     throw formattedErr;
   }
-  const targetId = data.id || data.roomId || data.name;
+  const targetId = data.roomId || data.name || data.id || "";
 
   if (options?.noRedirect) {
     return targetId;

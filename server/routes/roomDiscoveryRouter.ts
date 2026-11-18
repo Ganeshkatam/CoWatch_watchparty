@@ -64,12 +64,12 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
 
     try {
       const result = await postgres?.query(
-        `SELECT r.id, r.joining_id, r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
+        `SELECT r."roomId", r.joining_id, r."roomTitle", r."roomDescription", r."coverPhoto", r.status, r."expiresAt", r."isPermanent",
         (r.passcode IS NOT NULL AND r.passcode <> '') as "requiresPasscode", r.owner_id, r.participants_locked, r.max_participants,
         p.display_name as "hostName"
          FROM rooms r
          LEFT JOIN profiles p ON r.owner_id = p.id
-         WHERE (r.id::text = $1 OR r.joining_id = $1)`,
+         WHERE (r."roomId"::text = $1 OR r.joining_id = $1)`,
         [cleanRoomId]
       );
 
@@ -92,8 +92,8 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
   const isOwner = Boolean(callerUid && row.owner_id && callerUid === row.owner_id);
   let isHost = isOwner;
   let memoryRoom = rooms.get(cleanRoomId);
-  if (!memoryRoom && row.id && row.id !== cleanRoomId) {
-    memoryRoom = rooms.get(row.id);
+  if (!memoryRoom && row.roomId && row.roomId !== cleanRoomId) {
+    memoryRoom = rooms.get(row.roomId);
   }
   if (!memoryRoom) {
     memoryRoom = (await getOrCreateRoom(cleanRoomId)) || undefined;
@@ -112,10 +112,10 @@ export function createRoomDiscoveryRouter(options: RoomDiscoveryRouterOptions): 
 
   // Sanitize response: NEVER leak owner_id, passcode hash, or internal metadata
   res.json({
-    id: row.id,
+    id: (row as any).id || row.roomId,
+    roomId: row.roomId,
     joiningId: row.joining_id,
-    roomId: (row as any).roomId || row.id,
-    roomTitle: row.roomTitle || (row as any).roomId || row.id,
+    roomTitle: row.roomTitle || row.roomId,
     roomDescription: row.roomDescription || "",
     coverPhoto: row.coverPhoto || null,
     status: derivedStatus,

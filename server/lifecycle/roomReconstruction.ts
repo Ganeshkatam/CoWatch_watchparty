@@ -44,11 +44,12 @@ export class RoomReconstructor {
       snapshot = parsed as RoomSnapshot;
     }
 
-    const effectiveRoomId = row.id || row.roomId || "";
+    const effectiveRoomId = row.roomId || (row as any).id || "";
     const room = new Room(io, effectiveRoomId, snapshot ? JSON.stringify(snapshot) : undefined);
 
     // Hydrate lifecycle properties
-    room.id = row.id;
+    room.roomId = effectiveRoomId;
+    if ((row as any).id) room.id = (row as any).id;
     room.joiningId = row.joining_id;
     room.status = (row.status as RoomLifecycleStatus) || "active";
     room.owner_id = row.owner_id || "";
@@ -84,7 +85,7 @@ export class RoomReconstructor {
     if (this.db) {
       try {
         const bansRes = await this.db.query(
-          `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1)`,
+          `SELECT client_identity, user_id FROM room_bans WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1)`,
           [effectiveRoomId]
         );
         if (bansRes.rows) {

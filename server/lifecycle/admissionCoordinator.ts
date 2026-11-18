@@ -37,10 +37,10 @@ export class AdmissionCoordinator {
       // Transactional row-level lock
       const client = this.db;
       const res = await client.query(
-        `SELECT id, joining_id, id AS "roomId", status, "owner_id", "expiresAt", "creationTime", "isPermanent", 
+        `SELECT "roomId", joining_id, status, "owner_id", "expiresAt", "creationTime", "isPermanent", 
                 passcode, "participants_locked", "max_participants", data, lifecycle_revision, schema_version
          FROM rooms
-         WHERE (id::text = $1 OR joining_id = $1)
+         WHERE ("roomId"::text = $1 OR joining_id = $1)
          FOR UPDATE`,
         [roomId]
       );
@@ -163,17 +163,16 @@ export class AdmissionCoordinator {
 
     try {
       const res = await this.db.query<{
-        id: string;
-        joining_id?: string;
         roomId: string;
+        joining_id?: string;
         status: string;
         expiresAt: string | Date | null;
         creationTime: string | Date | null;
         isPermanent: boolean | null;
       }>(
-        `SELECT id, joining_id, id AS "roomId", status, "expiresAt", "creationTime", "isPermanent"
+        `SELECT "roomId", joining_id, status, "expiresAt", "creationTime", "isPermanent"
          FROM rooms
-         WHERE (id::text = $1 OR joining_id = $1)
+         WHERE ("roomId"::text = $1 OR joining_id = $1)
          FOR UPDATE`,
         [roomId]
       );

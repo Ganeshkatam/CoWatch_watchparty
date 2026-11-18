@@ -783,8 +783,8 @@ export class Room {
         const roomUuid = this.getRoomUuid() || (isValidCanonicalUuid(this.roomId) ? this.roomId : null);
         const validUuid = isValidCanonicalUuid(roomUuid || this.roomId) ? (roomUuid || this.roomId) : null;
         const banSql = validUuid
-          ? `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = $1::uuid AND (user_id IS NOT NULL AND user_id = $2)`
-          : `SELECT client_identity, user_id FROM room_bans WHERE room_uuid = (SELECT id FROM rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id IS NOT NULL AND user_id = $2)`;
+          ? `SELECT client_identity, user_id FROM room_bans WHERE "roomId" = $1::uuid AND (user_id IS NOT NULL AND user_id = $2)`
+          : `SELECT client_identity, user_id FROM room_bans WHERE "roomId" = (SELECT "roomId" FROM rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1) AND (user_id IS NOT NULL AND user_id = $2)`;
         const banRes = await postgres.query(
           banSql,
           [validUuid || roomUuid || this.roomId, authUid || null]

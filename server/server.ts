@@ -268,29 +268,26 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
   try {
     const persistedRoom = (
       await postgres.query<PersistentRoom>(
-        `SELECT * FROM public.rooms WHERE id::text = $1 OR joining_id = $1 LIMIT 1`,
+        `SELECT * FROM public.rooms WHERE "roomId"::text = $1 OR joining_id = $1 LIMIT 1`,
         [cleanId],
       )
     )?.rows?.[0];
 
     if (!persistedRoom) return null;
 
-    const canonicalId = persistedRoom.id || cleanId;
-    const legacyRoomId = (persistedRoom as any).roomId || cleanId;
+    const canonicalRoomId = persistedRoom.roomId || cleanId;
 
     if (rooms.has(cleanId)) return rooms.get(cleanId)!;
-    if (canonicalId && rooms.has(canonicalId)) return rooms.get(canonicalId)!;
+    if (canonicalRoomId && rooms.has(canonicalRoomId)) return rooms.get(canonicalRoomId)!;
 
     const { room } = await roomReconstructor.reconstructRoom(persistedRoom, io);
-    room.id = canonicalId;
+    room.roomId = canonicalRoomId;
+    room.id = canonicalRoomId;
     room.joiningId = persistedRoom.joining_id;
 
     rooms.set(cleanId, room);
-    if (legacyRoomId && legacyRoomId !== cleanId) {
-      rooms.set(legacyRoomId, room);
-    }
-    if (canonicalId && canonicalId !== cleanId) {
-      rooms.set(canonicalId, room);
+    if (canonicalRoomId && canonicalRoomId !== cleanId) {
+      rooms.set(canonicalRoomId, room);
     }
     if (persistedRoom.joining_id && persistedRoom.joining_id !== cleanId) {
       rooms.set(persistedRoom.joining_id, room);
@@ -299,7 +296,7 @@ export async function getOrCreateRoom(rawRoomId: string): Promise<Room | null> {
     console.log(
       "loading room %s (uuid: %s) into memory on shard %s",
       cleanId,
-      canonicalId,
+      canonicalRoomId,
       config.SHARD,
     );
     return room;

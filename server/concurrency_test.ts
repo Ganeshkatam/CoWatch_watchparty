@@ -51,7 +51,7 @@ async function runConcurrencyStressTest() {
   console.log(`Using test account: ${accountId}`);
 
   // 2. Clean up any existing rooms for this account to guarantee clean slate
-  await pool.query("SELECT public.delete_room_authoritative($1, id) FROM public.rooms WHERE owner_id = $1", [accountId]);
+  await pool.query('SELECT public.delete_room_authoritative($1, "roomId") FROM public.rooms WHERE owner_id = $1', [accountId]);
   await pool.query(
     "UPDATE public.account_room_usage SET total_rooms = 0, watch_rooms = 0, permanent_rooms = 0 WHERE account_id = $1",
     [accountId]
@@ -119,16 +119,16 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 2: CONCURRENT CREATE + END + DELETE + EXPIRE FOR SAME ACCOUNT ---");
   // At this point we have 5 active rooms. Let's make 1 room already expired in the database
   const currentRooms = await pool.query(
-    'SELECT id FROM public.rooms WHERE owner_id = $1 AND status = \'inactive\' ORDER BY id LIMIT 3',
+    'SELECT "roomId" FROM public.rooms WHERE owner_id = $1 AND status = \'inactive\' ORDER BY "roomId" LIMIT 3',
     [accountId]
   );
-  const roomToEnd = currentRooms.rows[0].id;
-  const roomToDelete = currentRooms.rows[1].id;
-  const roomToExpire = currentRooms.rows[2].id;
+  const roomToEnd = currentRooms.rows[0].roomId;
+  const roomToDelete = currentRooms.rows[1].roomId;
+  const roomToExpire = currentRooms.rows[2].roomId;
 
   // Age one room so expire_rooms_authoritative will catch it
   await pool.query(
-    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'10 seconds\' WHERE id = $1',
+    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'10 seconds\' WHERE "roomId" = $1',
     [roomToExpire]
   );
 
@@ -203,13 +203,13 @@ async function runConcurrencyStressTest() {
   console.log("\n--- TEST 3: ROOM ACTIVITY & EXTENSION LIFECYCLE TEST ---");
   // Delete one quota-consuming room to free a slot within the 5-room ceiling
   const existingForTest3 = await pool.query(
-    `SELECT id FROM public.rooms 
+    `SELECT "roomId" FROM public.rooms 
      WHERE owner_id = $1 AND status IN ('scheduled', 'active', 'inactive') AND ("isPermanent" = true OR "expiresAt" > now())
      LIMIT 1`,
     [accountId]
   );
   if (existingForTest3.rows.length) {
-    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, existingForTest3.rows[0].id]);
+    await pool.query("SELECT public.delete_room_authoritative($1, $2)", [accountId, (existingForTest3.rows[0] as any).roomId || (existingForTest3.rows[0] as any).id]);
   }
   const testRoomId = crypto.randomUUID();
   const testFingerprint = `fingerprint-act-${Date.now()}`;
@@ -253,7 +253,7 @@ async function runConcurrencyStressTest() {
 
   // Age room past canonical expiresAt to test canonical expiry transition
   await pool.query(
-    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'5 seconds\' WHERE id = $1',
+    'UPDATE public.rooms SET "expiresAt" = now() - INTERVAL \'5 seconds\' WHERE "roomId" = $1',
     [testRoomId]
   );
   const actRes3 = await pool.query(
@@ -375,11 +375,11 @@ async function runConcurrencyStressTest() {
     )`,
     [accountId, authTestRoomId, authTestFingerprint]
   );
-  await pool.query('UPDATE public.rooms SET data = $1 WHERE id = $2', [dummyPayload, authTestRoomId]);
+  await pool.query('UPDATE public.rooms SET data = $1 WHERE "roomId" = $2', [dummyPayload, authTestRoomId]);
 
   // Case A: Authenticated Owner querying their own room
   const ownerQuery = await pool.query(
-    `SELECT data FROM public.rooms WHERE id = $1 AND owner_id = $2`,
+    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
     [authTestRoomId, accountId]
   );
   if (ownerQuery.rowCount !== 1 || !ownerQuery.rows[0].data) {
@@ -389,7 +389,7 @@ async function runConcurrencyStressTest() {
   // Case B: Authenticated Non-Owner (or random UID) querying another user's room
   const nonOwnerUid = "00000000-0000-0000-0000-000000000000";
   const nonOwnerQuery = await pool.query(
-    `SELECT data FROM public.rooms WHERE id = $1 AND owner_id = $2`,
+    `SELECT data FROM public.rooms WHERE "roomId" = $1 AND owner_id = $2`,
     [authTestRoomId, nonOwnerUid]
   );
   if (nonOwnerQuery.rowCount !== 0) {
@@ -500,7 +500,7 @@ async function runConcurrencyStressTest() {
 
   // Verify DB state
   const dbCheckA = await pool.query(
-    'SELECT participants_locked FROM public.rooms WHERE id = $1',
+    'SELECT participants_locked FROM public.rooms WHERE "roomId" = $1',
     [lockTestRoomId]
   );
   if (dbCheckA.rows[0].participants_locked !== true) {
@@ -509,7 +509,7 @@ async function runConcurrencyStressTest() {
 
   // Verify audit event
   const auditA = await pool.query(
-    'SELECT event, actor FROM public.room_lifecycle_events WHERE room_uuid = $1::uuid AND event = \'room.participants_locked\' ORDER BY timestamp DESC LIMIT 1',
+    'SELECT event, actor FROM public.room_lifecycle_events WHERE "roomId" = $1::uuid AND event = \'room.participants_locked\' ORDER BY timestamp DESC LIMIT 1',
     [lockTestRoomId]
   );
   if (auditA.rowCount === 0 || auditA.rows[0].actor !== accountId) {
@@ -617,7 +617,7 @@ async function runConcurrencyStressTest() {
 
   // Verify unlock audit event
   const auditC = await pool.query(
-    'SELECT event, actor FROM public.room_lifecycle_events WHERE room_uuid = $1::uuid AND event = \'room.participants_unlocked\' ORDER BY timestamp DESC LIMIT 1',
+    'SELECT event, actor FROM public.room_lifecycle_events WHERE "roomId" = $1::uuid AND event = \'room.participants_unlocked\' ORDER BY timestamp DESC LIMIT 1',
     [lockTestRoomId]
   );
   if (auditC.rowCount === 0 || auditC.rows[0].actor !== accountId) {
@@ -683,7 +683,7 @@ async function runConcurrencyStressTest() {
       .catch((e: any) => ({ type: "TOGGLE", success: false, error: e.message }));
     } else {
       return pool.query(
-        'SELECT participants_locked, owner_id FROM public.rooms WHERE id = $1',
+        'SELECT participants_locked, owner_id FROM public.rooms WHERE "roomId" = $1',
         [lockTestRoomId]
       )
       .then(res => {
@@ -1086,7 +1086,7 @@ async function runConcurrencyStressTest() {
     throw new Error(`TEST 9 Case A FAILED: Expected maxParticipants = 10, got ${createCapRes.rows[0].result?.maxParticipants}`);
   }
   const dbCapCheck = await pool.query(
-    'SELECT max_participants FROM public.rooms WHERE id = $1',
+    'SELECT max_participants FROM public.rooms WHERE "roomId" = $1',
     [capTestRoomId]
   );
   if (dbCapCheck.rows[0].max_participants !== 10) {

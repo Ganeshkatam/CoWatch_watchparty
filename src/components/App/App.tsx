@@ -232,7 +232,6 @@ interface AppState {
   controller?: string;
   savedPasscodes: StringDict;
   roomId: string;
-  canonicalRoomId?: string;
   joiningId?: string;
   isChatDisabled: boolean;
   showChatColumn: boolean;
@@ -341,7 +340,6 @@ export class App extends React.Component<AppProps, AppState> {
     maxParticipants: 10,
     controller: "",
     roomId: "",
-    canonicalRoomId: undefined,
     joiningId: undefined,
     savedPasscodes: {},
     isChatDisabled: false,
@@ -911,15 +909,16 @@ export class App extends React.Component<AppProps, AppState> {
 
         if (infoResp.ok) {
           const info = await infoResp.json();
-          if (info.id) {
-            this.setState({ canonicalRoomId: info.id, joiningId: info.joiningId });
-            // Normalize URL to canonical UUID if caller entered via legacy moniker or joining code
-            if (this.props.urlRoomId && this.props.urlRoomId !== info.id) {
+          const targetRoomId = (info.roomId || info.id) as string | undefined;
+          if (targetRoomId) {
+            this.setState({ roomId: targetRoomId, joiningId: info.joiningId });
+            // Normalize URL to canonical UUID if caller entered via joining code
+            if (this.props.urlRoomId && this.props.urlRoomId !== targetRoomId) {
               const currentSearch = this.props.location?.search || (typeof window !== "undefined" ? window.location.search : "") || "";
               if (this.props.history?.replace) {
-                this.props.history.replace(`/watch/${info.id}${currentSearch}`);
+                this.props.history.replace(`/watch/${targetRoomId}${currentSearch}`);
               } else if (typeof window !== "undefined") {
-                window.history.replaceState(window.history.state, "", `/watch/${info.id}${currentSearch}`);
+                window.history.replaceState(window.history.state, "", `/watch/${targetRoomId}${currentSearch}`);
               }
             }
           }
@@ -946,7 +945,8 @@ export class App extends React.Component<AppProps, AppState> {
             owner_id,
             isWaiting,
             isHostPresent,
-            id: info.id as string | undefined,
+            roomId: targetRoomId,
+            id: targetRoomId,
             joiningId: info.joiningId as string | undefined,
           };
         }
@@ -1065,9 +1065,9 @@ export class App extends React.Component<AppProps, AppState> {
           return;
         }
 
-        effectiveRoomId = access.id || cleanRoomId;
-        if (access.id && access.id !== this.state.roomId) {
-          this.setState({ roomId: access.id, canonicalRoomId: access.id, joiningId: access.joiningId });
+        effectiveRoomId = access.roomId || access.id || cleanRoomId;
+        if (effectiveRoomId && effectiveRoomId !== this.state.roomId) {
+          this.setState({ roomId: effectiveRoomId, joiningId: access.joiningId });
         }
 
         // Admission Gateway Invariant:
