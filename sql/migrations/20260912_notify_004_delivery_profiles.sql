@@ -19,7 +19,7 @@ WHERE template_key IN ('ROOM_INVITATION', 'room-invitation', 'ROOM_STARTED', 'ro
 
 UPDATE public.email_outbox
 SET delivery_profile = 'transactional_security'
-WHERE template_key IN ('MODERATION_ACTION', 'moderation-action', 'VBROWSER_FAILURE', 'vbrowser-failure');
+WHERE template_key IN ('MODERATION_ACTION', 'moderation-action');
 
 UPDATE public.email_outbox
 SET delivery_profile = 'transactional_system'
