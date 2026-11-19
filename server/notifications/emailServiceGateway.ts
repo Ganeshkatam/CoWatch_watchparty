@@ -36,13 +36,22 @@ export class EmailServiceGateway {
 
     await reclaimStalledOutboxJobs(Number(config.EMAIL_WORKER_LEASE_SECONDS) || 600, this.db);
     const rows = await claimOutboxJobs(batchSize, workerId, this.db);
-    const jobs: EmailServiceJob[] = [];
+    const hashes = rows.map((row) => computeEmailHash(row.recipient_email));
+    const { rows: suppressedRows } = hashes.length
+      ? await this.db.query<{ email_hash: string }>(
+          'SELECT email_hash::text AS email_hash FROM public.email_delivery_suppressions WHERE email_hash::text = ANY($1::text[])',
+          [hashes],
+        )
+      : { rows: [] as { email_hash: string }[] };
+    const suppressedHashes = new Set(suppressedRows.map((row) => row.email_hash));
 
+    const jobs: EmailServiceJob[] = [];
+    const suppressedUpdates: Promise<boolean>[] = [];
     for (const row of rows) {
       const leaseToken = row.locked_by;
       if (!leaseToken) throw new Error('MISSING_OUTBOX_LEASE');
-      if (await checkEmailSuppression(computeEmailHash(row.recipient_email), this.db)) {
-        await markOutboxSuppressed(row.id, leaseToken, this.db);
+      if (suppressedHashes.has(computeEmailHash(row.recipient_email))) {
+        suppressedUpdates.push(markOutboxSuppressed(row.id, leaseToken, this.db));
         continue;
       }
       jobs.push({
