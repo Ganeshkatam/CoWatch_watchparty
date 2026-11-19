@@ -22,12 +22,12 @@ async function runDuplicateSignupSecurityTests(): Promise<void> {
     requestedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
     return new Response(JSON.stringify({
       accepted: true,
-      provider: "brevo:security",
+      provider: "brevo",
       providerMessageId: "security-message-1",
     }), { status: 200, headers: { "content-type": "application/json" } });
   }, {
     url: "https://email.example.test",
-    apiSecret: "test-secret",
+    apiSecret: "t".repeat(40),
   });
 
   assert.deepEqual(result, {
