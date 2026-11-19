@@ -68,12 +68,11 @@ CoWatch is a private, real-time synchronized video streaming and collaborative w
 - **In-App Notification Center**: Slide-out notification drawer with live unread counter badges, WebSocket push updates, and persistent PostgreSQL storage.
 - **Canonical Action Contract**: Deterministic routing resolver (`open_room`, `join_room`, `go_home`, `dismiss`) guaranteeing safe user navigation across expired sessions and moderation actions.
 - **Direct Username Invitations**: Authoritative server-side dispatch (`POST /api/notifications/invite`) with caller authorization, anti-enumeration safeguards, and rate limiting.
-- **Provider-Agnostic Transactional Email Engine**: Pluggable email delivery subsystem with adapters for:
-  - **Brevo (Sendinblue)**: API-based delivery and status tracking.
-  - **Generic SMTP**: Compatible with Mailtrap, Ethereal, Amazon SES, Postmark, and Gmail.
-  - **Resend**: Modern email API with cryptographic Svix webhook verification.
-- **Durable PostgreSQL Outbox**: Atomic row leasing via `FOR UPDATE SKIP LOCKED`, exponential backoff retry scheduling, stalled-lease reclamation, and SHA-256 hashed privacy suppressions.
-- **Zero-Credential Dry Run**: Built-in development simulation mode for local testing without external credentials.
+- **Remote Standalone Email Service**: SMTP and Brevo adapters run in the independently deployed `email-service/` process.
+- **Durable PostgreSQL Outbox**: CoWatch atomically creates notification and email-outbox records, then exposes lease-fenced claim and acknowledgement operations over authenticated HTTPS.
+- **Delivery Reliability**: Per-job leases, bounded worker concurrency, retry scheduling, stalled-lease recovery, and SHA-256 hashed recipient suppression.
+- **Credential Isolation**: Provider credentials and sender identities exist only in the remote email-service environment; CoWatch retains webhook signing secrets and delivery state.
+- **Development Dry Run**: The remote service can simulate provider acceptance in non-production environments without external credentials.
 
 ### 9. Multi-Tier Distributed Redis Architecture
 - **Flexible Configuration**: Supports single-instance Redis for local development or a 3-tier distributed cluster in production:
