@@ -35,7 +35,7 @@ export class HostApiClient {
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok && response.status !== 204) {
-      throw new HostApiError(response.status, 'COWATCH_API_REQUEST_FAILED');
+      throw new HostApiError(response.status, 'HOST_API_REQUEST_FAILED');
     }
     if (response.status === 204) return null;
     return response.json();
