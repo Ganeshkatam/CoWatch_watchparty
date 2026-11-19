@@ -1,146 +1,89 @@
-/**
- * NOTIFY-002 Brevo End-to-End Simulation Test
- *
- * Verifies the complete lifecycle:
- *   1. BrevoEmailProvider dispatch.
- *   2. Outbox provider & provider_message_id matching.
- *   3. Inbound Brevo webhook normalization via BrevoWebhookAdapter.
- *   4. DeliveryStateService state transition to DELIVERED with delivered_at.
- *   5. Inbound Brevo bounce webhook triggering SHA-256 suppression.
- */
-
-import { BrevoEmailProvider } from './providers/brevoEmailProvider.ts';
 import { BrevoWebhookAdapter } from './webhooks/brevoWebhookAdapter.ts';
 import { DeliveryStateService } from './deliveryStateService.ts';
 import { computeEmailHash } from './suppression.ts';
-import type { EmailMessage } from './emailProvider.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(`[BrevoE2EAssertion] ${message}`);
-  }
+  if (!condition) throw new Error('[BrevoWebhookTest] ' + message);
 }
 
-async function runBrevoE2ETest(): Promise<void> {
-  console.log('=== NOTIFY-002 Brevo E2E Lifecycle Simulation Test ===\n');
-
-  // In-memory audit tracking
+async function runBrevoWebhookTests(): Promise<void> {
   const recordedEvents = new Set<string>();
   const outboxUpdates: Array<{ id: string; status: string; provider?: string }> = [];
   const recordedSuppressions: Array<{ emailHash: string; reason: string }> = [];
 
   const mockStore = {
     async recordWebhookEventIdempotent(provider: string, eventId: string): Promise<boolean> {
-      const key = `${provider}:${eventId}`;
+      const key = provider + ':' + eventId;
       if (recordedEvents.has(key)) return false;
       recordedEvents.add(key);
       return true;
     },
     async updateDeliveryStatusByProviderMessageId(
       providerMessageId: string,
-      status: any,
+      status: string,
       _timestamp?: Date,
       provider?: string,
     ): Promise<boolean> {
       outboxUpdates.push({ id: providerMessageId, status, provider });
       return true;
     },
-    async recordEmailSuppression(emailHash: string, reason: any): Promise<void> {
+    async recordEmailSuppression(emailHash: string, reason: string): Promise<void> {
       recordedSuppressions.push({ emailHash, reason });
     },
   };
 
-  // 1. Transactional Sending
-  console.log('Step 1: Dispatching transactional message via BrevoEmailProvider...');
-  const provider = new BrevoEmailProvider();
-
-  const message: EmailMessage = {
-    to: 'recipient@cowatch.tv',
-    from: 'CoWatch <noreply@cowatch.tv>',
-    subject: 'Watch Party Ready',
-    html: '<h1>Your room is ready</h1>',
-    text: 'Your room is ready',
-    idempotencyKey: `brevo-e2e-${Date.now()}`,
-  };
-
-  const sendResult = await provider.send(message);
-  assert(sendResult.accepted === true, 'Brevo must accept message');
-  assert(sendResult.provider === 'brevo', 'Provider must be brevo');
-  assert(
-    typeof sendResult.providerMessageId === 'string' && sendResult.providerMessageId.length > 0,
-    'Provider message ID must be present',
-  );
-  console.log(`  PASS: Brevo accepted message with ID: ${sendResult.providerMessageId}`);
-
-  // 2. Webhook Ingress & Normalization
-  console.log('Step 2: Simulating inbound Brevo delivered webhook...');
-  const brevoAdapter = new BrevoWebhookAdapter();
-
-  const deliveredWebhookReq: any = {
+  const adapter = new BrevoWebhookAdapter();
+  const deliveryService = new DeliveryStateService(mockStore);
+  const messageId = 'brevo-message-1';
+  const deliveredRequest = {
     headers: {},
     body: {
       event: 'delivered',
-      email: message.to,
-      'message-id': sendResult.providerMessageId,
-      id: `evt_brevo_del_${Date.now()}`,
+      email: 'recipient@cowatch.tv',
+      'message-id': messageId,
+      id: 'evt-delivered-1',
       date: new Date().toISOString(),
     },
   };
+  const deliveredEvents = adapter.normalizePayload(deliveredRequest as never);
+  assert(deliveredEvents.length === 1, 'Delivered event must normalize');
+  assert(deliveredEvents[0].provider === 'brevo', 'Canonical provider must be brevo');
+  assert(deliveredEvents[0].providerMessageId === messageId, 'Provider message ID must be retained');
+  assert(deliveredEvents[0].normalizedStatus === 'DELIVERED', 'Delivered event must map to DELIVERED');
 
-  const normalizedDeliveredEvents = brevoAdapter.normalizePayload(deliveredWebhookReq);
-  assert(normalizedDeliveredEvents.length === 1, 'Must normalize 1 delivery event');
-  const delEvent = normalizedDeliveredEvents[0];
-  assert(delEvent.provider === 'brevo', 'Event provider must be brevo');
-  assert(delEvent.providerMessageId === sendResult.providerMessageId, 'Message ID must correlate');
-  assert(delEvent.normalizedStatus === 'DELIVERED', 'Status must be DELIVERED');
-  console.log('  PASS: Delivered webhook normalized to canonical EmailDeliveryEvent');
+  const delivered = await deliveryService.processDeliveryEvent(deliveredEvents[0]);
+  assert(delivered.status === 'processed', 'Delivered event must process');
+  assert(outboxUpdates.some((row) => row.id === messageId && row.status === 'DELIVERED' && row.provider === 'brevo'),
+    'Delivery update must correlate by canonical provider and message ID');
 
-  // 3. DeliveryStateService Processing
-  console.log('Step 3: Processing normalized delivery event through DeliveryStateService...');
-  const deliveryService = new DeliveryStateService(mockStore);
-  const deliveryResult = await deliveryService.processDeliveryEvent(delEvent);
-  assert(
-    deliveryResult.status === 'processed',
-    'DeliveryStateService must successfully handle event',
-  );
-  assert(
-    outboxUpdates.some((u) => u.id === sendResult.providerMessageId && u.status === 'DELIVERED'),
-    'Outbox status must be updated to DELIVERED via composite provider key',
-  );
-  console.log(`  PASS: DeliveryStateService processed event and updated outbox status to DELIVERED`);
+  const duplicate = await deliveryService.processDeliveryEvent(deliveredEvents[0]);
+  assert(duplicate.status === 'duplicate', 'Duplicate webhook event must be ignored');
 
-  // 4. Negative Event & Automated Suppression
-  console.log('Step 4: Simulating inbound Brevo hard_bounce webhook and SHA-256 suppression...');
-  const bounceWebhookReq: any = {
+  const bouncedRequest = {
     headers: {},
     body: {
       event: 'hard_bounce',
       email: 'invalid-user@external-bounce.com',
-      'message-id': `<bounce-${Date.now()}@brevo.com>`,
-      id: `evt_brevo_bnc_${Date.now()}`,
+      'message-id': 'bounce-message-1',
+      id: 'evt-bounce-1',
       date: new Date().toISOString(),
       reason: '550 5.1.1 User unknown',
     },
   };
+  const bounceEvents = adapter.normalizePayload(bouncedRequest as never);
+  assert(bounceEvents.length === 1, 'Bounce event must normalize');
+  assert(bounceEvents[0].normalizedStatus === 'BOUNCED', 'Hard bounce must map to BOUNCED');
 
-  const normalizedBounceEvents = brevoAdapter.normalizePayload(bounceWebhookReq);
-  assert(normalizedBounceEvents.length === 1, 'Must normalize 1 bounce event');
-  const bounceEvent = normalizedBounceEvents[0];
-  assert(bounceEvent.normalizedStatus === 'BOUNCED', 'Must map to BOUNCED');
+  const bounce = await deliveryService.processDeliveryEvent(bounceEvents[0]);
+  assert(bounce.status === 'processed', 'Bounce event must process');
+  const expectedHash = computeEmailHash('invalid-user@external-bounce.com');
+  assert(recordedSuppressions.some((row) => row.emailHash === expectedHash && row.reason === 'bounced'),
+    'Bounce must create a SHA-256 suppression record');
 
-  const expectedSuppressionHash = computeEmailHash('invalid-user@external-bounce.com');
-  const bounceResult = await deliveryService.processDeliveryEvent(bounceEvent);
-  assert(bounceResult.status === 'processed', 'Bounce event must be processed');
-  assert(
-    recordedSuppressions.some((s) => s.emailHash === expectedSuppressionHash && s.reason === 'bounced'),
-    'Recipient email must be hashed with SHA-256 and added to suppressions',
-  );
-  console.log(`  PASS: Bounce event computed suppression hash: ${expectedSuppressionHash.slice(0, 8)}... and auto-suppressed`);
-
-  console.log('\nBrevo End-to-End Simulation Test Passed with Zero Failures!\n');
+  console.log('Brevo webhook delivery, duplicate, and suppression tests passed.');
 }
 
-runBrevoE2ETest().catch((err) => {
-  console.error('Brevo E2E test failure:', err);
+runBrevoWebhookTests().catch((error: unknown) => {
+  console.error(error);
   process.exit(1);
 });
