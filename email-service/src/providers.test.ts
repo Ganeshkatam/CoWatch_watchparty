@@ -12,8 +12,8 @@ import {
 const baseEnv: NodeJS.ProcessEnv = {
   NODE_ENV: 'test',
   APP_URL: 'https://cowatch.example',
-  COWATCH_API_URL: 'https://api.cowatch.example',
-  COWATCH_API_SECRET: 'c'.repeat(40),
+  HOST_API_URL: 'https://api.cowatch.example',
+  HOST_API_SECRET: 'c'.repeat(40),
   EMAIL_SERVICE_API_SECRET: 'e'.repeat(40),
   EMAIL_FROM_ADDRESS: 'noreply@cowatch.example',
   EMAIL_FROM_NAME: 'CoWatch',
