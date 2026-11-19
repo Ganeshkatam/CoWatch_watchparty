@@ -68,7 +68,7 @@ test('provider error classification distinguishes retryable and permanent failur
   assert.equal(brevoServer.retryable, true);
 });
 
-test('delivery profiles resolve distinct providers and sender identities', () => {
+test('delivery profiles resolve distinct providers and sender identities', async () => {
   const config = loadConfig({
     ...baseEnv,
     EMAIL_PROFILE_SECURITY_BINDING: 'security',
@@ -79,10 +79,13 @@ test('delivery profiles resolve distinct providers and sender identities', () =>
   const registry = new EmailProviderRegistry(config);
   const securityProvider = registry.getProviderForProfile('transactional_security');
   const invitationProvider = registry.getProviderForProfile('transactional_invitation');
+  const defaultProvider = registry.getProviderForProfile('transactional_default');
   assert.equal(securityProvider.providerId, 'brevo');
   assert.equal(securityProvider.name, 'brevo:security');
   assert.equal(invitationProvider.providerId, 'smtp');
+  assert.equal(invitationProvider, defaultProvider, 'SMTP profiles must share one pooled transport');
   assert.equal(getDeliveryProfile('transactional_security', config).fromAddress, 'security@cowatch.example');
+  await registry.close();
 });
 
 test('provider failures retain typed retry semantics', () => {
