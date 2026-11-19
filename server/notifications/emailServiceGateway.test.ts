@@ -57,8 +57,20 @@ async function run(): Promise<void> {
   assert.equal(await gateway.markFailed(jobs[0].id, jobs[0].leaseToken, 'TEMPORARY_FAILURE', true), true);
   assert.equal(await gateway.markSent(jobs[0].id, 'stale-lease', 'brevo', 'provider-message-2'), false);
 
-  const stateUpdates = queries.filter((query) => query.sql.includes('UPDATE public.email_outbox'));
-  assert.ok(stateUpdates.every((query) => query.sql.includes('locked_by =')));
+  const stateTransitions = queries.filter((query) =>
+    query.sql.includes('UPDATE public.email_outbox') && query.sql.includes('WHERE id = $1'),
+  );
+  assert.ok(stateTransitions.length >= 4, 'Expected suppression, dispatch, sent, and retry transitions');
+  assert.ok(stateTransitions.every((query) => query.sql.includes('locked_by = 
+  console.log('Remote email gateway claim, suppression, lease fencing, and transitions passed.');
+}
+
+run().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});
+)),
+    'Every job state transition must be fenced by its lease token');
   console.log('Remote email gateway claim, suppression, lease fencing, and transitions passed.');
 }
 
