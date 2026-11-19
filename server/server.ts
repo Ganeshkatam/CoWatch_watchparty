@@ -381,20 +381,6 @@ dynamicRoomNsp.use(async (socket, next) => {
     serverLifecycle,
   });
 
-  // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
-  EmailProviderRegistry.validateActiveProvider()
-    .then((provider) => {
-      console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
-      startEmailWorker();
-    })
-    .catch((err) => {
-      // Transactional email is an optional capability. Keep the API available
-      // when its provider is misconfigured. Leave pending outbox jobs untouched
-      // until valid provider configuration is supplied.
-      console.error('[EmailProvider] Startup validation failed; email delivery is unavailable until configuration is fixed:', err);
-    });
-
-
   if (process.env.NODE_ENV === "development") {
     try {
 
