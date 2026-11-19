@@ -24,7 +24,7 @@ npm start
 
 Configure both sides with separate high-entropy secrets:
 
-- `COWATCH_API_SECRET` on this service must equal CoWatch's `EMAIL_SERVICE_WORKER_SECRET`.
+- `HOST_API_SECRET` on this service must equal CoWatch's `EMAIL_SERVICE_WORKER_SECRET`.
 - `EMAIL_SERVICE_API_SECRET` on this service must equal CoWatch's `EMAIL_SERVICE_API_SECRET`.
 
 Set CoWatch's `EMAIL_SERVICE_URL` to this service's HTTPS URL. Do not expose the service to browsers. Restrict inbound access to the CoWatch server where possible.
