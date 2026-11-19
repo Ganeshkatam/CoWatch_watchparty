@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
@@ -11,7 +13,7 @@
     "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "nodemailer": "10.0.9"
+    "nodemailer": "^10.5.0"
   },
   "devDependencies": {
     "@types/node": "25.0.1",
