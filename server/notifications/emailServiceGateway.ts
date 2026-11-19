@@ -146,7 +146,7 @@ export class EmailServiceGateway {
     const maxAttempts = Number(config.EMAIL_MAX_ATTEMPTS) || 5;
     const delays = String(config.EMAIL_RETRY_DELAYS_MS || '60000,300000,1800000,3600000')
       .split(',').map((value) => Number.parseInt(value.trim(), 10)).filter(Number.isFinite);
-    const delayMs = delays[Math.min(attemptCount, delays.length - 1)] ?? 3_600_000;
+    const delayMs = delays[Math.min(Math.max(0, attemptCount - 1), delays.length - 1)] ?? 3_600_000;
     const failed = !retryable || attemptCount >= maxAttempts;
 
     const result = await this.db.query(
