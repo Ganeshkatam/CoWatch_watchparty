@@ -94,13 +94,14 @@ export function renderEmailTemplate(key: string, payload: Payload): RenderedEmai
     }
     case 'SYSTEM_ANNOUNCEMENT': {
       const subject = optionalText(payload, 'subject', 'An announcement from CoWatch');
+      const title = optionalText(payload, 'subject', 'CoWatch Announcement');
       const body = requiredText(payload, 'body');
       const ctaUrl = optionalText(payload, 'ctaUrl');
       const ctaLabel = optionalText(payload, 'ctaLabel', 'Learn more');
       const safeCta = ctaUrl ? safeUrl(ctaUrl) : '';
       return {
         subject,
-        html: base(subject, '<p>' + escapeHtml(body) + '</p>' +
+        html: base(title, '<p>' + escapeHtml(body) + '</p>' +
           (safeCta ? '<a href="' + escapeHtml(safeCta) + '" class="cta">' + escapeHtml(ctaLabel) + '</a>' : '')),
         text: body + (safeCta ? '\n\n' + ctaLabel + ': ' + safeCta : ''),
       };
