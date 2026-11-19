@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import type { Pool } from "pg";
 import config from "../config.js";
 import { createEmailServiceRouter } from "./emailServiceRouter.js";
 import { EmailServiceGateway } from "../notifications/emailServiceGateway.js";
@@ -43,7 +44,7 @@ export function createInternalOperationsRouter(options: InternalOperationsRouter
 
   // Remote email worker API; the gateway uses the existing CoWatch PostgreSQL pool.
   if (postgres) {
-    router.use("/internal/email", createEmailServiceRouter(new EmailServiceGateway(postgres)));
+    router.use("/internal/email", createEmailServiceRouter(new EmailServiceGateway(postgres as Pool)));
   } else {
     router.use("/internal/email", (_req: Request, res: Response) => {
       res.status(503).json({ error: "DATABASE_UNAVAILABLE" });
