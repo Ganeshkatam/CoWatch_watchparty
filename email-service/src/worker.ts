@@ -1,4 +1,4 @@
-import { CoWatchApiClient, type EmailJob } from './apiClient.ts';
+import { HostApiClient, type EmailJob } from './apiClient.ts';
 import type { EmailServiceConfig, DeliveryProfileId } from './config.ts';
 import { EmailProviderError, EmailProviderRegistry, getDeliveryProfile } from './providers.ts';
 import { renderEmailTemplate } from './templates.ts';
@@ -11,7 +11,7 @@ const PROFILE_IDS = new Set<string>([
 ]);
 
 export interface EmailWorkerDependencies {
-  api: Pick<CoWatchApiClient, 'claimJobs' | 'markDispatchStarted' | 'markSent' | 'markFailed' | 'heartbeat'>;
+  api: Pick<HostApiClient, 'claimJobs' | 'markDispatchStarted' | 'markSent' | 'markFailed' | 'heartbeat'>;
   providers: Pick<EmailProviderRegistry, 'getProviderForProfile'>;
   config: EmailServiceConfig;
   workerId: string;
