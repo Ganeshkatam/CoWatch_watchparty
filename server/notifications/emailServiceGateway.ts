@@ -3,7 +3,6 @@ import config from '../config.ts';
 import { postgres as defaultPostgres } from '../utils/postgres.ts';
 import {
   claimOutboxJobs,
-  checkEmailSuppression,
   markOutboxRetryOrFailed,
   markOutboxSent,
   markOutboxSuppressed,
@@ -57,6 +56,7 @@ export class EmailServiceGateway {
         leaseToken,
       });
     }
+    await Promise.all(suppressedUpdates);
     return jobs;
   }
 
