@@ -273,9 +273,13 @@ export async function updateDeliveryStatusByProviderMessageId(
     ? [providerMessageId, status, timestamp]
     : [providerMessageId, status];
 
-  if (provider) {
+  if (provider === 'brevo') {
     const providerParamIdx = params.length + 1;
-    whereClause += ` AND provider = $${providerParamIdx}`;
+    whereClause += ` AND (provider = ${providerParamIdx} OR provider LIKE ${providerParamIdx + 1})`;
+    params.push(provider, provider + ':%');
+  } else if (provider) {
+    const providerParamIdx = params.length + 1;
+    whereClause += ` AND provider = ${providerParamIdx}`;
     params.push(provider);
   }
 
