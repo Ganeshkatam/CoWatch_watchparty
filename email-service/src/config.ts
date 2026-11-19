@@ -18,7 +18,6 @@ export interface EmailServiceConfig {
   workerIntervalMs: number;
   workerBatchSize: number;
   workerConcurrency: number;
-  workerLeaseSeconds: number;
   defaultProvider: 'smtp' | 'brevo';
   fromAddress: string;
   fromName: string;
@@ -135,7 +134,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     workerIntervalMs: boundedInteger(env.EMAIL_WORKER_INTERVAL_MS, 15000, 1000, 300000, 'EMAIL_WORKER_INTERVAL_MS'),
     workerBatchSize: boundedInteger(env.EMAIL_WORKER_BATCH_SIZE, 10, 1, 50, 'EMAIL_WORKER_BATCH_SIZE'),
     workerConcurrency: boundedInteger(env.EMAIL_WORKER_CONCURRENCY, 5, 1, 20, 'EMAIL_WORKER_CONCURRENCY'),
-    workerLeaseSeconds: boundedInteger(env.EMAIL_WORKER_LEASE_SECONDS, 600, 30, 3600, 'EMAIL_WORKER_LEASE_SECONDS'),
     defaultProvider: provider,
     fromAddress: env.EMAIL_FROM_ADDRESS || '',
     fromName,
@@ -148,7 +146,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
       port: smtpPort,
       username: env.EMAIL_SMTP_USERNAME || '',
       password: env.EMAIL_SMTP_PASSWORD || '',
-      secure: booleanValue(env.EMAIL_SMTP_SECURE, smtpPort === 465, 'EMAIL_SMTP_SECURE'),
+      secure: smtpPort === 465 || booleanValue(env.EMAIL_SMTP_SECURE, false, 'EMAIL_SMTP_SECURE'),
     },
   };
 }
