@@ -23,8 +23,8 @@ export async function sendDuplicateSignupSecurityAlert(
   options: DuplicateSignupAlertOptions,
   fetcher: typeof fetch = fetch,
   serviceConfig: EmailServiceClientConfig = {
-    url: config.EMAIL_SERVICE_URL,
-    apiSecret: config.EMAIL_SERVICE_API_SECRET,
+    url: config.EMAIL_SERVICE_URL || '',
+    apiSecret: config.EMAIL_SERVICE_API_SECRET || '',
   },
 ): Promise<EmailSendResult | null> {
   try {
