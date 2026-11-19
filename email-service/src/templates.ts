@@ -59,7 +59,8 @@ function base(title: string, bodyHtml: string): string {
     '.footer{padding:20px 40px;border-top:1px solid #2d2d4e;color:#666;font-size:12px}</style></head><body>' +
     '<div class="wrapper"><div class="header"><h1>CoWatch</h1></div>' +
     '<div class="body">' + bodyHtml + '</div>' +
-    '<div class="footer"><p>You are receiving this because you have notifications enabled.</p></div></div></body></html>';
+    '<div class="footer"><p>You\'re receiving this because you have notifications enabled. ' +
+    '<a href="{{preferencesUrl}}" style="color:#6c63ff">Manage preferences</a>.</p></div></div></body></html>';
 }
 
 export function renderEmailTemplate(key: string, payload: Payload): RenderedEmail | null {
@@ -71,7 +72,7 @@ export function renderEmailTemplate(key: string, payload: Payload): RenderedEmai
       const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048));
       const userName = optionalText(payload, 'userName', '');
       return {
-        subject: 'You have been invited to join "' + roomTitle + '"',
+        subject: 'You\'ve been invited to join "' + escapeHtml(roomTitle) + '"',
         html: base('Room Invitation',
           '<p>Hi' + (userName ? ' ' + escapeHtml(userName) : '') + ',</p>' +
           '<p><strong>' + escapeHtml(inviterName) + '</strong> has invited you to watch together in the room ' +
@@ -84,7 +85,7 @@ export function renderEmailTemplate(key: string, payload: Payload): RenderedEmai
       const roomTitle = requiredText(payload, 'roomTitle', 200);
       const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048));
       return {
-        subject: '"' + roomTitle + '" is now live',
+        subject: '"' + escapeHtml(roomTitle) + '" is now live',
         html: base('Room Started',
           '<p>The room <strong>"' + escapeHtml(roomTitle) + '"</strong> you belong to has started. Join now to watch together!</p>' +
           '<a href="' + escapeHtml(roomUrl) + '" class="cta">Join Room</a>'),
