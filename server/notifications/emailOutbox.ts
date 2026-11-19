@@ -24,7 +24,7 @@ function getRetryDelay(attemptCount: number): number {
     .split(',')
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => !isNaN(n));
-  const idx = Math.min(attemptCount, delays.length - 1);
+  const idx = Math.min(Math.max(0, attemptCount - 1), delays.length - 1);
   return delays[idx] ?? 3_600_000;
 }
 
