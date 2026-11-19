@@ -18,7 +18,7 @@ function json(res: ServerResponse, status: number, payload: unknown): void {
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown> | null> {
-  if (!req.headers['content-type']?.toLowerCase().startsWith('application/json')) return null;
+  if (!/^application\\/json(?:;|$)/i.test(req.headers['content-type'] || '')) return null;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
