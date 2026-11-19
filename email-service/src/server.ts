@@ -27,7 +27,12 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown> |
     if (size > MAX_BODY_BYTES) throw new Error('BODY_TOO_LARGE');
     chunks.push(buffer);
   }
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new Error('INVALID_JSON');
+  }
   return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
     ? parsed as Record<string, unknown>
     : null;
@@ -65,7 +70,9 @@ export function createEmailServiceServer(
       const email = body?.email;
       const ipAddress = body?.ipAddress;
       const attemptedAt = body?.attemptedAt;
-      if (typeof email !== 'string' || email.length > 254 ||
+      const allowedKeys = new Set(['email', 'ipAddress', 'attemptedAt']);
+      if (body && Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+          typeof email !== 'string' || email.length > 254 ||
           !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           (ipAddress !== undefined && (typeof ipAddress !== 'string' || ipAddress.length > 64)) ||
           typeof attemptedAt !== 'string' || !Number.isFinite(Date.parse(attemptedAt))) {
@@ -92,10 +99,11 @@ export function createEmailServiceServer(
         providerMessageId: result.providerMessageId,
       });
     } catch (error) {
-      const code = error instanceof Error && error.message === 'BODY_TOO_LARGE'
-        ? 'BODY_TOO_LARGE'
-        : 'SECURITY_ALERT_DELIVERY_FAILED';
-      json(res, code === 'BODY_TOO_LARGE' ? 413 : 502, { error: code });
+      const code = error instanceof Error ? error.message : 'SECURITY_ALERT_DELIVERY_FAILED';
+      const status = code === 'BODY_TOO_LARGE' ? 413
+        : code === 'INVALID_JSON' ? 400
+        : 502;
+      json(res, status, { error: status === 502 ? 'SECURITY_ALERT_DELIVERY_FAILED' : code });
     }
   });
 
