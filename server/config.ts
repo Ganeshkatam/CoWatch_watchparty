@@ -86,8 +86,11 @@ const defaults = {
   EMAIL_SMTP_PASSWORD: "",         // SMTP password
   EMAIL_SMTP_SECURE: false,        // True for 465 SSL, false for 587 STARTTLS
 
-  // Internal Boundary Secret (for /internal/health and administrative endpoints)
+  // Internal service boundaries
   INTERNAL_API_SECRET: "",
+  EMAIL_SERVICE_WORKER_SECRET: "", // Remote email worker -> CoWatch API
+  EMAIL_SERVICE_API_SECRET: "", // CoWatch -> remote email service
+  EMAIL_SERVICE_URL: "", // HTTPS base URL of the independently deployed email service
 
   EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
   EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
