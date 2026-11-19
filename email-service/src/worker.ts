@@ -24,7 +24,7 @@ async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies):
   }
 
   const profileId = job.deliveryProfile as DeliveryProfileId;
-  let rendered;
+  let rendered: ReturnType<typeof renderEmailTemplate>;
   try {
     rendered = renderEmailTemplate(job.templateKey, job.payload);
   } catch {
@@ -91,7 +91,12 @@ export async function runWorkerCycle(dependencies: EmailWorkerDependencies): Pro
     await Promise.all(Array.from({ length: workerCount }, async () => {
       while (nextIndex < jobs.length) {
         const job = jobs[nextIndex++];
-        await processJob(job, dependencies);
+        try {
+          await processJob(job, dependencies);
+        } catch (error) {
+          console.error('[EmailWorker] Unhandled job error ' + job.id + ':',
+            error instanceof Error ? error.message : 'UNKNOWN_ERROR');
+        }
       }
     }));
   } catch (error) {
