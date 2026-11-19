@@ -71,7 +71,7 @@ export async function claimOutboxJobs(
 export async function markOutboxSent(
   id: string,
   providerMessageId: string,
-  provider = 'smtp',
+  provider: string,
   leaseToken: string,
 ): Promise<boolean> {
   if (!postgres || !leaseToken) return false;
