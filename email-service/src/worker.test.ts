@@ -54,6 +54,7 @@ function dependencies(
         name: 'provider-' + profile,
         providerId: 'brevo' as const,
         verifyConfiguration: async () => {},
+        close: async () => {},
         send: async (message) => {
           sends.push(profile + ':' + message.to);
           return { accepted: true, provider: 'brevo', providerMessageId: 'msg-' + profile };
@@ -95,6 +96,7 @@ test('provider failure is classified and reported for retry', async () => {
     name: 'mock',
     providerId: 'smtp' as const,
     verifyConfiguration: async () => {},
+    close: async () => {},
     send: async () => { throw new EmailProviderError('temporary', 'TEMPORARY', true); },
     classifyError: (error) => error instanceof EmailProviderError
       ? error
