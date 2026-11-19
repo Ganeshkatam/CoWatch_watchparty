@@ -82,12 +82,12 @@ async function runFailureInjectionTests() {
   // Case 4: Worker Crash Recovery & In-Flight Dispatch Guard
   // ---------------------------------------------------------------------------
   console.log('Case 4: Worker process crash recovery semantics...');
-  // Verify that provider capability correctly flags whether in-flight retries are natively safe
+  // Verify canonical provider IDs used by delivery webhook correlation
   const smtp = new SMTPEmailProvider(emailConfig);
   assert(smtp.providerId === 'smtp', 'SMTP adapter must expose its canonical provider identifier');
   assert(brevo.providerId === 'brevo', 'Brevo adapter must expose its canonical provider identifier');
 
-  console.log('  PASS: In-flight worker crash recovery guards distinguish native vs non-idempotent upstream providers');
+  console.log('  PASS: provider IDs remain canonical for webhook correlation');
 
   // ---------------------------------------------------------------------------
   // Case 5: Out-of-Order & Duplicate Webhook Events
