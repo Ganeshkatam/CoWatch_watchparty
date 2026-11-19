@@ -61,6 +61,9 @@ function serviceUrl(value: string | undefined, nodeEnv: string): string {
   if (nodeEnv === 'production' && parsed.protocol !== 'https:') {
     throw new Error('INVALID_CONFIGURATION:COWATCH_API_URL_REQUIRES_HTTPS');
   }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
+    throw new Error('INVALID_CONFIGURATION:COWATCH_API_URL_ORIGIN_ONLY');
+  }
   return parsed.toString().replace(/\/$/, '');
 }
 
@@ -69,6 +72,9 @@ function appBaseUrl(value: string | undefined, nodeEnv: string): string {
   const parsed = new URL(value);
   if (nodeEnv === 'production' && parsed.protocol !== 'https:') {
     throw new Error('INVALID_CONFIGURATION:APP_URL_REQUIRES_HTTPS');
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
+    throw new Error('INVALID_CONFIGURATION:APP_URL_ORIGIN_ONLY');
   }
   return parsed.toString().replace(/\/+$/, '');
 }
@@ -117,6 +123,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     }
   }
 
+  for (const binding of Object.values(profileBindings)) {
+    if (!/^[a-zA-Z0-9_-]{1,32}$/.test(binding)) throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_BINDING');
+  }
+  for (const providerName of Object.values(bindingProviders)) {
+    if (providerName && providerName !== 'smtp' && providerName !== 'brevo') {
+      throw new Error('INVALID_CONFIGURATION:EMAIL_BINDING_PROVIDER');
+    }
+  }
   const smtpPort = boundedInteger(env.EMAIL_SMTP_PORT, 587, 1, 65535, 'EMAIL_SMTP_PORT');
   const fromName = env.EMAIL_FROM_NAME || 'CoWatch';
   if (/[\\r\\n]/.test(fromName) || fromName.length > 80) throw new Error('INVALID_CONFIGURATION:EMAIL_FROM_NAME');
