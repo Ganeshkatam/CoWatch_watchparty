@@ -24,7 +24,7 @@ export function requireEmailServiceAuth(req: Request, res: Response, next: NextF
   const supplied = req.headers.authorization?.startsWith('Bearer ')
     ? req.headers.authorization.slice(7)
     : '';
-  if (!expected) {
+  if (!expected || expected.length < 32) {
     res.status(503).json({ error: 'EMAIL_SERVICE_AUTH_NOT_CONFIGURED' });
     return;
   }
