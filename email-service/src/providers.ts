@@ -277,7 +277,7 @@ export class EmailProviderRegistry {
   }
 
   async close(): Promise<void> {
-    await Promise.all(Array.from(this.providers.values(), (provider) => provider.close()));
+    await Promise.allSettled(Array.from(this.providers.values(), (provider) => provider.close()));
     this.providers.clear();
   }
 
