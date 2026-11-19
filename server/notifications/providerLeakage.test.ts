@@ -33,6 +33,10 @@ const PROTECTED_CORE_FILES = [
   'server/server.ts',
   'server/routes/emailServiceRouter.ts',
   'email-service/src/worker.ts',
+  'email-service/src/server.ts',
+  'email-service/src/index.ts',
+  'email-service/src/config.ts',
+  'email-service/src/templates.ts',
   'email-service/src/apiClient.ts',
 ];
 
