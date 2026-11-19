@@ -15,7 +15,7 @@ export interface EmailServiceClientConfig {
 
 export interface EmailSendResult {
   accepted: boolean;
-  provider: string;
+  provider: 'smtp' | 'brevo';
   providerMessageId: string;
 }
 
@@ -61,7 +61,7 @@ export async function sendDuplicateSignupSecurityAlert(
       throw new Error('INVALID_EMAIL_SERVICE_RESPONSE');
     }
     const result = payload as Record<string, unknown>;
-    if (result.accepted !== true || typeof result.provider !== 'string' ||
+    if (result.accepted !== true || (result.provider !== 'smtp' && result.provider !== 'brevo') ||
         typeof result.providerMessageId !== 'string' || !result.providerMessageId) {
       throw new Error('INVALID_EMAIL_SERVICE_RESPONSE');
     }
