@@ -184,7 +184,7 @@ For local development, run the service in another terminal:
 ```bash
 cd email-service
 cp .env.example .env
-npm install
+npm ci
 npm run typecheck
 npm test
 npm start
