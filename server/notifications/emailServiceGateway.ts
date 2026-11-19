@@ -54,7 +54,7 @@ export class EmailServiceGateway {
     for (const row of rows) {
       const leaseToken = row.locked_by;
       if (!leaseToken) throw new Error('MISSING_OUTBOX_LEASE');
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(row.recipient_email) ||
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.recipient_email) ||
           row.recipient_email.length > 254 || !row.template_key || row.template_key.length > 100 ||
           !isPayloadRecord(row.payload) || (row.provider_idempotency_key?.length ?? 0) > 256) {
         await markOutboxRetryOrFailed(
