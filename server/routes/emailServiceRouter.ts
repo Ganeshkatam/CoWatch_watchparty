@@ -54,7 +54,7 @@ export function createEmailServiceRouter(
       const jobs = await gateway.claimJobs(body.batchSize as number, body.workerId);
       res.status(200).json({ jobs });
     } catch (error) {
-      console.error('[EmailServiceAPI] Claim failed:', error);
+      console.error('[EmailServiceAPI] Claim failed:', error instanceof Error ? error.name : 'UNKNOWN_ERROR');
       res.status(503).json({ error: 'EMAIL_QUEUE_UNAVAILABLE' });
     }
   });
@@ -70,7 +70,7 @@ export function createEmailServiceRouter(
       const accepted = await gateway.markDispatchStarted(id, leaseToken);
       res.status(accepted ? 204 : 409).end();
     } catch (error) {
-      console.error('[EmailServiceAPI] Dispatch transition failed:', error);
+      console.error('[EmailServiceAPI] Dispatch transition failed:', error instanceof Error ? error.name : 'UNKNOWN_ERROR');
       res.status(503).json({ error: 'EMAIL_QUEUE_UNAVAILABLE' });
     }
   });
@@ -89,7 +89,7 @@ export function createEmailServiceRouter(
       const accepted = await gateway.markSent(id, body.leaseToken, body.provider, body.messageId);
       res.status(accepted ? 204 : 409).end();
     } catch (error) {
-      console.error('[EmailServiceAPI] Sent transition failed:', error);
+      console.error('[EmailServiceAPI] Sent transition failed:', error instanceof Error ? error.name : 'UNKNOWN_ERROR');
       res.status(503).json({ error: 'EMAIL_QUEUE_UNAVAILABLE' });
     }
   });
@@ -108,7 +108,7 @@ export function createEmailServiceRouter(
       const accepted = await gateway.markFailed(id, body.leaseToken, body.errorCode, body.retryable);
       res.status(accepted ? 204 : 409).end();
     } catch (error) {
-      console.error('[EmailServiceAPI] Failure transition failed:', error);
+      console.error('[EmailServiceAPI] Failure transition failed:', error instanceof Error ? error.name : 'UNKNOWN_ERROR');
       res.status(503).json({ error: 'EMAIL_QUEUE_UNAVAILABLE' });
     }
   });
