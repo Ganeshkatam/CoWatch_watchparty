@@ -34,6 +34,7 @@ jobs:
           npm run typecheckEmailService
           npm run test:email-service
           npm run test:email-service-api
+          npm run test:email-service-gateway
           npm run test:duplicate-signup-security
       - name: Push to remote
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
