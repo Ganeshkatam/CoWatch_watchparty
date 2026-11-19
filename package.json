@@ -81,7 +81,8 @@
     "test:smoke": "tsx server/productionSmoke.test.ts",
     "typecheckEmailService": "tsc --project email-service/tsconfig.json --noEmit",
     "test:email-service": "tsx --test email-service/src/*.test.ts",
-    "test:email-service-api": "tsx server/routes/emailServiceRouter.test.ts"
+    "test:email-service-api": "tsx server/routes/emailServiceRouter.test.ts",
+    "test:email-service-gateway": "tsx server/notifications/emailServiceGateway.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",
