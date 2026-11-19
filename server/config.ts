@@ -50,6 +50,7 @@ const defaults = {
 
   // ==========================================
   // Remote email service boundary. Provider credentials and sender identities live remotely.
+  INTERNAL_API_SECRET: "", // Shared secret for internal administrative endpoints.
   EMAIL_SERVICE_URL: "",
   EMAIL_SERVICE_API_SECRET: "",
   EMAIL_SERVICE_WORKER_SECRET: "",
