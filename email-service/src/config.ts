@@ -71,7 +71,7 @@ function appBaseUrl(value: string | undefined, nodeEnv: string): string {
   if (nodeEnv === 'production' && parsed.protocol !== 'https:') {
     throw new Error('INVALID_CONFIGURATION:APP_URL_REQUIRES_HTTPS');
   }
-  return parsed.toString().replace(/\\/+$/, '');
+  return parsed.toString().replace(/\/+$/, '');
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceConfig {
