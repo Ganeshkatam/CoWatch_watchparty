@@ -13,7 +13,7 @@ const PROFILE_IDS = new Set<string>([
 export interface EmailWorkerDependencies {
   api: Pick<CoWatchApiClient, 'claimJobs' | 'markDispatchStarted' | 'markSent' | 'markFailed' | 'heartbeat'>;
   providers: Pick<EmailProviderRegistry, 'getProviderForProfile'>;
-  config: Pick<EmailServiceConfig, 'workerBatchSize' | 'workerConcurrency' | 'workerIntervalMs'>;
+  config: EmailServiceConfig;
   workerId: string;
 }
 
@@ -35,7 +35,7 @@ async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies):
       return;
     }
 
-    const profile = getDeliveryProfile(profileId, (dependencies.providers as EmailProviderRegistry)['config']);
+    const profile = getDeliveryProfile(profileId, dependencies.config);
     await dependencies.api.markDispatchStarted(job);
     const result = await provider.send({
       to: job.recipientEmail,
@@ -112,7 +112,10 @@ export function startEmailWorker(dependencies: EmailWorkerDependencies): () => P
     }, dependencies.config.workerIntervalMs);
   };
 
-  void runWorkerCycle(dependencies).finally(schedule);
+  running = runWorkerCycle(dependencies).finally(() => {
+    running = undefined;
+    schedule();
+  });
 
   return async () => {
     stopped = true;
