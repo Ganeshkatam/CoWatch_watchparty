@@ -52,7 +52,7 @@ export class CoWatchApiClient {
       const job = item as Record<string, unknown>;
       if (typeof job.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(job.id) ||
           typeof job.recipientEmail !== 'string' || job.recipientEmail.length > 254 ||
-          !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(job.recipientEmail) ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.recipientEmail) ||
           typeof job.templateKey !== 'string' || job.templateKey.length > 100 ||
           typeof job.deliveryProfile !== 'string' ||
           typeof job.attemptCount !== 'number' || !Number.isInteger(job.attemptCount) || job.attemptCount < 1 ||
