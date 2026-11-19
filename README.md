@@ -190,7 +190,7 @@ npm test
 npm start
 ```
 
-Configure `COWATCH_API_URL` and `COWATCH_API_SECRET` on the email service to point to the CoWatch API and match `EMAIL_SERVICE_WORKER_SECRET`. Configure `EMAIL_SERVICE_API_SECRET` on both sides for CoWatch-to-email-service security alerts. Use separate high-entropy secrets. Configure SMTP/Brevo credentials, sender identities, and provider bindings only in the email service environment.
+Configure `HOST_API_URL` and `HOST_API_SECRET` on the email service to point to the host application's API and match `EMAIL_SERVICE_WORKER_SECRET`. Configure `EMAIL_SERVICE_API_SECRET` on both sides for CoWatch-to-email-service security alerts. Use separate high-entropy secrets. Configure SMTP/Brevo credentials, sender identities, and provider bindings only in the email service environment.
 
 In production, deploy `email-service/` on a separate host, expose it through HTTPS, and set CoWatch's `EMAIL_SERVICE_URL` to that address. Provider webhooks continue to reach CoWatch because delivery and suppression records remain in the CoWatch database.
 
