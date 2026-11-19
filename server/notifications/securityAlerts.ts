@@ -35,6 +35,9 @@ export async function sendDuplicateSignupSecurityAlert(
     if (config.NODE_ENV === 'production' && serviceBase.protocol !== 'https:') {
       throw new Error('EMAIL_SERVICE_REQUIRES_HTTPS');
     }
+    if (serviceBase.username || serviceBase.password || serviceBase.search || serviceBase.hash || serviceBase.pathname !== '/') {
+      throw new Error('EMAIL_SERVICE_URL_MUST_BE_ORIGIN_ONLY');
+    }
     const response = await fetcher(
       new URL('/internal/send/duplicate-signup-alert', serviceBase),
       {
