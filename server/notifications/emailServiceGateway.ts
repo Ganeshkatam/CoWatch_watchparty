@@ -22,6 +22,10 @@ export interface EmailServiceJob {
   leaseToken: string;
 }
 
+function isPayloadRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export class EmailServiceGateway {
   private readonly db: Pool;
 
@@ -50,6 +54,18 @@ export class EmailServiceGateway {
     for (const row of rows) {
       const leaseToken = row.locked_by;
       if (!leaseToken) throw new Error('MISSING_OUTBOX_LEASE');
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(row.recipient_email) ||
+          row.recipient_email.length > 254 || !row.template_key || row.template_key.length > 100 ||
+          !isPayloadRecord(row.payload) || (row.provider_idempotency_key?.length ?? 0) > 256) {
+        await markOutboxRetryOrFailed(
+          row.id,
+          Number(config.EMAIL_MAX_ATTEMPTS) || 5,
+          'INVALID_OUTBOX_PAYLOAD',
+          leaseToken,
+          this.db,
+        );
+        continue;
+      }
       if (suppressedHashes.has(computeEmailHash(row.recipient_email))) {
         suppressedUpdates.push(markOutboxSuppressed(row.id, leaseToken, this.db));
         continue;
