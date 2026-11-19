@@ -65,6 +65,15 @@ function serviceUrl(value: string | undefined, nodeEnv: string): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
+function appBaseUrl(value: string | undefined, nodeEnv: string): string {
+  if (!value) throw new Error('INVALID_CONFIGURATION:APP_URL');
+  const parsed = new URL(value);
+  if (nodeEnv === 'production' && parsed.protocol !== 'https:') {
+    throw new Error('INVALID_CONFIGURATION:APP_URL_REQUIRES_HTTPS');
+  }
+  return parsed.toString().replace(/\\/+$/, '');
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceConfig {
   const nodeEnv = env.NODE_ENV || 'development';
   const provider = (env.EMAIL_PROVIDER || 'smtp').toLowerCase();
@@ -104,12 +113,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
   };
 
   for (const id of profileIds) {
-    if (!profileSenders[id] || !profileSenders[id].includes('@')) {
+    if (!/^[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+$/.test(profileSenders[id])) {
       throw new Error('INVALID_CONFIGURATION:EMAIL_SENDER_' + id.toUpperCase());
     }
   }
 
   const smtpPort = boundedInteger(env.EMAIL_SMTP_PORT, 587, 1, 65535, 'EMAIL_SMTP_PORT');
+  const fromName = env.EMAIL_FROM_NAME || 'CoWatch';
+  if (/[\\r\\n]/.test(fromName) || fromName.length > 80) throw new Error('INVALID_CONFIGURATION:EMAIL_FROM_NAME');
+  if (Boolean(env.EMAIL_SMTP_USERNAME) !== Boolean(env.EMAIL_SMTP_PASSWORD)) {
+    throw new Error('INVALID_CONFIGURATION:EMAIL_SMTP_CREDENTIAL_PAIR');
+  }
   return {
     nodeEnv,
     host: env.HOST || '0.0.0.0',
@@ -124,7 +138,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     workerLeaseSeconds: boundedInteger(env.EMAIL_WORKER_LEASE_SECONDS, 600, 30, 3600, 'EMAIL_WORKER_LEASE_SECONDS'),
     defaultProvider: provider,
     fromAddress: env.EMAIL_FROM_ADDRESS || '',
-    fromName: env.EMAIL_FROM_NAME || 'CoWatch',
+    fromName,
     profileSenders,
     profileBindings,
     bindingProviders,
