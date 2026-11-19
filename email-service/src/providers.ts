@@ -13,7 +13,7 @@ export interface EmailMessage {
 
 export interface EmailSendResult {
   accepted: boolean;
-  provider: string;
+  provider: 'smtp' | 'brevo';
   providerMessageId: string;
 }
 
@@ -260,7 +260,7 @@ export class EmailProviderRegistry {
   getProviderForProfile(profileId: DeliveryProfileId): EmailProvider {
     const binding = this.config.profileBindings[profileId];
     const providerName = (this.config.bindingProviders[binding] || this.config.defaultProvider).toLowerCase();
-    const key = providerName + ':' + binding;
+    const key = providerName === 'smtp' ? 'smtp' : providerName + ':' + binding;
     const existing = this.providers.get(key);
     if (existing) return existing;
 
