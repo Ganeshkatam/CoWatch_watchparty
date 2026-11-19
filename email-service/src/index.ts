@@ -9,10 +9,11 @@ async function main(): Promise<void> {
   loadLocalEnv();
   const config = loadConfig();
   const providers = new EmailProviderRegistry(config);
+  const api = new CoWatchApiClient(config);
   let server: ReturnType<typeof createEmailServiceServer>;
+
   try {
     await providers.validateConfiguredProviders();
-    const api = new CoWatchApiClient(config);
     server = createEmailServiceServer(config, providers);
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
@@ -25,8 +26,6 @@ async function main(): Promise<void> {
     await providers.close();
     throw error;
   }
-
-  const api = new CoWatchApiClient(config);
 
   const workerStop = startEmailWorker({
     api,
