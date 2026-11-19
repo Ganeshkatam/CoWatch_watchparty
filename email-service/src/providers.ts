@@ -151,7 +151,7 @@ export class SMTPEmailProvider implements EmailProvider {
       if (typeof result.messageId !== 'string' || !result.messageId) {
         throw new EmailProviderError('SMTP omitted message ID', 'SMTP_MISSING_MESSAGE_ID', false);
       }
-      return { accepted: true, provider: this.name, providerMessageId: result.messageId };
+      return { accepted: true, provider: this.providerId, providerMessageId: result.messageId };
     } catch (error) {
       throw this.classifyError(error);
     }
@@ -197,7 +197,7 @@ export class BrevoEmailProvider implements EmailProvider {
       }
       return {
         accepted: true,
-        provider: this.name,
+        provider: this.providerId,
         providerMessageId: 'dry-run:brevo:' + message.idempotencyKey,
       };
     }
@@ -237,7 +237,7 @@ export class BrevoEmailProvider implements EmailProvider {
       if (typeof messageId !== 'string' || !messageId) {
         throw new EmailProviderError('Brevo omitted message ID', 'BREVO_MISSING_MESSAGE_ID', false);
       }
-      return { accepted: true, provider: this.name, providerMessageId: messageId };
+      return { accepted: true, provider: this.providerId, providerMessageId: messageId };
     } catch (error) {
       throw this.classifyError(error);
     }
