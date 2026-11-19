@@ -18,23 +18,34 @@ export interface EmailWorkerDependencies {
 }
 
 async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies): Promise<void> {
-  let provider: ReturnType<EmailProviderRegistry['getProviderForProfile']> | undefined;
-  let providerAccepted = false;
-
   if (!PROFILE_IDS.has(job.deliveryProfile)) {
     await dependencies.api.markFailed(job, 'INVALID_DELIVERY_PROFILE', false);
     return;
   }
 
   const profileId = job.deliveryProfile as DeliveryProfileId;
+  let rendered;
+  try {
+    rendered = renderEmailTemplate(job.templateKey, job.payload);
+  } catch {
+    await dependencies.api.markFailed(job, 'INVALID_TEMPLATE_PAYLOAD', false);
+    return;
+  }
+  if (!rendered) {
+    await dependencies.api.markFailed(job, 'TEMPLATE_NOT_FOUND', false);
+    return;
+  }
+
+  let provider: ReturnType<EmailProviderRegistry['getProviderForProfile']>;
   try {
     provider = dependencies.providers.getProviderForProfile(profileId);
-    const rendered = renderEmailTemplate(job.templateKey, job.payload);
-    if (!rendered) {
-      await dependencies.api.markFailed(job, 'TEMPLATE_NOT_FOUND', false);
-      return;
-    }
+  } catch {
+    await dependencies.api.markFailed(job, 'INVALID_PROVIDER_CONFIGURATION', false);
+    return;
+  }
 
+  let providerAccepted = false;
+  try {
     const profile = getDeliveryProfile(profileId, dependencies.config);
     await dependencies.api.markDispatchStarted(job);
     const result = await provider.send({
@@ -58,9 +69,7 @@ async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies):
     }
   } catch (error) {
     if (providerAccepted) return;
-    const classified = provider
-      ? provider.classifyError(error)
-      : new EmailProviderError('Email job configuration is invalid', 'EMAIL_JOB_CONFIGURATION', false);
+    const classified = provider.classifyError(error);
     console.error('[EmailWorker] Job ' + job.id + ' failed (' + classified.code + ', retryable=' + classified.retryable + ')');
     try {
       await dependencies.api.markFailed(job, classified.code, classified.retryable);
@@ -70,7 +79,6 @@ async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies):
     }
   }
 }
-
 export async function runWorkerCycle(dependencies: EmailWorkerDependencies): Promise<void> {
   const startedAt = Date.now();
   try {
