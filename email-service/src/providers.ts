@@ -23,6 +23,7 @@ export interface EmailProvider {
   verifyConfiguration(): Promise<void>;
   send(message: EmailMessage): Promise<EmailSendResult>;
   classifyError(error: unknown): EmailProviderError;
+  close(): Promise<void>;
 }
 
 export class EmailProviderError extends Error {
@@ -102,6 +103,13 @@ export class SMTPEmailProvider implements EmailProvider {
       throw this.classifyError(error);
     }
   }
+
+  async close(): Promise<void> {
+    this.transporter?.close();
+    this.transporter = undefined;
+  }
+
+  async close(): Promise<void> {}
 
   classifyError(error: unknown): EmailProviderError {
     if (error instanceof EmailProviderError) return error;
@@ -266,6 +274,11 @@ export class EmailProviderRegistry {
     }
     this.providers.set(key, provider);
     return provider;
+  }
+
+  async close(): Promise<void> {
+    await Promise.all(Array.from(this.providers.values(), (provider) => provider.close()));
+    this.providers.clear();
   }
 
   async validateConfiguredProviders(): Promise<void> {
