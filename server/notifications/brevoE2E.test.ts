@@ -1,5 +1,6 @@
 import { BrevoWebhookAdapter } from './webhooks/brevoWebhookAdapter.ts';
-import { DeliveryStateService } from './deliveryStateService.ts';
+import { DeliveryStateService, type DeliveryStateStore } from './deliveryStateService.ts';
+import type { ProviderDeliveryStatus } from './notificationTypes.ts';
 import { computeEmailHash } from './suppression.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -11,8 +12,8 @@ async function runBrevoWebhookTests(): Promise<void> {
   const outboxUpdates: Array<{ id: string; status: string; provider?: string }> = [];
   const recordedSuppressions: Array<{ emailHash: string; reason: string }> = [];
 
-  const mockStore = {
-    async recordWebhookEventIdempotent(provider: string, eventId: string): Promise<boolean> {
+  const mockStore: Partial<DeliveryStateStore> = {
+    async recordWebhookEventIdempotent(provider: string, eventId: string, _eventType: string): Promise<boolean> {
       const key = provider + ':' + eventId;
       if (recordedEvents.has(key)) return false;
       recordedEvents.add(key);
@@ -20,14 +21,14 @@ async function runBrevoWebhookTests(): Promise<void> {
     },
     async updateDeliveryStatusByProviderMessageId(
       providerMessageId: string,
-      status: string,
+      status: ProviderDeliveryStatus,
       _timestamp?: Date,
       provider?: string,
     ): Promise<boolean> {
       outboxUpdates.push({ id: providerMessageId, status, provider });
       return true;
     },
-    async recordEmailSuppression(emailHash: string, reason: string): Promise<void> {
+    async recordEmailSuppression(emailHash: string, reason: 'bounced' | 'complained' | 'manual'): Promise<void> {
       recordedSuppressions.push({ emailHash, reason });
     },
   };
@@ -57,7 +58,7 @@ async function runBrevoWebhookTests(): Promise<void> {
     'Delivery update must correlate by canonical provider and message ID');
 
   const duplicate = await deliveryService.processDeliveryEvent(deliveredEvents[0]);
-  assert(duplicate.status === 'duplicate', 'Duplicate webhook event must be ignored');
+  assert(duplicate.status === 'duplicate_ignored', 'Duplicate webhook event must be ignored');
 
   const bouncedRequest = {
     headers: {},
