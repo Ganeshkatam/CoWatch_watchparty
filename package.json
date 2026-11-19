@@ -78,7 +78,10 @@
     "test:frontend-phase5": "tsx src/utils/roomFrontendPhase5.test.ts",
     "test:cutover-phase6": "tsx server/roomCutoverPhase6.test.ts",
     "test:cutover-phase7": "tsx server/roomCutoverPhase7.test.ts",
-    "test:smoke": "tsx server/productionSmoke.test.ts"
+    "test:smoke": "tsx server/productionSmoke.test.ts",
+    "typecheckEmailService": "tsc --project email-service/tsconfig.json --noEmit",
+    "test:email-service": "tsx --test email-service/src/*.test.ts",
+    "test:email-service-api": "tsx server/routes/emailServiceRouter.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",
