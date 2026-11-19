@@ -72,9 +72,9 @@ export async function markOutboxSent(
   id: string,
   providerMessageId: string,
   provider = 'smtp',
-  leaseToken?: string,
+  leaseToken: string,
 ): Promise<boolean> {
-  if (!postgres) return false;
+  if (!postgres || !leaseToken) return false;
 
   const result = await postgres.query(
     `UPDATE public.email_outbox
@@ -83,11 +83,12 @@ export async function markOutboxSent(
          provider_delivery_status = 'SENT',
          sent_at = clock_timestamp(),
          provider_message_id = $2,
+         dispatch_started_at = NULL,
          locked_at = NULL,
          locked_by = NULL,
          updated_at = clock_timestamp()
      WHERE id = $1
-       AND ($4::text IS NULL OR (status = 'PROCESSING' AND locked_by = $4))`,
+       AND status = 'PROCESSING' AND locked_by = $4`,
     [id, providerMessageId, provider, leaseToken ?? null],
   );
   return (result.rowCount ?? 0) === 1;
@@ -97,9 +98,9 @@ export async function markOutboxRetryOrFailed(
   id: string,
   attemptCount: number,
   errorCode: string,
-  leaseToken?: string,
+  leaseToken: string,
 ): Promise<boolean> {
-  if (!postgres) return false;
+  if (!postgres || !leaseToken) return false;
 
   const maxAttempts = Number(config.EMAIL_MAX_ATTEMPTS) || 5;
 
@@ -113,7 +114,7 @@ export async function markOutboxRetryOrFailed(
            locked_by = NULL,
            updated_at = clock_timestamp()
        WHERE id = $1
-         AND ($3::text IS NULL OR (status = 'PROCESSING' AND locked_by = $3))`,
+         AND status = 'PROCESSING' AND locked_by = $3`,
       [id, errorCode, leaseToken ?? null],
     );
     return (result.rowCount ?? 0) === 1;
@@ -129,7 +130,7 @@ export async function markOutboxRetryOrFailed(
            locked_by = NULL,
            updated_at = clock_timestamp()
        WHERE id = $1
-         AND ($4::text IS NULL OR (status = 'PROCESSING' AND locked_by = $4))`,
+         AND status = 'PROCESSING' AND locked_by = $4`,
       [id, errorCode, delayMs, leaseToken ?? null],
     );
     return (result.rowCount ?? 0) === 1;
@@ -141,8 +142,8 @@ export async function markOutboxRetryOrFailed(
  * Sets outbox row status = FAILED and last_error_code = RECIPIENT_SUPPRESSED.
  * Does NOT consume retry attempts or retry the job.
  */
-export async function markOutboxSuppressed(id: string, leaseToken?: string): Promise<boolean> {
-  if (!postgres) return false;
+export async function markOutboxSuppressed(id: string, leaseToken: string): Promise<boolean> {
+  if (!postgres || !leaseToken) return false;
 
   const result = await postgres.query(
     `UPDATE public.email_outbox
@@ -153,7 +154,7 @@ export async function markOutboxSuppressed(id: string, leaseToken?: string): Pro
          locked_by = NULL,
          updated_at = clock_timestamp()
      WHERE id = $1
-       AND ($2::text IS NULL OR (status = 'PROCESSING' AND locked_by = $2))`,
+       AND status = 'PROCESSING' AND locked_by = $2`,
     [id, leaseToken ?? null],
   );
   return (result.rowCount ?? 0) === 1;
@@ -163,15 +164,15 @@ export async function markOutboxSuppressed(id: string, leaseToken?: string): Pro
  * NOTIFY-004: Record dispatch started immediately before calling external provider.
  * Protects against ambiguous crashes mid-dispatch.
  */
-export async function recordDispatchStarted(id: string, leaseToken?: string): Promise<boolean> {
-  if (!postgres || !id) return false;
+export async function recordDispatchStarted(id: string, leaseToken: string): Promise<boolean> {
+  if (!postgres || !id || !leaseToken) return false;
 
   const result = await postgres.query(
     `UPDATE public.email_outbox
      SET dispatch_started_at = clock_timestamp(),
          updated_at = clock_timestamp()
      WHERE id = $1
-       AND ($2::text IS NULL OR (status = 'PROCESSING' AND locked_by = $2))`,
+       AND status = 'PROCESSING' AND locked_by = $2`,
     [id, leaseToken ?? null],
   );
   return (result.rowCount ?? 0) === 1;
