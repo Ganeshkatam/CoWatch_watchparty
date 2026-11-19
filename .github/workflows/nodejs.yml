@@ -29,6 +29,12 @@ jobs:
         env:
           CI: true
           NODE_ENV: production
+      - name: Verify standalone email service
+        run: |
+          npm run typecheckEmailService
+          npm run test:email-service
+          npm run test:email-service-api
+          npm run test:duplicate-signup-security
       - name: Push to remote
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
