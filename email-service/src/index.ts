@@ -40,9 +40,9 @@ async function main(): Promise<void> {
     if (shutdown) return shutdown;
     shutdown = (async () => {
       console.log('[EmailService] Graceful shutdown started');
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       await workerStop();
       await providers.close();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
       console.log('[EmailService] Shutdown complete');
     })();
     return shutdown;
