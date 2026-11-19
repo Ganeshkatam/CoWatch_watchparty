@@ -109,8 +109,6 @@ export class SMTPEmailProvider implements EmailProvider {
     this.transporter = undefined;
   }
 
-  async close(): Promise<void> {}
-
   classifyError(error: unknown): EmailProviderError {
     if (error instanceof EmailProviderError) return error;
     const value = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
@@ -183,6 +181,8 @@ export class BrevoEmailProvider implements EmailProvider {
       throw new EmailProviderError('Brevo API key is required in production', 'BREVO_CONFIG_MISSING_API_KEY', false);
     }
   }
+
+  async close(): Promise<void> {}
 
   classifyError(error: unknown): EmailProviderError {
     if (error instanceof EmailProviderError) return error;
