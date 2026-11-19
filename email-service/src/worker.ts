@@ -26,7 +26,7 @@ async function processJob(job: EmailJob, dependencies: EmailWorkerDependencies):
   const profileId = job.deliveryProfile as DeliveryProfileId;
   let rendered: ReturnType<typeof renderEmailTemplate>;
   try {
-    rendered = renderEmailTemplate(job.templateKey, job.payload);
+    rendered = renderEmailTemplate(job.templateKey, job.payload, dependencies.config.nodeEnv);
   } catch {
     await dependencies.api.markFailed(job, 'INVALID_TEMPLATE_PAYLOAD', false);
     return;
