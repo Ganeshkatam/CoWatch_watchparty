@@ -52,6 +52,7 @@ function dependencies(
     providers: {
       getProviderForProfile: (profile) => ({
         name: 'provider-' + profile,
+        providerId: 'brevo' as const,
         verifyConfiguration: async () => {},
         send: async (message) => {
           sends.push(profile + ':' + message.to);
@@ -92,6 +93,7 @@ test('provider failure is classified and reported for retry', async () => {
   const state = dependencies([job('4', 'transactional_default')]);
   state.deps.providers.getProviderForProfile = () => ({
     name: 'mock',
+    providerId: 'smtp' as const,
     verifyConfiguration: async () => {},
     send: async () => { throw new EmailProviderError('temporary', 'TEMPORARY', true); },
     classifyError: (error) => error instanceof EmailProviderError
