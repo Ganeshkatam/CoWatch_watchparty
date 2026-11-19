@@ -12,7 +12,7 @@ test('remote worker API authenticates requests and fences stale leases', async (
   const gateway: EmailServiceGatewayContract = {
     claimJobs: async (batchSize, workerId) => {
       calls.push('claim:' + batchSize + ':' + workerId);
-      return [{ id: 'job-1' }];
+      return [{ id: '00000000-0000-4000-8000-000000000001' }];
     },
     markDispatchStarted: async (_id, token) => token === 'valid-lease',
     markSent: async (_id, token) => token === 'valid-lease',
@@ -45,10 +45,10 @@ test('remote worker API authenticates requests and fences stale leases', async (
       body: JSON.stringify({ workerId: 'worker-a', batchSize: 2 }),
     });
     assert.equal(claimed.status, 200);
-    assert.deepEqual(await claimed.json(), { jobs: [{ id: 'job-1' }] });
+    assert.deepEqual(await claimed.json(), { jobs: [{ id: '00000000-0000-4000-8000-000000000001' }] });
     assert.deepEqual(calls, ['claim:2:worker-a']);
 
-    const stale = await fetch(baseUrl + '/internal/email/jobs/job-1/sent', {
+    const stale = await fetch(baseUrl + '/internal/email/jobs/00000000-0000-4000-8000-000000000001/sent', {
       method: 'POST',
       headers: {
         authorization: 'Bearer ' + config.EMAIL_SERVICE_WORKER_SECRET,
@@ -60,7 +60,7 @@ test('remote worker API authenticates requests and fences stale leases', async (
     });
     assert.equal(stale.status, 409);
 
-    const valid = await fetch(baseUrl + '/internal/email/jobs/job-1/sent', {
+    const valid = await fetch(baseUrl + '/internal/email/jobs/00000000-0000-4000-8000-000000000001/sent', {
       method: 'POST',
       headers: {
         authorization: 'Bearer ' + config.EMAIL_SERVICE_WORKER_SECRET,
