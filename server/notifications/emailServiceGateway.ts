@@ -1,7 +1,10 @@
-import { Pool } from 'pg';
 import config from '../config.ts';
 import { computeEmailHash } from './suppression.ts';
 import { postgres as defaultPostgres } from '../utils/postgres.ts';
+
+export interface EmailServiceDatabase {
+  query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }>;
+}
 
 export interface EmailServiceJob {
   id: string;
@@ -26,9 +29,9 @@ interface OutboxRow {
 }
 
 export class EmailServiceGateway {
-  private readonly db: Pool;
+  private readonly db: EmailServiceDatabase;
 
-  constructor(database: Pool | undefined = defaultPostgres) {
+  constructor(database: EmailServiceDatabase | undefined = defaultPostgres) {
     if (!database) throw new Error('DATABASE_UNAVAILABLE');
     this.db = database;
   }
