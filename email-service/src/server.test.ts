@@ -6,7 +6,7 @@ import { createEmailServiceServer } from './server.ts';
 
 const config: EmailServiceConfig = {
   nodeEnv: 'test', host: '127.0.0.1', port: 0, appUrl: 'https://cowatch.example',
-  cowatchApiUrl: 'https://api.cowatch.example', cowatchApiSecret: 'x'.repeat(32),
+  hostApiUrl: 'https://api.cowatch.example', hostApiSecret: 'x'.repeat(32),
   serviceApiSecret: 'y'.repeat(32), workerIntervalMs: 15000, workerBatchSize: 10,
   workerConcurrency: 5, defaultProvider: 'smtp',
   fromAddress: 'noreply@cowatch.example', fromName: 'CoWatch',
