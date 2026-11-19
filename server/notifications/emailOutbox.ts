@@ -124,7 +124,7 @@ export async function markOutboxRetryOrFailed(
     return (result.rowCount ?? 0) === 1;
   } else {
     const delayMs = getRetryDelay(attemptCount);
-    const result = await postgres.query(
+    const result = await database.query(
       `UPDATE public.email_outbox
        SET status = 'RETRY',
            last_error_code = $2,
