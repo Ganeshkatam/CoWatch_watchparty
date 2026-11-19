@@ -1,0 +1,22 @@
+{
+  "name": "@cowatch/email-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.x" },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "nodemailer": "10.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.1",
+    "@types/nodemailer": "8.0.1",
+    "tsx": "4.23.11",
+    "typescript": "5.9.3"
+  }
+}
