@@ -56,7 +56,7 @@ function dependencies(
         verifyConfiguration: async () => {},
         send: async (message) => {
           sends.push(profile + ':' + message.to);
-          return { accepted: true, provider: 'provider-' + profile, providerMessageId: 'msg-' + profile };
+          return { accepted: true, provider: 'brevo', providerMessageId: 'msg-' + profile };
         },
         classifyError: (error) => error instanceof EmailProviderError
           ? error
