@@ -289,8 +289,8 @@ export class EmailProviderRegistry {
       'transactional_invitation',
       'transactional_system',
     ];
-    for (const profile of profiles) unique.add(this.getProviderForProfile(profile));
     try {
+      for (const profile of profiles) unique.add(this.getProviderForProfile(profile));
       for (const provider of unique) await provider.verifyConfiguration();
     } catch (error) {
       await this.close();
