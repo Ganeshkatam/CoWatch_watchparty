@@ -23,7 +23,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.20.0
+          node-version: 24.22.3
       - run: npm ci
       - name: Verify standalone email service package
         working-directory: email-service
