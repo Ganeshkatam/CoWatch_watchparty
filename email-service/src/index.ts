@@ -12,13 +12,6 @@ async function main(): Promise<void> {
   await providers.validateConfiguredProviders();
 
   const api = new CoWatchApiClient(config);
-  const workerStop = startEmailWorker({
-    api,
-    providers,
-    config,
-    workerId: 'email-service-' + randomUUID(),
-  });
-
   const server = createEmailServiceServer(config, providers);
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -28,6 +21,12 @@ async function main(): Promise<void> {
     });
   });
 
+  const workerStop = startEmailWorker({
+    api,
+    providers,
+    config,
+    workerId: 'email-service-' + randomUUID(),
+  });
   console.log('[EmailService] Listening on ' + config.host + ':' + config.port);
 
   let shutdown: Promise<void> | undefined;
