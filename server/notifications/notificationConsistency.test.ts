@@ -17,10 +17,9 @@ import {
   type EmailEligibleType,
 } from './notificationTypes.ts';
 import {
-  EMAIL_TEMPLATES,
   REGISTERED_TEMPLATE_KEYS,
   renderEmailTemplate,
-} from './emailTemplates.ts';
+} from '../../email-service/src/templates.ts';
 import { evaluateDelivery } from './notificationPolicy.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -176,7 +175,7 @@ async function runConsistencyTests() {
 
   for (const rawType of EMAIL_ELIGIBLE_TYPES) {
     const type = rawType as EmailEligibleType;
-    const rendered = renderEmailTemplate(type, payloads[type]);
+    const rendered = renderEmailTemplate(type, payloads[type], 'test');
     assert(rendered !== null, `Failed to render template for "${type}"`);
     assert(rendered.subject.length > 0, `Subject for "${type}" must not be empty`);
     assert(rendered.html.includes('<!DOCTYPE html>'), `HTML for "${type}" must be valid document`);
@@ -184,7 +183,7 @@ async function runConsistencyTests() {
 
     // Test normalized kebab-case key as well
     const kebabKey = type.toLowerCase().replace(/_/g, '-');
-    const renderedKebab = renderEmailTemplate(kebabKey, payloads[type]);
+    const renderedKebab = renderEmailTemplate(kebabKey, payloads[type], 'test');
     assert(renderedKebab !== null, `Failed to render template using kebab key "${kebabKey}"`);
   }
   console.log(`  PASSED: All templates rendered valid HTML, text, and subject headers`);
