@@ -31,8 +31,12 @@ export async function sendDuplicateSignupSecurityAlert(
     if (!serviceConfig.url || !serviceConfig.apiSecret) {
       throw new Error('EMAIL_SERVICE_NOT_CONFIGURED');
     }
+    const serviceBase = new URL(serviceConfig.url);
+    if (config.NODE_ENV === 'production' && serviceBase.protocol !== 'https:') {
+      throw new Error('EMAIL_SERVICE_REQUIRES_HTTPS');
+    }
     const response = await fetcher(
-      new URL('/internal/send/duplicate-signup-alert', serviceConfig.url),
+      new URL('/internal/send/duplicate-signup-alert', serviceBase),
       {
         method: 'POST',
         headers: {
