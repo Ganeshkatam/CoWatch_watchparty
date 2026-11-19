@@ -25,12 +25,15 @@ const FORBIDDEN_IMPORTS = [
 
 const PROTECTED_CORE_FILES = [
   'server/notifications/notificationService.ts',
-  'server/notifications/emailWorker.ts',
+  'server/notifications/emailServiceGateway.ts',
   'server/notifications/notificationRepository.ts',
   'server/notifications/notificationPolicy.ts',
   'server/notifications/deliveryStateService.ts',
   'server/room.ts',
   'server/server.ts',
+  'server/routes/emailServiceRouter.ts',
+  'email-service/src/worker.ts',
+  'email-service/src/apiClient.ts',
 ];
 
 async function runProviderLeakageTest(): Promise<void> {
