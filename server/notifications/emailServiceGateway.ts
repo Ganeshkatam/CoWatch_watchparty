@@ -39,7 +39,7 @@ export class EmailServiceGateway {
     const hashes = rows.map((row) => computeEmailHash(row.recipient_email));
     const { rows: suppressedRows } = hashes.length
       ? await this.db.query<{ email_hash: string }>(
-          'SELECT email_hash::text AS email_hash FROM public.email_delivery_suppressions WHERE email_hash::text = ANY($1::text[])',
+          'SELECT email_hash FROM public.email_delivery_suppressions WHERE email_hash = ANY($1::text[])',
           [hashes],
         )
       : { rows: [] as { email_hash: string }[] };
