@@ -80,7 +80,7 @@ export function createEmailServiceRouter(
     const body: unknown = req.body;
     if (!validId(id) || !isRecord(body) ||
         typeof body.leaseToken !== 'string' || body.leaseToken.length > 160 ||
-        typeof body.provider !== 'string' || !/^[a-zA-Z0-9:_-]{1,80}$/.test(body.provider) ||
+        (body.provider !== 'smtp' && body.provider !== 'brevo') ||
         typeof body.messageId !== 'string' || !body.messageId.trim() || body.messageId.length > 500) {
       res.status(400).json({ error: 'INVALID_SENT_REQUEST' });
       return;
