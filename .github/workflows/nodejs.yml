@@ -25,16 +25,16 @@ jobs:
         with:
           node-version: 24.20.0
       - run: npm ci
-      - run: npm run build --if-present
-        env:
-          CI: true
-          NODE_ENV: production
       - name: Verify standalone email service package
         working-directory: email-service
         run: |
           npm install --ignore-scripts
           npm run typecheck
           npm test
+      - run: npm run build --if-present
+        env:
+          CI: true
+          NODE_ENV: production
       - name: Verify CoWatch remote email integration
         run: |
           npm run test:email-service-api
