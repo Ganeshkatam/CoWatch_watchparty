@@ -118,7 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
   };
 
   for (const id of profileIds) {
-    if (!/^[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+$/.test(profileSenders[id])) {
+    if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(profileSenders[id])) {
       throw new Error('INVALID_CONFIGURATION:EMAIL_SENDER_' + id.toUpperCase());
     }
   }
