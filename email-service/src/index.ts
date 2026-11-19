@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { loadConfig, loadLocalEnv } from './config.ts';
-import { CoWatchApiClient } from './apiClient.ts';
+import { HostApiClient } from './apiClient.ts';
 import { EmailProviderRegistry } from './providers.ts';
 import { createEmailServiceServer } from './server.ts';
 import { startEmailWorker } from './worker.ts';
@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   loadLocalEnv();
   const config = loadConfig();
   const providers = new EmailProviderRegistry(config);
-  const api = new CoWatchApiClient(config);
+  const api = new HostApiClient(config);
   let server: ReturnType<typeof createEmailServiceServer>;
 
   try {
