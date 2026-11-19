@@ -12,8 +12,8 @@ export interface EmailServiceConfig {
   host: string;
   port: number;
   appUrl: string;
-  cowatchApiUrl: string;
-  cowatchApiSecret: string;
+  hostApiUrl: string;
+  hostApiSecret: string;
   serviceApiSecret: string;
   workerIntervalMs: number;
   workerBatchSize: number;
@@ -56,13 +56,13 @@ function requiredSecret(value: string | undefined, key: string): string {
 }
 
 function serviceUrl(value: string | undefined, nodeEnv: string): string {
-  if (!value) throw new Error('INVALID_CONFIGURATION:COWATCH_API_URL');
+  if (!value) throw new Error('INVALID_CONFIGURATION:HOST_API_URL');
   const parsed = new URL(value);
   if (nodeEnv === 'production' && parsed.protocol !== 'https:') {
-    throw new Error('INVALID_CONFIGURATION:COWATCH_API_URL_REQUIRES_HTTPS');
+    throw new Error('INVALID_CONFIGURATION:HOST_API_URL_REQUIRES_HTTPS');
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
-    throw new Error('INVALID_CONFIGURATION:COWATCH_API_URL_ORIGIN_ONLY');
+    throw new Error('INVALID_CONFIGURATION:HOST_API_URL_ORIGIN_ONLY');
   }
   return parsed.toString().replace(/\/$/, '');
 }
@@ -142,8 +142,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     host: env.HOST || '0.0.0.0',
     port: boundedInteger(env.PORT, 8090, 1, 65535, 'PORT'),
     appUrl: (env.APP_URL || '').replace(/\/+$/, ''),
-    cowatchApiUrl: serviceUrl(env.COWATCH_API_URL, nodeEnv),
-    cowatchApiSecret: requiredSecret(env.COWATCH_API_SECRET, 'COWATCH_API_SECRET'),
+    hostApiUrl: serviceUrl(env.HOST_API_URL, nodeEnv),
+    hostApiSecret: requiredSecret(env.HOST_API_SECRET, 'HOST_API_SECRET'),
     serviceApiSecret: requiredSecret(env.EMAIL_SERVICE_API_SECRET, 'EMAIL_SERVICE_API_SECRET'),
     workerIntervalMs: boundedInteger(env.EMAIL_WORKER_INTERVAL_MS, 15000, 1000, 300000, 'EMAIL_WORKER_INTERVAL_MS'),
     workerBatchSize: boundedInteger(env.EMAIL_WORKER_BATCH_SIZE, 10, 1, 50, 'EMAIL_WORKER_BATCH_SIZE'),
