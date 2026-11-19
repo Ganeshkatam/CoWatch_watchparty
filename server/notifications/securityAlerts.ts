@@ -28,7 +28,7 @@ export async function sendDuplicateSignupSecurityAlert(
   },
 ): Promise<EmailSendResult | null> {
   try {
-    if (!serviceConfig.url || !serviceConfig.apiSecret) {
+    if (!serviceConfig.url || !serviceConfig.apiSecret || serviceConfig.apiSecret.length < 32) {
       throw new Error('EMAIL_SERVICE_NOT_CONFIGURED');
     }
     const serviceBase = new URL(serviceConfig.url);
