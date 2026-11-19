@@ -13,7 +13,7 @@
     "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "nodemailer": "^10.5.0"
+    "nodemailer": "^8.0.7"
   },
   "devDependencies": {
     "@types/node": "25.0.1",
