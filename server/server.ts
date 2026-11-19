@@ -38,8 +38,6 @@ import { registerNotificationNamespace } from "./notifications/notificationSocke
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
-import { startEmailWorker, stopEmailWorker } from "./notifications/emailWorker.ts";
-import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
 
 
 export class ServerLifecycleManager {
@@ -108,12 +106,6 @@ export async function handleFatalError(
 
   // Immediately cancel all background intervals and background workers
   serverLifecycle.markShuttingDown();
-  try {
-    stopEmailWorker();
-  } catch (workerErr) {
-    console.error("[LIFECYCLE] Error stopping email worker:", workerErr);
-  }
-
   // Bounded failsafe timer: guarantee process termination within 4 seconds
   const failsafeTimer = setTimeout(() => {
     console.error("[LIFECYCLE] Graceful drain timed out; forcing exit");
