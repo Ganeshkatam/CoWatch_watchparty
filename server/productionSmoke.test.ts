@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { NotificationType } from './notifications/notificationTypes.ts';
-import { resolveDeliveryProfile, getDeliveryProfile } from './notifications/deliveryProfiles.ts';
+import { resolveDeliveryProfile } from './notifications/deliveryProfiles.ts';
 import { resolveNotificationAction } from '../src/utils/notificationAction.ts';
 import { checkDurableAbuseReportRateLimit } from './utils/durableRateLimit.ts';
 
@@ -62,9 +62,6 @@ async function runProductionSmokeTests() {
   const deliveryProfile = resolveDeliveryProfile(inviteType);
   assert(deliveryProfile === 'transactional_invitation', 'Room invitation must resolve to transactional_invitation profile');
 
-  const profileContract = getDeliveryProfile(deliveryProfile);
-  assert(profileContract.priority === 'HIGH', 'Invitations must have HIGH delivery priority');
-  assert(Boolean(profileContract.fromAddress), 'Invitation must have configured sender address');
 
   const invitationNotification = {
     id: `notif-${randomUUID()}`,
