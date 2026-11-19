@@ -11,31 +11,31 @@ export interface EmailJob {
   leaseToken: string;
 }
 
-export class CoWatchApiError extends Error {
+export class HostApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
-    this.name = 'CoWatchApiError';
+    this.name = 'HostApiError';
   }
 }
 
-export class CoWatchApiClient {
+export class HostApiClient {
   constructor(
-    private readonly config: Pick<EmailServiceConfig, 'cowatchApiUrl' | 'cowatchApiSecret'>,
+    private readonly config: Pick<EmailServiceConfig, 'hostApiUrl' | 'hostApiSecret'>,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
   private async post(path: string, body: unknown): Promise<unknown> {
-    const response = await this.fetcher(new URL(path, this.config.cowatchApiUrl), {
+    const response = await this.fetcher(new URL(path, this.config.hostApiUrl), {
       method: 'POST',
       headers: {
-        authorization: 'Bearer ' + this.config.cowatchApiSecret,
+        authorization: 'Bearer ' + this.config.hostApiSecret,
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok && response.status !== 204) {
-      throw new CoWatchApiError(response.status, 'COWATCH_API_REQUEST_FAILED');
+      throw new HostApiError(response.status, 'COWATCH_API_REQUEST_FAILED');
     }
     if (response.status === 204) return null;
     return response.json();
@@ -44,11 +44,11 @@ export class CoWatchApiClient {
   async claimJobs(workerId: string, batchSize: number): Promise<EmailJob[]> {
     const result = await this.post('/internal/email/jobs/claim', { workerId, batchSize });
     if (typeof result !== 'object' || result === null || !Array.isArray((result as Record<string, unknown>).jobs)) {
-      throw new CoWatchApiError(502, 'INVALID_CLAIM_RESPONSE');
+      throw new HostApiError(502, 'INVALID_CLAIM_RESPONSE');
     }
     const jobs: EmailJob[] = [];
     for (const item of (result as { jobs: unknown[] }).jobs) {
-      if (typeof item !== 'object' || item === null) throw new CoWatchApiError(502, 'INVALID_JOB');
+      if (typeof item !== 'object' || item === null) throw new HostApiError(502, 'INVALID_JOB');
       const job = item as Record<string, unknown>;
       if (typeof job.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(job.id) ||
           typeof job.recipientEmail !== 'string' || job.recipientEmail.length > 254 ||
@@ -59,7 +59,7 @@ export class CoWatchApiClient {
           typeof job.idempotencyKey !== 'string' || !job.idempotencyKey || job.idempotencyKey.length > 256 ||
           typeof job.leaseToken !== 'string' || !job.leaseToken || job.leaseToken.length > 160 ||
           typeof job.payload !== 'object' || job.payload === null || Array.isArray(job.payload)) {
-        throw new CoWatchApiError(502, 'INVALID_JOB');
+        throw new HostApiError(502, 'INVALID_JOB');
       }
       jobs.push(job as unknown as EmailJob);
     }
