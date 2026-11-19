@@ -32,14 +32,14 @@ function optionalText(payload: Payload, key: string, fallback = ''): string {
   return value;
 }
 
-function safeUrl(value: string): string {
+function safeUrl(value: string, nodeEnv = 'development'): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
     throw new Error('INVALID_TEMPLATE_URL');
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+  if (parsed.protocol !== 'https:' && !(nodeEnv !== 'production' && parsed.protocol === 'http:')) {
     throw new Error('INVALID_TEMPLATE_URL');
   }
   if (parsed.username || parsed.password) throw new Error('INVALID_TEMPLATE_URL');
@@ -63,13 +63,13 @@ function base(title: string, bodyHtml: string): string {
     '<a href="{{preferencesUrl}}" style="color:#6c63ff">Manage preferences</a>.</p></div></div></body></html>';
 }
 
-export function renderEmailTemplate(key: string, payload: Payload): RenderedEmail | null {
+export function renderEmailTemplate(key: string, payload: Payload, nodeEnv = 'development'): RenderedEmail | null {
   const normalized = key.toUpperCase().replace(/-/g, '_');
   switch (normalized) {
     case 'ROOM_INVITATION': {
       const roomTitle = requiredText(payload, 'roomTitle', 200);
       const inviterName = requiredText(payload, 'inviterName', 100);
-      const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048));
+      const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048), nodeEnv);
       const userName = optionalText(payload, 'userName', '');
       return {
         subject: 'You\'ve been invited to join "' + escapeHtml(roomTitle) + '"',
@@ -98,7 +98,7 @@ export function renderEmailTemplate(key: string, payload: Payload): RenderedEmai
       const body = requiredText(payload, 'body');
       const ctaUrl = optionalText(payload, 'ctaUrl');
       const ctaLabel = optionalText(payload, 'ctaLabel', 'Learn more');
-      const safeCta = ctaUrl ? safeUrl(ctaUrl) : '';
+      const safeCta = ctaUrl ? safeUrl(ctaUrl, nodeEnv) : '';
       return {
         subject,
         html: base(title, '<p>' + escapeHtml(body) + '</p>' +
@@ -120,7 +120,7 @@ export function renderDuplicateSignupSecurityAlert(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     throw new Error('INVALID_SECURITY_ALERT_EMAIL');
   }
-  const appUrl = safeUrl(config.appUrl);
+  const appUrl = safeUrl(config.appUrl, config.nodeEnv);
   const loginUrl = appUrl + '/login';
   const resetUrl = appUrl + '/reset-password';
   const subject = 'Security Notice: Attempted sign up with your email address';
@@ -148,3 +148,9 @@ export function renderDuplicateSignupSecurityAlert(
     '\nReset password: ' + resetUrl + '\n\nIf you did not make this request, you can safely ignore this email.';
   return { subject, html, text };
 }
+
+export const REGISTERED_TEMPLATE_KEYS = new Set([
+  'ROOM_INVITATION',
+  'ROOM_STARTED',
+  'SYSTEM_ANNOUNCEMENT',
+]);
