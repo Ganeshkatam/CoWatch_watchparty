@@ -24,8 +24,11 @@ export interface EmailServiceJob {
 }
 
 export class EmailServiceGateway {
-  constructor(private readonly db: Pool | undefined = defaultPostgres) {
-    if (!db) throw new Error('DATABASE_UNAVAILABLE');
+  private readonly db: Pool;
+
+  constructor(database: Pool | undefined = defaultPostgres) {
+    if (!database) throw new Error('DATABASE_UNAVAILABLE');
+    this.db = database;
   }
 
   async claimJobs(batchSize: number, workerId: string): Promise<EmailServiceJob[]> {
@@ -66,7 +69,7 @@ export class EmailServiceGateway {
   }
 
   async markFailed(id: string, leaseToken: string, errorCode: string, retryable: boolean): Promise<boolean> {
-    const { rows } = await this.db!.query<{ attempt_count: number }>(
+    const { rows } = await this.db.query<{ attempt_count: number }>(
       `SELECT attempt_count FROM public.email_outbox
        WHERE id = $1 AND status = 'PROCESSING' AND locked_by = $2`,
       [id, leaseToken],
