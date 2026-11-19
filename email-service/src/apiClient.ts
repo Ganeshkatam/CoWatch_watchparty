@@ -50,11 +50,15 @@ export class CoWatchApiClient {
     for (const item of (result as { jobs: unknown[] }).jobs) {
       if (typeof item !== 'object' || item === null) throw new CoWatchApiError(502, 'INVALID_JOB');
       const job = item as Record<string, unknown>;
-      if (typeof job.id !== 'string' || typeof job.recipientEmail !== 'string' ||
-          typeof job.templateKey !== 'string' || typeof job.deliveryProfile !== 'string' ||
-          typeof job.attemptCount !== 'number' || typeof job.idempotencyKey !== 'string' ||
-          typeof job.leaseToken !== 'string' || typeof job.payload !== 'object' ||
-          job.payload === null || Array.isArray(job.payload)) {
+      if (typeof job.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(job.id) ||
+          typeof job.recipientEmail !== 'string' || job.recipientEmail.length > 254 ||
+          !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(job.recipientEmail) ||
+          typeof job.templateKey !== 'string' || job.templateKey.length > 100 ||
+          typeof job.deliveryProfile !== 'string' ||
+          typeof job.attemptCount !== 'number' || !Number.isInteger(job.attemptCount) || job.attemptCount < 1 ||
+          typeof job.idempotencyKey !== 'string' || !job.idempotencyKey || job.idempotencyKey.length > 256 ||
+          typeof job.leaseToken !== 'string' || !job.leaseToken || job.leaseToken.length > 160 ||
+          typeof job.payload !== 'object' || job.payload === null || Array.isArray(job.payload)) {
         throw new CoWatchApiError(502, 'INVALID_JOB');
       }
       jobs.push(job as unknown as EmailJob);
