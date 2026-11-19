@@ -19,6 +19,7 @@ export interface EmailSendResult {
 
 export interface EmailProvider {
   readonly name: string;
+  readonly providerId: 'smtp' | 'brevo';
   verifyConfiguration(): Promise<void>;
   send(message: EmailMessage): Promise<EmailSendResult>;
   classifyError(error: unknown): EmailProviderError;
@@ -61,6 +62,7 @@ export function getDeliveryProfile(
 
 export class SMTPEmailProvider implements EmailProvider {
   readonly name: string;
+  readonly providerId = 'smtp' as const;
   private transporter: Transporter | undefined;
 
   constructor(private readonly config: EmailServiceConfig, name = 'smtp', transporter?: Transporter) {
@@ -132,7 +134,7 @@ export class SMTPEmailProvider implements EmailProvider {
       }
       return {
         accepted: true,
-        provider: this.name,
+        provider: this.providerId,
         providerMessageId: 'dry-run:smtp:' + message.idempotencyKey,
       };
     }
@@ -158,6 +160,7 @@ export class SMTPEmailProvider implements EmailProvider {
 
 export class BrevoEmailProvider implements EmailProvider {
   readonly name: string;
+  readonly providerId = 'brevo' as const;
 
   constructor(
     private readonly config: EmailServiceConfig,
