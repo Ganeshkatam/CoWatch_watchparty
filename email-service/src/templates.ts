@@ -120,7 +120,7 @@ export function renderDuplicateSignupSecurityAlert(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     throw new Error('INVALID_SECURITY_ALERT_EMAIL');
   }
-  const appUrl = safeUrl(config.appUrl, config.nodeEnv);
+  const appUrl = safeUrl(config.appUrl, config.nodeEnv).replace(/\/+$/, '');
   const loginUrl = appUrl + '/login';
   const resetUrl = appUrl + '/reset-password';
   const subject = 'Security Notice: Attempted sign up with your email address';
