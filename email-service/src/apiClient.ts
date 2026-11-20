@@ -56,7 +56,7 @@ export class HostApiClient {
           typeof job.templateKey !== 'string' || job.templateKey.length > 100 ||
           typeof job.deliveryProfile !== 'string' ||
           typeof job.attemptCount !== 'number' || !Number.isInteger(job.attemptCount) || job.attemptCount < 1 ||
-          typeof job.idempotencyKey !== 'string' || !job.idempotencyKey || job.idempotencyKey.length > 256 ||
+          typeof job.idempotencyKey !== 'string' || !/^[a-zA-Z0-9._:-]{1,256}$/.test(job.idempotencyKey) ||
           typeof job.leaseToken !== 'string' || !job.leaseToken || job.leaseToken.length > 160 ||
           typeof job.payload !== 'object' || job.payload === null || Array.isArray(job.payload)) {
         throw new HostApiError(502, 'INVALID_JOB');
