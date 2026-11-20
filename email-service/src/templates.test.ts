@@ -32,6 +32,7 @@ test('room invitation escapes user content and rejects unsafe URLs', () => {
   assert.ok(rendered);
   assert.ok(!rendered.html.includes('<script>'));
   assert.ok(rendered.html.includes('&lt;script&gt;'));
+  assert.ok(!rendered.html.includes('{{preferencesUrl}}'));
   assert.throws(() => renderEmailTemplate('ROOM_INVITATION', {
     roomTitle: 'Room', inviterName: 'Alice', roomUrl: 'javascript:alert(1)',
   }), /INVALID_TEMPLATE_URL/);
@@ -53,4 +54,10 @@ test('duplicate signup alert contains safe links and no account confirmation lin
   assert.ok(rendered.html.includes('https://cowatch.example/reset-password'));
   assert.ok(!rendered.html.toLowerCase().includes('confirm your account'));
   assert.ok(rendered.text.includes('person@example.com'));
+});
+
+test('room-started template rejects insecure URLs in production', () => {
+  assert.throws(() => renderEmailTemplate('ROOM_STARTED', {
+    roomTitle: 'Room', roomUrl: 'http://cowatch.example/room/1',
+  }, 'production'), /INVALID_TEMPLATE_URL/);
 });
