@@ -137,7 +137,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     nodeEnv,
     host: env.HOST || '0.0.0.0',
     port: boundedInteger(env.PORT, 8090, 1, 65535, 'PORT'),
-    appUrl: (env.APP_URL || '').replace(/\/+$/, ''),
+    appUrl: appBaseUrl(env.APP_URL, nodeEnv),
     hostApiUrl: serviceUrl(env.HOST_API_URL, nodeEnv),
     hostApiSecret: requiredSecret(env.HOST_API_SECRET, 'HOST_API_SECRET'),
     serviceApiSecret: requiredSecret(env.EMAIL_SERVICE_API_SECRET, 'EMAIL_SERVICE_API_SECRET'),
