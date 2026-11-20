@@ -105,7 +105,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     transactional_system: env.EMAIL_PROFILE_SYSTEM_SENDER || '',
   };
   const bindings = Object.values(profileBindings);
-  if (new Set(bindings).size !== profileIds.length) {
+  if (new Set(bindings.map((binding) => binding.toLowerCase())).size !== profileIds.length) {
     throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_BINDINGS_MUST_BE_UNIQUE');
   }
   const bindingProviders: Record<string, string> = {};
