@@ -1,0 +1,39 @@
+name: Build release branch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-build
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          CI: true
+          NODE_ENV: production
+      - name: Publish built assets to release
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release
+          sed -i '/^\/build$/d' .gitignore
+          git add .gitignore
+          git add -f build
+          git commit --quiet -m "Built from ${GITHUB_SHA}" || echo "No changes to commit"
+          git push origin release -f
