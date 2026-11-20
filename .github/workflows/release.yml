@@ -1,7 +1,9 @@
 name: Build release branch
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Node.js CI"]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -13,10 +15,12 @@ concurrency:
 
 jobs:
   build-and-publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: true
       - uses: actions/setup-node@v4
         with:
