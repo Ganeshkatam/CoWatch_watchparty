@@ -109,8 +109,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
   const brevoKeys: Record<string, string> = {};
   for (const binding of bindings) {
     const suffix = binding.toUpperCase();
+    const keySuffix = binding === 'invitation' ? 'INVITATIONS' : suffix;
     bindingProviders[binding] = env['EMAIL_BINDING_' + suffix + '_PROVIDER'] || '';
-    brevoKeys[binding] = env['BREVO_API_KEY_' + suffix] || env.BREVO_API_KEY || '';
+    brevoKeys[binding] = env['BREVO_API_KEY_' + keySuffix] || env.BREVO_API_KEY || '';
   }
 
   for (const id of profileIds) {
