@@ -60,7 +60,7 @@ function base(title: string, bodyHtml: string): string {
     '<div class="wrapper"><div class="header"><h1>CoWatch</h1></div>' +
     '<div class="body">' + bodyHtml + '</div>' +
     '<div class="footer"><p>You\'re receiving this because you have notifications enabled. ' +
-    '<a href="{{preferencesUrl}}" style="color:#6c63ff">Manage preferences</a>.</p></div></div></body></html>';
+    '</p></div></div></body></html>';
 }
 
 export function renderEmailTemplate(key: string, payload: Payload, nodeEnv = 'development'): RenderedEmail | null {
