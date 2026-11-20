@@ -15,7 +15,10 @@ const baseEnv: NodeJS.ProcessEnv = {
   HOST_API_URL: 'https://api.cowatch.example',
   HOST_API_SECRET: 'c'.repeat(40),
   EMAIL_SERVICE_API_SECRET: 'e'.repeat(40),
-  EMAIL_FROM_ADDRESS: 'noreply@cowatch.example',
+  EMAIL_FROM_ADDRESS: 'accounts@cowatch.example',
+  EMAIL_PROFILE_INVITATION_SENDER: 'invitations@cowatch.example',
+  EMAIL_PROFILE_SECURITY_SENDER: 'security@cowatch.example',
+  EMAIL_PROFILE_SYSTEM_SENDER: 'notifications@cowatch.example',
   EMAIL_FROM_NAME: 'CoWatch',
 };
 
@@ -108,4 +111,30 @@ test('custom profile bindings resolve matching provider and credentials', () => 
   const provider = new EmailProviderRegistry(config).getProviderForProfile('transactional_security');
   assert.equal(provider.providerId, 'brevo');
   assert.equal(provider.name, 'brevo:alerts');
+});
+
+test('each Brevo delivery profile uses only its own account credentials', () => {
+  const config = loadConfig({
+    ...baseEnv,
+    EMAIL_PROVIDER: 'brevo',
+    BREVO_API_KEY: 'default-account-key',
+    BREVO_API_KEY_INVITATIONS: 'invitation-account-key',
+    BREVO_API_KEY_SECURITY: 'security-account-key',
+    BREVO_API_KEY_SYSTEM: 'system-account-key',
+  });
+  const registry = new EmailProviderRegistry(config);
+  const profiles = [
+    'transactional_default',
+    'transactional_invitation',
+    'transactional_security',
+    'transactional_system',
+  ] as const;
+  const providers = profiles.map((profile) => registry.getProviderForProfile(profile));
+  assert.deepEqual(providers.map((provider) => provider.name), [
+    'brevo:default',
+    'brevo:invitation',
+    'brevo:security',
+    'brevo:system',
+  ]);
+  assert.equal(new Set(providers).size, 4);
 });
