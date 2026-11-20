@@ -97,3 +97,15 @@ test('provider failures retain typed retry semantics', () => {
   assert.equal(error.code, 'TEMPORARY');
   assert.equal(error.retryable, true);
 });
+
+test('custom profile bindings resolve matching provider and credentials', () => {
+  const config = loadConfig({
+    ...baseEnv,
+    EMAIL_PROFILE_SECURITY_BINDING: 'alerts',
+    EMAIL_BINDING_ALERTS_PROVIDER: 'brevo',
+    BREVO_API_KEY_ALERTS: 'alerts-api-key',
+  });
+  const provider = new EmailProviderRegistry(config).getProviderForProfile('transactional_security');
+  assert.equal(provider.providerId, 'brevo');
+  assert.equal(provider.name, 'brevo:alerts');
+});
