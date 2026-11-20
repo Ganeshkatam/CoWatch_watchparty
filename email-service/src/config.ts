@@ -100,18 +100,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
   };
   const profileSenders: Record<DeliveryProfileId, string> = {
     transactional_default: env.EMAIL_FROM_ADDRESS || '',
-    transactional_security: env.EMAIL_PROFILE_SECURITY_SENDER || env.EMAIL_FROM_ADDRESS || '',
-    transactional_invitation: env.EMAIL_PROFILE_INVITATION_SENDER || env.EMAIL_FROM_ADDRESS || '',
-    transactional_system: env.EMAIL_PROFILE_SYSTEM_SENDER || env.EMAIL_FROM_ADDRESS || '',
+    transactional_security: env.EMAIL_PROFILE_SECURITY_SENDER || '',
+    transactional_invitation: env.EMAIL_PROFILE_INVITATION_SENDER || '',
+    transactional_system: env.EMAIL_PROFILE_SYSTEM_SENDER || '',
   };
-  const bindings = new Set(['default', ...Object.values(profileBindings)]);
+  const bindings = Object.values(profileBindings);
+  if (new Set(bindings.map((binding) => binding.toLowerCase())).size !== profileIds.length) {
+    throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_BINDINGS_MUST_BE_UNIQUE');
+  }
   const bindingProviders: Record<string, string> = {};
   const brevoKeys: Record<string, string> = {};
-  for (const binding of bindings) {
+  const keyEnvByProfile: Record<DeliveryProfileId, string> = {
+    transactional_default: 'BREVO_API_KEY',
+    transactional_security: 'BREVO_API_KEY_SECURITY',
+    transactional_invitation: 'BREVO_API_KEY_INVITATIONS',
+    transactional_system: 'BREVO_API_KEY_SYSTEM',
+  };
+  for (const id of profileIds) {
+    const binding = profileBindings[id];
     const suffix = binding.toUpperCase();
-    const keySuffix = binding === 'invitation' ? 'INVITATIONS' : suffix;
-    bindingProviders[binding] = env['EMAIL_BINDING_' + suffix + '_PROVIDER'] || '';
-    brevoKeys[binding] = env['BREVO_API_KEY_' + keySuffix] || env.BREVO_API_KEY || '';
+    const providerName = (env['EMAIL_BINDING_' + suffix + '_PROVIDER'] || provider).toLowerCase();
+    if (providerName !== 'smtp' && providerName !== 'brevo') {
+      throw new Error('INVALID_CONFIGURATION:EMAIL_BINDING_PROVIDER');
+    }
+    bindingProviders[binding] = providerName;
+    brevoKeys[binding] = env[keyEnvByProfile[id]]?.trim() || '';
+    if (providerName === 'brevo' && !brevoKeys[binding]) {
+      throw new Error('INVALID_CONFIGURATION:' + keyEnvByProfile[id]);
+    }
   }
 
   for (const id of profileIds) {
@@ -119,14 +135,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
       throw new Error('INVALID_CONFIGURATION:EMAIL_SENDER_' + id.toUpperCase());
     }
   }
-
-  for (const binding of Object.values(profileBindings)) {
-    if (!/^[a-zA-Z0-9_-]{1,32}$/.test(binding)) throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_BINDING');
+  if (new Set(profileIds.map((id) => profileSenders[id].toLowerCase())).size !== profileIds.length) {
+    throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_SENDERS_MUST_BE_UNIQUE');
   }
-  for (const providerName of Object.values(bindingProviders)) {
-    if (providerName && providerName !== 'smtp' && providerName !== 'brevo') {
-      throw new Error('INVALID_CONFIGURATION:EMAIL_BINDING_PROVIDER');
-    }
+  const brevoAccountKeys = profileIds
+    .filter((id) => bindingProviders[profileBindings[id]] === 'brevo')
+    .map((id) => brevoKeys[profileBindings[id]]);
+  if (new Set(brevoAccountKeys).size !== brevoAccountKeys.length) {
+    throw new Error('INVALID_CONFIGURATION:BREVO_API_KEYS_MUST_BE_UNIQUE');
+  }
+
+  for (const binding of bindings) {
+    if (!/^[a-zA-Z0-9_-]{1,32}$/.test(binding)) throw new Error('INVALID_CONFIGURATION:EMAIL_PROFILE_BINDING');
   }
   const smtpPort = boundedInteger(env.EMAIL_SMTP_PORT, 587, 1, 65535, 'EMAIL_SMTP_PORT');
   const fromName = env.EMAIL_FROM_NAME || 'CoWatch';

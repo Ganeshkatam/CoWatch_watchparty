@@ -172,6 +172,7 @@ export class BrevoEmailProvider implements EmailProvider {
     private readonly config: EmailServiceConfig,
     name: string,
     private readonly apiKey: string,
+    private readonly fetcher: typeof fetch = fetch,
   ) {
     this.name = name;
   }
@@ -225,7 +226,7 @@ export class BrevoEmailProvider implements EmailProvider {
     };
 
     try {
-      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      const response = await this.fetcher('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
           'api-key': this.apiKey,
@@ -255,7 +256,7 @@ export class BrevoEmailProvider implements EmailProvider {
 export class EmailProviderRegistry {
   private readonly providers = new Map<string, EmailProvider>();
 
-  constructor(private readonly config: EmailServiceConfig) {}
+  constructor(private readonly config: EmailServiceConfig, private readonly fetcher: typeof fetch = fetch) {}
 
   getProviderForProfile(profileId: DeliveryProfileId): EmailProvider {
     const binding = this.config.profileBindings[profileId];
@@ -268,7 +269,9 @@ export class EmailProviderRegistry {
     if (providerName === 'smtp') {
       provider = new SMTPEmailProvider(this.config);
     } else if (providerName === 'brevo') {
-      provider = new BrevoEmailProvider(this.config, key, this.config.brevoKeys[binding] || this.config.brevoKeys.default);
+      const apiKey = this.config.brevoKeys[binding];
+      if (!apiKey) throw new EmailProviderError('Brevo account credentials are missing for this delivery profile', 'BREVO_PROFILE_CREDENTIALS_MISSING', false);
+      provider = new BrevoEmailProvider(this.config, key, apiKey, this.fetcher);
     } else {
       throw new EmailProviderError('Unsupported email provider binding', 'UNSUPPORTED_EMAIL_PROVIDER', false);
     }
