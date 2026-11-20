@@ -83,7 +83,7 @@ export function renderEmailTemplate(key: string, payload: Payload, nodeEnv = 'de
     }
     case 'ROOM_STARTED': {
       const roomTitle = requiredText(payload, 'roomTitle', 200);
-      const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048));
+      const roomUrl = safeUrl(requiredText(payload, 'roomUrl', 2048), nodeEnv);
       return {
         subject: '"' + escapeHtml(roomTitle) + '" is now live',
         html: base('Room Started',
