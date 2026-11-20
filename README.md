@@ -68,12 +68,11 @@ CoWatch is a private, real-time synchronized video streaming and collaborative w
 - **In-App Notification Center**: Slide-out notification drawer with live unread counter badges, WebSocket push updates, and persistent PostgreSQL storage.
 - **Canonical Action Contract**: Deterministic routing resolver (`open_room`, `join_room`, `go_home`, `dismiss`) guaranteeing safe user navigation across expired sessions and moderation actions.
 - **Direct Username Invitations**: Authoritative server-side dispatch (`POST /api/notifications/invite`) with caller authorization, anti-enumeration safeguards, and rate limiting.
-- **Provider-Agnostic Transactional Email Engine**: Pluggable email delivery subsystem with adapters for:
-  - **Brevo (Sendinblue)**: API-based delivery and status tracking.
-  - **Generic SMTP**: Compatible with Mailtrap, Ethereal, Amazon SES, Postmark, and Gmail.
-  - **Resend**: Modern email API with cryptographic Svix webhook verification.
-- **Durable PostgreSQL Outbox**: Atomic row leasing via `FOR UPDATE SKIP LOCKED`, exponential backoff retry scheduling, stalled-lease reclamation, and SHA-256 hashed privacy suppressions.
-- **Zero-Credential Dry Run**: Built-in development simulation mode for local testing without external credentials.
+- **Remote Standalone Email Service**: SMTP and Brevo adapters run in the independently deployed `email-service/` process.
+- **Durable PostgreSQL Outbox**: CoWatch atomically creates notification and email-outbox records, then exposes lease-fenced claim and acknowledgement operations over authenticated HTTPS.
+- **Delivery Reliability**: Per-job leases, bounded worker concurrency, retry scheduling, stalled-lease recovery, and SHA-256 hashed recipient suppression.
+- **Credential Isolation**: Provider credentials and sender identities exist only in the remote email-service environment; CoWatch retains webhook signing secrets and delivery state.
+- **Development Dry Run**: The remote service can simulate provider acceptance in non-production environments without external credentials.
 
 ### 9. Multi-Tier Distributed Redis Architecture
 - **Flexible Configuration**: Supports single-instance Redis for local development or a 3-tier distributed cluster in production:
@@ -100,7 +99,7 @@ CoWatch is a private, real-time synchronized video streaming and collaborative w
 - **WebSockets**: Socket.IO 4
 - **Database**: PostgreSQL (via Supabase) with `pg` connection pool
 - **Cache & Message Broker**: Redis / Upstash (via `ioredis`)
-- **Email Delivery**: Nodemailer, Brevo API, Resend API
+- **Email Delivery**: Independently deployed `email-service/` (SMTP and Brevo adapters)
 - **Process Manager**: PM2
 
 ---
@@ -150,17 +149,16 @@ VITE_SUPABASE_URL=https://[PROJECT_REF].supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_public_key
 VITE_SERVER_HOST=http://localhost:8080
 
-# Transactional Email Configuration (smtp | brevo | resend)
-EMAIL_PROVIDER=smtp
-EMAIL_FROM_ADDRESS=noreply@example.com
-EMAIL_FROM_NAME=CoWatch
+# Remote email service boundary (provider credentials are configured only on email-service)
+EMAIL_SERVICE_URL=http://localhost:8090
+EMAIL_SERVICE_API_SECRET=replace_with_email_service_api_secret
+EMAIL_SERVICE_WORKER_SECRET=replace_with_email_service_worker_secret
+EMAIL_WORKER_LEASE_SECONDS=600
+EMAIL_MAX_ATTEMPTS=5
+EMAIL_RETRY_DELAYS_MS=60000,300000,1800000,3600000
 
-# Generic SMTP (Default local development)
-EMAIL_SMTP_HOST=smtp.ethereal.email
-EMAIL_SMTP_PORT=587
-EMAIL_SMTP_USERNAME=your_smtp_username
-EMAIL_SMTP_PASSWORD=your_smtp_password
-EMAIL_SMTP_SECURE=false
+# Provider webhook verification remains on CoWatch
+BREVO_WEBHOOK_SECRET=replace_with_brevo_webhook_secret
 
 # Optional: Redis Architecture
 REDIS_URL=rediss://default:[PASSWORD]@[ENDPOINT].upstash.io:6379
@@ -176,6 +174,25 @@ CoWatch maintains an authoritative standalone bootstrap schema and ordered migra
 - **Incremental Migrations**: Located in `sql/migrations/` for schema versioning and incremental updates.
 
 Run `sql/schema.sql` in the Supabase SQL Editor or via the Supabase CLI to bootstrap your database.
+
+### Standalone Email Service
+
+Email delivery runs independently from the CoWatch API. It does not connect directly to PostgreSQL and does not create a second database. CoWatch owns the transactional outbox and exposes authenticated internal endpoints; the remote worker claims and acknowledges jobs over HTTPS.
+
+For local development, run the service in another terminal:
+
+```bash
+cd email-service
+cp .env.example .env
+npm ci
+npm run typecheck
+npm test
+npm start
+```
+
+Configure `HOST_API_URL` and `HOST_API_SECRET` on the email service to point to the host application's API and match `EMAIL_SERVICE_WORKER_SECRET`. Configure `EMAIL_SERVICE_API_SECRET` on both sides for CoWatch-to-email-service security alerts. Use separate high-entropy secrets. Configure SMTP/Brevo credentials, sender identities, and provider bindings only in the email service environment.
+
+In production, deploy `email-service/` on a separate host, expose it through HTTPS, and set CoWatch's `EMAIL_SERVICE_URL` to that address. Provider webhooks continue to reach CoWatch because delivery and suppression records remain in the CoWatch database.
 
 ### 6. Run the Application
 
@@ -222,11 +239,11 @@ CoWatch provides an automated test suite covering contractual invariants, securi
 npm run test:domain-events            # Domain event integration (invites, lifecycle, moderation)
 npm run test:action-contract          # Canonical action routing contracts and fallback policies
 npm run test:notifications            # Notification consistency and SQL template invariants
-npm run test:delivery-profiles        # Email delivery profile bindings and multi-sender routing
+npm run test:delivery-profiles        # CoWatch notification-to-delivery-profile policy
 npm run test:durable-rate-limit       # Sliding-window rate limit durability and sliding recovery
 
 # Email & Outbox Worker Verification
-npm run test:provider-contract        # Universal EmailProvider contract across Brevo, Resend, and SMTP
+npm run test:provider-contract        # Standalone SMTP and Brevo provider contracts
 npm run test:provider-leakage         # Verifies zero provider adapter leakage into domain business logic
 npm run test:provider-webhooks        # Webhook payload normalization and auto-suppression verification
 npm run test:worker-adversarial       # Outbox worker resilience, backoff, and lease recovery tests

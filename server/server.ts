@@ -38,8 +38,6 @@ import { registerNotificationNamespace } from "./notifications/notificationSocke
 import { createNotificationRouter } from "./notifications/notificationRouter.ts";
 import { createInvitationRouter } from "./invitations/invitationRouter.ts";
 import { notificationService } from "./notifications/notificationService.ts";
-import { startEmailWorker, stopEmailWorker } from "./notifications/emailWorker.ts";
-import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
 
 
 export class ServerLifecycleManager {
@@ -108,12 +106,6 @@ export async function handleFatalError(
 
   // Immediately cancel all background intervals and background workers
   serverLifecycle.markShuttingDown();
-  try {
-    stopEmailWorker();
-  } catch (workerErr) {
-    console.error("[LIFECYCLE] Error stopping email worker:", workerErr);
-  }
-
   // Bounded failsafe timer: guarantee process termination within 4 seconds
   const failsafeTimer = setTimeout(() => {
     console.error("[LIFECYCLE] Graceful drain timed out; forcing exit");
@@ -388,20 +380,6 @@ dynamicRoomNsp.use(async (socket, next) => {
     unregisterRoomNamespace,
     serverLifecycle,
   });
-
-  // NOTIFY-002: Strict Provider Startup Validation (Fail-closed)
-  EmailProviderRegistry.validateActiveProvider()
-    .then((provider) => {
-      console.log(`[EmailProvider] Active transactional provider initialized: ${provider.name}`);
-      startEmailWorker();
-    })
-    .catch((err) => {
-      // Transactional email is an optional capability. Keep the API available
-      // when its provider is misconfigured. Leave pending outbox jobs untouched
-      // until valid provider configuration is supplied.
-      console.error('[EmailProvider] Startup validation failed; email delivery is unavailable until configuration is fixed:', err);
-    });
-
 
   if (process.env.NODE_ENV === "development") {
     try {

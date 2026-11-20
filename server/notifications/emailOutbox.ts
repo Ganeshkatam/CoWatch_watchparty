@@ -11,6 +11,7 @@
  */
 
 import { postgres } from '../utils/postgres.ts';
+import type { Pool } from 'pg';
 import type { EmailOutboxRow, ProviderDeliveryStatus } from './notificationTypes.ts';
 import config from '../config.ts';
 
@@ -24,7 +25,7 @@ function getRetryDelay(attemptCount: number): number {
     .split(',')
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => !isNaN(n));
-  const idx = Math.min(attemptCount, delays.length - 1);
+  const idx = Math.min(Math.max(0, attemptCount - 1), delays.length - 1);
   return delays[idx] ?? 3_600_000;
 }
 
@@ -35,10 +36,11 @@ function getRetryDelay(attemptCount: number): number {
 export async function claimOutboxJobs(
   batchSize: number,
   workerId = 'worker-1',
+  database: Pool | undefined = postgres,
 ): Promise<EmailOutboxRow[]> {
-  if (!postgres) return [];
+  if (!database) return [];
 
-  const { rows } = await postgres.query<EmailOutboxRow>(
+  const { rows } = await database.query<EmailOutboxRow>(
     `WITH claimed AS (
        SELECT id FROM public.email_outbox
        WHERE status IN ('PENDING', 'RETRY')
@@ -53,7 +55,7 @@ export async function claimOutboxJobs(
        last_attempt_at = clock_timestamp(),
        attempt_count   = attempt_count + 1,
        locked_at       = clock_timestamp(),
-       locked_by       = $2,
+       locked_by       = $2 || ':' || gen_random_uuid()::text,
        updated_at      = clock_timestamp()
      FROM claimed
      WHERE e.id = claimed.id
@@ -71,36 +73,43 @@ export async function claimOutboxJobs(
 export async function markOutboxSent(
   id: string,
   providerMessageId: string,
-  provider = 'smtp',
-): Promise<void> {
-  if (!postgres) return;
+  provider: string,
+  leaseToken: string,
+  database: Pool | undefined = postgres,
+): Promise<boolean> {
+  if (!database || !leaseToken) return false;
 
-  await postgres.query(
+  const result = await database.query(
     `UPDATE public.email_outbox
      SET status = 'SENT',
          provider = $3,
          provider_delivery_status = 'SENT',
          sent_at = clock_timestamp(),
          provider_message_id = $2,
+         dispatch_started_at = NULL,
          locked_at = NULL,
          locked_by = NULL,
          updated_at = clock_timestamp()
-     WHERE id = $1`,
-    [id, providerMessageId, provider],
+     WHERE id = $1
+       AND status = 'PROCESSING' AND locked_by = $4`,
+    [id, providerMessageId, provider, leaseToken ?? null],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
 export async function markOutboxRetryOrFailed(
   id: string,
   attemptCount: number,
   errorCode: string,
-): Promise<void> {
-  if (!postgres) return;
+  leaseToken: string,
+  database: Pool | undefined = postgres,
+): Promise<boolean> {
+  if (!database || !leaseToken) return false;
 
   const maxAttempts = Number(config.EMAIL_MAX_ATTEMPTS) || 5;
 
   if (attemptCount >= maxAttempts) {
-    await postgres.query(
+    const result = await database.query(
       `UPDATE public.email_outbox
        SET status = 'FAILED',
            last_error_code = $2,
@@ -108,12 +117,14 @@ export async function markOutboxRetryOrFailed(
            locked_at = NULL,
            locked_by = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $1`,
-      [id, errorCode],
+       WHERE id = $1
+         AND status = 'PROCESSING' AND locked_by = $3`,
+      [id, errorCode, leaseToken ?? null],
     );
+    return (result.rowCount ?? 0) === 1;
   } else {
     const delayMs = getRetryDelay(attemptCount);
-    await postgres.query(
+    const result = await database.query(
       `UPDATE public.email_outbox
        SET status = 'RETRY',
            last_error_code = $2,
@@ -122,9 +133,11 @@ export async function markOutboxRetryOrFailed(
            locked_at = NULL,
            locked_by = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $1`,
-      [id, errorCode, delayMs],
+       WHERE id = $1
+         AND status = 'PROCESSING' AND locked_by = $4`,
+      [id, errorCode, delayMs, leaseToken ?? null],
     );
+    return (result.rowCount ?? 0) === 1;
   }
 }
 
@@ -133,10 +146,10 @@ export async function markOutboxRetryOrFailed(
  * Sets outbox row status = FAILED and last_error_code = RECIPIENT_SUPPRESSED.
  * Does NOT consume retry attempts or retry the job.
  */
-export async function markOutboxSuppressed(id: string): Promise<void> {
-  if (!postgres) return;
+export async function markOutboxSuppressed(id: string, leaseToken: string, database: Pool | undefined = postgres): Promise<boolean> {
+  if (!database || !leaseToken) return false;
 
-  await postgres.query(
+  const result = await database.query(
     `UPDATE public.email_outbox
      SET status = 'FAILED',
          last_error_code = 'RECIPIENT_SUPPRESSED',
@@ -144,25 +157,29 @@ export async function markOutboxSuppressed(id: string): Promise<void> {
          locked_at = NULL,
          locked_by = NULL,
          updated_at = clock_timestamp()
-     WHERE id = $1`,
-    [id],
+     WHERE id = $1
+       AND status = 'PROCESSING' AND locked_by = $2`,
+    [id, leaseToken ?? null],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
 /**
  * NOTIFY-004: Record dispatch started immediately before calling external provider.
  * Protects against ambiguous crashes mid-dispatch.
  */
-export async function recordDispatchStarted(id: string): Promise<void> {
-  if (!postgres || !id) return;
+export async function recordDispatchStarted(id: string, leaseToken: string, database: Pool | undefined = postgres): Promise<boolean> {
+  if (!database || !id || !leaseToken) return false;
 
-  await postgres.query(
+  const result = await database.query(
     `UPDATE public.email_outbox
      SET dispatch_started_at = clock_timestamp(),
          updated_at = clock_timestamp()
-     WHERE id = $1`,
-    [id],
+     WHERE id = $1
+       AND status = 'PROCESSING' AND locked_by = $2`,
+    [id, leaseToken ?? null],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,12 +188,13 @@ export async function recordDispatchStarted(id: string): Promise<void> {
 
 export async function reclaimStalledOutboxJobs(
   stallThresholdSeconds = 600,
+  database: Pool | undefined = postgres,
 ): Promise<number> {
-  if (!postgres) return 0;
+  if (!database) return 0;
 
   // Stalled jobs where dispatch_started_at is NOT NULL indicate an in-flight crash
   // We record 'AMBIGUOUS_CRASH_RECOVERY' if an in-flight job is reclaimed
-  const { rowCount } = await postgres.query(
+  const { rowCount } = await database.query(
     `UPDATE public.email_outbox
      SET status = 'RETRY',
          available_at = now(),
@@ -200,10 +218,10 @@ export async function reclaimStalledOutboxJobs(
 // Deliverability Suppression Queries (Zero Plaintext Email)
 // ---------------------------------------------------------------------------
 
-export async function checkEmailSuppression(emailHash: string): Promise<boolean> {
-  if (!postgres || !emailHash) return false;
+export async function checkEmailSuppression(emailHash: string, database: Pool | undefined = postgres): Promise<boolean> {
+  if (!database || !emailHash) return false;
 
-  const result = await postgres.query(
+  const result = await database.query(
     `SELECT 1 FROM public.email_delivery_suppressions WHERE email_hash = $1 LIMIT 1`,
     [emailHash],
   );
@@ -255,9 +273,13 @@ export async function updateDeliveryStatusByProviderMessageId(
     ? [providerMessageId, status, timestamp]
     : [providerMessageId, status];
 
-  if (provider) {
+  if (provider === 'brevo') {
     const providerParamIdx = params.length + 1;
-    whereClause += ` AND provider = $${providerParamIdx}`;
+    whereClause += ` AND (provider = ${providerParamIdx} OR provider LIKE ${providerParamIdx + 1})`;
+    params.push(provider, provider + ':%');
+  } else if (provider) {
+    const providerParamIdx = params.length + 1;
+    whereClause += ` AND provider = ${providerParamIdx}`;
     params.push(provider);
   }
 

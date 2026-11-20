@@ -1,5 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import type { Pool } from "pg";
 import config from "../config.js";
+import { createEmailServiceRouter } from "./emailServiceRouter.js";
+import { EmailServiceGateway } from "../notifications/emailServiceGateway.js";
 import { postgres as defaultPostgres } from "../utils/postgres.js";
 import { providerWebhookRouter as defaultProviderWebhookRouter } from "../notifications/webhooks/providerWebhookRouter.js";
 import { getNotificationHealthReport as defaultGetNotificationHealthReport } from "../notifications/notificationTelemetry.js";
@@ -38,6 +41,15 @@ export function createInternalOperationsRouter(options: InternalOperationsRouter
   const getNotificationHealthReport = options.getNotificationHealthReportFn || defaultGetNotificationHealthReport;
   const requireInternalAuth = options.requireInternalAuthMiddleware || defaultRequireInternalAuth;
   const postgres = options.postgres !== undefined ? options.postgres : defaultPostgres;
+
+  // Remote email worker API; the gateway uses the existing CoWatch PostgreSQL pool.
+  if (postgres) {
+    router.use("/internal/email", createEmailServiceRouter(new EmailServiceGateway(postgres as Pool)));
+  } else {
+    router.use("/internal/email", (_req: Request, res: Response) => {
+      res.status(503).json({ error: "DATABASE_UNAVAILABLE" });
+    });
+  }
 
   // Root health probe preserved at exact /ping path
   router.get("/ping", (_req: Request, res: Response) => {

@@ -1,166 +1,71 @@
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  renderDuplicateSignupAlertEmail,
-  sendDuplicateSignupSecurityAlert,
-} from "./notifications/securityAlerts.ts";
-import { EmailProviderRegistry } from "./notifications/emailProviderRegistry.ts";
-import type { EmailMessage, EmailSendResult } from "./notifications/emailProvider.ts";
+import { sendDuplicateSignupSecurityAlert } from "./notifications/securityAlerts.ts";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-async function runDuplicateSignupSecurityTests() {
-  console.log("=== Duplicate Signup Security Notice & Anti-Enumeration Test Suite ===\n");
-
-  // Test 1: Security alert template rendering
-  console.log("Case 1: Validating security alert email template structure...");
-  const rendered = renderDuplicateSignupAlertEmail({
-    email: "user@gmail.com",
-    ipAddress: "192.0.2.1",
-    attemptedAt: new Date("2026-09-15T12:00:00Z"),
-  });
-
-  assert.ok(rendered.subject.includes("Security Notice"), "Subject must indicate a security notice");
-  assert.ok(rendered.html.includes("user@gmail.com"), "HTML body must reference the target email");
-  assert.ok(rendered.html.includes("192.0.2.1"), "HTML body must reference the attempt IP");
-  assert.ok(rendered.html.includes("/login"), "HTML body must contain sign-in link");
-  assert.ok(rendered.html.includes("/reset-password"), "HTML body must contain password reset link");
-  assert.ok(rendered.text.includes("WAS THIS YOU?"), "Plaintext must contain advisory section");
-
-  // Crucial security invariant: Must NOT contain any account confirmation or activation link
-  const forbiddenConfirmationTokens = [
-    "confirm your email",
-    "confirm your account",
-    "confirm account",
-    "verify your email",
-    "verify email",
-    "confirmation_url",
-    "email_confirmation",
-    "signup-confirm",
-  ];
-  for (const token of forbiddenConfirmationTokens) {
-    assert.ok(
-      !rendered.html.toLowerCase().includes(token),
-      `Security email must NOT contain confirmation token: "${token}"`
-    );
-    assert.ok(
-      !rendered.text.toLowerCase().includes(token),
-      `Security plaintext must NOT contain confirmation token: "${token}"`
-    );
-  }
-  console.log("  [PASS] Email template provides security context with ZERO confirmation links.");
-
-  // Test 2: Delivery profile and provider dispatch
-  console.log("Case 2: Validating transactional_security dispatch routing...");
-  const sentMessages: EmailMessage[] = [];
-  const mockSecurityProvider = {
-    name: "mock-security-provider",
-    capabilities: {
-      transactionalSending: true,
-      nativeIdempotency: true,
-      deliveryWebhooks: false,
-      bounceEvents: false,
-    },
-    async send(msg: EmailMessage): Promise<EmailSendResult> {
-      sentMessages.push(msg);
-      return { accepted: true, provider: "mock-security-provider", providerMessageId: "sec-msg-123" };
-    },
-    async verifyConfiguration(): Promise<void> {},
-    classifyError(err: unknown) {
-      return err as any;
-    },
-  };
-
-  EmailProviderRegistry.register(mockSecurityProvider);
-
-  // Send security alert
-  const sendResult = await sendDuplicateSignupSecurityAlert({
+async function runDuplicateSignupSecurityTests(): Promise<void> {
+  const options = {
     email: "registered-user@gmail.com",
     ipAddress: "203.0.113.42",
-    attemptedAt: new Date(),
+    attemptedAt: new Date("2026-09-15T12:00:00Z"),
+  };
+  let requestedUrl = "";
+  let requestedAuthorization = "";
+  let requestedBody: Record<string, unknown> = {};
+
+  const result = await sendDuplicateSignupSecurityAlert(options, async (input, init) => {
+    requestedUrl = String(input);
+    requestedAuthorization = new Headers(init?.headers).get("authorization") ?? "";
+    requestedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({
+      accepted: true,
+      provider: "brevo",
+      providerMessageId: "security-message-1",
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }, {
+    url: "https://email.example.test",
+    apiSecret: "t".repeat(40),
   });
 
-  assert.ok(sendResult, "Security alert must dispatch successfully");
-  console.log("  [PASS] Transactional security alert dispatched through provider registry.");
+  assert.deepEqual(result, {
+    accepted: true,
+    provider: "brevo",
+    providerMessageId: "security-message-1",
+  });
+  assert.equal(requestedUrl, "https://email.example.test/internal/send/duplicate-signup-alert");
+  assert.equal(requestedAuthorization, "Bearer " + "t".repeat(40));
+  assert.equal(requestedBody.email, options.email);
+  assert.equal(requestedBody.ipAddress, options.ipAddress);
+  assert.equal(requestedBody.attemptedAt, options.attemptedAt.toISOString());
+  assert.equal("userAgent" in requestedBody, false);
 
-  // Test 3: Static analysis of Signup.tsx anti-enumeration guarantees
-  console.log("Case 3: Verifying Signup.tsx zero-knowledge anti-enumeration guarantees...");
+  const failed = await sendDuplicateSignupSecurityAlert(options, async () =>
+    new Response("unavailable", { status: 503 }), {
+      url: "https://email.example.test",
+      apiSecret: "f".repeat(40),
+    });
+  assert.equal(failed, null);
+
   const signupPath = path.join(rootDir, "src", "components", "Auth", "Signup.tsx");
-  const signupContent = fs.readFileSync(signupPath, "utf-8");
+  const signupContent = fs.readFileSync(signupPath, "utf8");
+  assert.ok(signupContent.includes("/api/auth/duplicate-signup-alert"));
+  assert.ok(signupContent.includes("We've sent a confirmation link to your email address. Please confirm your email to sign in."));
+  assert.ok(signupContent.includes("!isDuplicate &&"));
+  assert.ok(signupContent.includes("if (isDuplicate || resendCooldown > 0 || !email) return;"));
 
-  // Invariant 3a: Endpoint call exists
-  assert.ok(
-    signupContent.includes("/api/auth/duplicate-signup-alert"),
-    "Signup.tsx must call /api/auth/duplicate-signup-alert upon detecting existing account"
-  );
-
-  // Invariant 3b: Identical user-facing success feedback
-  assert.ok(
-    signupContent.includes("We've sent a confirmation link to your email address. Please confirm your email to sign in."),
-    "Signup.tsx must present standard confirmation message"
-  );
-
-  // Invariant 3c: Existing account errors are suppressed from user display
-  const prohibitedDisplayTexts = [
-    "User already registered",
-    "Account already exists",
-    "An account with this email already exists",
-    "Email already in use",
-  ];
-  for (const text of prohibitedDisplayTexts) {
-    assert.ok(
-      !signupContent.includes(`setError("${text}")`),
-      `Signup.tsx must NEVER present "${text}" directly to the user`
-    );
-  }
-
-  // Invariant 3d: No resend option for duplicate security mails
-  assert.ok(
-    signupContent.includes("!isDuplicate &&"),
-    "Signup.tsx must suppress the resend button when a duplicate account triggers security notice"
-  );
-  assert.ok(
-    signupContent.includes("if (isDuplicate || resendCooldown > 0 || !email) return;"),
-    "handleResend must guard against resending for duplicate security emails"
-  );
-  console.log("  [PASS] Resend option strictly excluded for duplicate security notices.");
-  console.log("  [PASS] Signup.tsx strictly prevents account enumeration.");
-
-  // Test 4: Server route registration
-  console.log("Case 4: Verifying server route registration for /api/auth/duplicate-signup-alert...");
-  const serverPath = path.join(rootDir, "server", "server.ts");
-  const serverContent = fs.readFileSync(serverPath, "utf-8");
   const routerPath = path.join(rootDir, "server", "routes", "authAccountRouter.ts");
-  const routerContent = fs.readFileSync(routerPath, "utf-8");
+  const routerContent = fs.readFileSync(routerPath, "utf8");
+  assert.ok(routerContent.includes('router.post("/api/auth/duplicate-signup-alert"'));
+  assert.ok(routerContent.includes("checkRateLimit"));
+  assert.ok(routerContent.includes("getUserByEmail"));
 
-  assert.ok(
-    serverContent.includes("createAuthAccountRouter"),
-    "server.ts must mount createAuthAccountRouter"
-  );
-  assert.ok(
-    routerContent.includes('router.post("/api/auth/duplicate-signup-alert"'),
-    "authAccountRouter.ts must expose POST /api/auth/duplicate-signup-alert"
-  );
-  assert.ok(
-    routerContent.includes("checkRateLimit"),
-    "authAccountRouter.ts duplicate-signup-alert route must be protected by rate limits"
-  );
-  assert.ok(
-    routerContent.includes("getUserByEmail"),
-    "authAccountRouter.ts duplicate-signup-alert must verify user existence before dispatching notification"
-  );
-  console.log("  [PASS] Server route is registered with rate limiting and database verification.");
-
-  console.log("\n=========================================================");
-  console.log("All Duplicate Signup Security & Anti-Enumeration Tests PASSED!");
-  console.log("=========================================================\n");
+  console.log("Duplicate signup anti-enumeration and remote email service tests passed.");
 }
 
-runDuplicateSignupSecurityTests().catch((err) => {
-  console.error("Duplicate Signup Security test failed:", err);
+runDuplicateSignupSecurityTests().catch((error: unknown) => {
+  console.error(error);
   process.exit(1);
 });

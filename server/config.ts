@@ -49,54 +49,21 @@ const defaults = {
 
 
   // ==========================================
-  // NOTIFY-001, NOTIFY-002 & NOTIFY-004: Transactional Email Architecture
-  // ==========================================
-  EMAIL_PROVIDER: "smtp",          // Global default email provider adapter: "brevo" | "smtp"
-  EMAIL_FROM_ADDRESS: "noreply@cowatch.tomesphere.in", // Default sender email address
-  EMAIL_FROM_NAME: "CoWatch",      // Default sender display name
+  // Remote email service boundary. Provider credentials and sender identities live remotely.
+  INTERNAL_API_SECRET: "", // Shared secret for internal administrative endpoints.
+  EMAIL_SERVICE_URL: "",
+  EMAIL_SERVICE_API_SECRET: "",
+  EMAIL_SERVICE_WORKER_SECRET: "",
+  BREVO_WEBHOOK_SECRET: "", // Webhook verification remains on CoWatch.
+  RESEND_WEBHOOK_SECRET: "", // Webhook verification remains on CoWatch.
 
-  // Delivery Profiles (Provider-neutral sender overrides)
-  EMAIL_PROFILE_INVITATION_SENDER: "", // Sender address for transactional_invitation (defaults to EMAIL_FROM_ADDRESS)
-  EMAIL_PROFILE_SECURITY_SENDER: "",   // Sender address for transactional_security (defaults to EMAIL_FROM_ADDRESS)
-  EMAIL_PROFILE_SYSTEM_SENDER: "",     // Sender address for transactional_system (defaults to EMAIL_FROM_ADDRESS)
-
-  // Infrastructure Provider Bindings (Maps Delivery Profile -> Named Provider/Account Binding)
-  EMAIL_PROFILE_DEFAULT_BINDING: "default",
-  EMAIL_PROFILE_INVITATION_BINDING: "default", // e.g. "invitations", "default"
-  EMAIL_PROFILE_SECURITY_BINDING: "default",   // e.g. "security", "default"
-  EMAIL_PROFILE_SYSTEM_BINDING: "default",     // e.g. "system", "default"
-
-  // Named Provider Bindings (Maps binding name -> registered provider adapter)
-  EMAIL_BINDING_DEFAULT_PROVIDER: "",    // Optional provider override for "default" binding
-  EMAIL_BINDING_INVITATION_PROVIDER: "", // Optional provider override for "invitations" binding
-  EMAIL_BINDING_SECURITY_PROVIDER: "",   // Optional provider override for "security" binding
-  EMAIL_BINDING_SYSTEM_PROVIDER: "",     // Optional provider override for "system" binding
-
-  // Brevo API Configuration & Multi-Account Support
-  BREVO_API_KEY: "",               // Brevo default API key (xkeysib-...)
-  BREVO_API_KEY_INVITATIONS: "",   // Optional Brevo account API key for invitations
-  BREVO_API_KEY_SECURITY: "",      // Optional Brevo account API key for security alerts
-  BREVO_API_KEY_SYSTEM: "",        // Optional Brevo account API key for system mail
-  BREVO_WEBHOOK_SECRET: "",        // Brevo webhook authentication token/secret
-
-  // Generic SMTP Configuration (Works with Brevo SMTP, Amazon SES, Postmark, etc.)
-  EMAIL_SMTP_HOST: "",             // SMTP server hostname (e.g. smtp-relay.brevo.com)
-  EMAIL_SMTP_PORT: 587,            // SMTP port (587 for STARTTLS, 465 for SSL)
-  EMAIL_SMTP_USERNAME: "",         // SMTP username
-  EMAIL_SMTP_PASSWORD: "",         // SMTP password
-  EMAIL_SMTP_SECURE: false,        // True for 465 SSL, false for 587 STARTTLS
-
-  // Internal Boundary Secret (for /internal/health and administrative endpoints)
-  INTERNAL_API_SECRET: "",
-
-  EMAIL_WORKER_INTERVAL_MS: 30000, // How often the email outbox worker polls (default 30s)
-  EMAIL_WORKER_BATCH_SIZE: 10,     // How many outbox rows to claim per cycle
-  EMAIL_WORKER_LEASE_SECONDS: 600, // Lease duration before a PROCESSING job is considered stalled (10m)
-  EMAIL_RETRY_DELAYS_MS: "60000,300000,1800000,3600000", // Comma-separated per-attempt delays (4 retries)
-  EMAIL_MAX_ATTEMPTS: 5,           // Max delivery attempts before marking FAILED
-  EMAIL_SENT_RETENTION_DAYS: 14,   // Days to retain SENT outbox rows before purging
-  EMAIL_FAILED_RETENTION_DAYS: 60, // Days to retain FAILED outbox rows for auditing
-  NOTIFICATION_READ_RETENTION_DAYS: 90, // Days to retain READ notifications
+  // CoWatch-owned durable outbox policy.
+  EMAIL_WORKER_LEASE_SECONDS: 600,
+  EMAIL_RETRY_DELAYS_MS: "60000,300000,1800000,3600000",
+  EMAIL_MAX_ATTEMPTS: 5,
+  EMAIL_SENT_RETENTION_DAYS: 14,
+  EMAIL_FAILED_RETENTION_DAYS: 60,
+  NOTIFICATION_READ_RETENTION_DAYS: 90,
 
   // ==========================================
   // Development / Legacy Compatibility Configuration
@@ -218,7 +185,11 @@ export function parseOptionalInteger(
 export function createConfig(customEnv: NodeJS.ProcessEnv = process.env) {
   return {
     ...defaults,
-    ...customEnv,
+    ...Object.fromEntries(
+      Object.keys(defaults)
+        .filter((key) => customEnv[key] !== undefined)
+        .map((key) => [key, customEnv[key]]),
+    ),
     HOST:
       typeof customEnv.HOST === "string" && customEnv.HOST.trim() !== ""
         ? customEnv.HOST.trim()
@@ -257,26 +228,6 @@ export function createConfig(customEnv: NodeJS.ProcessEnv = process.env) {
         .map((s) => s.trim())
         .filter(Boolean)
       : defaults.ALLOWED_ORIGINS,
-    EMAIL_SMTP_PORT: parseBoundedInteger(
-      customEnv.EMAIL_SMTP_PORT,
-      defaults.EMAIL_SMTP_PORT,
-      { min: 1, max: 65535, propertyName: "EMAIL_SMTP_PORT" }
-    ),
-    EMAIL_SMTP_SECURE: parseBoolean(
-      customEnv.EMAIL_SMTP_SECURE,
-      defaults.EMAIL_SMTP_SECURE,
-      "EMAIL_SMTP_SECURE"
-    ),
-    EMAIL_WORKER_INTERVAL_MS: parseBoundedInteger(
-      customEnv.EMAIL_WORKER_INTERVAL_MS,
-      defaults.EMAIL_WORKER_INTERVAL_MS,
-      { min: 100, max: 86400000, propertyName: "EMAIL_WORKER_INTERVAL_MS" }
-    ),
-    EMAIL_WORKER_BATCH_SIZE: parseBoundedInteger(
-      customEnv.EMAIL_WORKER_BATCH_SIZE,
-      defaults.EMAIL_WORKER_BATCH_SIZE,
-      { min: 1, max: 500, propertyName: "EMAIL_WORKER_BATCH_SIZE" }
-    ),
     EMAIL_WORKER_LEASE_SECONDS: parseBoundedInteger(
       customEnv.EMAIL_WORKER_LEASE_SECONDS,
       defaults.EMAIL_WORKER_LEASE_SECONDS,
@@ -318,6 +269,20 @@ export function createConfig(customEnv: NodeJS.ProcessEnv = process.env) {
 export { defaults };
 
 const resolvedConfig = createConfig(process.env);
+
+// Provider credentials belong exclusively to the remote email-service process.
+const REMOTE_EMAIL_ENV_KEYS = [
+  'EMAIL_PROVIDER', 'EMAIL_FROM_ADDRESS', 'EMAIL_FROM_NAME',
+  'EMAIL_PROFILE_DEFAULT_BINDING', 'EMAIL_PROFILE_INVITATION_BINDING',
+  'EMAIL_PROFILE_SECURITY_BINDING', 'EMAIL_PROFILE_SYSTEM_BINDING',
+  'EMAIL_PROFILE_INVITATION_SENDER', 'EMAIL_PROFILE_SECURITY_SENDER', 'EMAIL_PROFILE_SYSTEM_SENDER',
+  'EMAIL_BINDING_DEFAULT_PROVIDER', 'EMAIL_BINDING_INVITATION_PROVIDER',
+  'EMAIL_BINDING_SECURITY_PROVIDER', 'EMAIL_BINDING_SYSTEM_PROVIDER',
+  'BREVO_API_KEY', 'BREVO_API_KEY_INVITATIONS', 'BREVO_API_KEY_SECURITY', 'BREVO_API_KEY_SYSTEM',
+  'RESEND_API_KEY', 'EMAIL_SMTP_HOST', 'EMAIL_SMTP_PORT', 'EMAIL_SMTP_USERNAME',
+  'EMAIL_SMTP_PASSWORD', 'EMAIL_SMTP_SECURE', 'EMAIL_WORKER_INTERVAL_MS', 'EMAIL_WORKER_BATCH_SIZE',
+] as const;
+for (const key of REMOTE_EMAIL_ENV_KEYS) delete process.env[key];
 
 // Validate TURN configuration
 if (resolvedConfig.NODE_ENV === "production") {

@@ -27,7 +27,7 @@
     "test:state-matrix": "tsx src/utils/operationState.test.ts",
     "test:notifications": "tsx server/notifications/notificationConsistency.test.ts",
     "test:worker-adversarial": "tsx server/notifications/emailWorker.adversarial.test.ts",
-    "test:provider-contract": "tsx server/notifications/emailProvider.contract.test.ts",
+    "test:provider-contract": "npm --prefix email-service test",
     "test:provider-leakage": "tsx server/notifications/providerLeakage.test.ts",
     "test:provider-webhooks": "tsx server/notifications/webhooks/providerWebhooks.test.ts",
     "test:brevo-e2e": "tsx server/notifications/brevoE2E.test.ts",
@@ -78,7 +78,11 @@
     "test:frontend-phase5": "tsx src/utils/roomFrontendPhase5.test.ts",
     "test:cutover-phase6": "tsx server/roomCutoverPhase6.test.ts",
     "test:cutover-phase7": "tsx server/roomCutoverPhase7.test.ts",
-    "test:smoke": "tsx server/productionSmoke.test.ts"
+    "test:smoke": "tsx server/productionSmoke.test.ts",
+    "typecheckEmailService": "npm --prefix email-service run typecheck",
+    "test:email-service": "npm --prefix email-service test",
+    "test:email-service-api": "tsx server/routes/emailServiceRouter.test.ts",
+    "test:email-service-gateway": "tsx server/notifications/emailServiceGateway.test.ts"
   },
   "dependencies": {
     "@googleapis/youtube": "^8.0.2",
@@ -97,7 +101,6 @@
     "express": "^5.2.1",
     "ioredis": "^5.8.2",
     "node-ssh": "^13.2.1",
-    "nodemailer": "^10.0.9",
     "pg": "^8.23.0",
     "pm2": "^7.0.4",
     "react-qr-code": "^2.2.0",
@@ -111,7 +114,6 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.1",
-    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.16.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
