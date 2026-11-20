@@ -113,7 +113,7 @@ test('custom profile bindings resolve matching provider and credentials', () => 
   assert.equal(provider.name, 'brevo:alerts');
 });
 
-test('each Brevo delivery profile uses only its own account credentials', () => {
+test('each Brevo delivery profile uses only its own account credentials', async () => {
   const config = loadConfig({
     ...baseEnv,
     EMAIL_PROVIDER: 'brevo',
