@@ -26,7 +26,7 @@ test('configuration validates service secrets, URLs, and bounded worker settings
 });
 
 test('production rejects insecure upstream URLs and short credentials', () => {
-  assert.throws(() => loadConfig({ ...baseEnv, NODE_ENV: 'production' }), /HOST_API_URL_REQUIRES_HTTPS/);
+  assert.throws(() => loadConfig({ ...baseEnv, NODE_ENV: 'production', APP_URL: 'https://cowatch.example' }), /HOST_API_URL_REQUIRES_HTTPS/);
   assert.throws(() => loadConfig({ ...baseEnv, HOST_API_SECRET: 'short' }), /HOST_API_SECRET/);
   assert.throws(() => loadConfig({ ...baseEnv, EMAIL_SERVICE_API_SECRET: 'short' }), /EMAIL_SERVICE_API_SECRET/);
 });
