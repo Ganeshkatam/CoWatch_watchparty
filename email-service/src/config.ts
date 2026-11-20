@@ -104,18 +104,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
     transactional_invitation: env.EMAIL_PROFILE_INVITATION_SENDER || env.EMAIL_FROM_ADDRESS || '',
     transactional_system: env.EMAIL_PROFILE_SYSTEM_SENDER || env.EMAIL_FROM_ADDRESS || '',
   };
-  const bindingProviders: Record<string, string> = {
-    default: env.EMAIL_BINDING_DEFAULT_PROVIDER || '',
-    invitation: env.EMAIL_BINDING_INVITATION_PROVIDER || '',
-    security: env.EMAIL_BINDING_SECURITY_PROVIDER || '',
-    system: env.EMAIL_BINDING_SYSTEM_PROVIDER || '',
-  };
-  const brevoKeys: Record<string, string> = {
-    default: env.BREVO_API_KEY || '',
-    invitation: env.BREVO_API_KEY_INVITATIONS || env.BREVO_API_KEY || '',
-    security: env.BREVO_API_KEY_SECURITY || env.BREVO_API_KEY || '',
-    system: env.BREVO_API_KEY_SYSTEM || env.BREVO_API_KEY || '',
-  };
+  const bindings = new Set(['default', ...Object.values(profileBindings)]);
+  const bindingProviders: Record<string, string> = {};
+  const brevoKeys: Record<string, string> = {};
+  for (const binding of bindings) {
+    const suffix = binding.toUpperCase();
+    bindingProviders[binding] = env['EMAIL_BINDING_' + suffix + '_PROVIDER'] || '';
+    brevoKeys[binding] = env['BREVO_API_KEY_' + suffix] || env.BREVO_API_KEY || '';
+  }
 
   for (const id of profileIds) {
     if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(profileSenders[id])) {
@@ -133,7 +129,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EmailServiceCo
   }
   const smtpPort = boundedInteger(env.EMAIL_SMTP_PORT, 587, 1, 65535, 'EMAIL_SMTP_PORT');
   const fromName = env.EMAIL_FROM_NAME || 'CoWatch';
-  if (/[\\r\\n]/.test(fromName) || fromName.length > 80) throw new Error('INVALID_CONFIGURATION:EMAIL_FROM_NAME');
+  if (fromName.includes('\r') || fromName.includes('\n') || fromName.length > 80) throw new Error('INVALID_CONFIGURATION:EMAIL_FROM_NAME');
   if (Boolean(env.EMAIL_SMTP_USERNAME) !== Boolean(env.EMAIL_SMTP_PASSWORD)) {
     throw new Error('INVALID_CONFIGURATION:EMAIL_SMTP_CREDENTIAL_PAIR');
   }
