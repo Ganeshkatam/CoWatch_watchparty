@@ -10,7 +10,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -19,16 +19,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24.22.3
       - run: npm ci
+      - name: Audit root dependencies
+        run: |
+          npm audit --json > /tmp/root-audit.json || true
+          node -e 'const a=require("/tmp/root-audit.json"); for (const [n,v] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({package:n,severity:v.severity,range:v.range,via:v.via.map(x=>typeof x === "string" ? x : {title:x.title,url:x.url,range:x.range}),fixAvailable:v.fixAvailable})); console.log("ROOT_AUDIT_TOTALS", JSON.stringify(a.metadata?.vulnerabilities || {}))'
       - name: Verify standalone email service package
         working-directory: email-service
         run: |
           npm ci
+          npm audit --json > /tmp/email-service-audit.json || true
+          node -e 'const a=require("/tmp/email-service-audit.json"); for (const [n,v] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({package:n,severity:v.severity,range:v.range,via:v.via.map(x=>typeof x === "string" ? x : {title:x.title,url:x.url,range:x.range}),fixAvailable:v.fixAvailable})); console.log("EMAIL_SERVICE_AUDIT_TOTALS", JSON.stringify(a.metadata?.vulnerabilities || {}))'
           npm run typecheck
           npm test
       - run: npm run build --if-present
@@ -40,14 +46,3 @@ jobs:
           npm run test:email-service-api
           npm run test:email-service-gateway
           npm run test:duplicate-signup-security
-      - name: Push to remote
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B release
-          sed -i '/^\/build$/d' .gitignore
-          git add .gitignore
-          git add -f build
-          git commit --quiet -m "Built from ${{ github.sha }}" || echo "No changes to commit"
-          git push origin release -f
