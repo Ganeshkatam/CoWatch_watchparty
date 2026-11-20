@@ -32,11 +32,11 @@ async function runDuplicateSignupSecurityTests(): Promise<void> {
 
   assert.deepEqual(result, {
     accepted: true,
-    provider: "brevo:security",
+    provider: "brevo",
     providerMessageId: "security-message-1",
   });
   assert.equal(requestedUrl, "https://email.example.test/internal/send/duplicate-signup-alert");
-  assert.equal(requestedAuthorization, "Bearer test-secret");
+  assert.equal(requestedAuthorization, "Bearer " + "t".repeat(40));
   assert.equal(requestedBody.email, options.email);
   assert.equal(requestedBody.ipAddress, options.ipAddress);
   assert.equal(requestedBody.attemptedAt, options.attemptedAt.toISOString());
@@ -45,7 +45,7 @@ async function runDuplicateSignupSecurityTests(): Promise<void> {
   const failed = await sendDuplicateSignupSecurityAlert(options, async () =>
     new Response("unavailable", { status: 503 }), {
       url: "https://email.example.test",
-      apiSecret: "test-secret",
+      apiSecret: "f".repeat(40),
     });
   assert.equal(failed, null);
 
