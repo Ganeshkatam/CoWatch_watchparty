@@ -189,7 +189,7 @@ export class BrevoEmailProvider implements EmailProvider {
     const value = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
     const status = Number(value.status) || 0;
     const code = String(value.code || '');
-    if (status === 429) return new EmailProviderError('Brevo rate limited', 'BREVO_RATE_LIMITED', true);
+    if (status === 408 || status === 425 || status === 429) return new EmailProviderError('Brevo transient response', 'BREVO_TRANSIENT_' + status, true);
     if (status === 401 || status === 403) return new EmailProviderError('Brevo authentication failed', 'BREVO_AUTH_' + status, false);
     if (status === 400 || status === 422) return new EmailProviderError('Brevo rejected message payload', 'BREVO_PAYLOAD_' + status, false);
     if (status >= 500 || status === 0 || code === 'ETIMEDOUT' || code === 'ECONNRESET') {
