@@ -268,7 +268,9 @@ export class EmailProviderRegistry {
     if (providerName === 'smtp') {
       provider = new SMTPEmailProvider(this.config);
     } else if (providerName === 'brevo') {
-      provider = new BrevoEmailProvider(this.config, key, this.config.brevoKeys[binding] || this.config.brevoKeys.default);
+      const apiKey = this.config.brevoKeys[binding];
+      if (!apiKey) throw new EmailProviderError('Brevo account credentials are missing for this delivery profile', 'BREVO_PROFILE_CREDENTIALS_MISSING', false);
+      provider = new BrevoEmailProvider(this.config, key, apiKey);
     } else {
       throw new EmailProviderError('Unsupported email provider binding', 'UNSUPPORTED_EMAIL_PROVIDER', false);
     }
