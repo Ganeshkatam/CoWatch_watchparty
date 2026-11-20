@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "CoWatch — Watch Together with Friends",
+  "short_name": "CoWatch",
+  "description": "Watch videos together with friends and communicate in real time.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0d14",
+  "theme_color": "#f0f3f8",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

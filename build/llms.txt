@@ -1,0 +1,24 @@
+# CoWatch
+
+> CoWatch is a web platform for watching videos and streams together with friends while communicating in real time.
+
+## Public website
+
+- https://cowatch.tomesphere.in/: Main CoWatch landing page.
+- https://cowatch.tomesphere.in/about: Product overview and platform principles.
+- https://cowatch.tomesphere.in/creator: Creator information.
+- https://cowatch.tomesphere.in/faq: Frequently asked questions.
+- https://cowatch.tomesphere.in/support: Help and troubleshooting information.
+- https://cowatch.tomesphere.in/community-guidelines: Community standards.
+- https://cowatch.tomesphere.in/terms: Terms of service.
+- https://cowatch.tomesphere.in/privacy: Privacy information.
+
+## Product summary
+
+CoWatch provides shared media viewing with synchronized playback and real-time communication features. The public site describes support for chat, voice/video communication, reactions, YouTube, personal media, and screen sharing. Feature availability may depend on the room, media source, browser, and current product configuration.
+
+## Usage notes
+
+- Treat room URLs, invitation links, account pages, and authenticated routes as private or session-specific.
+- Do not infer private room contents, user identities, or account data from public URLs.
+- Use the linked public pages as the authoritative source for current product and policy details.
