@@ -56,7 +56,9 @@ export class EmailServiceGateway {
       if (!leaseToken) throw new Error('MISSING_OUTBOX_LEASE');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.recipient_email) ||
           row.recipient_email.length > 254 || !row.template_key || row.template_key.length > 100 ||
-          !isPayloadRecord(row.payload) || (row.provider_idempotency_key?.length ?? 0) > 256) {
+          !isPayloadRecord(row.payload) ||
+          (row.provider_idempotency_key !== null && row.provider_idempotency_key !== undefined &&
+            !/^[a-zA-Z0-9._:-]{1,256}$/.test(row.provider_idempotency_key))) {
         await markOutboxRetryOrFailed(
           row.id,
           Number(config.EMAIL_MAX_ATTEMPTS) || 5,
