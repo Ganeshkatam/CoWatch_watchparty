@@ -106,7 +106,7 @@ test('custom profile bindings resolve matching provider and credentials', () => 
     ...baseEnv,
     EMAIL_PROFILE_SECURITY_BINDING: 'alerts',
     EMAIL_BINDING_ALERTS_PROVIDER: 'brevo',
-    BREVO_API_KEY_ALERTS: 'alerts-api-key',
+    BREVO_API_KEY_SECURITY: 'alerts-api-key',
   });
   const provider = new EmailProviderRegistry(config).getProviderForProfile('transactional_security');
   assert.equal(provider.providerId, 'brevo');
@@ -122,7 +122,15 @@ test('each Brevo delivery profile uses only its own account credentials', () => 
     BREVO_API_KEY_SECURITY: 'security-account-key',
     BREVO_API_KEY_SYSTEM: 'system-account-key',
   });
-  const registry = new EmailProviderRegistry(config);
+  const apiKeys: string[] = [];
+  const fetcher: typeof fetch = async (_input, init) => {
+    apiKeys.push(new Headers(init?.headers).get('api-key') || '');
+    return new Response(JSON.stringify({ messageId: 'mock-message-' + apiKeys.length }), {
+      status: 201,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  const registry = new EmailProviderRegistry(config, fetcher);
   const profiles = [
     'transactional_default',
     'transactional_invitation',
@@ -137,4 +145,12 @@ test('each Brevo delivery profile uses only its own account credentials', () => 
     'brevo:system',
   ]);
   assert.equal(new Set(providers).size, 4);
+  for (const provider of providers) await provider.send(message);
+  assert.deepEqual(apiKeys, [
+    'default-account-key',
+    'invitation-account-key',
+    'security-account-key',
+    'system-account-key',
+  ]);
+  await registry.close();
 });
