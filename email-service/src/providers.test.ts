@@ -55,8 +55,12 @@ test('provider error classification distinguishes retryable and permanent failur
   assert.equal(smtpAuth.code, 'SMTP_AUTH_FAILURE');
   assert.equal(smtpAuth.retryable, false);
 
+  const brevoTimeout = brevo.classifyError({ status: 408 });
+  assert.equal(brevoTimeout.code, 'BREVO_TRANSIENT_408');
+  assert.equal(brevoTimeout.retryable, true);
+
   const brevoThrottle = brevo.classifyError({ status: 429 });
-  assert.equal(brevoThrottle.code, 'BREVO_RATE_LIMITED');
+  assert.equal(brevoThrottle.code, 'BREVO_TRANSIENT_429');
   assert.equal(brevoThrottle.retryable, true);
 
   const brevoAuth = brevo.classifyError({ status: 403 });
