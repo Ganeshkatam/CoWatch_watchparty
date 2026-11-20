@@ -27,12 +27,22 @@ async function run(): Promise<void> {
       provider_idempotency_key: 'allowed-key',
       locked_by: 'worker-a:lease-2',
     },
+    {
+      id: '00000000-0000-4000-8000-000000000003',
+      recipient_email: 'unsafe@example.com',
+      template_key: 'ROOM_STARTED',
+      payload: { roomTitle: 'Unsafe', roomUrl: 'https://cowatch.example/room/3' },
+      delivery_profile: 'transactional_invitation',
+      attempt_count: 1,
+      provider_idempotency_key: 'unsafe\\r\\nkey',
+      locked_by: 'worker-a:lease-3',
+    },
   ];
   const queries: Array<{ sql: string; values: unknown[] }> = [];
   const pool = {
     query: async <T = unknown>(sql: string, values: unknown[] = []) => {
       queries.push({ sql, values });
-      if (sql.includes('WITH claimed AS')) return { rows: rows as T[], rowCount: 2 };
+      if (sql.includes('WITH claimed AS')) return { rows: rows as T[], rowCount: 3 };
       if (sql.includes('SELECT email_hash')) {
         return { rows: [{ email_hash: computeEmailHash(blockedEmail) }] as T[], rowCount: 1 };
       }
@@ -46,7 +56,7 @@ async function run(): Promise<void> {
 
   const gateway = new EmailServiceGateway(pool);
   const jobs = await gateway.claimJobs(2, 'worker-a');
-  assert.equal(jobs.length, 1);
+  assert.equal(jobs.length, 1, 'unsafe idempotency keys must be failed before provider dispatch');
   assert.equal(jobs[0].recipientEmail, allowedEmail);
   assert.equal(jobs[0].leaseToken, 'worker-a:lease-2');
   assert.ok(queries.some((query) => query.sql.includes('FOR UPDATE SKIP LOCKED')));
@@ -60,7 +70,7 @@ async function run(): Promise<void> {
   const stateTransitions = queries.filter((query) =>
     query.sql.includes('UPDATE public.email_outbox') && query.sql.includes('WHERE id = $1'),
   );
-  assert.ok(stateTransitions.length >= 4, 'Expected suppression, dispatch, sent, and retry transitions');
+  assert.ok(stateTransitions.length >= 5, 'Expected invalid-payload, suppression, dispatch, sent, and retry transitions');
   assert.ok(
     stateTransitions.every((query) => query.sql.includes('locked_by = $')),
     'Every job state transition must be fenced by its lease token',
